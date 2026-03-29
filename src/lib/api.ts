@@ -317,6 +317,27 @@ export const getDashboardStats = async () => {
   };
 };
 
-export const generatePONumber = () => `PO-${Date.now().toString(36).toUpperCase()}`;
-export const generateQuotationNumber = () => `QT-${Date.now().toString(36).toUpperCase()}`;
-export const generateInvoiceNumber = () => `INV-${Date.now().toString(36).toUpperCase()}`;
+// Document sequences
+export const getDocumentSequences = async () => {
+  const { data, error } = await from("document_sequences").select("*");
+  if (error) throw error;
+  return data as { id: string; prefix: string; next_number: number; padding: number }[];
+};
+
+export const updateDocumentSequence = async (id: string, updates: { prefix?: string; next_number?: number }) => {
+  const { error } = await from("document_sequences").update(updates).eq("id", id);
+  if (error) throw error;
+};
+
+const generateNextNumber = async (seqId: string): Promise<string> => {
+  const { data, error } = await from("document_sequences").select("*").eq("id", seqId).single();
+  if (error) throw error;
+  const seq = data as { prefix: string; next_number: number; padding: number };
+  const num = String(seq.next_number).padStart(seq.padding, "0");
+  await from("document_sequences").update({ next_number: seq.next_number + 1 }).eq("id", seqId);
+  return `${seq.prefix}-${num}`;
+};
+
+export const generatePONumber = () => generateNextNumber("purchase_order");
+export const generateQuotationNumber = () => generateNextNumber("quotation");
+export const generateInvoiceNumber = () => generateNextNumber("invoice");
