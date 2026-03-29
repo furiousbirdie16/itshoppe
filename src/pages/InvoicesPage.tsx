@@ -89,6 +89,17 @@ export default function InvoicesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Marked as paid"); },
   });
 
+  const revertMut = useMutation({
+    mutationFn: revertInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Invoice reverted to draft — stock restored");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "" }); setLines([{ item_id: "", quantity: 1, unit_price: 0 }]); };
   const addLine = () => setLines([...lines, { item_id: "", quantity: 1, unit_price: 0 }]);
   const updateLine = (idx: number, field: string, value: any) => {
