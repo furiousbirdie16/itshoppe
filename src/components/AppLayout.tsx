@@ -18,7 +18,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center justify-between border-b px-4 md:px-6 bg-card/80 backdrop-blur-md sticky top-0 z-10">
             <div className="flex items-center gap-2">
-              <SidebarTrigger />
+              <SidebarTrigger className="h-8 w-8">
+                <Menu className="h-5 w-5" />
+              </SidebarTrigger>
             </div>
             <Button
               variant="ghost"
