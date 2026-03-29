@@ -16,7 +16,7 @@ export default function InventoryPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [filter, setFilter] = useState("");
-  const [form, setForm] = useState({ name: "", sku: "", description: "", cost_price: "0", selling_price: "0", low_stock_threshold: "10" });
+  const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
 
@@ -37,15 +37,16 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", cost_price: "0", selling_price: "0", low_stock_threshold: "10" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" }); setOpen(true); };
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku, description: item.description, cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold) });
+    setForm({ name: item.name, sku: item.sku, description: item.description, quantity: String(item.quantity), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold) });
     setOpen(true);
   };
 
   const handleSubmit = () => {
-    const data = { name: form.name, sku: form.sku, description: form.description, cost_price: parseFloat(form.cost_price), selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
+    const data: any = { name: form.name, sku: form.sku, description: form.description, cost_price: parseFloat(form.cost_price), selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
+    if (!editing) data.quantity = parseInt(form.quantity) || 0;
     if (editing) updateMut.mutate({ id: editing.id, data });
     else createMut.mutate(data);
   };
@@ -84,6 +85,12 @@ export default function InventoryPage() {
               <Label className="text-xs font-medium">Description</Label>
               <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
             </div>
+            {!editing && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Initial Quantity</Label>
+                <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Cost Price</Label>
