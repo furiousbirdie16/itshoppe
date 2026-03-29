@@ -194,7 +194,7 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
 
   const { data: qItems } = await from("quotation_items").select("*").eq("quotation_id", quotationId);
   const q = quotation as any;
-  const invNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
+  const invNumber = await generateInvoiceNumber();
 
   const { data: invoice, error } = await from("invoices").insert({
     invoice_number: invNumber,
