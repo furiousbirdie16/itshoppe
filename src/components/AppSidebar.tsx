@@ -35,7 +35,7 @@ export function AppSidebar() {
           <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
             <img src="/images/logo.png" alt="IT SHOPPE" className="h-7 w-7 rounded-lg shrink-0 object-contain" />
             {!collapsed && (
-              <span className="text-sm font-semibold tracking-tight text-foreground">8IT SHOPPE</span>
+              <span className="text-sm font-semibold tracking-tight text-foreground">IT SHOPPE</span>
             )}
           </div>
         </div>
