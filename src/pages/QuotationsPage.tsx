@@ -177,8 +177,8 @@ export default function QuotationsPage() {
                   <TableRow key={qi.id}>
                     <TableCell className="text-sm font-medium">{qi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
-                    <TableCell className="text-sm text-right">${Number(qi.unit_price).toFixed(2)}</TableCell>
-                    <TableCell className="text-sm text-right font-medium">${(qi.quantity * Number(qi.unit_price)).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>
+                    <TableCell className="text-sm text-right font-medium">{peso(qi.quantity * Number(qi.unit_price))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
