@@ -289,6 +289,32 @@ export const confirmInvoice = async (invoiceId: string) => {
   await from("invoices").update({ status: "confirmed", updated_at: new Date().toISOString() }).eq("id", invoiceId);
 };
 
+// Revert confirmed invoice - restore stock
+export const revertInvoice = async (invoiceId: string) => {
+  const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
+
+  if (invItems) {
+    for (const invItem of invItems as any[]) {
+      const { data: currentItem } = await from("items").select("quantity").eq("id", invItem.item_id).single();
+      await from("items").update({
+        quantity: ((currentItem as any)?.quantity || 0) + invItem.quantity,
+        updated_at: new Date().toISOString()
+      }).eq("id", invItem.item_id);
+
+      await from("inventory_movements").insert({
+        item_id: invItem.item_id,
+        type: "in_po",
+        quantity: invItem.quantity,
+        reference_id: invoiceId,
+        reference_type: "invoice_revert",
+        notes: "Reverted from confirmed invoice"
+      });
+    }
+  }
+
+  await from("invoices").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", invoiceId);
+};
+
 // Inventory Movements
 export const getInventoryMovements = async (itemId?: string): Promise<InventoryMovement[]> => {
   let query = from("inventory_movements").select("*, items(*)").order("created_at", { ascending: false });
