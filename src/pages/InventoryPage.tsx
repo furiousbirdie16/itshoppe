@@ -85,6 +85,12 @@ export default function InventoryPage() {
               <Label className="text-xs font-medium">Description</Label>
               <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
             </div>
+            {!editing && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Initial Quantity</Label>
+                <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Cost Price</Label>
