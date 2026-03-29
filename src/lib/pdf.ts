@@ -7,16 +7,13 @@ export interface DocumentData {
   date: string;
   status: string;
   notes?: string;
-  // Recipient
-  recipientLabel: string; // "Supplier" or "Customer"
+  recipientLabel: string;
   recipientName: string;
   recipientContact?: string;
   recipientEmail?: string;
   recipientPhone?: string;
   recipientAddress?: string;
-  // Extra fields
   extraFields?: { label: string; value: string }[];
-  // Line items
   items: {
     name: string;
     sku?: string;
@@ -27,203 +24,253 @@ export interface DocumentData {
   totalAmount: number;
 }
 
-const COLORS = {
-  primary: [59, 91, 219] as [number, number, number],
-  dark: [30, 35, 50] as [number, number, number],
-  muted: [120, 130, 150] as [number, number, number],
-  light: [245, 247, 250] as [number, number, number],
+const C = {
+  primary: [44, 62, 147] as [number, number, number],
+  primaryLight: [236, 239, 250] as [number, number, number],
+  dark: [17, 24, 39] as [number, number, number],
+  gray: [107, 114, 128] as [number, number, number],
+  lightGray: [243, 244, 246] as [number, number, number],
   white: [255, 255, 255] as [number, number, number],
-  border: [220, 225, 235] as [number, number, number],
+  border: [229, 231, 235] as [number, number, number],
+  green: [22, 163, 74] as [number, number, number],
+  amber: [217, 119, 6] as [number, number, number],
 };
+
+const PESO = "PHP ";
+
+function fmt(n: number): string {
+  return PESO + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function getDocTitle(type: DocumentData["type"]): string {
   switch (type) {
-    case "purchase_order": return "Purchase Order";
-    case "quotation": return "Quotation";
-    case "invoice": return "Invoice";
+    case "purchase_order": return "PURCHASE ORDER";
+    case "quotation": return "QUOTATION";
+    case "invoice": return "INVOICE";
   }
 }
 
 export function generateDocumentPDF(data: DocumentData): jsPDF {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 20;
-  const contentWidth = pageWidth - margin * 2;
-  let y = margin;
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const m = 18;
+  const cw = pw - m * 2;
+  let y = m;
 
-  // === Header bar ===
-  doc.setFillColor(...COLORS.primary);
-  doc.rect(0, 0, pageWidth, 40, "F");
+  // ── Top accent line ──
+  doc.setFillColor(...C.primary);
+  doc.rect(0, 0, pw, 3, "F");
 
-  // Company name
-  doc.setTextColor(...COLORS.white);
-  doc.setFontSize(18);
+  y = 14;
+
+  // ── Company name ──
   doc.setFont("helvetica", "bold");
-  doc.text("ERP System", margin, 18);
+  doc.setFontSize(20);
+  doc.setTextColor(...C.dark);
+  doc.text("ERP System", m, y);
 
-  // Document type
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(getDocTitle(data.type).toUpperCase(), margin, 28);
-
-  // Document number (right side)
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(data.number, pageWidth - margin, 18, { align: "right" });
-
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Date: ${data.date}`, pageWidth - margin, 28, { align: "right" });
-
-  y = 52;
-
-  // === Recipient & Details Section ===
-  doc.setFillColor(...COLORS.light);
-  doc.roundedRect(margin, y, contentWidth, 38, 2, 2, "F");
-
-  // Left: Recipient
-  doc.setTextColor(...COLORS.muted);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text(data.recipientLabel.toUpperCase(), margin + 6, y + 8);
-
-  doc.setTextColor(...COLORS.dark);
+  // ── Document type badge ──
+  const title = getDocTitle(data.type);
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(data.recipientName || "—", margin + 6, y + 16);
+  doc.setTextColor(...C.primary);
+  const tw = doc.getTextWidth(title);
+  const badgeX = pw - m - tw - 8;
+  doc.setFillColor(...C.primaryLight);
+  doc.roundedRect(badgeX, y - 5.5, tw + 8, 8, 1.5, 1.5, "F");
+  doc.text(title, badgeX + 4, y);
+
+  y += 10;
+
+  // ── Document number & date ──
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...C.gray);
+  doc.text(`No: ${data.number}`, m, y);
+  doc.text(`Date: ${data.date}`, m + 60, y);
+
+  // Status on the right
+  const statusText = data.status.replace(/_/g, " ").toUpperCase();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  const isPositive = ["paid", "received", "accepted", "confirmed"].includes(data.status);
+  doc.setTextColor(...(isPositive ? C.green : C.amber));
+  doc.text(statusText, pw - m, y, { align: "right" });
+
+  y += 6;
+  // Thin separator
+  doc.setDrawColor(...C.border);
+  doc.setLineWidth(0.3);
+  doc.line(m, y, pw - m, y);
+
+  y += 8;
+
+  // ── Recipient card ──
+  doc.setFillColor(...C.lightGray);
+  doc.roundedRect(m, y, cw, 30, 2, 2, "F");
+
+  const ry = y + 6;
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...C.gray);
+  doc.text(data.recipientLabel.toUpperCase(), m + 5, ry);
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...C.dark);
+  doc.text(data.recipientName || "—", m + 5, ry + 7);
 
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(...COLORS.muted);
-  const contactParts: string[] = [];
-  if (data.recipientContact) contactParts.push(data.recipientContact);
-  if (data.recipientEmail) contactParts.push(data.recipientEmail);
-  if (data.recipientPhone) contactParts.push(data.recipientPhone);
-  if (contactParts.length > 0) {
-    doc.text(contactParts.join("  ·  "), margin + 6, y + 23);
-  }
-  if (data.recipientAddress) {
-    doc.text(data.recipientAddress, margin + 6, y + 30);
-  }
+  doc.setTextColor(...C.gray);
 
-  // Right: Status + extra fields
-  const rightX = pageWidth - margin - 6;
-  doc.setTextColor(...COLORS.muted);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("STATUS", rightX, y + 8, { align: "right" });
+  const infoParts: string[] = [];
+  if (data.recipientContact) infoParts.push(data.recipientContact);
+  if (data.recipientEmail) infoParts.push(data.recipientEmail);
+  if (data.recipientPhone) infoParts.push(data.recipientPhone);
+  if (infoParts.length) doc.text(infoParts.join("  |  "), m + 5, ry + 13);
+  if (data.recipientAddress) doc.text(data.recipientAddress, m + 5, ry + 18);
 
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...COLORS.primary);
-  doc.text(data.status.replace(/_/g, " ").toUpperCase(), rightX, y + 16, { align: "right" });
-
-  if (data.extraFields) {
-    let extraY = y + 24;
+  // Extra fields on right side of card
+  if (data.extraFields?.length) {
+    let efY = ry;
     data.extraFields.forEach((f) => {
       doc.setFontSize(7);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...C.gray);
+      doc.text(f.label.toUpperCase(), pw - m - 5, efY, { align: "right" });
+      efY += 4;
+      doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(...COLORS.muted);
-      doc.text(`${f.label}: ${f.value}`, rightX, extraY, { align: "right" });
-      extraY += 5;
+      doc.setTextColor(...C.dark);
+      doc.text(f.value, pw - m - 5, efY, { align: "right" });
+      efY += 6;
     });
   }
 
-  y += 48;
+  y += 38;
 
-  // === Items Table ===
+  // ── Items table ──
   autoTable(doc, {
     startY: y,
-    margin: { left: margin, right: margin },
-    head: [["#", "Item", "SKU", "Qty", "Unit Price", "Total"]],
+    margin: { left: m, right: m },
+    head: [["#", "Description", "SKU", "Qty", "Unit Price", "Amount"]],
     body: data.items.map((item, i) => [
       (i + 1).toString(),
       item.name,
       item.sku || "—",
       item.quantity.toString(),
-      `$${item.unitPrice.toFixed(2)}`,
-      `$${item.total.toFixed(2)}`,
+      fmt(item.unitPrice),
+      fmt(item.total),
     ]),
     headStyles: {
-      fillColor: COLORS.dark,
-      textColor: COLORS.white,
-      fontSize: 8,
+      fillColor: C.dark,
+      textColor: C.white,
+      fontSize: 7.5,
       fontStyle: "bold",
-      cellPadding: 4,
+      cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
     },
     bodyStyles: {
-      fontSize: 9,
-      cellPadding: 4,
-      textColor: COLORS.dark,
+      fontSize: 8.5,
+      cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+      textColor: C.dark,
     },
     alternateRowStyles: {
-      fillColor: COLORS.light,
+      fillColor: [249, 250, 251],
     },
     columnStyles: {
       0: { cellWidth: 10, halign: "center" },
       1: { cellWidth: "auto" },
-      2: { cellWidth: 28, fontStyle: "italic" },
-      3: { cellWidth: 16, halign: "center" },
-      4: { cellWidth: 28, halign: "right" },
-      5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+      2: { cellWidth: 24, halign: "center", textColor: C.gray, fontStyle: "italic", fontSize: 7.5 },
+      3: { cellWidth: 14, halign: "center" },
+      4: { cellWidth: 30, halign: "right" },
+      5: { cellWidth: 30, halign: "right", fontStyle: "bold" },
     },
     theme: "plain",
     styles: {
-      lineColor: COLORS.border,
-      lineWidth: 0.3,
+      lineColor: C.border,
+      lineWidth: 0.2,
+      overflow: "linebreak",
+    },
+    didDrawPage: () => {
+      // Re-draw top accent on new pages
+      doc.setFillColor(...C.primary);
+      doc.rect(0, 0, pw, 3, "F");
     },
   });
 
-  // Get final Y after table
   const finalY = (doc as any).lastAutoTable?.finalY || y + 40;
-  y = finalY + 8;
+  y = finalY + 6;
 
-  // === Totals ===
-  const totalsX = pageWidth - margin;
-  doc.setDrawColor(...COLORS.border);
-  doc.line(pageWidth - margin - 70, y, totalsX, y);
-  y += 8;
+  // ── Totals section ──
+  const totW = 72;
+  const totX = pw - m - totW;
 
-  doc.setFontSize(10);
+  // Subtotal
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(...COLORS.muted);
-  doc.text("Subtotal", totalsX - 40, y);
-  doc.setTextColor(...COLORS.dark);
-  doc.text(`$${data.totalAmount.toFixed(2)}`, totalsX, y, { align: "right" });
+  doc.setTextColor(...C.gray);
+  doc.text("Subtotal", totX + 4, y);
+  doc.setTextColor(...C.dark);
+  doc.text(fmt(data.totalAmount), pw - m - 4, y, { align: "right" });
 
-  y += 10;
-  doc.setFillColor(...COLORS.primary);
-  doc.roundedRect(pageWidth - margin - 70, y - 5, 70, 12, 1.5, 1.5, "F");
-  doc.setFontSize(11);
+  y += 4;
+  doc.setDrawColor(...C.border);
+  doc.line(totX, y, pw - m, y);
+  y += 6;
+
+  // Total highlight
+  doc.setFillColor(...C.primary);
+  doc.roundedRect(totX, y - 4.5, totW, 11, 2, 2, "F");
+  doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(...COLORS.white);
-  doc.text("TOTAL", totalsX - 40, y + 2);
-  doc.text(`$${data.totalAmount.toFixed(2)}`, totalsX - 4, y + 2, { align: "right" });
+  doc.setTextColor(...C.white);
+  doc.text("TOTAL", totX + 4, y + 2);
+  doc.text(fmt(data.totalAmount), pw - m - 4, y + 2, { align: "right" });
 
-  // === Notes ===
-  if (data.notes) {
-    y += 22;
-    doc.setFontSize(8);
+  y += 16;
+
+  // ── Notes / Terms section ──
+  if (data.notes && data.notes.trim()) {
+    // Check if we need a new page
+    if (y > ph - 50) {
+      doc.addPage();
+      doc.setFillColor(...C.primary);
+      doc.rect(0, 0, pw, 3, "F");
+      y = 16;
+    }
+
+    const notesLabel = data.type === "invoice"
+      ? "PAYMENT TERMS & CONDITIONS"
+      : data.type === "quotation"
+        ? "TERMS, WARRANTY & CONDITIONS"
+        : "NOTES";
+
+    doc.setFillColor(...C.lightGray);
+    const splitNotes = doc.splitTextToSize(data.notes, cw - 10);
+    const notesH = Math.max(20, splitNotes.length * 4.5 + 14);
+    doc.roundedRect(m, y, cw, notesH, 2, 2, "F");
+
+    doc.setFontSize(7);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...COLORS.muted);
-    doc.text("NOTES", margin, y);
-    y += 5;
+    doc.setTextColor(...C.primary);
+    doc.text(notesLabel, m + 5, y + 6);
+
+    doc.setFontSize(8.5);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(...COLORS.dark);
-    doc.setFontSize(9);
-    const splitNotes = doc.splitTextToSize(data.notes, contentWidth);
-    doc.text(splitNotes, margin, y);
+    doc.setTextColor(...C.dark);
+    doc.text(splitNotes, m + 5, y + 12);
   }
 
-  // === Footer ===
-  const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setDrawColor(...COLORS.border);
-  doc.line(margin, pageHeight - 16, pageWidth - margin, pageHeight - 16);
-  doc.setFontSize(7);
+  // ── Footer ──
+  doc.setDrawColor(...C.border);
+  doc.line(m, ph - 14, pw - m, ph - 14);
+  doc.setFontSize(6.5);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(...COLORS.muted);
-  doc.text("Generated by ERP System", margin, pageHeight - 10);
-  doc.text(`Page 1 of 1`, pageWidth - margin, pageHeight - 10, { align: "right" });
+  doc.setTextColor(...C.gray);
+  doc.text("Generated by ERP System  •  All amounts in Philippine Peso (PHP)", m, ph - 9);
+  doc.text(`Page 1`, pw - m, ph - 9, { align: "right" });
 
   return doc;
 }
