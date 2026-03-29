@@ -37,7 +37,7 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", cost_price: "0", selling_price: "0", low_stock_threshold: "10" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" }); setOpen(true); };
   const openEdit = (item: Item) => {
     setEditing(item);
     setForm({ name: item.name, sku: item.sku, description: item.description, cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold) });
