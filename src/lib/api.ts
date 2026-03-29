@@ -1,6 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement } from "@/types/database";
 
+// Use any-typed client to bypass empty generated types until migration runs
+const db = supabase as any;
+
 // Items
 export const getItems = async () => {
   const { data, error } = await supabase.from("items").select("*").order("name");
