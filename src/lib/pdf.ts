@@ -60,7 +60,7 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
 
   // ── Logo ──
   try {
-    doc.addImage(LOGO_BASE64, "PNG", ml, y - 6, 12, 12);
+    doc.addImage(LOGO_DATA, "JPEG", ml, y - 6, 12, 12);
   } catch {
     // fallback if image fails
   }
