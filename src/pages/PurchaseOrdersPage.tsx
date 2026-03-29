@@ -31,6 +31,33 @@ export default function PurchaseOrdersPage() {
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: poItems = [] } = useQuery({ queryKey: ["po_items", viewPO || receiveOpen], queryFn: () => getPOItems(viewPO || receiveOpen || ""), enabled: !!(viewPO || receiveOpen) });
 
+  const openPreview = async (po: any) => {
+    const lineItems = await getPOItems(po.id);
+    setPreviewData({
+      type: "purchase_order",
+      number: po.po_number,
+      date: po.order_date,
+      status: po.status,
+      notes: po.notes,
+      recipientLabel: "Supplier",
+      recipientName: po.suppliers?.name || "—",
+      recipientContact: po.suppliers?.contact_person,
+      recipientEmail: po.suppliers?.email,
+      recipientPhone: po.suppliers?.phone,
+      recipientAddress: po.suppliers?.address,
+      extraFields: po.expected_delivery ? [{ label: "Expected Delivery", value: po.expected_delivery }] : [],
+      items: lineItems.map((li: any) => ({
+        name: li.items?.name || "—",
+        sku: li.items?.sku,
+        quantity: li.quantity,
+        unitPrice: Number(li.unit_cost),
+        total: li.quantity * Number(li.unit_cost),
+      })),
+      totalAmount: Number(po.total_amount),
+    });
+    setPreviewOpen(true);
+  };
+
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
 
   const createMut = useMutation({
