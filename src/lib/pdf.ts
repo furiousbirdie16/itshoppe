@@ -31,6 +31,12 @@ const WHT = [255, 255, 255] as [number, number, number];
 const TBLHD = [40, 40, 40] as [number, number, number];
 const ALTROW = [248, 248, 248] as [number, number, number];
 
+const COMPANY_NAME = "8IT SHOPPE";
+const COMPANY_ADDRESS_1 = "628 Honorio Lopez Blvd.";
+const COMPANY_ADDRESS_2 = "Tondo, Manila";
+
+const LOGO_BASE64 = "data:image/png;base64,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";
+
 const PESO = "PHP ";
 function fmt(n: number): string {
   return PESO + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -50,29 +56,36 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
   const ph = doc.internal.pageSize.getHeight();
   const ml = 20;
   const mr = 20;
-  let y = 20;
+  let y = 18;
 
-  // ── Company Info (top-left) ──
+  // ── Logo ──
+  try {
+    doc.addImage(LOGO_BASE64, "PNG", ml, y - 6, 12, 12);
+  } catch {
+    // fallback if image fails
+  }
+
+  // ── Company Info (next to logo) ──
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(...BLK);
-  doc.text("Your Company Name", ml, y);
+  doc.text(COMPANY_NAME, ml + 15, y);
   y += 5;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...GRY);
-  doc.text("Company Address Line 1", ml, y);
+  doc.text(COMPANY_ADDRESS_1, ml + 15, y);
   y += 4;
-  doc.text("City, Province, ZIP", ml, y);
+  doc.text(COMPANY_ADDRESS_2, ml + 15, y);
 
   // ── Document Title (top-right) ──
   const title = getDocTitle(data.type);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
   doc.setTextColor(...BLK);
-  doc.text(title, pw - mr, 38, { align: "right" });
+  doc.text(title, pw - mr, 36, { align: "right" });
 
-  y = 52;
+  y = 50;
 
   // ── Bill To / Recipient (left) ──
   doc.setFont("helvetica", "bold");
@@ -108,7 +121,7 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
 
   // ── Document details table (right side) ──
   const detailX = pw - mr - 70;
-  let dy = 52;
+  let dy = 50;
 
   const detailRows: [string, string][] = [];
   const numLabel = data.type === "invoice" ? "Invoice #"
@@ -174,23 +187,20 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
       lineColor: LGRY,
       lineWidth: 0.2,
     },
-    didDrawPage: () => {},
   });
 
   const finalY = (doc as any).lastAutoTable?.finalY || y + 40;
   y = finalY + 2;
 
-  // ── Totals (right-aligned, matching reference) ──
+  // ── Totals ──
   const totLabelX = pw - mr - 65;
   const totValX = pw - mr;
 
-  // Thin line above subtotal
   doc.setDrawColor(...LGRY);
   doc.setLineWidth(0.3);
   doc.line(totLabelX - 4, y, totValX, y);
   y += 6;
 
-  // Subtotal
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...BLK);
@@ -198,7 +208,6 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
   doc.text(fmt(data.totalAmount), totValX, y, { align: "right" });
   y += 8;
 
-  // Total row with dark background
   doc.setFillColor(...TBLHD);
   doc.rect(totLabelX - 4, y - 4.5, 69, 11, "F");
   doc.setFont("helvetica", "bold");
@@ -247,7 +256,7 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...GRY);
-  doc.text("Generated by ERP System  •  All amounts in Philippine Peso (PHP)", ml, ph - 9);
+  doc.text(`Generated by ${COMPANY_NAME}  •  All amounts in Philippine Peso (PHP)`, ml, ph - 9);
   doc.text("Page 1", pw - mr, ph - 9, { align: "right" });
 
   return doc;
