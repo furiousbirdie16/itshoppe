@@ -174,8 +174,8 @@ export default function InvoicesPage() {
                   <TableRow key={ii.id}>
                     <TableCell className="text-sm font-medium">{ii.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{ii.quantity}</TableCell>
-                    <TableCell className="text-sm text-right">${Number(ii.unit_price).toFixed(2)}</TableCell>
-                    <TableCell className="text-sm text-right font-medium">${(ii.quantity * Number(ii.unit_price)).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
+                    <TableCell className="text-sm text-right font-medium">{peso(ii.quantity * Number(ii.unit_price))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
