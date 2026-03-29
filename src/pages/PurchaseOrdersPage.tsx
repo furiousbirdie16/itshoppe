@@ -166,7 +166,7 @@ export default function PurchaseOrdersPage() {
                 ))}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0).toFixed(2)}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0))}</span>
               </div>
             </div>
             <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Purchase Order</Button>
