@@ -22,6 +22,8 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewQ, setViewQ] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_price: 0 }]);
 
