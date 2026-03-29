@@ -1,4 +1,4 @@
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -20,6 +20,7 @@ const navItems = [
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart },
   { title: "Quotations", url: "/quotations", icon: FileText },
   { title: "Invoices", url: "/invoices", icon: Receipt },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {

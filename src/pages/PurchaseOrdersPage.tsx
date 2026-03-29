@@ -63,7 +63,7 @@ export default function PurchaseOrdersPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
-      const po = await createPurchaseOrder({ po_number: generatePONumber(), supplier_id: form.supplier_id || null, notes: form.notes, expected_delivery: form.expected_delivery || null, total_amount: total });
+      const po = await createPurchaseOrder({ po_number: await generatePONumber(), supplier_id: form.supplier_id || null, notes: form.notes, expected_delivery: form.expected_delivery || null, total_amount: total });
       await createPOItems(lines.filter(l => l.item_id).map(l => ({ po_id: po.id, item_id: l.item_id, quantity: l.quantity, unit_cost: l.unit_cost })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setCreateOpen(false); toast.success("PO created"); resetForm(); },

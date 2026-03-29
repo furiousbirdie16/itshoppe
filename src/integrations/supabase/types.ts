@@ -44,6 +44,27 @@ export type Database = {
         }
         Relationships: []
       }
+      document_sequences: {
+        Row: {
+          id: string
+          next_number: number
+          padding: number
+          prefix: string
+        }
+        Insert: {
+          id: string
+          next_number?: number
+          padding?: number
+          prefix: string
+        }
+        Update: {
+          id?: string
+          next_number?: number
+          padding?: number
+          prefix?: string
+        }
+        Relationships: []
+      }
       inventory_movements: {
         Row: {
           created_at: string | null

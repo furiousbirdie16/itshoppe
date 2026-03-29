@@ -62,7 +62,7 @@ export default function QuotationsPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
-      const q = await createQuotation({ quotation_number: generateQuotationNumber(), customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total });
+      const q = await createQuotation({ quotation_number: await generateQuotationNumber(), customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total });
       await createQuotationItems(lines.filter(l => l.item_id).map(l => ({ quotation_id: q.id, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
