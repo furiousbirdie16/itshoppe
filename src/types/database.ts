@@ -1,0 +1,115 @@
+// Database types for our ERP system
+export interface Item {
+  id: string;
+  name: string;
+  sku: string;
+  description: string;
+  quantity: number;
+  cost_price: number;
+  selling_price: number;
+  low_stock_threshold: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  address: string;
+  created_at: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  address: string;
+  created_at: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  supplier_id: string | null;
+  status: 'draft' | 'sent' | 'partially_received' | 'received';
+  order_date: string;
+  expected_delivery: string | null;
+  notes: string;
+  total_amount: number;
+  created_at: string;
+  updated_at: string;
+  suppliers?: Supplier;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  po_id: string;
+  item_id: string;
+  quantity: number;
+  received_quantity: number;
+  unit_cost: number;
+  items?: Item;
+}
+
+export interface Quotation {
+  id: string;
+  quotation_number: string;
+  customer_id: string | null;
+  status: 'draft' | 'sent' | 'accepted' | 'rejected';
+  quotation_date: string;
+  valid_until: string | null;
+  notes: string;
+  total_amount: number;
+  created_at: string;
+  customers?: Customer;
+}
+
+export interface QuotationItem {
+  id: string;
+  quotation_id: string;
+  item_id: string;
+  quantity: number;
+  unit_price: number;
+  items?: Item;
+}
+
+export interface Invoice {
+  id: string;
+  invoice_number: string;
+  customer_id: string | null;
+  quotation_id: string | null;
+  status: 'draft' | 'confirmed' | 'paid' | 'unpaid';
+  invoice_date: string;
+  due_date: string | null;
+  notes: string;
+  total_amount: number;
+  created_at: string;
+  updated_at: string;
+  customers?: Customer;
+}
+
+export interface InvoiceItem {
+  id: string;
+  invoice_id: string;
+  item_id: string;
+  quantity: number;
+  unit_price: number;
+  items?: Item;
+}
+
+export interface InventoryMovement {
+  id: string;
+  item_id: string;
+  type: 'in_po' | 'out_invoice';
+  quantity: number;
+  reference_id: string | null;
+  reference_type: string | null;
+  notes: string;
+  created_at: string;
+  items?: Item;
+}
