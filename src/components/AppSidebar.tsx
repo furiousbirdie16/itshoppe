@@ -20,6 +20,7 @@ const navItems = [
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart },
   { title: "Quotations", url: "/quotations", icon: FileText },
   { title: "Invoices", url: "/invoices", icon: Receipt },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
