@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart } from "lucide-react";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown } from "lucide-react";
+import { DocumentPreview } from "@/components/DocumentPreview";
+import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
 
 interface LineItem { item_id: string; quantity: number; unit_cost: number; }
