@@ -32,6 +32,33 @@ export default function QuotationsPage() {
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
 
+  const openPreview = async (q: any) => {
+    const lineItems = await getQuotationItems(q.id);
+    setPreviewData({
+      type: "quotation",
+      number: q.quotation_number,
+      date: q.quotation_date,
+      status: q.status,
+      notes: q.notes,
+      recipientLabel: "Customer",
+      recipientName: q.customers?.name || "—",
+      recipientContact: q.customers?.contact_person,
+      recipientEmail: q.customers?.email,
+      recipientPhone: q.customers?.phone,
+      recipientAddress: q.customers?.address,
+      extraFields: q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : [],
+      items: lineItems.map((li: any) => ({
+        name: li.items?.name || "—",
+        sku: li.items?.sku,
+        quantity: li.quantity,
+        unitPrice: Number(li.unit_price),
+        total: li.quantity * Number(li.unit_price),
+      })),
+      totalAmount: Number(q.total_amount),
+    });
+    setPreviewOpen(true);
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
