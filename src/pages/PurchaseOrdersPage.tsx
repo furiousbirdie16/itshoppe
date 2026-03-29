@@ -20,6 +20,8 @@ export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewPO, setViewPO] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ supplier_id: "", notes: "", expected_delivery: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_cost: 0 }]);
