@@ -187,7 +187,7 @@ export default function PurchaseOrdersPage() {
                     <TableCell className="text-sm font-medium">{pi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{pi.quantity}</TableCell>
                     <TableCell className="text-sm">{pi.received_quantity}</TableCell>
-                    <TableCell className="text-sm text-right">${Number(pi.unit_cost).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right">{peso(Number(pi.unit_cost))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
