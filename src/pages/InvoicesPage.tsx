@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown } from "lucide-react";
 import { toast } from "sonner";
+import { DocumentPreview } from "@/components/DocumentPreview";
+import type { DocumentData } from "@/lib/pdf";
 
 interface LineItem { item_id: string; quantity: number; unit_price: number; }
 
@@ -18,6 +20,8 @@ export default function InvoicesPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewInv, setViewInv] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_price: 0 }]);
 
@@ -25,6 +29,33 @@ export default function InvoicesPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
+
+  const openPreview = async (inv: any) => {
+    const lineItems = await getInvoiceItems(inv.id);
+    setPreviewData({
+      type: "invoice",
+      number: inv.invoice_number,
+      date: inv.invoice_date,
+      status: inv.status,
+      notes: inv.notes,
+      recipientLabel: "Customer",
+      recipientName: inv.customers?.name || "—",
+      recipientContact: inv.customers?.contact_person,
+      recipientEmail: inv.customers?.email,
+      recipientPhone: inv.customers?.phone,
+      recipientAddress: inv.customers?.address,
+      extraFields: inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : [],
+      items: lineItems.map((li: any) => ({
+        name: li.items?.name || "—",
+        sku: li.items?.sku,
+        quantity: li.quantity,
+        unitPrice: Number(li.unit_price),
+        total: li.quantity * Number(li.unit_price),
+      })),
+      totalAmount: Number(inv.total_amount),
+    });
+    setPreviewOpen(true);
+  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -176,6 +207,7 @@ export default function InvoicesPage() {
                 <TableCell className="text-right text-sm font-medium">${Number(inv.total_amount).toFixed(2)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => confirmMut.mutate(inv.id)} title="Confirm & Deduct Stock" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
@@ -193,6 +225,8 @@ export default function InvoicesPage() {
           </TableBody>
         </Table>
       </div>
+
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
   );
 }

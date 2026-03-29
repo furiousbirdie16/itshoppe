@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { DocumentPreview } from "@/components/DocumentPreview";
+import type { DocumentData } from "@/lib/pdf";
 
 interface LineItem { item_id: string; quantity: number; unit_price: number; }
 
@@ -20,6 +22,8 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewQ, setViewQ] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_price: 0 }]);
 
@@ -27,6 +31,33 @@ export default function QuotationsPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
+
+  const openPreview = async (q: any) => {
+    const lineItems = await getQuotationItems(q.id);
+    setPreviewData({
+      type: "quotation",
+      number: q.quotation_number,
+      date: q.quotation_date,
+      status: q.status,
+      notes: q.notes,
+      recipientLabel: "Customer",
+      recipientName: q.customers?.name || "—",
+      recipientContact: q.customers?.contact_person,
+      recipientEmail: q.customers?.email,
+      recipientPhone: q.customers?.phone,
+      recipientAddress: q.customers?.address,
+      extraFields: q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : [],
+      items: lineItems.map((li: any) => ({
+        name: li.items?.name || "—",
+        sku: li.items?.sku,
+        quantity: li.quantity,
+        unitPrice: Number(li.unit_price),
+        total: li.quantity * Number(li.unit_price),
+      })),
+      totalAmount: Number(q.total_amount),
+    });
+    setPreviewOpen(true);
+  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -179,6 +210,7 @@ export default function QuotationsPage() {
                 <TableCell className="text-right text-sm font-medium">${Number(q.total_amount).toFixed(2)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
@@ -191,6 +223,8 @@ export default function QuotationsPage() {
           </TableBody>
         </Table>
       </div>
+
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
   );
 }

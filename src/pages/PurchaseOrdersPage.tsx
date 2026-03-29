@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart } from "lucide-react";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown } from "lucide-react";
+import { DocumentPreview } from "@/components/DocumentPreview";
+import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
 
 interface LineItem { item_id: string; quantity: number; unit_cost: number; }
@@ -18,6 +20,8 @@ export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewPO, setViewPO] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ supplier_id: "", notes: "", expected_delivery: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_cost: 0 }]);
@@ -26,6 +30,33 @@ export default function PurchaseOrdersPage() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: poItems = [] } = useQuery({ queryKey: ["po_items", viewPO || receiveOpen], queryFn: () => getPOItems(viewPO || receiveOpen || ""), enabled: !!(viewPO || receiveOpen) });
+
+  const openPreview = async (po: any) => {
+    const lineItems = await getPOItems(po.id);
+    setPreviewData({
+      type: "purchase_order",
+      number: po.po_number,
+      date: po.order_date,
+      status: po.status,
+      notes: po.notes,
+      recipientLabel: "Supplier",
+      recipientName: po.suppliers?.name || "—",
+      recipientContact: po.suppliers?.contact_person,
+      recipientEmail: po.suppliers?.email,
+      recipientPhone: po.suppliers?.phone,
+      recipientAddress: po.suppliers?.address,
+      extraFields: po.expected_delivery ? [{ label: "Expected Delivery", value: po.expected_delivery }] : [],
+      items: lineItems.map((li: any) => ({
+        name: li.items?.name || "—",
+        sku: li.items?.sku,
+        quantity: li.quantity,
+        unitPrice: Number(li.unit_cost),
+        total: li.quantity * Number(li.unit_cost),
+      })),
+      totalAmount: Number(po.total_amount),
+    });
+    setPreviewOpen(true);
+  };
 
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
 
@@ -212,6 +243,7 @@ export default function PurchaseOrdersPage() {
                 <TableCell className="text-right text-sm font-medium">${Number(po.total_amount).toFixed(2)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {po.status !== "received" && (
                       <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
@@ -224,6 +256,8 @@ export default function PurchaseOrdersPage() {
           </TableBody>
         </Table>
       </div>
+
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
   );
 }
