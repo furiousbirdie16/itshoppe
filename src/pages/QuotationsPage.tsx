@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -70,100 +70,120 @@ export default function QuotationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold tracking-tight">Quotations</h1><p className="text-muted-foreground">{quotations.length} quotations</p></div>
-        <Button onClick={() => { resetForm(); setCreateOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Quotation</Button>
+        <div className="page-header mb-0">
+          <h1 className="page-title">Quotations</h1>
+          <p className="page-description">{quotations.length} quotations</p>
+        </div>
+        <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+          <Plus className="h-4 w-4 mr-1.5" /> New Quotation
+        </Button>
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>New Quotation</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Customer</Label>
+          <DialogHeader><DialogTitle className="text-lg">New Quotation</DialogTitle></DialogHeader>
+          <div className="grid gap-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Customer</Label>
                 <Select value={form.customer_id} onValueChange={v => setForm({ ...form, customer_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select customer" /></SelectTrigger>
                   <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Valid Until</Label><Input type="date" value={form.valid_until} onChange={e => setForm({ ...form, valid_until: e.target.value })} /></div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Valid Until</Label>
+                <Input type="date" value={form.valid_until} onChange={e => setForm({ ...form, valid_until: e.target.value })} className="h-9" />
+              </div>
             </div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="resize-none" rows={2} />
+            </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2"><Label>Line Items</Label><Button variant="outline" size="sm" onClick={addLine}><Plus className="h-3 w-3 mr-1" /> Add</Button></div>
-              {lines.map((line, idx) => {
-                const selectedItem = items.find(i => i.id === line.item_id);
-                return (
-                  <div key={idx} className="mb-2">
-                    <div className="grid grid-cols-[1fr_80px_100px_40px] gap-2">
-                      <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
-                        <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
-                        <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku})</SelectItem>)}</SelectContent>
-                      </Select>
-                      <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} placeholder="Qty" />
-                      <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} placeholder="Price" />
-                      <Button variant="ghost" size="icon" onClick={() => removeLine(idx)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-xs font-medium">Line Items</Label>
+                <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+              </div>
+              <div className="space-y-2">
+                {lines.map((line, idx) => {
+                  const selectedItem = items.find(i => i.id === line.item_id);
+                  return (
+                    <div key={idx}>
+                      <div className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                        <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
+                          <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku})</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                        <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                        <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      </div>
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
                     </div>
-                    {selectedItem && <p className="text-xs text-muted-foreground mt-1">In stock: {selectedItem.quantity}</p>}
-                  </div>
-                );
-              })}
-              <p className="text-sm font-medium text-right">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toFixed(2)}</p>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end mt-3 pt-3 border-t">
+                <span className="text-sm font-semibold">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toFixed(2)}</span>
+              </div>
             </div>
-            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending}>Create Quotation</Button>
+            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Quotation</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!viewQ} onOpenChange={() => setViewQ(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Quotation Details</DialogTitle></DialogHeader>
-          <Table>
-            <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Price</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {qItems.map(qi => (
-                <TableRow key={qi.id}>
-                  <TableCell>{qi.items?.name || "—"}</TableCell>
-                  <TableCell>{qi.quantity}</TableCell>
-                  <TableCell>${Number(qi.unit_price).toFixed(2)}</TableCell>
-                  <TableCell>${(qi.quantity * Number(qi.unit_price)).toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DialogHeader><DialogTitle className="text-lg">Quotation Details</DialogTitle></DialogHeader>
+          <div className="data-table-wrapper mt-2">
+            <Table>
+              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {qItems.map(qi => (
+                  <TableRow key={qi.id}>
+                    <TableCell className="text-sm font-medium">{qi.items?.name || "—"}</TableCell>
+                    <TableCell className="text-sm">{qi.quantity}</TableCell>
+                    <TableCell className="text-sm text-right">${Number(qi.unit_price).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right font-medium">${(qi.quantity * Number(qi.unit_price)).toFixed(2)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
 
-      <div className="rounded-lg border bg-card">
+      <div className="data-table-wrapper">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Quotation #</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-xs">Quotation #</TableHead>
+              <TableHead className="text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Date</TableHead>
+              <TableHead className="text-xs">Status</TableHead>
+              <TableHead className="text-xs text-right">Total</TableHead>
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {quotations.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No quotations</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
             ) : quotations.map(q => (
-              <TableRow key={q.id}>
-                <TableCell className="font-mono text-sm font-medium">{q.quotation_number}</TableCell>
-                <TableCell>{q.customers?.name || "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{q.quotation_date}</TableCell>
+              <TableRow key={q.id} className="hover:bg-muted/30">
+                <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
+                <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
                 <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right">${Number(q.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">${Number(q.total_amount).toFixed(2)}</TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)}><Eye className="h-3.5 w-3.5" /></Button>
+                  <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(q.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
