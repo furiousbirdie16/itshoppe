@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getItems, createItem, updateItem, deleteItem } from "@/lib/api";
+import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -157,8 +158,8 @@ export default function InventoryPage() {
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
                 </TableCell>
-                <TableCell className="text-right text-sm text-muted-foreground">${Number(item.cost_price).toFixed(2)}</TableCell>
-                <TableCell className="text-right text-sm">${Number(item.selling_price).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm text-muted-foreground">{peso(Number(item.cost_price))}</TableCell>
+                <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber } from "@/lib/api";
+import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -157,7 +158,7 @@ export default function QuotationsPage() {
                 })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toFixed(2)}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))}</span>
               </div>
             </div>
             <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Quotation</Button>
@@ -176,8 +177,8 @@ export default function QuotationsPage() {
                   <TableRow key={qi.id}>
                     <TableCell className="text-sm font-medium">{qi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
-                    <TableCell className="text-sm text-right">${Number(qi.unit_price).toFixed(2)}</TableCell>
-                    <TableCell className="text-sm text-right font-medium">${(qi.quantity * Number(qi.unit_price)).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>
+                    <TableCell className="text-sm text-right font-medium">{peso(qi.quantity * Number(qi.unit_price))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -207,7 +208,7 @@ export default function QuotationsPage() {
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
                 <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">${Number(q.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>

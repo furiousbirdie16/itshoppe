@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, generatePONumber } from "@/lib/api";
+import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -165,7 +166,7 @@ export default function PurchaseOrdersPage() {
                 ))}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0).toFixed(2)}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0))}</span>
               </div>
             </div>
             <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Purchase Order</Button>
@@ -186,7 +187,7 @@ export default function PurchaseOrdersPage() {
                     <TableCell className="text-sm font-medium">{pi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{pi.quantity}</TableCell>
                     <TableCell className="text-sm">{pi.received_quantity}</TableCell>
-                    <TableCell className="text-sm text-right">${Number(pi.unit_cost).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right">{peso(Number(pi.unit_cost))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -240,7 +241,7 @@ export default function PurchaseOrdersPage() {
                 <TableCell className="text-sm">{po.suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{po.order_date}</TableCell>
                 <TableCell><StatusBadge status={po.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">${Number(po.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">{peso(Number(po.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>

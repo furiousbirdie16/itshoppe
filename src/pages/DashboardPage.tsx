@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/api";
+import { peso } from "@/lib/currency";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight } from "lucide-react";
@@ -32,7 +33,7 @@ export default function DashboardPage() {
         <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
         <StatCard
           title="Inventory Value"
-          value={`$${(stats?.totalValue || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+          value={peso(stats?.totalValue || 0)}
           icon={DollarSign}
           variant="success"
         />
