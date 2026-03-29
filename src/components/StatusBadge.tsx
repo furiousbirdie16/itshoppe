@@ -5,8 +5,8 @@ interface StatusBadgeProps {
   className?: string;
 }
 
-const statusColors: Record<string, string> = {
-  draft: "bg-secondary text-secondary-foreground",
+const statusStyles: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground",
   sent: "bg-primary/10 text-primary",
   partially_received: "bg-warning/10 text-warning",
   received: "bg-success/10 text-success",
@@ -21,8 +21,8 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize",
-        statusColors[status] || "bg-secondary text-secondary-foreground",
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider",
+        statusStyles[status] || "bg-muted text-muted-foreground",
         className
       )}
     >

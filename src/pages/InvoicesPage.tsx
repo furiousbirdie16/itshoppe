@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt } from "lucide-react";
 import { toast } from "sonner";
 
 interface LineItem { item_id: string; quantity: number; unit_price: number; }
@@ -73,98 +73,118 @@ export default function InvoicesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold tracking-tight">Invoices</h1><p className="text-muted-foreground">{invoices.length} invoices</p></div>
-        <Button onClick={() => { resetForm(); setCreateOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Invoice</Button>
+        <div className="page-header mb-0">
+          <h1 className="page-title">Invoices</h1>
+          <p className="page-description">{invoices.length} invoices</p>
+        </div>
+        <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+          <Plus className="h-4 w-4 mr-1.5" /> New Invoice
+        </Button>
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>New Invoice</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Customer</Label>
+          <DialogHeader><DialogTitle className="text-lg">New Invoice</DialogTitle></DialogHeader>
+          <div className="grid gap-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Customer</Label>
                 <Select value={form.customer_id} onValueChange={v => setForm({ ...form, customer_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select customer" /></SelectTrigger>
                   <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Due Date</Label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Due Date</Label>
+                <Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="h-9" />
+              </div>
             </div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="resize-none" rows={2} />
+            </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2"><Label>Line Items</Label><Button variant="outline" size="sm" onClick={addLine}><Plus className="h-3 w-3 mr-1" /> Add</Button></div>
-              {lines.map((line, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_80px_100px_40px] gap-2 mb-2">
-                  <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
-                    <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
-                    <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku}) — Stock: {i.quantity}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} placeholder="Qty" />
-                  <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} placeholder="Price" />
-                  <Button variant="ghost" size="icon" onClick={() => removeLine(idx)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                </div>
-              ))}
-              <p className="text-sm font-medium text-right">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toFixed(2)}</p>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-xs font-medium">Line Items</Label>
+                <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+              </div>
+              <div className="space-y-2">
+                {lines.map((line, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                    <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
+                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
+                      <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku}) — Stock: {i.quantity}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                    <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                    <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end mt-3 pt-3 border-t">
+                <span className="text-sm font-semibold">Total: ${lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toFixed(2)}</span>
+              </div>
             </div>
-            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending}>Create Invoice</Button>
+            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Invoice</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!viewInv} onOpenChange={() => setViewInv(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Invoice Details</DialogTitle></DialogHeader>
-          <Table>
-            <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Price</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {invItems.map(ii => (
-                <TableRow key={ii.id}>
-                  <TableCell>{ii.items?.name || "—"}</TableCell>
-                  <TableCell>{ii.quantity}</TableCell>
-                  <TableCell>${Number(ii.unit_price).toFixed(2)}</TableCell>
-                  <TableCell>${(ii.quantity * Number(ii.unit_price)).toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
+          <div className="data-table-wrapper mt-2">
+            <Table>
+              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {invItems.map(ii => (
+                  <TableRow key={ii.id}>
+                    <TableCell className="text-sm font-medium">{ii.items?.name || "—"}</TableCell>
+                    <TableCell className="text-sm">{ii.quantity}</TableCell>
+                    <TableCell className="text-sm text-right">${Number(ii.unit_price).toFixed(2)}</TableCell>
+                    <TableCell className="text-sm text-right font-medium">${(ii.quantity * Number(ii.unit_price)).toFixed(2)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
 
-      <div className="rounded-lg border bg-card">
+      <div className="data-table-wrapper">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Invoice #</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-xs">Invoice #</TableHead>
+              <TableHead className="text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Date</TableHead>
+              <TableHead className="text-xs">Status</TableHead>
+              <TableHead className="text-xs text-right">Total</TableHead>
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {invoices.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No invoices</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
             ) : invoices.map(inv => (
-              <TableRow key={inv.id}>
-                <TableCell className="font-mono text-sm font-medium">{inv.invoice_number}</TableCell>
-                <TableCell>{inv.customers?.name || "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{inv.invoice_date}</TableCell>
+              <TableRow key={inv.id} className="hover:bg-muted/30">
+                <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                 <TableCell><StatusBadge status={inv.status} /></TableCell>
-                <TableCell className="text-right">${Number(inv.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">${Number(inv.total_amount).toFixed(2)}</TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)}><Eye className="h-3.5 w-3.5" /></Button>
+                  <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => confirmMut.mutate(inv.id)} title="Confirm & Deduct Stock"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => confirmMut.mutate(inv.id)} title="Confirm & Deduct Stock" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
                     )}
                     {inv.status === "confirmed" && (
-                      <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(inv.id)} title="Mark as Paid"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                     )}
                     {inv.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
                   </div>
                 </TableCell>
