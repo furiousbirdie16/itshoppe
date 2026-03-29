@@ -208,7 +208,7 @@ export default function QuotationsPage() {
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
                 <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">${Number(q.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>

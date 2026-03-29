@@ -241,7 +241,7 @@ export default function PurchaseOrdersPage() {
                 <TableCell className="text-sm">{po.suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{po.order_date}</TableCell>
                 <TableCell><StatusBadge status={po.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">${Number(po.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">{peso(Number(po.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>

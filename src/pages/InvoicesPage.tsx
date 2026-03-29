@@ -205,7 +205,7 @@ export default function InvoicesPage() {
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                 <TableCell><StatusBadge status={inv.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">${Number(inv.total_amount).toFixed(2)}</TableCell>
+                <TableCell className="text-right text-sm font-medium">{peso(Number(inv.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>

@@ -33,7 +33,7 @@ export default function DashboardPage() {
         <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
         <StatCard
           title="Inventory Value"
-          value={`$${(stats?.totalValue || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+          value={peso(stats?.totalValue || 0)}
           icon={DollarSign}
           variant="success"
         />
