@@ -30,6 +30,33 @@ export default function InvoicesPage() {
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
 
+  const openPreview = async (inv: any) => {
+    const lineItems = await getInvoiceItems(inv.id);
+    setPreviewData({
+      type: "invoice",
+      number: inv.invoice_number,
+      date: inv.invoice_date,
+      status: inv.status,
+      notes: inv.notes,
+      recipientLabel: "Customer",
+      recipientName: inv.customers?.name || "—",
+      recipientContact: inv.customers?.contact_person,
+      recipientEmail: inv.customers?.email,
+      recipientPhone: inv.customers?.phone,
+      recipientAddress: inv.customers?.address,
+      extraFields: inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : [],
+      items: lineItems.map((li: any) => ({
+        name: li.items?.name || "—",
+        sku: li.items?.sku,
+        quantity: li.quantity,
+        unitPrice: Number(li.unit_price),
+        total: li.quantity * Number(li.unit_price),
+      })),
+      totalAmount: Number(inv.total_amount),
+    });
+    setPreviewOpen(true);
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
