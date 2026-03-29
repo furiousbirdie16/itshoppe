@@ -225,6 +225,8 @@ export default function InvoicesPage() {
           </TableBody>
         </Table>
       </div>
+
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
   );
 }
