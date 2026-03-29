@@ -49,6 +49,7 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
+                      onClick={() => setOpenMobile(false)}
                       className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
                       activeClassName="bg-primary/8 text-primary hover:bg-primary/10 hover:text-primary"
                     >
