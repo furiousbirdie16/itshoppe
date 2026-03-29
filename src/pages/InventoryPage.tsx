@@ -45,7 +45,8 @@ export default function InventoryPage() {
   };
 
   const handleSubmit = () => {
-    const data = { name: form.name, sku: form.sku, description: form.description, cost_price: parseFloat(form.cost_price), selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
+    const data: any = { name: form.name, sku: form.sku, description: form.description, cost_price: parseFloat(form.cost_price), selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
+    if (!editing) data.quantity = parseInt(form.quantity) || 0;
     if (editing) updateMut.mutate({ id: editing.id, data });
     else createMut.mutate(data);
   };
