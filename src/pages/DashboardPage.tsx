@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/api";
+import { peso } from "@/lib/currency";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight } from "lucide-react";
