@@ -22,6 +22,7 @@ const navItems = [
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },
   { title: "Quotations", url: "/quotations", icon: FileText, adminOnly: false },
   { title: "Invoices", url: "/invoices", icon: Receipt, adminOnly: false },
+  { title: "Users", url: "/users", icon: UserCog, adminOnly: true },
   { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
 ];
 

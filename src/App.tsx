@@ -45,6 +45,7 @@ function ProtectedRoutes() {
         <Route path="/quotations" element={<QuotationsPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
