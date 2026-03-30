@@ -1,4 +1,4 @@
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
