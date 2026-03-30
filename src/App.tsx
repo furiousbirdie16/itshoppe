@@ -14,6 +14,7 @@ import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";
 import InvoicesPage from "@/pages/InvoicesPage";
 import SettingsPage from "@/pages/SettingsPage";
+import UsersPage from "@/pages/UsersPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
