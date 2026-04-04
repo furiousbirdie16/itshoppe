@@ -22,8 +22,14 @@ import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { role } = useAuth();
+  if (role !== "admin") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function ProtectedRoutes() {
-  const { user, loading } = useAuth();
+  const { user, role, loading } = useAuth();
 
   if (loading) {
     return (
@@ -43,15 +49,15 @@ function ProtectedRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
-        <Route path="/overseas-suppliers" element={<OverseasSuppliersPage />} />
-        <Route path="/overseas-purchase-orders" element={<OverseasPurchaseOrdersPage />} />
-        <Route path="/shipment-tracking" element={<ShipmentTrackingPage />} />
+        <Route path="/overseas-suppliers" element={<AdminRoute><OverseasSuppliersPage /></AdminRoute>} />
+        <Route path="/overseas-purchase-orders" element={<AdminRoute><OverseasPurchaseOrdersPage /></AdminRoute>} />
+        <Route path="/shipment-tracking" element={<AdminRoute><ShipmentTrackingPage /></AdminRoute>} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="/quotations" element={<QuotationsPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/users" element={<UsersPage />} />
+        <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+        <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
