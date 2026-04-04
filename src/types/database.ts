@@ -102,6 +102,21 @@ export interface InvoiceItem {
   items?: Item;
 }
 
+export interface OverseasSupplier {
+  id: string;
+  name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  address: string;
+  country: string;
+  currency: 'USD' | 'RMB';
+  exchange_rate: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface InventoryMovement {
   id: string;
   item_id: string;

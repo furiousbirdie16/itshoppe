@@ -241,6 +241,51 @@ export type Database = {
         }
         Relationships: []
       }
+      overseas_suppliers: {
+        Row: {
+          address: string | null
+          contact_person: string | null
+          country: string | null
+          created_at: string | null
+          currency: string
+          email: string | null
+          exchange_rate: number
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          contact_person?: string | null
+          country?: string | null
+          created_at?: string | null
+          currency?: string
+          email?: string | null
+          exchange_rate?: number
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          contact_person?: string | null
+          country?: string | null
+          created_at?: string | null
+          currency?: string
+          email?: string | null
+          exchange_rate?: number
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null

@@ -9,6 +9,7 @@ import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
 import SuppliersPage from "@/pages/SuppliersPage";
+import OverseasSuppliersPage from "@/pages/OverseasSuppliersPage";
 import CustomersPage from "@/pages/CustomersPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";
@@ -40,6 +41,7 @@ function ProtectedRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
+        <Route path="/overseas-suppliers" element={<OverseasSuppliersPage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="/quotations" element={<QuotationsPage />} />

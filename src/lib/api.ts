@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement } from "@/types/database";
+import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier } from "@/types/database";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
@@ -50,6 +50,30 @@ export const updateSupplier = async (id: string, s: Partial<Supplier>) => {
 
 export const deleteSupplier = async (id: string) => {
   const { error } = await from("suppliers").delete().eq("id", id);
+  if (error) throw error;
+};
+
+// Overseas Suppliers
+export const getOverseasSuppliers = async (): Promise<OverseasSupplier[]> => {
+  const { data, error } = await from("overseas_suppliers").select("*").order("name");
+  if (error) throw error;
+  return data;
+};
+
+export const createOverseasSupplier = async (s: Partial<OverseasSupplier>) => {
+  const { data, error } = await from("overseas_suppliers").insert(s).select().single();
+  if (error) throw error;
+  return data as OverseasSupplier;
+};
+
+export const updateOverseasSupplier = async (id: string, s: Partial<OverseasSupplier>) => {
+  const { data, error } = await from("overseas_suppliers").update({ ...s, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  return data as OverseasSupplier;
+};
+
+export const deleteOverseasSupplier = async (id: string) => {
+  const { error } = await from("overseas_suppliers").delete().eq("id", id);
   if (error) throw error;
 };
 
