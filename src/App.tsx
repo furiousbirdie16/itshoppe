@@ -11,6 +11,7 @@ import InventoryPage from "@/pages/InventoryPage";
 import SuppliersPage from "@/pages/SuppliersPage";
 import OverseasSuppliersPage from "@/pages/OverseasSuppliersPage";
 import OverseasPurchaseOrdersPage from "@/pages/OverseasPurchaseOrdersPage";
+import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
 import CustomersPage from "@/pages/CustomersPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";
