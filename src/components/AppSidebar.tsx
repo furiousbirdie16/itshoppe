@@ -19,6 +19,7 @@ const navItems = [
   { title: "Inventory", url: "/inventory", icon: Package, adminOnly: false },
   { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: false },
   { title: "Overseas Suppliers", url: "/overseas-suppliers", icon: Globe, adminOnly: false },
+  { title: "Overseas POs", url: "/overseas-purchase-orders", icon: ShoppingCart, adminOnly: false },
   { title: "Customers", url: "/customers", icon: Users, adminOnly: false },
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },
   { title: "Quotations", url: "/quotations", icon: FileText, adminOnly: false },

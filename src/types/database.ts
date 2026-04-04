@@ -117,6 +117,32 @@ export interface OverseasSupplier {
   updated_at: string;
 }
 
+export interface OverseasPurchaseOrder {
+  id: string;
+  po_number: string;
+  supplier_id: string | null;
+  status: 'draft' | 'sent' | 'received';
+  order_date: string;
+  expected_delivery: string | null;
+  notes: string;
+  total_amount: number;
+  currency: 'USD' | 'RMB';
+  exchange_rate: number;
+  created_at: string;
+  updated_at: string;
+  overseas_suppliers?: OverseasSupplier;
+}
+
+export interface OverseasPurchaseOrderItem {
+  id: string;
+  po_id: string;
+  item_name: string;
+  description: string;
+  quantity: number;
+  unit_cost: number;
+  created_at: string;
+}
+
 export interface InventoryMovement {
   id: string;
   item_id: string;
