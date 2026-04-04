@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier } from "@/types/database";
+import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem } from "@/types/database";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
