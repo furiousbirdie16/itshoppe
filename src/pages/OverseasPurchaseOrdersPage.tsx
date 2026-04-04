@@ -1,0 +1,359 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems,
+} from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X } from "lucide-react";
+import { toast } from "sonner";
+import { peso } from "@/lib/currency";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
+
+interface LineItem {
+  item_name: string;
+  description: string;
+  quantity: number;
+  unit_cost: number;
+}
+
+const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0 });
+
+export default function OverseasPurchaseOrdersPage() {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
+  const [supplierId, setSupplierId] = useState("");
+  const [status, setStatus] = useState<string>("draft");
+  const [expectedDelivery, setExpectedDelivery] = useState("");
+  const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
+  const [exchangeRate, setExchangeRate] = useState("1");
+  const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
+
+  // View dialog
+  const [viewPO, setViewPO] = useState<OverseasPurchaseOrder | null>(null);
+
+  const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
+  const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
+  const { data: viewItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
+    queryKey: ["overseas_po_items", viewPO?.id],
+    queryFn: () => getOverseasPOItems(viewPO!.id),
+    enabled: !!viewPO,
+  });
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      const poNumber = await generateOverseasPONumber();
+      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const po = await createOverseasPurchaseOrder({
+        po_number: poNumber,
+        supplier_id: supplierId || null,
+        status: status as any,
+        expected_delivery: expectedDelivery || null,
+        notes,
+        total_amount: total,
+        currency,
+        exchange_rate: parseFloat(exchangeRate) || 1,
+      });
+      if (lines.filter(l => l.item_name).length > 0) {
+        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, ...l })));
+      }
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); toast.success("Overseas PO created"); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async () => {
+      if (!editing) return;
+      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      await updateOverseasPurchaseOrder(editing.id, {
+        supplier_id: supplierId || null,
+        status: status as any,
+        expected_delivery: expectedDelivery || null,
+        notes,
+        total_amount: total,
+        currency,
+        exchange_rate: parseFloat(exchangeRate) || 1,
+      });
+      await deleteOverseasPOItems(editing.id);
+      if (lines.filter(l => l.item_name).length > 0) {
+        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, ...l })));
+      }
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deleteOverseasPurchaseOrder,
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); toast.success("Deleted"); },
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    setSupplierId("");
+    setStatus("draft");
+    setExpectedDelivery("");
+    setNotes("");
+    setLines([emptyLine()]);
+    setCurrency("USD");
+    setExchangeRate("1");
+    setOpen(true);
+  };
+
+  const openEdit = async (po: OverseasPurchaseOrder) => {
+    setEditing(po);
+    setSupplierId(po.supplier_id || "");
+    setStatus(po.status);
+    setExpectedDelivery(po.expected_delivery || "");
+    setNotes(po.notes);
+    setCurrency(po.currency);
+    setExchangeRate(String(po.exchange_rate));
+    const items = await getOverseasPOItems(po.id);
+    setLines(items.length > 0 ? items.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost })) : [emptyLine()]);
+    setOpen(true);
+  };
+
+  const handleSupplierChange = (id: string) => {
+    setSupplierId(id);
+    const sup = suppliers.find(s => s.id === id);
+    if (sup) {
+      setCurrency(sup.currency);
+      setExchangeRate(String(sup.exchange_rate));
+    }
+  };
+
+  const updateLine = (idx: number, field: keyof LineItem, value: string | number) => {
+    setLines(lines.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+  };
+
+  const addLine = () => setLines([...lines, emptyLine()]);
+  const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
+
+  const foreignTotal = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+  const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
+  const currencySymbol = currency === "USD" ? "$" : "¥";
+
+  const handleSubmit = () => {
+    if (editing) updateMut.mutate();
+    else createMut.mutate();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="page-header mb-0">
+          <h1 className="page-title">Overseas Purchase Orders</h1>
+          <p className="page-description">{orders.length} orders • No inventory impact</p>
+        </div>
+        <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+          <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
+        </Button>
+      </div>
+
+      {/* Create / Edit Dialog */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Overseas PO" : "New Overseas PO"}</DialogTitle></DialogHeader>
+          <div className="grid gap-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Overseas Supplier</Label>
+                <Select value={supplierId} onValueChange={handleSupplierChange}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectContent>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name} ({s.currency})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="received">Received</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Currency</Label>
+                <Select value={currency} onValueChange={(v: "USD" | "RMB") => setCurrency(v)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="RMB">RMB (¥)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Exchange Rate to PHP</Label>
+                <Input type="number" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Expected Delivery</Label>
+                <Input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)} className="h-9" />
+              </div>
+            </div>
+
+            {/* Line items */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-medium">Items</Label>
+                <Button variant="outline" size="sm" onClick={addLine} className="h-7 text-xs"><Plus className="h-3 w-3 mr-1" />Add Item</Button>
+              </div>
+              <div className="space-y-2">
+                {lines.map((line, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_60px_100px_32px] gap-2 items-end">
+                    <div className="space-y-1">
+                      {idx === 0 && <Label className="text-[10px] text-muted-foreground">Item Name</Label>}
+                      <Input value={line.item_name} onChange={e => updateLine(idx, "item_name", e.target.value)} className="h-8 text-sm" placeholder="Item name" />
+                    </div>
+                    <div className="space-y-1">
+                      {idx === 0 && <Label className="text-[10px] text-muted-foreground">Qty</Label>}
+                      <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-8 text-sm" />
+                    </div>
+                    <div className="space-y-1">
+                      {idx === 0 && <Label className="text-[10px] text-muted-foreground">Unit Cost ({currencySymbol})</Label>}
+                      <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-8 text-sm" />
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-8" disabled={lines.length === 1}>
+                      <X className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Totals */}
+            <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total ({currency})</span>
+                <span className="font-medium">{currencySymbol}{foreignTotal.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total (PHP) @ {exchangeRate}</span>
+                <span className="font-semibold text-primary">{peso(phpTotal)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={notes} onChange={e => setNotes(e.target.value)} className="resize-none" rows={2} />
+            </div>
+            <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">{editing ? "Update" : "Create PO"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Dialog */}
+      <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle className="text-lg">PO {viewPO?.po_number}</DialogTitle></DialogHeader>
+          {viewPO && (
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Supplier:</span> <span className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} /></div>
+                <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>
+                <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Item</TableHead>
+                    <TableHead className="text-xs text-right">Qty</TableHead>
+                    <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
+                    <TableHead className="text-xs text-right">PHP</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewItems.map(item => (
+                    <TableRow key={item.id}>
+                      <TableCell className="text-sm">{item.item_name}</TableCell>
+                      <TableCell className="text-sm text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-sm text-right">{item.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-sm text-right">{peso(item.quantity * item.unit_cost * viewPO.exchange_rate)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span>Total ({viewPO.currency})</span>
+                  <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{viewPO.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Total (PHP)</span>
+                  <span className="font-semibold text-primary">{peso(viewPO.total_amount * viewPO.exchange_rate)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Table */}
+      <div className="data-table-wrapper">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">PO #</TableHead>
+              <TableHead className="text-xs">Supplier</TableHead>
+              <TableHead className="text-xs">Status</TableHead>
+              <TableHead className="text-xs">Currency</TableHead>
+              <TableHead className="text-xs text-right">Amount</TableHead>
+              <TableHead className="text-xs text-right">PHP Equiv.</TableHead>
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={7} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+            ) : orders.length === 0 ? (
+              <TableRow><TableCell colSpan={7}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+            ) : orders.map(po => (
+              <TableRow key={po.id} className="hover:bg-muted/30">
+                <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
+                <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
+                <TableCell><StatusBadge status={po.status} /></TableCell>
+                <TableCell className="text-sm">
+                  <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
+                    {po.currency === "USD" ? "$ USD" : "¥ RMB"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-sm text-right font-mono">
+                  {po.currency === "USD" ? "$" : "¥"}{po.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}
+                </TableCell>
+                <TableCell className="text-sm text-right font-mono text-primary">
+                  {peso(po.total_amount * po.exchange_rate)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}

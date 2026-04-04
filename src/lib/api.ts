@@ -391,3 +391,44 @@ const generateNextNumber = async (seqId: string): Promise<string> => {
 export const generatePONumber = () => generateNextNumber("purchase_order");
 export const generateQuotationNumber = () => generateNextNumber("quotation");
 export const generateInvoiceNumber = () => generateNextNumber("invoice");
+export const generateOverseasPONumber = () => generateNextNumber("overseas_po");
+
+// Overseas Purchase Orders
+export const getOverseasPurchaseOrders = async (): Promise<OverseasPurchaseOrder[]> => {
+  const { data, error } = await from("overseas_purchase_orders").select("*, overseas_suppliers(*)").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+};
+
+export const createOverseasPurchaseOrder = async (po: Partial<OverseasPurchaseOrder>) => {
+  const { data, error } = await from("overseas_purchase_orders").insert(po).select().single();
+  if (error) throw error;
+  return data as OverseasPurchaseOrder;
+};
+
+export const updateOverseasPurchaseOrder = async (id: string, po: Partial<OverseasPurchaseOrder>) => {
+  const { data, error } = await from("overseas_purchase_orders").update({ ...po, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  return data as OverseasPurchaseOrder;
+};
+
+export const deleteOverseasPurchaseOrder = async (id: string) => {
+  const { error } = await from("overseas_purchase_orders").delete().eq("id", id);
+  if (error) throw error;
+};
+
+export const getOverseasPOItems = async (poId: string): Promise<OverseasPurchaseOrderItem[]> => {
+  const { data, error } = await from("overseas_purchase_order_items").select("*").eq("po_id", poId);
+  if (error) throw error;
+  return data;
+};
+
+export const createOverseasPOItems = async (items: Partial<OverseasPurchaseOrderItem>[]) => {
+  const { error } = await from("overseas_purchase_order_items").insert(items);
+  if (error) throw error;
+};
+
+export const deleteOverseasPOItems = async (poId: string) => {
+  const { error } = await from("overseas_purchase_order_items").delete().eq("po_id", poId);
+  if (error) throw error;
+};
