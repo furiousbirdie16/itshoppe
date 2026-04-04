@@ -8,9 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
+import BulkUploadDialog from "@/components/BulkUploadDialog";
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
