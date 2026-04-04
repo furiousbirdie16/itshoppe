@@ -18,6 +18,7 @@ export default function InventoryPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [filter, setFilter] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
