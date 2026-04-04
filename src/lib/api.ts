@@ -53,6 +53,30 @@ export const deleteSupplier = async (id: string) => {
   if (error) throw error;
 };
 
+// Overseas Suppliers
+export const getOverseasSuppliers = async (): Promise<OverseasSupplier[]> => {
+  const { data, error } = await from("overseas_suppliers").select("*").order("name");
+  if (error) throw error;
+  return data;
+};
+
+export const createOverseasSupplier = async (s: Partial<OverseasSupplier>) => {
+  const { data, error } = await from("overseas_suppliers").insert(s).select().single();
+  if (error) throw error;
+  return data as OverseasSupplier;
+};
+
+export const updateOverseasSupplier = async (id: string, s: Partial<OverseasSupplier>) => {
+  const { data, error } = await from("overseas_suppliers").update({ ...s, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  return data as OverseasSupplier;
+};
+
+export const deleteOverseasSupplier = async (id: string) => {
+  const { error } = await from("overseas_suppliers").delete().eq("id", id);
+  if (error) throw error;
+};
+
 // Customers
 export const getCustomers = async (): Promise<Customer[]> => {
   const { data, error } = await from("customers").select("*").order("name");
