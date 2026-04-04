@@ -8,15 +8,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
+import BulkUploadDialog from "@/components/BulkUploadDialog";
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [filter, setFilter] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -61,9 +63,14 @@ export default function InventoryPage() {
           <h1 className="page-title">Inventory</h1>
           <p className="page-description">{items.length} items in stock</p>
         </div>
-        <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> Add Item
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
+          </Button>
+          <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> Add Item
+          </Button>
+        </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -112,6 +119,8 @@ export default function InventoryPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
 
       <div className="relative max-w-xs">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
