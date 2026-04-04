@@ -241,6 +241,97 @@ export type Database = {
         }
         Relationships: []
       }
+      overseas_purchase_order_items: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          item_name: string
+          po_id: string
+          quantity: number
+          unit_cost: number
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          item_name: string
+          po_id: string
+          quantity?: number
+          unit_cost?: number
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          item_name?: string
+          po_id?: string
+          quantity?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overseas_purchase_order_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "overseas_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      overseas_purchase_orders: {
+        Row: {
+          created_at: string | null
+          currency: string
+          exchange_rate: number
+          expected_delivery: string | null
+          id: string
+          notes: string | null
+          order_date: string | null
+          po_number: string
+          status: string
+          supplier_id: string | null
+          total_amount: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          currency?: string
+          exchange_rate?: number
+          expected_delivery?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          po_number: string
+          status?: string
+          supplier_id?: string | null
+          total_amount?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          currency?: string
+          exchange_rate?: number
+          expected_delivery?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          po_number?: string
+          status?: string
+          supplier_id?: string | null
+          total_amount?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overseas_purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "overseas_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       overseas_suppliers: {
         Row: {
           address: string | null
