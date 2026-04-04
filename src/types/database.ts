@@ -143,6 +143,21 @@ export interface OverseasPurchaseOrderItem {
   created_at: string;
 }
 
+export interface ShipmentTracking {
+  id: string;
+  po_id: string | null;
+  tracking_number: string;
+  shipping_method: string;
+  ship_date: string | null;
+  estimated_arrival: string | null;
+  actual_arrival: string | null;
+  status: 'in_transit' | 'customs' | 'delivered';
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  overseas_purchase_orders?: OverseasPurchaseOrder;
+}
+
 export interface InventoryMovement {
   id: string;
   item_id: string;

@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem } from "@/types/database";
+import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking } from "@/types/database";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
@@ -430,5 +430,29 @@ export const createOverseasPOItems = async (items: Partial<OverseasPurchaseOrder
 
 export const deleteOverseasPOItems = async (poId: string) => {
   const { error } = await from("overseas_purchase_order_items").delete().eq("po_id", poId);
+  if (error) throw error;
+};
+
+// Shipment Tracking
+export const getShipments = async (): Promise<ShipmentTracking[]> => {
+  const { data, error } = await from("shipment_tracking").select("*, overseas_purchase_orders(*, overseas_suppliers(*))").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+};
+
+export const createShipment = async (s: Partial<ShipmentTracking>) => {
+  const { data, error } = await from("shipment_tracking").insert(s).select().single();
+  if (error) throw error;
+  return data as ShipmentTracking;
+};
+
+export const updateShipment = async (id: string, s: Partial<ShipmentTracking>) => {
+  const { data, error } = await from("shipment_tracking").update({ ...s, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  return data as ShipmentTracking;
+};
+
+export const deleteShipment = async (id: string) => {
+  const { error } = await from("shipment_tracking").delete().eq("id", id);
   if (error) throw error;
 };
