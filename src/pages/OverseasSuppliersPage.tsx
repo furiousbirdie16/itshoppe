@@ -26,7 +26,7 @@ export default function OverseasSuppliersPage() {
   const [convCurrency, setConvCurrency] = useState<"USD" | "RMB">("USD");
   const [convRate, setConvRate] = useState("");
 
-  const { data: suppliers = [], isLoading } = useQuery({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
+  const { data: suppliers = [], isLoading } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
 
   const createMut = useMutation({
     mutationFn: (data: Partial<OverseasSupplier>) => createOverseasSupplier(data),
