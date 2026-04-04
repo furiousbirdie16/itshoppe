@@ -576,6 +576,56 @@ export type Database = {
           },
         ]
       }
+      shipment_tracking: {
+        Row: {
+          actual_arrival: string | null
+          created_at: string | null
+          estimated_arrival: string | null
+          id: string
+          notes: string | null
+          po_id: string | null
+          ship_date: string | null
+          shipping_method: string | null
+          status: string
+          tracking_number: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          actual_arrival?: string | null
+          created_at?: string | null
+          estimated_arrival?: string | null
+          id?: string
+          notes?: string | null
+          po_id?: string | null
+          ship_date?: string | null
+          shipping_method?: string | null
+          status?: string
+          tracking_number?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          actual_arrival?: string | null
+          created_at?: string | null
+          estimated_arrival?: string | null
+          id?: string
+          notes?: string | null
+          po_id?: string | null
+          ship_date?: string | null
+          shipping_method?: string | null
+          status?: string
+          tracking_number?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_tracking_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "overseas_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null
