@@ -45,6 +45,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
+  const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: viewItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
@@ -66,7 +67,7 @@ export default function OverseasPurchaseOrdersPage() {
         exchange_rate: parseFloat(exchangeRate) || 1,
       });
       if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, ...l })));
+        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); toast.success("Overseas PO created"); },
@@ -88,7 +89,7 @@ export default function OverseasPurchaseOrdersPage() {
       });
       await deleteOverseasPOItems(editing.id);
       if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, ...l })));
+        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
@@ -120,8 +121,8 @@ export default function OverseasPurchaseOrdersPage() {
     setNotes(po.notes);
     setCurrency(po.currency);
     setExchangeRate(String(po.exchange_rate));
-    const items = await getOverseasPOItems(po.id);
-    setLines(items.length > 0 ? items.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost })) : [emptyLine()]);
+    const poItems = await getOverseasPOItems(po.id);
+    setLines(poItems.length > 0 ? poItems.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
     setOpen(true);
   };
 
