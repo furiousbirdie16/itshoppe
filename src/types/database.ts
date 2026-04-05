@@ -140,7 +140,9 @@ export interface OverseasPurchaseOrderItem {
   description: string;
   quantity: number;
   unit_cost: number;
+  item_id: string | null;
   created_at: string;
+  items?: Item;
 }
 
 export interface ShipmentTracking {
@@ -166,8 +168,10 @@ export interface OnlineSale {
   sales_channel: 'shopee' | 'lazada';
   posted_price: number;
   notes: string;
+  item_id: string | null;
   created_at: string;
   updated_at: string;
+  items?: Item;
 }
 
 export interface InventoryMovement {
