@@ -102,11 +102,13 @@ export default function InventoryPage() {
                 <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
               </div>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Cost Price</Label>
-                <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
-              </div>
+            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+              {isAdmin && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Cost Price</Label>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Selling Price</Label>
                 <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
