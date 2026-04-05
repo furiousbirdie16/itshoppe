@@ -171,10 +171,11 @@ export default function QuotationsPage() {
           <DialogHeader><DialogTitle className="text-lg">Quotation Details</DialogTitle></DialogHeader>
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
               <TableBody>
                 {qItems.map(qi => (
                   <TableRow key={qi.id}>
+                    <TableCell className="font-mono text-xs text-primary font-medium">{qi.items?.sku || "—"}</TableCell>
                     <TableCell className="text-sm font-medium">{qi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>

@@ -290,6 +290,7 @@ export default function OverseasPurchaseOrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="text-xs">SKU</TableHead>
                     <TableHead className="text-xs">Item</TableHead>
                     <TableHead className="text-xs text-right">Qty</TableHead>
                     <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
@@ -299,6 +300,7 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableBody>
                   {viewItems.map(item => (
                     <TableRow key={item.id}>
+                      <TableCell className="font-mono text-xs text-primary font-medium">{item.items?.sku || "—"}</TableCell>
                       <TableCell className="text-sm">{item.item_name}</TableCell>
                       <TableCell className="text-sm text-right">{item.quantity}</TableCell>
                       <TableCell className="text-sm text-right">{item.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
