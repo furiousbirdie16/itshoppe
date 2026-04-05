@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
+import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight } from "lucide-react";
@@ -9,6 +10,8 @@ import { useNavigate } from "react-router-dom";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: getDashboardStats,
@@ -31,12 +34,14 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
-        <StatCard
-          title="Inventory Value"
-          value={peso(stats?.totalValue || 0)}
-          icon={DollarSign}
-          variant="success"
-        />
+        {isAdmin && (
+          <StatCard
+            title="Inventory Value"
+            value={peso(stats?.totalValue || 0)}
+            icon={DollarSign}
+            variant="success"
+          />
+        )}
         <StatCard
           title="Low Stock"
           value={stats?.lowStockItems.length || 0}
