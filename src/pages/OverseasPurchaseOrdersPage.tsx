@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Plus, Pencil, Trash2, ShoppingCart, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
 
 interface LineItem {
@@ -22,9 +23,10 @@ interface LineItem {
   description: string;
   quantity: number;
   unit_cost: number;
+  item_id: string;
 }
 
-const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0 });
+const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0, item_id: "" });
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
