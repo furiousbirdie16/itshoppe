@@ -179,10 +179,11 @@ export default function InvoicesPage() {
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
               <TableBody>
                 {invItems.map(ii => (
                   <TableRow key={ii.id}>
+                    <TableCell className="font-mono text-xs text-primary font-medium">{ii.items?.sku || "—"}</TableCell>
                     <TableCell className="text-sm font-medium">{ii.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{ii.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>

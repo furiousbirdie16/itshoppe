@@ -180,10 +180,11 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">PO Details</DialogTitle></DialogHeader>
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
               <TableBody>
                 {poItems.map(pi => (
                   <TableRow key={pi.id}>
+                    <TableCell className="font-mono text-xs text-primary font-medium">{pi.items?.sku || "—"}</TableCell>
                     <TableCell className="text-sm font-medium">{pi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{pi.quantity}</TableCell>
                     <TableCell className="text-sm">{pi.received_quantity}</TableCell>

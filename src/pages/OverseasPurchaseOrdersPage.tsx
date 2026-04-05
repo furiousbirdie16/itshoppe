@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Plus, Pencil, Trash2, ShoppingCart, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
 
 interface LineItem {
@@ -22,9 +23,10 @@ interface LineItem {
   description: string;
   quantity: number;
   unit_cost: number;
+  item_id: string;
 }
 
-const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0 });
+const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0, item_id: "" });
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
@@ -43,6 +45,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
+  const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: viewItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
@@ -64,7 +67,7 @@ export default function OverseasPurchaseOrdersPage() {
         exchange_rate: parseFloat(exchangeRate) || 1,
       });
       if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, ...l })));
+        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); toast.success("Overseas PO created"); },
@@ -86,7 +89,7 @@ export default function OverseasPurchaseOrdersPage() {
       });
       await deleteOverseasPOItems(editing.id);
       if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, ...l })));
+        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
@@ -118,8 +121,8 @@ export default function OverseasPurchaseOrdersPage() {
     setNotes(po.notes);
     setCurrency(po.currency);
     setExchangeRate(String(po.exchange_rate));
-    const items = await getOverseasPOItems(po.id);
-    setLines(items.length > 0 ? items.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost })) : [emptyLine()]);
+    const poItems = await getOverseasPOItems(po.id);
+    setLines(poItems.length > 0 ? poItems.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
     setOpen(true);
   };
 
@@ -216,25 +219,37 @@ export default function OverseasPurchaseOrdersPage() {
                 <Label className="text-xs font-medium">Items</Label>
                 <Button variant="outline" size="sm" onClick={addLine} className="h-7 text-xs"><Plus className="h-3 w-3 mr-1" />Add Item</Button>
               </div>
-              <div className="space-y-2">
-                {lines.map((line, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_60px_100px_32px] gap-2 items-end">
-                    <div className="space-y-1">
-                      {idx === 0 && <Label className="text-[10px] text-muted-foreground">Item Name</Label>}
-                      <Input value={line.item_name} onChange={e => updateLine(idx, "item_name", e.target.value)} className="h-8 text-sm" placeholder="Item name" />
-                    </div>
-                    <div className="space-y-1">
-                      {idx === 0 && <Label className="text-[10px] text-muted-foreground">Qty</Label>}
-                      <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-8 text-sm" />
-                    </div>
-                    <div className="space-y-1">
-                      {idx === 0 && <Label className="text-[10px] text-muted-foreground">Unit Cost ({currencySymbol})</Label>}
-                      <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-8 text-sm" />
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-8" disabled={lines.length === 1}>
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </div>
+               <div className="space-y-2">
+                 {lines.map((line, idx) => (
+                   <div key={idx} className="space-y-1">
+                     <div className="grid grid-cols-[1fr_60px_100px_32px] gap-2 items-end">
+                       <div className="space-y-1">
+                         {idx === 0 && <Label className="text-[10px] text-muted-foreground">Item (search by SKU)</Label>}
+                         <ItemSearch
+                           items={inventoryItems}
+                           value={line.item_id}
+                           onChange={(itemId, item) => {
+                             setLines(lines.map((l, i) => i === idx ? { ...l, item_id: itemId, item_name: item.name } : l));
+                           }}
+                           placeholder="Search SKU or name..."
+                         />
+                       </div>
+                       <div className="space-y-1">
+                         {idx === 0 && <Label className="text-[10px] text-muted-foreground">Qty</Label>}
+                         <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-8 text-sm" />
+                       </div>
+                       <div className="space-y-1">
+                         {idx === 0 && <Label className="text-[10px] text-muted-foreground">Unit Cost ({currencySymbol})</Label>}
+                         <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-8 text-sm" />
+                       </div>
+                       <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-8" disabled={lines.length === 1}>
+                         <X className="h-3.5 w-3.5 text-muted-foreground" />
+                       </Button>
+                     </div>
+                     {!line.item_id && (
+                       <Input value={line.item_name} onChange={e => updateLine(idx, "item_name", e.target.value)} className="h-7 text-xs" placeholder="Or type item name manually" />
+                     )}
+                   </div>
                 ))}
               </div>
             </div>
@@ -275,6 +290,7 @@ export default function OverseasPurchaseOrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="text-xs">SKU</TableHead>
                     <TableHead className="text-xs">Item</TableHead>
                     <TableHead className="text-xs text-right">Qty</TableHead>
                     <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
@@ -284,6 +300,7 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableBody>
                   {viewItems.map(item => (
                     <TableRow key={item.id}>
+                      <TableCell className="font-mono text-xs text-primary font-medium">{item.items?.sku || "—"}</TableCell>
                       <TableCell className="text-sm">{item.item_name}</TableCell>
                       <TableCell className="text-sm text-right">{item.quantity}</TableCell>
                       <TableCell className="text-sm text-right">{item.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
