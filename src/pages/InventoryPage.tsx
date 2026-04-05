@@ -12,8 +12,11 @@ import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function InventoryPage() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
@@ -99,11 +102,13 @@ export default function InventoryPage() {
                 <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
               </div>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Cost Price</Label>
-                <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
-              </div>
+            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+              {isAdmin && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Cost Price</Label>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Selling Price</Label>
                 <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
@@ -139,7 +144,7 @@ export default function InventoryPage() {
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
               <TableHead className="text-xs text-right">Qty</TableHead>
-              <TableHead className="text-xs text-right">Cost</TableHead>
+              {isAdmin && <TableHead className="text-xs text-right">Cost</TableHead>}
               <TableHead className="text-xs text-right">Sell</TableHead>
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
@@ -147,13 +152,13 @@ export default function InventoryPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center">
+                <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center">
                   <div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6}>
+                <TableCell colSpan={isAdmin ? 6 : 5}>
                   <div className="empty-state">
                     <Package className="empty-state-icon" />
                     <p className="text-sm">No items found</p>
@@ -167,7 +172,7 @@ export default function InventoryPage() {
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
                 </TableCell>
-                <TableCell className="text-right text-sm text-muted-foreground">{peso(Number(item.cost_price))}</TableCell>
+                {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{peso(Number(item.cost_price))}</TableCell>}
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
