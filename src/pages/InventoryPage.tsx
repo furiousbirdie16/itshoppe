@@ -152,7 +152,7 @@ export default function InventoryPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center">
+                <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center">
                   <div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
                 </TableCell>
               </TableRow>
