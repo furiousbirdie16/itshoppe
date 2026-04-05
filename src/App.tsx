@@ -19,6 +19,7 @@ import InvoicesPage from "@/pages/InvoicesPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
+import ActivityLogPage from "@/pages/ActivityLogPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ function ProtectedRoutes() {
         <Route path="/quotations" element={<QuotationsPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/online-sales" element={<OnlineSalesPage />} />
+        <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
         <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
         <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
         <Route path="*" element={<NotFound />} />

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
+import { logActivity } from "@/lib/activity-log";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
@@ -15,18 +16,23 @@ export const getItems = async (): Promise<Item[]> => {
 export const createItem = async (item: Partial<Item>) => {
   const { data, error } = await from("items").insert(item).select().single();
   if (error) throw error;
-  return data as Item;
+  const created = data as Item;
+  await logActivity("created_item", "inventory", created.id, { name: created.name, sku: created.sku });
+  return created;
 };
 
 export const updateItem = async (id: string, item: Partial<Item>) => {
   const { data, error } = await from("items").update({ ...item, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
-  return data as Item;
+  const updated = data as Item;
+  await logActivity("updated_item", "inventory", id, { name: updated.name, sku: updated.sku });
+  return updated;
 };
 
 export const deleteItem = async (id: string) => {
   const { error } = await from("items").delete().eq("id", id);
   if (error) throw error;
+  await logActivity("deleted_item", "inventory", id);
 };
 
 // Suppliers
@@ -111,7 +117,9 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
 export const createPurchaseOrder = async (po: Partial<PurchaseOrder>) => {
   const { data, error } = await from("purchase_orders").insert(po).select().single();
   if (error) throw error;
-  return data as PurchaseOrder;
+  const created = data as PurchaseOrder;
+  await logActivity("created_purchase_order", "purchase_order", created.id, { po_number: created.po_number });
+  return created;
 };
 
 export const updatePurchaseOrder = async (id: string, po: Partial<PurchaseOrder>) => {
@@ -169,6 +177,7 @@ export const receivePO = async (poId: string, itemsToReceive: { poItemId: string
   const someReceived = (allItems as any[])?.some((i: any) => i.received_quantity > 0);
   const newStatus = allReceived ? "received" : someReceived ? "partially_received" : "draft";
   await from("purchase_orders").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", poId);
+  await logActivity("received_purchase_order", "purchase_order", poId, { status: newStatus });
 };
 
 // Quotations
@@ -181,7 +190,9 @@ export const getQuotations = async (): Promise<Quotation[]> => {
 export const createQuotation = async (q: Partial<Quotation>) => {
   const { data, error } = await from("quotations").insert(q).select().single();
   if (error) throw error;
-  return data as Quotation;
+  const created = data as Quotation;
+  await logActivity("created_quotation", "quotation", created.id, { quotation_number: created.quotation_number });
+  return created;
 };
 
 export const updateQuotation = async (id: string, q: Partial<Quotation>) => {
@@ -244,6 +255,7 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
   }
 
   await from("quotations").update({ status: "accepted" }).eq("id", quotationId);
+  await logActivity("converted_quotation_to_invoice", "invoice", (invoice as any).id, { from_quotation: quotationId });
   return invoice as Invoice;
 };
 
@@ -257,7 +269,9 @@ export const getInvoices = async (): Promise<Invoice[]> => {
 export const createInvoice = async (inv: Partial<Invoice>) => {
   const { data, error } = await from("invoices").insert(inv).select().single();
   if (error) throw error;
-  return data as Invoice;
+  const created = data as Invoice;
+  await logActivity("created_invoice", "invoice", created.id, { invoice_number: created.invoice_number });
+  return created;
 };
 
 export const updateInvoice = async (id: string, inv: Partial<Invoice>) => {
@@ -311,6 +325,7 @@ export const confirmInvoice = async (invoiceId: string) => {
   }
 
   await from("invoices").update({ status: "confirmed", updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  await logActivity("confirmed_invoice", "invoice", invoiceId);
 };
 
 // Revert confirmed invoice - restore stock
@@ -337,6 +352,7 @@ export const revertInvoice = async (invoiceId: string) => {
   }
 
   await from("invoices").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  await logActivity("reverted_invoice", "invoice", invoiceId);
 };
 
 // Inventory Movements
@@ -424,7 +440,7 @@ export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
       notes: `Sold via ${created.sales_channel} - ${created.order_number}`
     });
   }
-
+  await logActivity("created_online_sale", "online_sale", created.id, { order_number: created.order_number, channel: created.sales_channel });
   return created;
 };
 
