@@ -397,7 +397,7 @@ export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order"
 
 // Online Sales
 export const getOnlineSales = async (): Promise<OnlineSale[]> => {
-  const { data, error } = await from("online_sales").select("*").order("created_at", { ascending: false });
+  const { data, error } = await from("online_sales").select("*, items(*)").order("created_at", { ascending: false });
   if (error) throw error;
   return data;
 };
@@ -444,7 +444,7 @@ export const deleteOverseasPurchaseOrder = async (id: string) => {
 };
 
 export const getOverseasPOItems = async (poId: string): Promise<OverseasPurchaseOrderItem[]> => {
-  const { data, error } = await from("overseas_purchase_order_items").select("*").eq("po_id", poId);
+  const { data, error } = await from("overseas_purchase_order_items").select("*, items(*)").eq("po_id", poId);
   if (error) throw error;
   return data;
 };
