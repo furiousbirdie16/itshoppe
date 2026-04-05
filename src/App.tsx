@@ -16,6 +16,7 @@ import CustomersPage from "@/pages/CustomersPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";
 import InvoicesPage from "@/pages/InvoicesPage";
+import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
 import NotFound from "@/pages/NotFound";
@@ -56,6 +57,7 @@ function ProtectedRoutes() {
         <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="/quotations" element={<QuotationsPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
+        <Route path="/online-sales" element={<OnlineSalesPage />} />
         <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
         <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
         <Route path="*" element={<NotFound />} />
