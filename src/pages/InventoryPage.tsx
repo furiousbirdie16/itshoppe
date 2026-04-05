@@ -51,10 +51,16 @@ export default function InventoryPage() {
   };
 
   const handleSubmit = () => {
-    const data: any = { name: form.name, sku: form.sku, description: form.description, cost_price: parseFloat(form.cost_price), selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
+    const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
+    if (isAdmin) data.cost_price = parseFloat(form.cost_price);
     if (!editing) data.quantity = parseInt(form.quantity) || 0;
-    if (editing) updateMut.mutate({ id: editing.id, data });
-    else createMut.mutate(data);
+    if (editing) {
+      if (!isAdmin) {
+        toast.error("Only admins can edit inventory items");
+        return;
+      }
+      updateMut.mutate({ id: editing.id, data });
+    } else createMut.mutate(data);
   };
 
   const filtered = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase()));
@@ -176,12 +182,16 @@ export default function InventoryPage() {
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(item.id)} className="h-7 w-7 rounded-md">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
-                    </Button>
+                    {isAdmin && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(item.id)} className="h-7 w-7 rounded-md">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
