@@ -158,7 +158,7 @@ export default function InventoryPage() {
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6}>
+                <TableCell colSpan={isAdmin ? 6 : 5}>
                   <div className="empty-state">
                     <Package className="empty-state-icon" />
                     <p className="text-sm">No items found</p>
