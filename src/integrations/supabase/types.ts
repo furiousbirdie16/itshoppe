@@ -245,6 +245,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          item_id: string | null
           notes: string | null
           order_date: string
           order_number: string
@@ -256,6 +257,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          item_id?: string | null
           notes?: string | null
           order_date?: string
           order_number: string
@@ -267,6 +269,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          item_id?: string | null
           notes?: string | null
           order_date?: string
           order_number?: string
@@ -275,13 +278,22 @@ export type Database = {
           sales_channel?: Database["public"]["Enums"]["sales_channel"]
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "online_sales_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       overseas_purchase_order_items: {
         Row: {
           created_at: string | null
           description: string | null
           id: string
+          item_id: string | null
           item_name: string
           po_id: string
           quantity: number
@@ -291,6 +303,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          item_id?: string | null
           item_name: string
           po_id: string
           quantity?: number
@@ -300,12 +313,20 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          item_id?: string | null
           item_name?: string
           po_id?: string
           quantity?: number
           unit_cost?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "overseas_purchase_order_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "overseas_purchase_order_items_po_id_fkey"
             columns: ["po_id"]
