@@ -747,7 +747,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user"
       invoice_status: "draft" | "confirmed" | "paid" | "unpaid"
-      movement_type: "in_po" | "out_invoice"
+      movement_type: "in_po" | "out_invoice" | "out_online_sale"
       po_status: "draft" | "sent" | "partially_received" | "received"
       quotation_status: "draft" | "sent" | "accepted" | "rejected"
       sales_channel: "shopee" | "lazada"
@@ -880,7 +880,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "user"],
       invoice_status: ["draft", "confirmed", "paid", "unpaid"],
-      movement_type: ["in_po", "out_invoice"],
+      movement_type: ["in_po", "out_invoice", "out_online_sale"],
       po_status: ["draft", "sent", "partially_received", "received"],
       quotation_status: ["draft", "sent", "accepted", "rejected"],
       sales_channel: ["shopee", "lazada"],

@@ -405,7 +405,27 @@ export const getOnlineSales = async (): Promise<OnlineSale[]> => {
 export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
   const { data, error } = await from("online_sales").insert(sale).select().single();
   if (error) throw error;
-  return data as OnlineSale;
+  const created = data as OnlineSale;
+
+  // Deduct inventory if linked to an item
+  if (created.item_id) {
+    const { data: currentItem } = await from("items").select("quantity").eq("id", created.item_id).single();
+    await from("items").update({
+      quantity: Math.max(0, ((currentItem as any)?.quantity || 0) - 1),
+      updated_at: new Date().toISOString()
+    }).eq("id", created.item_id);
+
+    await from("inventory_movements").insert({
+      item_id: created.item_id,
+      type: "out_online_sale",
+      quantity: 1,
+      reference_id: created.id,
+      reference_type: "online_sale",
+      notes: `Sold via ${created.sales_channel} - ${created.order_number}`
+    });
+  }
+
+  return created;
 };
 
 export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) => {
@@ -415,6 +435,26 @@ export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) =>
 };
 
 export const deleteOnlineSale = async (id: string) => {
+  // Restore inventory if linked to an item
+  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel").eq("id", id).single();
+  if (sale && (sale as any).item_id) {
+    const itemId = (sale as any).item_id;
+    const { data: currentItem } = await from("items").select("quantity").eq("id", itemId).single();
+    await from("items").update({
+      quantity: ((currentItem as any)?.quantity || 0) + 1,
+      updated_at: new Date().toISOString()
+    }).eq("id", itemId);
+
+    await from("inventory_movements").insert({
+      item_id: itemId,
+      type: "in_po",
+      quantity: 1,
+      reference_id: id,
+      reference_type: "online_sale_delete",
+      notes: `Restored from deleted online sale`
+    });
+  }
+
   const { error } = await from("online_sales").delete().eq("id", id);
   if (error) throw error;
 };
