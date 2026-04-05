@@ -144,7 +144,7 @@ export default function InventoryPage() {
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
               <TableHead className="text-xs text-right">Qty</TableHead>
-              <TableHead className="text-xs text-right">Cost</TableHead>
+              {isAdmin && <TableHead className="text-xs text-right">Cost</TableHead>}
               <TableHead className="text-xs text-right">Sell</TableHead>
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
