@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function InventoryPage() {
   const queryClient = useQueryClient();
