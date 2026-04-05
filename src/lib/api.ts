@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking } from "@/types/database";
+import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
@@ -392,6 +392,32 @@ export const generatePONumber = () => generateNextNumber("purchase_order");
 export const generateQuotationNumber = () => generateNextNumber("quotation");
 export const generateInvoiceNumber = () => generateNextNumber("invoice");
 export const generateOverseasPONumber = () => generateNextNumber("overseas_po");
+export const generateShopeeOrderNumber = () => generateNextNumber("shopee_order");
+export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order");
+
+// Online Sales
+export const getOnlineSales = async (): Promise<OnlineSale[]> => {
+  const { data, error } = await from("online_sales").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+};
+
+export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
+  const { data, error } = await from("online_sales").insert(sale).select().single();
+  if (error) throw error;
+  return data as OnlineSale;
+};
+
+export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) => {
+  const { data, error } = await from("online_sales").update({ ...sale, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  return data as OnlineSale;
+};
+
+export const deleteOnlineSale = async (id: string) => {
+  const { error } = await from("online_sales").delete().eq("id", id);
+  if (error) throw error;
+};
 
 // Overseas Purchase Orders
 export const getOverseasPurchaseOrders = async (): Promise<OverseasPurchaseOrder[]> => {

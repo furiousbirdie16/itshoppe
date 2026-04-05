@@ -158,6 +158,18 @@ export interface ShipmentTracking {
   overseas_purchase_orders?: OverseasPurchaseOrder;
 }
 
+export interface OnlineSale {
+  id: string;
+  order_number: string;
+  order_date: string;
+  product_name: string;
+  sales_channel: 'shopee' | 'lazada';
+  posted_price: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface InventoryMovement {
   id: string;
   item_id: string;
