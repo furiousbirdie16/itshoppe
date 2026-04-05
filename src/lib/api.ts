@@ -22,10 +22,17 @@ export const createItem = async (item: Partial<Item>) => {
 };
 
 export const updateItem = async (id: string, item: Partial<Item>) => {
+  const { data: oldData } = await from("items").select("quantity").eq("id", id).single();
+  const oldQty = (oldData as any)?.quantity;
   const { data, error } = await from("items").update({ ...item, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
   const updated = data as Item;
-  await logActivity("updated_item", "inventory", id, { name: updated.name, sku: updated.sku });
+  const details: Record<string, unknown> = { name: updated.name, sku: updated.sku };
+  if (item.quantity !== undefined && item.quantity !== oldQty) {
+    details.quantity_from = oldQty;
+    details.quantity_to = item.quantity;
+  }
+  await logActivity("updated_item", "inventory", id, details);
   return updated;
 };
 
