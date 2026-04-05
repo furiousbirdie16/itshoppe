@@ -15,6 +15,8 @@ import BulkUploadDialog from "@/components/BulkUploadDialog";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function InventoryPage() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
