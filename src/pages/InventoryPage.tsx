@@ -53,14 +53,17 @@ export default function InventoryPage() {
   const handleSubmit = () => {
     const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold) };
     if (isAdmin) data.cost_price = parseFloat(form.cost_price);
-    if (!editing) data.quantity = parseInt(form.quantity) || 0;
-    if (editing) {
+    if (!editing) {
+      data.quantity = parseInt(form.quantity) || 0;
+      createMut.mutate(data);
+    } else {
       if (!isAdmin) {
         toast.error("Only admins can edit inventory items");
         return;
       }
+      data.quantity = parseInt(form.quantity) || 0;
       updateMut.mutate({ id: editing.id, data });
-    } else createMut.mutate(data);
+    }
   };
 
   const filtered = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase()));
@@ -102,9 +105,9 @@ export default function InventoryPage() {
               <Label className="text-xs font-medium">Description</Label>
               <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
             </div>
-            {!editing && (
+            {(!editing || isAdmin) && (
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Initial Quantity</Label>
+                <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
                 <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
               </div>
             )}
