@@ -172,7 +172,7 @@ export default function InventoryPage() {
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
                 </TableCell>
-                <TableCell className="text-right text-sm text-muted-foreground">{peso(Number(item.cost_price))}</TableCell>
+                {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{peso(Number(item.cost_price))}</TableCell>}
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
