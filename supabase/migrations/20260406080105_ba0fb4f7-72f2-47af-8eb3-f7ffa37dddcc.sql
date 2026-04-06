@@ -1,0 +1,1 @@
+ALTER TABLE public.online_sales ADD COLUMN deal_price numeric NOT NULL DEFAULT 0;
