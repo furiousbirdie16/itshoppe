@@ -167,6 +167,7 @@ export interface OnlineSale {
   product_name: string;
   sales_channel: 'shopee' | 'lazada';
   posted_price: number;
+  deal_price: number;
   notes: string;
   item_id: string | null;
   created_at: string;

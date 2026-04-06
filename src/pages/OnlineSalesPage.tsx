@@ -23,6 +23,7 @@ interface SaleForm {
   product_name: string;
   sales_channel: SalesChannel;
   posted_price: number;
+  deal_price: number;
   notes: string;
   item_id: string;
 }
@@ -32,6 +33,7 @@ const emptyForm: SaleForm = {
   product_name: "",
   sales_channel: "shopee",
   posted_price: 0,
+  deal_price: 0,
   notes: "",
   item_id: "",
 };
@@ -51,7 +53,7 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; sales_channel: SalesChannel; posted_price: number; order_date: string; sku: string; item_id: string | null; order_id: string; valid: boolean; error?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; sales_channel: SalesChannel; posted_price: number; deal_price: number; order_date: string; sku: string; item_id: string | null; order_id: string; valid: boolean; error?: string }[]>([]);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -61,7 +63,7 @@ export default function OnlineSalesPage() {
   const openNew = () => { setEditingSale(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (s: OnlineSale) => {
     setEditingSale(s);
-    setForm({ order_date: s.order_date, product_name: s.product_name, sales_channel: s.sales_channel, posted_price: s.posted_price, notes: s.notes || "", item_id: s.item_id || "" });
+    setForm({ order_date: s.order_date, product_name: s.product_name, sales_channel: s.sales_channel, posted_price: s.posted_price, deal_price: s.deal_price || 0, notes: s.notes || "", item_id: s.item_id || "" });
     setDialogOpen(true);
   };
 
@@ -141,7 +143,8 @@ export default function OnlineSalesPage() {
         const findCol = (keywords: string[]) => headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
         const productCol = findCol(["product", "item", "name"]);
         const channelCol = findCol(["channel", "platform", "shopee", "lazada"]);
-        const priceCol = findCol(["price", "amount", "posted"]);
+        const priceCol = findCol(["price", "amount", "posted", "srp"]);
+        const dealPriceCol = findCol(["deal price", "deal_price", "dealprice", "deal"]);
         const dateCol = findCol(["date"]);
         const skuCol = findCol(["sku"]);
         const orderIdCol = findCol(["order id", "order_id", "orderid"]);
@@ -155,6 +158,7 @@ export default function OnlineSalesPage() {
           const rawChannel = String(channelCol ? row[channelCol] : "shopee").toLowerCase().trim();
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : "shopee";
           const posted_price = Number(priceCol ? row[priceCol] : 0) || 0;
+          const deal_price = Number(dealPriceCol ? row[dealPriceCol] : 0) || 0;
           const order_date = dateCol && row[dateCol] ? String(row[dateCol]).substring(0, 10) : new Date().toISOString().split("T")[0];
           const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
 
@@ -163,7 +167,7 @@ export default function OnlineSalesPage() {
           else if (sku && !matchedItem) error = `SKU "${sku}" not found`;
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, sales_channel, posted_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
+          return { product_name, sales_channel, posted_price, deal_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
         });
         setBulkRows(parsed);
       } catch {
@@ -182,7 +186,7 @@ export default function OnlineSalesPage() {
     for (const row of valid) {
       try {
         const orderNumber = row.sales_channel === "shopee" ? await generateShopeeOrderNumber() : await generateLazadaOrderNumber();
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, order_date: row.order_date, item_id: row.item_id, notes: row.order_id });
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: row.deal_price, order_date: row.order_date, item_id: row.item_id, notes: row.order_id });
         success++;
       } catch { /* skip */ }
     }
@@ -237,9 +241,9 @@ export default function OnlineSalesPage() {
               <TableHead className="text-xs">Order #</TableHead>
               <TableHead className="text-xs">Date</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
-              <TableHead className="text-xs">Product</TableHead>
               <TableHead className="text-xs">Channel</TableHead>
-              <TableHead className="text-xs text-right">Price</TableHead>
+              <TableHead className="text-xs text-right">SRP</TableHead>
+              <TableHead className="text-xs text-right">Deal Price</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -256,9 +260,9 @@ export default function OnlineSalesPage() {
                 <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
                 <TableCell className="text-sm">{s.order_date}</TableCell>
                 <TableCell className="font-mono text-xs text-primary font-medium">{s.items?.sku || "—"}</TableCell>
-                <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                 <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                 <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                <TableCell className="text-right text-sm">{peso(s.deal_price || 0)}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="h-3 w-3" /></Button>
@@ -306,8 +310,12 @@ export default function OnlineSalesPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Posted Price</Label>
+              <Label>Posted Price (SRP)</Label>
               <Input type="number" min={0} step="0.01" value={form.posted_price} onChange={e => setForm(f => ({ ...f, posted_price: parseFloat(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Deal Price</Label>
+              <Input type="number" min={0} step="0.01" value={form.deal_price} onChange={e => setForm(f => ({ ...f, deal_price: parseFloat(e.target.value) || 0 }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Notes</Label>
@@ -333,7 +341,7 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong> (preferred), <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price</strong>, <strong>Date</strong>, <strong>Order ID</strong> (→ Note)</p>
+                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong>, <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price/SRP</strong>, <strong>Deal Price</strong>, <strong>Date</strong>, <strong>Order ID</strong> (→ Note)</p>
               </div>
               <Button variant="outline" onClick={() => fileRef.current?.click()}>Select File</Button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" />
@@ -353,9 +361,9 @@ export default function OnlineSalesPage() {
                     <TableRow>
                       <TableHead className="text-xs w-8">#</TableHead>
                       <TableHead className="text-xs">SKU</TableHead>
-                      <TableHead className="text-xs">Product</TableHead>
                       <TableHead className="text-xs">Channel</TableHead>
-                      <TableHead className="text-xs text-right">Price</TableHead>
+                      <TableHead className="text-xs text-right">SRP</TableHead>
+                      <TableHead className="text-xs text-right">Deal Price</TableHead>
                       <TableHead className="text-xs">Note</TableHead>
                       <TableHead className="text-xs">Status</TableHead>
                     </TableRow>
@@ -365,9 +373,9 @@ export default function OnlineSalesPage() {
                       <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="font-mono text-xs text-primary">{row.sku || "—"}</TableCell>
-                        <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
+                        <TableCell className="text-sm text-right">{peso(row.deal_price)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
                       </TableRow>
