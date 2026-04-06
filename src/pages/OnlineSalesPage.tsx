@@ -63,7 +63,7 @@ export default function OnlineSalesPage() {
   const openNew = () => { setEditingSale(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (s: OnlineSale) => {
     setEditingSale(s);
-    setForm({ order_date: s.order_date, product_name: s.product_name, sales_channel: s.sales_channel, posted_price: s.posted_price, notes: s.notes || "", item_id: s.item_id || "" });
+    setForm({ order_date: s.order_date, product_name: s.product_name, sales_channel: s.sales_channel, posted_price: s.posted_price, deal_price: s.deal_price || 0, notes: s.notes || "", item_id: s.item_id || "" });
     setDialogOpen(true);
   };
 
