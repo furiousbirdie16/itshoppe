@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2 } from "lucide-react";
+import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -120,9 +121,17 @@ export default function InvoicesPage() {
           <h1 className="page-title">Invoices</h1>
           <p className="page-description">{invoices.length} invoices</p>
         </div>
-        <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> New Invoice
-        </Button>
+        <div className="flex gap-2">
+          <ExportButton
+            data={invoices}
+            columns={{ "Invoice #": (r: any) => r.invoice_number, "Customer": (r: any) => r.customers?.name || "", "Status": (r: any) => r.status, "Date": (r: any) => r.invoice_date, "Due Date": (r: any) => r.due_date || "", "Total": (r: any) => r.total_amount }}
+            dateField={(r: any) => r.invoice_date || ""}
+            fileName="Invoices"
+          />
+          <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> New Invoice
+          </Button>
+        </div>
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

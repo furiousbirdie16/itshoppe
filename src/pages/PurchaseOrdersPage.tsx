@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown } from "lucide-react";
+import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
@@ -115,9 +116,17 @@ export default function PurchaseOrdersPage() {
           <h1 className="page-title">Purchase Orders</h1>
           <p className="page-description">{pos.length} orders</p>
         </div>
-        <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> New PO
-        </Button>
+        <div className="flex gap-2">
+          <ExportButton
+            data={pos}
+            columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.suppliers?.name || "", "Status": (r: any) => r.status, "Order Date": (r: any) => r.order_date, "Expected Delivery": (r: any) => r.expected_delivery || "", "Total": (r: any) => r.total_amount }}
+            dateField={(r: any) => r.order_date || ""}
+            fileName="Purchase_Orders"
+          />
+          <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> New PO
+          </Button>
+        </div>
       </div>
 
       {/* Create Dialog */}

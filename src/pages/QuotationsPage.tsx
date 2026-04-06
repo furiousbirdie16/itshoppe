@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown } from "lucide-react";
+import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -106,9 +107,17 @@ export default function QuotationsPage() {
           <h1 className="page-title">Quotations</h1>
           <p className="page-description">{quotations.length} quotations</p>
         </div>
-        <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> New Quotation
-        </Button>
+        <div className="flex gap-2">
+          <ExportButton
+            data={quotations}
+            columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
+            dateField={(r: any) => r.quotation_date || ""}
+            fileName="Quotations"
+          />
+          <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> New Quotation
+          </Button>
+        </div>
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

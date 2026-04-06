@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
+import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
@@ -76,6 +77,12 @@ export default function InventoryPage() {
           <p className="page-description">{items.length} items in stock</p>
         </div>
         <div className="flex gap-2">
+          <ExportButton
+            data={items}
+            columns={{ "Name": (r: any) => r.name, "SKU": (r: any) => r.sku, "Description": (r: any) => r.description, "Quantity": (r: any) => r.quantity, "Cost Price": (r: any) => r.cost_price, "Selling Price": (r: any) => r.selling_price }}
+            dateField={(r: any) => r.created_at?.split("T")[0] || ""}
+            fileName="Inventory"
+          />
           <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
           </Button>
