@@ -182,7 +182,7 @@ export default function OnlineSalesPage() {
     for (const row of valid) {
       try {
         const orderNumber = row.sales_channel === "shopee" ? await generateShopeeOrderNumber() : await generateLazadaOrderNumber();
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, order_date: row.order_date, item_id: row.item_id, notes: "" });
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, order_date: row.order_date, item_id: row.item_id, notes: row.order_id });
         success++;
       } catch { /* skip */ }
     }
@@ -333,7 +333,7 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong> (preferred), <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price</strong>, <strong>Date</strong></p>
+                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong> (preferred), <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price</strong>, <strong>Date</strong>, <strong>Order ID</strong> (→ Note)</p>
               </div>
               <Button variant="outline" onClick={() => fileRef.current?.click()}>Select File</Button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" />
@@ -356,6 +356,7 @@ export default function OnlineSalesPage() {
                       <TableHead className="text-xs">Product</TableHead>
                       <TableHead className="text-xs">Channel</TableHead>
                       <TableHead className="text-xs text-right">Price</TableHead>
+                      <TableHead className="text-xs">Note</TableHead>
                       <TableHead className="text-xs">Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -367,6 +368,7 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
                       </TableRow>
                     ))}
