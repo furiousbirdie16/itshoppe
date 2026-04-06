@@ -361,9 +361,9 @@ export default function OnlineSalesPage() {
                     <TableRow>
                       <TableHead className="text-xs w-8">#</TableHead>
                       <TableHead className="text-xs">SKU</TableHead>
-                      <TableHead className="text-xs">Product</TableHead>
                       <TableHead className="text-xs">Channel</TableHead>
-                      <TableHead className="text-xs text-right">Price</TableHead>
+                      <TableHead className="text-xs text-right">SRP</TableHead>
+                      <TableHead className="text-xs text-right">Deal Price</TableHead>
                       <TableHead className="text-xs">Note</TableHead>
                       <TableHead className="text-xs">Status</TableHead>
                     </TableRow>
@@ -373,9 +373,9 @@ export default function OnlineSalesPage() {
                       <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="font-mono text-xs text-primary">{row.sku || "—"}</TableCell>
-                        <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
+                        <TableCell className="text-sm text-right">{peso(row.deal_price)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
                       </TableRow>
