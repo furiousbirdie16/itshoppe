@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown } from "lucide-react";
+import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
