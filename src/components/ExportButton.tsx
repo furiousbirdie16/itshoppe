@@ -62,7 +62,7 @@ export default function ExportButton({ data, columns, dateField, fileName }: Exp
           <Download className="h-4 w-4 mr-1.5" /> Export
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-2" align="end">
+      <PopoverContent className="w-auto p-2" align="end" onInteractOutside={(e) => { if (customOpen) e.preventDefault(); }}>
         {!customOpen ? (
           <div className="flex flex-col gap-1 min-w-[160px]">
             <Button variant="ghost" size="sm" className="justify-start text-sm h-8" onClick={() => doExport(filterByDays(7))}>
@@ -83,7 +83,7 @@ export default function ExportButton({ data, columns, dateField, fileName }: Exp
           <div className="flex flex-col gap-2">
             <Calendar
               mode="range"
-              selected={dateRange.from && dateRange.to ? { from: dateRange.from, to: dateRange.to } : undefined}
+              selected={dateRange.from ? { from: dateRange.from, to: dateRange.to } : undefined}
               onSelect={(range) => setDateRange({ from: range?.from, to: range?.to })}
               numberOfMonths={1}
               className={cn("p-3 pointer-events-auto")}
