@@ -10,7 +10,10 @@ import * as XLSX from "xlsx";
 
 interface ParsedRow {
   item: string;
+  description: string;
+  sku: string;
   qty: number;
+  cost: number;
   price: number;
   valid: boolean;
   error?: string;
