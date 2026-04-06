@@ -144,6 +144,7 @@ export default function OnlineSalesPage() {
         const priceCol = findCol(["price", "amount", "posted"]);
         const dateCol = findCol(["date"]);
         const skuCol = findCol(["sku"]);
+        const orderIdCol = findCol(["order id", "order_id", "orderid"]);
 
         if (!productCol && !skuCol) { toast.error("Could not find a 'Product/Name' or 'SKU' column"); return; }
 
@@ -155,13 +156,14 @@ export default function OnlineSalesPage() {
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : "shopee";
           const posted_price = Number(priceCol ? row[priceCol] : 0) || 0;
           const order_date = dateCol && row[dateCol] ? String(row[dateCol]).substring(0, 10) : new Date().toISOString().split("T")[0];
+          const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
 
           let error: string | undefined;
           if (!product_name && !sku) error = "Missing product name or SKU";
           else if (sku && !matchedItem) error = `SKU "${sku}" not found`;
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, sales_channel, posted_price, order_date, sku, item_id: matchedItem?.id || null, valid: !error, error };
+          return { product_name, sales_channel, posted_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
         });
         setBulkRows(parsed);
       } catch {
