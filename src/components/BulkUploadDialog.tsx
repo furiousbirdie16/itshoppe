@@ -52,23 +52,32 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
         const findCol = (keywords: string[]) =>
           headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
 
-        const itemCol = findCol(["item", "name", "product", "description"]);
+        const itemCol = findCol(["item", "name", "product"]);
+        const descCol = findCol(["description", "desc"]);
+        const skuCol = findCol(["sku", "code", "barcode"]);
         const qtyCol = findCol(["qty", "quantity", "stock"]);
-        const priceCol = findCol(["price", "cost", "selling", "amount"]);
+        const costCol = findCol(["cost", "cost_price", "buying"]);
+        const priceCol = findCol(["price", "selling", "selling_price", "amount"]);
 
         if (!itemCol) { toast.error("Could not find an 'Item' or 'Name' column"); return; }
+        if (!skuCol) { toast.error("Could not find a 'SKU' column"); return; }
 
-        const parsed: ParsedRow[] = json.map((row, i) => {
+        const parsed: ParsedRow[] = json.map((row) => {
           const item = String(row[itemCol] || "").trim();
+          const description = String(descCol ? row[descCol] || "" : "").trim();
+          const sku = String(skuCol ? row[skuCol] || "" : "").trim();
           const qty = Number(qtyCol ? row[qtyCol] : 0) || 0;
+          const cost = Number(costCol ? row[costCol] : 0) || 0;
           const price = Number(priceCol ? row[priceCol] : 0) || 0;
 
           let error: string | undefined;
           if (!item) error = "Missing item name";
+          else if (!sku) error = "Missing SKU";
           else if (qty < 0) error = "Negative quantity";
+          else if (cost < 0) error = "Negative cost";
           else if (price < 0) error = "Negative price";
 
-          return { item, qty, price, valid: !error, error };
+          return { item, description, sku, qty, cost, price, valid: !error, error };
         });
 
         setRows(parsed);
