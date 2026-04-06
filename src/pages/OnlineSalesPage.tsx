@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -45,6 +46,8 @@ export default function OnlineSalesPage() {
   const [form, setForm] = useState<SaleForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -81,6 +84,44 @@ export default function OnlineSalesPage() {
       toast.error(e.message || "Failed");
     }
     setSaving(false);
+  };
+
+  // Selection helpers
+  const filtered = sales.filter((s: any) => {
+    if (!filter) return true;
+    const q = filter.toLowerCase();
+    return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q) || s.items?.sku?.toLowerCase().includes(q);
+  });
+
+  const allSelected = filtered.length > 0 && filtered.every((s: any) => selected.has(s.id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map((s: any) => s.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    setBulkDeleting(true);
+    let success = 0;
+    for (const id of selected) {
+      try { await deleteOnlineSale(id); success++; } catch { /* skip */ }
+    }
+    setBulkDeleting(false);
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+    toast.success(`Deleted ${success} records`);
   };
 
   // Bulk upload
@@ -157,12 +198,6 @@ export default function OnlineSalesPage() {
   const channelLabel = (c: string) => c === "shopee" ? "Shopee" : "Lazada";
   const channelColor = (c: string) => c === "shopee" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700";
 
-  const filtered = sales.filter((s: any) => {
-    if (!filter) return true;
-    const q = filter.toLowerCase();
-    return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q) || s.items?.sku?.toLowerCase().includes(q);
-  });
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -171,6 +206,11 @@ export default function OnlineSalesPage() {
           <p className="text-sm text-muted-foreground">Record Shopee & Lazada orders</p>
         </div>
         <div className="flex gap-2">
+          {selected.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
+              <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Bulk Upload
           </Button>
@@ -189,6 +229,9 @@ export default function OnlineSalesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
+              </TableHead>
               <TableHead className="text-xs">Order #</TableHead>
               <TableHead className="text-xs">Date</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
@@ -200,11 +243,14 @@ export default function OnlineSalesPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
             ) : filtered.map((s: any) => (
-              <TableRow key={s.id}>
+              <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                <TableCell>
+                  <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
+                </TableCell>
                 <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
                 <TableCell className="text-sm">{s.order_date}</TableCell>
                 <TableCell className="font-mono text-xs text-primary font-medium">{s.items?.sku || "—"}</TableCell>
