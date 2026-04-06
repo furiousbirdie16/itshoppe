@@ -186,7 +186,7 @@ export default function OnlineSalesPage() {
     for (const row of valid) {
       try {
         const orderNumber = row.sales_channel === "shopee" ? await generateShopeeOrderNumber() : await generateLazadaOrderNumber();
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, order_date: row.order_date, item_id: row.item_id, notes: row.order_id });
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: row.deal_price, order_date: row.order_date, item_id: row.item_id, notes: row.order_id });
         success++;
       } catch { /* skip */ }
     }
@@ -241,9 +241,9 @@ export default function OnlineSalesPage() {
               <TableHead className="text-xs">Order #</TableHead>
               <TableHead className="text-xs">Date</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
-              <TableHead className="text-xs">Product</TableHead>
               <TableHead className="text-xs">Channel</TableHead>
-              <TableHead className="text-xs text-right">Price</TableHead>
+              <TableHead className="text-xs text-right">SRP</TableHead>
+              <TableHead className="text-xs text-right">Deal Price</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -260,9 +260,9 @@ export default function OnlineSalesPage() {
                 <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
                 <TableCell className="text-sm">{s.order_date}</TableCell>
                 <TableCell className="font-mono text-xs text-primary font-medium">{s.items?.sku || "—"}</TableCell>
-                <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                 <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                 <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                <TableCell className="text-right text-sm">{peso(s.deal_price || 0)}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="h-3 w-3" /></Button>
@@ -310,8 +310,12 @@ export default function OnlineSalesPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Posted Price</Label>
+              <Label>Posted Price (SRP)</Label>
               <Input type="number" min={0} step="0.01" value={form.posted_price} onChange={e => setForm(f => ({ ...f, posted_price: parseFloat(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Deal Price</Label>
+              <Input type="number" min={0} step="0.01" value={form.deal_price} onChange={e => setForm(f => ({ ...f, deal_price: parseFloat(e.target.value) || 0 }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Notes</Label>
@@ -337,7 +341,7 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong> (preferred), <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price</strong>, <strong>Date</strong>, <strong>Order ID</strong> (→ Note)</p>
+                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong>, <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price/SRP</strong>, <strong>Deal Price</strong>, <strong>Date</strong>, <strong>Order ID</strong> (→ Note)</p>
               </div>
               <Button variant="outline" onClick={() => fileRef.current?.click()}>Select File</Button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" />
