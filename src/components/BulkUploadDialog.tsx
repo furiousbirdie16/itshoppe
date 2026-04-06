@@ -10,7 +10,10 @@ import * as XLSX from "xlsx";
 
 interface ParsedRow {
   item: string;
+  description: string;
+  sku: string;
   qty: number;
+  cost: number;
   price: number;
   valid: boolean;
   error?: string;
@@ -49,23 +52,32 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
         const findCol = (keywords: string[]) =>
           headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
 
-        const itemCol = findCol(["item", "name", "product", "description"]);
+        const itemCol = findCol(["item", "name", "product"]);
+        const descCol = findCol(["description", "desc"]);
+        const skuCol = findCol(["sku", "code", "barcode"]);
         const qtyCol = findCol(["qty", "quantity", "stock"]);
-        const priceCol = findCol(["price", "cost", "selling", "amount"]);
+        const costCol = findCol(["cost", "cost_price", "buying"]);
+        const priceCol = findCol(["price", "selling", "selling_price", "amount"]);
 
         if (!itemCol) { toast.error("Could not find an 'Item' or 'Name' column"); return; }
+        if (!skuCol) { toast.error("Could not find a 'SKU' column"); return; }
 
-        const parsed: ParsedRow[] = json.map((row, i) => {
+        const parsed: ParsedRow[] = json.map((row) => {
           const item = String(row[itemCol] || "").trim();
+          const description = String(descCol ? row[descCol] || "" : "").trim();
+          const sku = String(skuCol ? row[skuCol] || "" : "").trim();
           const qty = Number(qtyCol ? row[qtyCol] : 0) || 0;
+          const cost = Number(costCol ? row[costCol] : 0) || 0;
           const price = Number(priceCol ? row[priceCol] : 0) || 0;
 
           let error: string | undefined;
           if (!item) error = "Missing item name";
+          else if (!sku) error = "Missing SKU";
           else if (qty < 0) error = "Negative quantity";
+          else if (cost < 0) error = "Negative cost";
           else if (price < 0) error = "Negative price";
 
-          return { item, qty, price, valid: !error, error };
+          return { item, description, sku, qty, cost, price, valid: !error, error };
         });
 
         setRows(parsed);
@@ -89,10 +101,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
       try {
         await createItem({
           name: row.item,
-          sku: row.item.substring(0, 3).toUpperCase() + "-" + String(Date.now()).slice(-4),
-          description: "",
+          sku: row.sku,
+          description: row.description,
           quantity: row.qty,
-          cost_price: 0,
+          cost_price: row.cost,
           selling_price: row.price,
           low_stock_threshold: 10,
         });
@@ -114,7 +126,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-lg flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" /> Bulk Upload Items
@@ -129,7 +141,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
             <div className="text-center space-y-1">
               <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls)</p>
               <p className="text-xs text-muted-foreground">
-                Columns: <strong>Item/Name</strong>, <strong>Qty/Quantity</strong>, <strong>Price</strong>
+                Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Qty</strong>, <strong>Cost</strong>, <strong>Price</strong>
               </p>
             </div>
             <Button variant="outline" onClick={() => fileRef.current?.click()} className="rounded-lg">
@@ -157,7 +169,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                   <TableRow>
                     <TableHead className="text-xs w-8">#</TableHead>
                     <TableHead className="text-xs">Item</TableHead>
+                    <TableHead className="text-xs">SKU</TableHead>
+                    <TableHead className="text-xs">Description</TableHead>
                     <TableHead className="text-xs text-right">Qty</TableHead>
+                    <TableHead className="text-xs text-right">Cost</TableHead>
                     <TableHead className="text-xs text-right">Price</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                   </TableRow>
@@ -167,7 +182,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                     <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="text-sm">{row.item || "—"}</TableCell>
+                      <TableCell className="text-sm">{row.sku || "—"}</TableCell>
+                      <TableCell className="text-sm truncate max-w-[120px]">{row.description || "—"}</TableCell>
                       <TableCell className="text-sm text-right">{row.qty}</TableCell>
+                      <TableCell className="text-sm text-right">{peso(row.cost)}</TableCell>
                       <TableCell className="text-sm text-right">{peso(row.price)}</TableCell>
                       <TableCell className="text-xs">
                         {row.valid ? (
