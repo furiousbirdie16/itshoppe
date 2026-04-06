@@ -51,7 +51,7 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; sales_channel: SalesChannel; posted_price: number; order_date: string; sku: string; item_id: string | null; valid: boolean; error?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; sales_channel: SalesChannel; posted_price: number; order_date: string; sku: string; item_id: string | null; order_id: string; valid: boolean; error?: string }[]>([]);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
