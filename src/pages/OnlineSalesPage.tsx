@@ -143,7 +143,8 @@ export default function OnlineSalesPage() {
         const findCol = (keywords: string[]) => headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
         const productCol = findCol(["product", "item", "name"]);
         const channelCol = findCol(["channel", "platform", "shopee", "lazada"]);
-        const priceCol = findCol(["price", "amount", "posted"]);
+        const priceCol = findCol(["price", "amount", "posted", "srp"]);
+        const dealPriceCol = findCol(["deal price", "deal_price", "dealprice", "deal"]);
         const dateCol = findCol(["date"]);
         const skuCol = findCol(["sku"]);
         const orderIdCol = findCol(["order id", "order_id", "orderid"]);
@@ -157,6 +158,7 @@ export default function OnlineSalesPage() {
           const rawChannel = String(channelCol ? row[channelCol] : "shopee").toLowerCase().trim();
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : "shopee";
           const posted_price = Number(priceCol ? row[priceCol] : 0) || 0;
+          const deal_price = Number(dealPriceCol ? row[dealPriceCol] : 0) || 0;
           const order_date = dateCol && row[dateCol] ? String(row[dateCol]).substring(0, 10) : new Date().toISOString().split("T")[0];
           const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
 
@@ -165,7 +167,8 @@ export default function OnlineSalesPage() {
           else if (sku && !matchedItem) error = `SKU "${sku}" not found`;
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, sales_channel, posted_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
+          return { product_name, sales_channel, posted_price, deal_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
+        });
         });
         setBulkRows(parsed);
       } catch {
