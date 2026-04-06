@@ -169,7 +169,6 @@ export default function OnlineSalesPage() {
 
           return { product_name, sales_channel, posted_price, deal_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
         });
-        });
         setBulkRows(parsed);
       } catch {
         toast.error("Failed to parse file");
