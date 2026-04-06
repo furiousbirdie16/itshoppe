@@ -8,8 +8,7 @@ import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 
 interface ExportButtonProps {
-  /** The full data array */
-  data: Record<string, unknown>[];
+  data: any[];
   /** Column mapping: { sheetHeader: (row) => value } */
   columns: Record<string, (row: any) => unknown>;
   /** Date field accessor to filter by */
