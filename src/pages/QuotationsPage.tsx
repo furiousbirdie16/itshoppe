@@ -118,7 +118,6 @@ export default function QuotationsPage() {
             <Plus className="h-4 w-4 mr-1.5" /> New Quotation
           </Button>
         </div>
-        </Button>
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
