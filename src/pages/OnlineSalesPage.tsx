@@ -23,6 +23,7 @@ interface SaleForm {
   product_name: string;
   sales_channel: SalesChannel;
   posted_price: number;
+  deal_price: number;
   notes: string;
   item_id: string;
 }
@@ -32,6 +33,7 @@ const emptyForm: SaleForm = {
   product_name: "",
   sales_channel: "shopee",
   posted_price: 0,
+  deal_price: 0,
   notes: "",
   item_id: "",
 };
