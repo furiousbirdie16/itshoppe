@@ -218,6 +218,12 @@ export default function OnlineSalesPage() {
               <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
             </Button>
           )}
+          <ExportButton
+            data={sales}
+            columns={{ "Order #": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "SKU": (r: any) => r.items?.sku || "", "Product": (r: any) => r.product_name, "Channel": (r: any) => r.sales_channel, "SRP": (r: any) => r.posted_price, "Deal Price": (r: any) => r.deal_price || 0, "Note": (r: any) => r.notes || "" }}
+            dateField={(r: any) => r.order_date || ""}
+            fileName="Online_Sales"
+          />
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Bulk Upload
           </Button>

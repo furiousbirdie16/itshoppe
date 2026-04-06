@@ -159,9 +159,17 @@ export default function OverseasPurchaseOrdersPage() {
           <h1 className="page-title">Overseas Purchase Orders</h1>
           <p className="page-description">{orders.length} orders • No inventory impact</p>
         </div>
-        <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
-        </Button>
+        <div className="flex gap-2">
+          <ExportButton
+            data={orders}
+            columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.overseas_suppliers?.name || "", "Status": (r: any) => r.status, "Currency": (r: any) => r.currency, "Exchange Rate": (r: any) => r.exchange_rate, "Order Date": (r: any) => r.order_date, "Total": (r: any) => r.total_amount }}
+            dateField={(r: any) => r.order_date || ""}
+            fileName="Overseas_POs"
+          />
+          <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
+          </Button>
+        </div>
       </div>
 
       {/* Create / Edit Dialog */}
