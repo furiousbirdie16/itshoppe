@@ -101,10 +101,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
       try {
         await createItem({
           name: row.item,
-          sku: row.item.substring(0, 3).toUpperCase() + "-" + String(Date.now()).slice(-4),
-          description: "",
+          sku: row.sku,
+          description: row.description,
           quantity: row.qty,
-          cost_price: 0,
+          cost_price: row.cost,
           selling_price: row.price,
           low_stock_threshold: 10,
         });
@@ -141,7 +141,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
             <div className="text-center space-y-1">
               <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls)</p>
               <p className="text-xs text-muted-foreground">
-                Columns: <strong>Item/Name</strong>, <strong>Qty/Quantity</strong>, <strong>Price</strong>
+                Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Qty</strong>, <strong>Cost</strong>, <strong>Price</strong>
               </p>
             </div>
             <Button variant="outline" onClick={() => fileRef.current?.click()} className="rounded-lg">
@@ -169,7 +169,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                   <TableRow>
                     <TableHead className="text-xs w-8">#</TableHead>
                     <TableHead className="text-xs">Item</TableHead>
+                    <TableHead className="text-xs">SKU</TableHead>
+                    <TableHead className="text-xs">Description</TableHead>
                     <TableHead className="text-xs text-right">Qty</TableHead>
+                    <TableHead className="text-xs text-right">Cost</TableHead>
                     <TableHead className="text-xs text-right">Price</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                   </TableRow>
@@ -179,7 +182,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                     <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="text-sm">{row.item || "—"}</TableCell>
+                      <TableCell className="text-sm">{row.sku || "—"}</TableCell>
+                      <TableCell className="text-sm truncate max-w-[120px]">{row.description || "—"}</TableCell>
                       <TableCell className="text-sm text-right">{row.qty}</TableCell>
+                      <TableCell className="text-sm text-right">{peso(row.cost)}</TableCell>
                       <TableCell className="text-sm text-right">{peso(row.price)}</TableCell>
                       <TableCell className="text-xs">
                         {row.valid ? (
