@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getQuotations, createQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber } from "@/lib/api";
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,29 +10,34 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 
-interface LineItem { item_id: string; quantity: number; unit_price: number; }
+interface LineItem { item_id: string; quantity: string; unit_price: string; }
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [viewQ, setViewQ] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_price: 0 }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: "", unit_price: "" }]);
 
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations"], queryFn: getQuotations });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
+
+  const parseQty = (v: string) => parseInt(v) || 0;
+  const parsePrice = (v: string) => parseFloat(v) || 0;
+  const lineTotal = (l: LineItem) => parseQty(l.quantity) * parsePrice(l.unit_price);
 
   const openPreview = async (q: any) => {
     const lineItems = await getQuotationItems(q.id);
@@ -61,13 +66,45 @@ export default function QuotationsPage() {
     setPreviewOpen(true);
   };
 
+  const openEdit = async (q: any) => {
+    const lineItems = await getQuotationItems(q.id);
+    setForm({
+      customer_id: q.customer_id || "",
+      notes: q.notes || "",
+      valid_until: q.valid_until || "",
+    });
+    setLines(
+      lineItems.length > 0
+        ? lineItems.map((li: any) => ({
+            item_id: li.item_id,
+            quantity: String(li.quantity),
+            unit_price: String(Number(li.unit_price)),
+          }))
+        : [{ item_id: "", quantity: "", unit_price: "" }]
+    );
+    setEditId(q.id);
+    setCreateOpen(true);
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
-      const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+      const total = lines.reduce((s, l) => s + lineTotal(l), 0);
       const q = await createQuotation({ quotation_number: await generateQuotationNumber(), customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total });
-      await createQuotationItems(lines.filter(l => l.item_id).map(l => ({ quotation_id: q.id, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
+      await createQuotationItems(lines.filter(l => l.item_id).map(l => ({ quotation_id: q.id, item_id: l.item_id, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const editMut = useMutation({
+    mutationFn: async () => {
+      if (!editId) return;
+      const total = lines.reduce((s, l) => s + lineTotal(l), 0);
+      await updateQuotation(editId, { customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total });
+      await deleteQuotationItems(editId);
+      await createQuotationItems(lines.filter(l => l.item_id).map(l => ({ quotation_id: editId, item_id: l.item_id, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); setEditId(null); toast.success("Quotation updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -87,18 +124,20 @@ export default function QuotationsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "" }); setLines([{ item_id: "", quantity: 1, unit_price: 0 }]); };
-  const addLine = () => setLines([...lines, { item_id: "", quantity: 1, unit_price: 0 }]);
+  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "" }); setLines([{ item_id: "", quantity: "", unit_price: "" }]); setEditId(null); };
+  const addLine = () => setLines([...lines, { item_id: "", quantity: "", unit_price: "" }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
     if (field === "item_id") {
       const item = items.find(i => i.id === value);
-      if (item) newLines[idx].unit_price = Number(item.selling_price);
+      if (item) newLines[idx].unit_price = String(Number(item.selling_price));
     }
     setLines(newLines);
   };
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
+
+  const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
 
   return (
     <div className="space-y-6">
@@ -120,9 +159,9 @@ export default function QuotationsPage() {
         </div>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">New Quotation</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Quotation" : "New Quotation"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -157,8 +196,8 @@ export default function QuotationsPage() {
                           <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
                           <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                         </Select>
-                        <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                        <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                        <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
+                        <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
                         <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
@@ -167,10 +206,16 @@ export default function QuotationsPage() {
                 })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + lineTotal(l), 0))}</span>
               </div>
             </div>
-            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Quotation</Button>
+            <Button
+              onClick={() => editId ? editMut.mutate() : createMut.mutate()}
+              disabled={createMut.isPending || editMut.isPending}
+              className="rounded-lg h-9"
+            >
+              {editId ? "Update Quotation" : "Create Quotation"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -222,6 +267,7 @@ export default function QuotationsPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
