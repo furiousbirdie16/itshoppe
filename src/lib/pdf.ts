@@ -157,7 +157,7 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
     head: [["QTY", "Description", "Unit Price", "Amount"]],
     body: data.items.map((item) => [
       item.quantity.toFixed(2),
-      item.name + (item.sku ? `  (${item.sku})` : ""),
+      item.name,
       fmt(item.unitPrice),
       fmt(item.total),
     ]),
