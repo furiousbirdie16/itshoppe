@@ -71,6 +71,36 @@ export default function InventoryPage() {
 
   const filtered = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase()));
 
+  const allSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
+  const someSelected = filtered.some(i => selectedIds.has(i.id));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(i => i.id)));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => {
+      for (const id of selectedIds) await deleteItem(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      setSelectedIds(new Set());
+      toast.success(`Deleted ${selectedIds.size} items`);
+    },
+  });
+
+  const colCount = (isAdmin ? 7 : 6);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
