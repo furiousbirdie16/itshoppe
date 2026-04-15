@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getItems, createItem, updateItem, deleteItem } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [filter, setFilter] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -69,6 +71,36 @@ export default function InventoryPage() {
 
   const filtered = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase()));
 
+  const allSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
+  const someSelected = filtered.some(i => selectedIds.has(i.id));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(i => i.id)));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => {
+      for (const id of selectedIds) await deleteItem(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      setSelectedIds(new Set());
+      toast.success(`Deleted ${selectedIds.size} items`);
+    },
+  });
+
+  const colCount = (isAdmin ? 7 : 6);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -77,6 +109,11 @@ export default function InventoryPage() {
           <p className="page-description">{items.length} items in stock</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && isAdmin && (
+            <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size} selected
+            </Button>
+          )}
           <ExportButton
             data={items}
             columns={{ "Name": (r: any) => r.name, "SKU": (r: any) => r.sku, "Description": (r: any) => r.description, "Quantity": (r: any) => r.quantity, "Cost Price": (r: any) => r.cost_price, "Selling Price": (r: any) => r.selling_price }}
@@ -157,6 +194,13 @@ export default function InventoryPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all"
+                />
+              </TableHead>
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
               <TableHead className="text-xs text-right">Qty</TableHead>
@@ -168,13 +212,13 @@ export default function InventoryPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center">
+                <TableCell colSpan={colCount} className="h-32 text-center">
                   <div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5}>
+                <TableCell colSpan={colCount}>
                   <div className="empty-state">
                     <Package className="empty-state-icon" />
                     <p className="text-sm">No items found</p>
@@ -182,7 +226,14 @@ export default function InventoryPage() {
                 </TableCell>
               </TableRow>
             ) : filtered.map(item => (
-              <TableRow key={item.id} className="hover:bg-muted/30">
+              <TableRow key={item.id} className={`hover:bg-muted/30 ${selectedIds.has(item.id) ? 'bg-muted/40' : ''}`} data-state={selectedIds.has(item.id) ? "selected" : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds.has(item.id)}
+                    onCheckedChange={() => toggleOne(item.id)}
+                    aria-label={`Select ${item.name}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium text-sm">{item.name}</TableCell>
                 <TableCell className="text-muted-foreground font-mono text-xs">{item.sku}</TableCell>
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
