@@ -432,16 +432,17 @@ export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
 
   // Deduct inventory if linked to an item
   if (created.item_id) {
+    const qty = created.quantity || 1;
     const { data: currentItem } = await from("items").select("quantity").eq("id", created.item_id).single();
     await from("items").update({
-      quantity: Math.max(0, ((currentItem as any)?.quantity || 0) - 1),
+      quantity: Math.max(0, ((currentItem as any)?.quantity || 0) - qty),
       updated_at: new Date().toISOString()
     }).eq("id", created.item_id);
 
     await from("inventory_movements").insert({
       item_id: created.item_id,
       type: "out_online_sale",
-      quantity: 1,
+      quantity: qty,
       reference_id: created.id,
       reference_type: "online_sale",
       notes: `Sold via ${created.sales_channel} - ${created.order_number}`
@@ -459,19 +460,20 @@ export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) =>
 
 export const deleteOnlineSale = async (id: string) => {
   // Restore inventory if linked to an item
-  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel").eq("id", id).single();
+  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel, quantity").eq("id", id).single();
   if (sale && (sale as any).item_id) {
     const itemId = (sale as any).item_id;
+    const qty = (sale as any).quantity || 1;
     const { data: currentItem } = await from("items").select("quantity").eq("id", itemId).single();
     await from("items").update({
-      quantity: ((currentItem as any)?.quantity || 0) + 1,
+      quantity: ((currentItem as any)?.quantity || 0) + qty,
       updated_at: new Date().toISOString()
     }).eq("id", itemId);
 
     await from("inventory_movements").insert({
       item_id: itemId,
       type: "in_po",
-      quantity: 1,
+      quantity: qty,
       reference_id: id,
       reference_type: "online_sale_delete",
       notes: `Restored from deleted online sale`
