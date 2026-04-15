@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
+import { ItemSearch } from "@/components/ItemSearch";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -192,10 +193,12 @@ export default function QuotationsPage() {
                   return (
                     <div key={idx}>
                       <div className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
-                        <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
-                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
-                          <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
-                        </Select>
+                        <ItemSearch
+                          items={items}
+                          value={line.item_id}
+                          onChange={(itemId) => updateLine(idx, "item_id", itemId)}
+                          placeholder="Search item..."
+                        />
                         <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
                         <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
                         <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
