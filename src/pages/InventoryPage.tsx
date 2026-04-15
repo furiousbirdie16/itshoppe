@@ -194,6 +194,13 @@ export default function InventoryPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all"
+                />
+              </TableHead>
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
               <TableHead className="text-xs text-right">Qty</TableHead>
@@ -205,13 +212,13 @@ export default function InventoryPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center">
+                <TableCell colSpan={colCount} className="h-32 text-center">
                   <div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5}>
+                <TableCell colSpan={colCount}>
                   <div className="empty-state">
                     <Package className="empty-state-icon" />
                     <p className="text-sm">No items found</p>
@@ -219,7 +226,14 @@ export default function InventoryPage() {
                 </TableCell>
               </TableRow>
             ) : filtered.map(item => (
-              <TableRow key={item.id} className="hover:bg-muted/30">
+              <TableRow key={item.id} className={`hover:bg-muted/30 ${selectedIds.has(item.id) ? 'bg-muted/40' : ''}`} data-state={selectedIds.has(item.id) ? "selected" : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds.has(item.id)}
+                    onCheckedChange={() => toggleOne(item.id)}
+                    aria-label={`Select ${item.name}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium text-sm">{item.name}</TableCell>
                 <TableCell className="text-muted-foreground font-mono text-xs">{item.sku}</TableCell>
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
