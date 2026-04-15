@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
@@ -30,6 +31,22 @@ export default function QuotationsPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: "", unit_price: "" }]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === quotations.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(quotations.map(q => q.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteQuotation(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} quotations`); },
+  });
 
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations"], queryFn: getQuotations });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
@@ -148,6 +165,11 @@ export default function QuotationsPage() {
           <p className="page-description">{quotations.length} quotations</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+            </Button>
+          )}
           <ExportButton
             data={quotations}
             columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
@@ -249,6 +271,7 @@ export default function QuotationsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={quotations.length > 0 && selectedIds.size === quotations.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">Quotation #</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
               <TableHead className="text-xs">Date</TableHead>
@@ -259,9 +282,10 @@ export default function QuotationsPage() {
           </TableHeader>
           <TableBody>
             {quotations.length === 0 ? (
-              <TableRow><TableCell colSpan={6}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
             ) : quotations.map(q => (
-              <TableRow key={q.id} className="hover:bg-muted/30">
+              <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>

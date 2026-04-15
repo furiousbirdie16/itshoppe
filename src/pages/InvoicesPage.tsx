@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2 } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
@@ -26,6 +27,22 @@ export default function InvoicesPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_price: 0 }]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === invoices.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(invoices.map(i => i.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteInvoice(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} invoices`); },
+  });
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
@@ -122,6 +139,11 @@ export default function InvoicesPage() {
           <p className="page-description">{invoices.length} invoices</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+            </Button>
+          )}
           <ExportButton
             data={invoices}
             columns={{ "Invoice #": (r: any) => r.invoice_number, "Customer": (r: any) => r.customers?.name || "", "Status": (r: any) => r.status, "Date": (r: any) => r.invoice_date, "Due Date": (r: any) => r.due_date || "", "Total": (r: any) => r.total_amount }}
@@ -209,6 +231,7 @@ export default function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={invoices.length > 0 && selectedIds.size === invoices.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">Invoice #</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
               <TableHead className="text-xs">Date</TableHead>
@@ -219,9 +242,10 @@ export default function InvoicesPage() {
           </TableHeader>
           <TableBody>
             {invoices.length === 0 ? (
-              <TableRow><TableCell colSpan={6}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
             ) : invoices.map(inv => (
-              <TableRow key={inv.id} className="hover:bg-muted/30">
+              <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>

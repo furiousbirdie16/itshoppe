@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
@@ -27,6 +28,22 @@ export default function PurchaseOrdersPage() {
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ supplier_id: "", notes: "", expected_delivery: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_cost: 0 }]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === pos.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(pos.map(p => p.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deletePurchaseOrder(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
+  });
 
   const { data: pos = [] } = useQuery({ queryKey: ["purchase_orders"], queryFn: getPurchaseOrders });
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
@@ -117,6 +134,11 @@ export default function PurchaseOrdersPage() {
           <p className="page-description">{pos.length} orders</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+            </Button>
+          )}
           <ExportButton
             data={pos}
             columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.suppliers?.name || "", "Status": (r: any) => r.status, "Order Date": (r: any) => r.order_date, "Expected Delivery": (r: any) => r.expected_delivery || "", "Total": (r: any) => r.total_amount }}
@@ -234,6 +256,7 @@ export default function PurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={pos.length > 0 && selectedIds.size === pos.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">PO #</TableHead>
               <TableHead className="text-xs">Supplier</TableHead>
               <TableHead className="text-xs">Date</TableHead>
@@ -244,9 +267,10 @@ export default function PurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {pos.length === 0 ? (
-              <TableRow><TableCell colSpan={6}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No purchase orders</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No purchase orders</p></div></TableCell></TableRow>
             ) : pos.map(po => (
-              <TableRow key={po.id} className="hover:bg-muted/30">
+              <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{po.order_date}</TableCell>
