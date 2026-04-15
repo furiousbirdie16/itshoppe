@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import type { Supplier } from "@/types/database";
@@ -16,6 +17,22 @@ export default function SuppliersPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "", address: "" });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === suppliers.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(suppliers.map(s => s.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteSupplier(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["suppliers"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} suppliers`); },
+  });
 
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
 
@@ -50,9 +67,16 @@ export default function SuppliersPage() {
           <h1 className="page-title">Suppliers</h1>
           <p className="page-description">{suppliers.length} suppliers</p>
         </div>
-        <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> Add Supplier
-        </Button>
+        <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+            </Button>
+          )}
+          <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> Add Supplier
+          </Button>
+        </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -89,7 +113,8 @@ export default function SuppliersPage() {
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
-            <TableRow>
+           <TableRow>
+              <TableHead className="w-10"><Checkbox checked={suppliers.length > 0 && selectedIds.size === suppliers.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">Contact</TableHead>
               <TableHead className="text-xs">Email</TableHead>
@@ -99,11 +124,12 @@ export default function SuppliersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : suppliers.length === 0 ? (
-              <TableRow><TableCell colSpan={5}><div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No suppliers yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}><div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No suppliers yet</p></div></TableCell></TableRow>
             ) : suppliers.map(s => (
-              <TableRow key={s.id} className="hover:bg-muted/30">
+              <TableRow key={s.id} className={selectedIds.has(s.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} /></TableCell>
                 <TableCell className="font-medium text-sm">{s.name}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.contact_person}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.email}</TableCell>
