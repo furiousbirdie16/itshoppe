@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -15,28 +15,35 @@ import { peso } from "@/lib/currency";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
-import { useRef } from "react";
 
-type SalesChannel = "shopee" | "lazada";
+type SalesChannel = "shopee" | "lazada" | "others";
 
 interface SaleForm {
   order_date: string;
+  order_number: string;
   product_name: string;
+  quantity: number;
   sales_channel: SalesChannel;
   posted_price: number;
-  deal_price: number;
   notes: string;
   item_id: string;
 }
 
 const emptyForm: SaleForm = {
   order_date: new Date().toISOString().split("T")[0],
+  order_number: "",
   product_name: "",
+  quantity: 1,
   sales_channel: "shopee",
   posted_price: 0,
-  deal_price: 0,
   notes: "",
   item_id: "",
+};
+
+const generateOrderNumber = async (channel: SalesChannel) => {
+  if (channel === "shopee") return generateShopeeOrderNumber();
+  if (channel === "lazada") return generateLazadaOrderNumber();
+  return `OTH-${Date.now().toString(36).toUpperCase()}`;
 };
 
 export default function OnlineSalesPage() {
@@ -54,7 +61,7 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; sales_channel: SalesChannel; posted_price: number; deal_price: number; order_date: string; sku: string; item_id: string | null; order_id: string; valid: boolean; error?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; valid: boolean; error?: string }[]>([]);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,7 +71,16 @@ export default function OnlineSalesPage() {
   const openNew = () => { setEditingSale(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (s: OnlineSale) => {
     setEditingSale(s);
-    setForm({ order_date: s.order_date, product_name: s.product_name, sales_channel: s.sales_channel, posted_price: s.posted_price, deal_price: s.deal_price || 0, notes: s.notes || "", item_id: s.item_id || "" });
+    setForm({
+      order_date: s.order_date,
+      order_number: s.order_number,
+      product_name: s.product_name,
+      quantity: s.quantity || 1,
+      sales_channel: s.sales_channel,
+      posted_price: s.posted_price,
+      notes: s.notes || "",
+      item_id: s.item_id || "",
+    });
     setDialogOpen(true);
   };
 
@@ -72,12 +88,21 @@ export default function OnlineSalesPage() {
     if (!form.product_name.trim()) { toast.error("Product name is required"); return; }
     setSaving(true);
     try {
-      const payload: any = { ...form, item_id: form.item_id || null };
+      const payload: any = {
+        order_date: form.order_date,
+        product_name: form.product_name,
+        quantity: form.quantity,
+        sales_channel: form.sales_channel,
+        posted_price: form.posted_price,
+        deal_price: 0,
+        notes: form.notes,
+        item_id: form.item_id || null,
+      };
       if (editingSale) {
         await updateOnlineSale(editingSale.id, payload);
         toast.success("Updated");
       } else {
-        const orderNumber = form.sales_channel === "shopee" ? await generateShopeeOrderNumber() : await generateLazadaOrderNumber();
+        const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
         await createOnlineSale({ ...payload, order_number: orderNumber });
         toast.success("Created");
       }
@@ -93,19 +118,14 @@ export default function OnlineSalesPage() {
   const filtered = sales.filter((s: any) => {
     if (!filter) return true;
     const q = filter.toLowerCase();
-    return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q) || s.items?.sku?.toLowerCase().includes(q);
+    return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
   });
 
   const allSelected = filtered.length > 0 && filtered.every((s: any) => selected.has(s.id));
-
   const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(filtered.map((s: any) => s.id)));
-    }
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(filtered.map((s: any) => s.id)));
   };
-
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -144,31 +164,30 @@ export default function OnlineSalesPage() {
         const findCol = (keywords: string[]) => headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
         const productCol = findCol(["product", "item", "name"]);
         const channelCol = findCol(["channel", "platform", "shopee", "lazada"]);
-        const priceCol = findCol(["price", "amount", "posted", "srp"]);
-        const dealPriceCol = findCol(["deal price", "deal_price", "dealprice", "deal"]);
+        const priceCol = findCol(["price", "amount", "selling", "srp"]);
         const dateCol = findCol(["date"]);
-        const skuCol = findCol(["sku"]);
-        const orderIdCol = findCol(["order id", "order_id", "orderid"]);
+        const qtyCol = findCol(["qty", "quantity"]);
+        const orderIdCol = findCol(["order id", "order_id", "orderid", "order"]);
 
-        if (!productCol && !skuCol) { toast.error("Could not find a 'Product/Name' or 'SKU' column"); return; }
+        if (!productCol) { toast.error("Could not find a 'Product/Name' column"); return; }
 
         const parsed = json.map((row) => {
-          const sku = String(skuCol ? row[skuCol] : "").trim();
-          const matchedItem = sku ? items.find(i => i.sku.toLowerCase() === sku.toLowerCase()) : null;
-          const product_name = matchedItem ? matchedItem.name : String(productCol ? row[productCol] : "").trim();
+          const product_name = String(productCol ? row[productCol] : "").trim();
           const rawChannel = String(channelCol ? row[channelCol] : "shopee").toLowerCase().trim();
-          const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : "shopee";
+          const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : rawChannel.includes("shopee") ? "shopee" : "others";
           const posted_price = Number(priceCol ? row[priceCol] : 0) || 0;
-          const deal_price = Number(dealPriceCol ? row[dealPriceCol] : 0) || 0;
+          const quantity = Number(qtyCol ? row[qtyCol] : 1) || 1;
           const order_date = dateCol && row[dateCol] ? String(row[dateCol]).substring(0, 10) : new Date().toISOString().split("T")[0];
           const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
 
+          // Try to match product name to inventory item
+          const matchedItem = items.find(i => i.name.toLowerCase() === product_name.toLowerCase() || i.sku.toLowerCase() === product_name.toLowerCase());
+
           let error: string | undefined;
-          if (!product_name && !sku) error = "Missing product name or SKU";
-          else if (sku && !matchedItem) error = `SKU "${sku}" not found`;
+          if (!product_name) error = "Missing product name";
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, sales_channel, posted_price, deal_price, order_date, sku, item_id: matchedItem?.id || null, order_id, valid: !error, error };
+          return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: matchedItem?.id || null, valid: !error, error };
         });
         setBulkRows(parsed);
       } catch {
@@ -186,8 +205,8 @@ export default function OnlineSalesPage() {
     let success = 0;
     for (const row of valid) {
       try {
-        const orderNumber = row.sales_channel === "shopee" ? await generateShopeeOrderNumber() : await generateLazadaOrderNumber();
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: row.deal_price, order_date: row.order_date, item_id: row.item_id, notes: row.order_id });
+        const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
         success++;
       } catch { /* skip */ }
     }
@@ -202,15 +221,15 @@ export default function OnlineSalesPage() {
   const bulkValidCount = bulkRows.filter(r => r.valid).length;
   const bulkInvalidCount = bulkRows.filter(r => !r.valid).length;
 
-  const channelLabel = (c: string) => c === "shopee" ? "Shopee" : "Lazada";
-  const channelColor = (c: string) => c === "shopee" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700";
+  const channelLabel = (c: string) => c === "shopee" ? "Shopee" : c === "lazada" ? "Lazada" : "Others";
+  const channelColor = (c: string) => c === "shopee" ? "bg-orange-100 text-orange-700" : c === "lazada" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-700";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Online Sales</h1>
-          <p className="text-sm text-muted-foreground">Record Shopee & Lazada orders</p>
+          <p className="text-sm text-muted-foreground">Record Shopee, Lazada & other orders</p>
         </div>
         <div className="flex gap-2">
           {selected.size > 0 && (
@@ -220,7 +239,7 @@ export default function OnlineSalesPage() {
           )}
           <ExportButton
             data={sales}
-            columns={{ "Order #": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "SKU": (r: any) => r.items?.sku || "", "Product": (r: any) => r.product_name, "Channel": (r: any) => r.sales_channel, "SRP": (r: any) => r.posted_price, "Deal Price": (r: any) => r.deal_price || 0, "Note": (r: any) => r.notes || "" }}
+            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price }}
             dateField={(r: any) => r.order_date || ""}
             fileName="Online_Sales"
           />
@@ -235,7 +254,7 @@ export default function OnlineSalesPage() {
 
       <div className="relative max-w-xs">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input placeholder="Search by SKU, product, order#..." value={filter} onChange={e => setFilter(e.target.value)} className="pl-9 h-9 rounded-lg text-sm" />
+        <Input placeholder="Search by product, order ID..." value={filter} onChange={e => setFilter(e.target.value)} className="pl-9 h-9 rounded-lg text-sm" />
       </div>
 
       <div className="border rounded-lg overflow-hidden">
@@ -245,12 +264,12 @@ export default function OnlineSalesPage() {
               <TableHead className="w-10">
                 <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
               </TableHead>
-              <TableHead className="text-xs">Order #</TableHead>
               <TableHead className="text-xs">Date</TableHead>
-              <TableHead className="text-xs">SKU</TableHead>
+              <TableHead className="text-xs">Order ID</TableHead>
+              <TableHead className="text-xs">Product Name</TableHead>
+              <TableHead className="text-xs text-center">Qty</TableHead>
               <TableHead className="text-xs">Channel</TableHead>
-              <TableHead className="text-xs text-right">SRP</TableHead>
-              <TableHead className="text-xs text-right">Deal Price</TableHead>
+              <TableHead className="text-xs text-right">Selling Price</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -264,12 +283,12 @@ export default function OnlineSalesPage() {
                 <TableCell>
                   <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
                 </TableCell>
-                <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
                 <TableCell className="text-sm">{s.order_date}</TableCell>
-                <TableCell className="font-mono text-xs text-primary font-medium">{s.items?.sku || "—"}</TableCell>
+                <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
+                <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                 <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                 <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                <TableCell className="text-right text-sm">{peso(s.deal_price || 0)}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="h-3 w-3" /></Button>
@@ -290,43 +309,52 @@ export default function OnlineSalesPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Inventory Item (search by SKU)</Label>
+              <Label className="text-xs font-medium">Inventory Item (optional)</Label>
               <ItemSearch
                 items={items}
                 value={form.item_id}
                 onChange={(itemId, item) => setForm(f => ({ ...f, item_id: itemId, product_name: item.name, posted_price: Number(item.selling_price) }))}
               />
-              <p className="text-[10px] text-muted-foreground">Optional — auto-fills product name & price</p>
+              <p className="text-[10px] text-muted-foreground">Auto-fills product name & price</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Date</Label>
+                <Input type="date" value={form.order_date} onChange={e => setForm(f => ({ ...f, order_date: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Order ID</Label>
+                <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated if blank" className="h-9" />
+              </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Date</Label>
-              <Input type="date" value={form.order_date} onChange={e => setForm(f => ({ ...f, order_date: e.target.value }))} />
+              <Label className="text-xs font-medium">Product Name</Label>
+              <Input value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="Product name" className="h-9" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Quantity</Label>
+                <Input type="number" min={1} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Channel</Label>
+                <Select value={form.sales_channel} onValueChange={(v: SalesChannel) => setForm(f => ({ ...f, sales_channel: v }))}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="shopee">Shopee</SelectItem>
+                    <SelectItem value="lazada">Lazada</SelectItem>
+                    <SelectItem value="others">Others</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Selling Price</Label>
+                <Input type="number" min={0} step="0.01" value={form.posted_price} onChange={e => setForm(f => ({ ...f, posted_price: parseFloat(e.target.value) || 0 }))} className="h-9" />
+              </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Product Name</Label>
-              <Input value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="Product name" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Sales Channel</Label>
-              <Select value={form.sales_channel} onValueChange={(v: SalesChannel) => setForm(f => ({ ...f, sales_channel: v }))} disabled={!!editingSale}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="shopee">Shopee</SelectItem>
-                  <SelectItem value="lazada">Lazada</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Posted Price (SRP)</Label>
-              <Input type="number" min={0} step="0.01" value={form.posted_price} onChange={e => setForm(f => ({ ...f, posted_price: parseFloat(e.target.value) || 0 }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Deal Price</Label>
-              <Input type="number" min={0} step="0.01" value={form.deal_price} onChange={e => setForm(f => ({ ...f, deal_price: parseFloat(e.target.value) || 0 }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" />
+              <Label className="text-xs font-medium">Notes</Label>
+              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
             </div>
           </div>
           <DialogFooter>
@@ -348,7 +376,7 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>SKU</strong>, <strong>Product/Name</strong>, <strong>Channel</strong>, <strong>Price/SRP</strong>, <strong>Deal Price</strong>, <strong>Date</strong>, <strong>Order ID</strong> (→ Note)</p>
+                <p className="text-xs text-muted-foreground">Columns: <strong>Date</strong>, <strong>Order ID</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
               </div>
               <Button variant="outline" onClick={() => fileRef.current?.click()}>Select File</Button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" />
@@ -367,11 +395,12 @@ export default function OnlineSalesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-xs w-8">#</TableHead>
-                      <TableHead className="text-xs">SKU</TableHead>
+                      <TableHead className="text-xs">Date</TableHead>
+                      <TableHead className="text-xs">Order ID</TableHead>
+                      <TableHead className="text-xs">Product</TableHead>
+                      <TableHead className="text-xs text-center">Qty</TableHead>
                       <TableHead className="text-xs">Channel</TableHead>
-                      <TableHead className="text-xs text-right">SRP</TableHead>
-                      <TableHead className="text-xs text-right">Deal Price</TableHead>
-                      <TableHead className="text-xs">Note</TableHead>
+                      <TableHead className="text-xs text-right">Price</TableHead>
                       <TableHead className="text-xs">Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -379,11 +408,12 @@ export default function OnlineSalesPage() {
                     {bulkRows.map((row, i) => (
                       <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell className="font-mono text-xs text-primary">{row.sku || "—"}</TableCell>
+                        <TableCell className="text-xs">{row.order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
+                        <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
+                        <TableCell className="text-sm text-center">{row.quantity}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
-                        <TableCell className="text-sm text-right">{peso(row.deal_price)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
                       </TableRow>
                     ))}
