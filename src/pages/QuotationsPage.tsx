@@ -35,6 +35,8 @@ export default function QuotationsPage() {
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -254,7 +256,7 @@ export default function QuotationsPage() {
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+            <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
               <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
             </Button>
           )}
@@ -471,7 +473,7 @@ export default function QuotationsPage() {
                     {q.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
