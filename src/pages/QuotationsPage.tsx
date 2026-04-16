@@ -413,7 +413,23 @@ export default function QuotationsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
-                <Input value={form.sales_agent} onChange={e => setForm({ ...form, sales_agent: e.target.value })} className="h-9" placeholder="Agent name" />
+                {!addingAgent ? (
+                  <div className="flex gap-1.5">
+                    <Select value={form.sales_agent} onValueChange={v => setForm({ ...form, sales_agent: v })}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Select agent" /></SelectTrigger>
+                      <SelectContent>
+                        {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setAddingAgent(true)} title="Add new agent"><Plus className="h-3.5 w-3.5" /></Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input value={newAgentName} onChange={e => setNewAgentName(e.target.value)} className="h-9" placeholder="New agent name" autoFocus />
+                    <Button type="button" size="sm" className="h-9 px-3 text-xs" disabled={!newAgentName.trim() || addAgentMut.isPending} onClick={() => addAgentMut.mutate(newAgentName.trim())}>Save</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setAddingAgent(false); setNewAgentName(""); }}>Cancel</Button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
