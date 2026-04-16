@@ -280,8 +280,8 @@ export default function InvoicesPage() {
               <TableBody>
                 {invItems.map(ii => (
                   <TableRow key={ii.id}>
-                    <TableCell className="font-mono text-xs text-primary font-medium">{ii.items?.sku || "—"}</TableCell>
-                    <TableCell className="text-sm font-medium">{ii.items?.name || "—"}</TableCell>
+                     <TableCell className="font-mono text-xs text-primary font-medium">{ii.items?.sku || "—"}</TableCell>
+                     <TableCell className="text-sm font-medium">{ii.items?.name || (ii as any).item_name || "—"}</TableCell>
                     <TableCell className="text-sm">{ii.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
                     <TableCell className="text-sm text-right font-medium">{peso(ii.quantity * Number(ii.unit_price))}</TableCell>

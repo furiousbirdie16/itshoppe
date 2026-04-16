@@ -271,8 +271,8 @@ export default function QuotationsPage() {
               <TableBody>
                 {qItems.map(qi => (
                   <TableRow key={qi.id}>
-                    <TableCell className="font-mono text-xs text-primary font-medium">{qi.items?.sku || "—"}</TableCell>
-                    <TableCell className="text-sm font-medium">{qi.items?.name || "—"}</TableCell>
+                     <TableCell className="font-mono text-xs text-primary font-medium">{qi.items?.sku || "—"}</TableCell>
+                     <TableCell className="text-sm font-medium">{qi.items?.name || (qi as any).item_name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>
                     <TableCell className="text-sm text-right font-medium">{peso(qi.quantity * Number(qi.unit_price))}</TableCell>
