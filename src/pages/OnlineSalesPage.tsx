@@ -201,6 +201,7 @@ export default function OnlineSalesPage() {
 
           let error: string | undefined;
           if (!product_name) error = "Missing product name";
+          else if (!matchedItem) error = "Product not found in inventory";
           else if (posted_price < 0) error = "Negative price";
           else if (!order_id) error = "Missing order ID";
 
