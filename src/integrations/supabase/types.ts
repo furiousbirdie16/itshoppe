@@ -645,6 +645,7 @@ export type Database = {
           notes: string | null
           quotation_date: string | null
           quotation_number: string
+          sales_agent: string | null
           status: Database["public"]["Enums"]["quotation_status"]
           total_amount: number | null
           valid_until: string | null
@@ -656,6 +657,7 @@ export type Database = {
           notes?: string | null
           quotation_date?: string | null
           quotation_number: string
+          sales_agent?: string | null
           status?: Database["public"]["Enums"]["quotation_status"]
           total_amount?: number | null
           valid_until?: string | null
@@ -667,6 +669,7 @@ export type Database = {
           notes?: string | null
           quotation_date?: string | null
           quotation_number?: string
+          sales_agent?: string | null
           status?: Database["public"]["Enums"]["quotation_status"]
           total_amount?: number | null
           valid_until?: string | null

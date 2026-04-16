@@ -1,0 +1,1 @@
+ALTER TABLE public.quotations ADD COLUMN sales_agent text DEFAULT '';
