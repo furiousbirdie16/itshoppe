@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
+import { ItemSearch } from "@/components/ItemSearch";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
