@@ -86,11 +86,10 @@ export default function QuotationsPage() {
       return true;
     });
   }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
-  const currentList = activeTab === "pending" ? filteredPending : filtered;
 
   const toggleAll = () => {
-    if (selectedIds.size === currentList.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(currentList.map((q: any) => q.id)));
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((q: any) => q.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
