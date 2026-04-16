@@ -243,82 +243,13 @@ export default function QuotationsPage() {
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); };
 
-  const renderTable = (list: any[], isPendingTab: boolean) => (
-    <div className="data-table-wrapper">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-10"><Checkbox checked={list.length > 0 && selectedIds.size === list.length} onCheckedChange={toggleAll} /></TableHead>
-            <TableHead className="text-xs">Quotation #</TableHead>
-            <TableHead className="text-xs">Customer</TableHead>
-            <TableHead className="text-xs">Sales Agent</TableHead>
-            <TableHead className="text-xs">Date</TableHead>
-            {isPendingTab && <TableHead className="text-xs">Terms</TableHead>}
-            {isPendingTab && <TableHead className="text-xs">Due Date</TableHead>}
-            <TableHead className="text-xs">Status</TableHead>
-            <TableHead className="text-xs text-right">Total</TableHead>
-            <TableHead className="text-xs text-right w-28">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {list.length === 0 ? (
-            <TableRow><TableCell colSpan={isPendingTab ? 10 : 8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">{isPendingTab ? "No pending payments" : "No quotations"}</p></div></TableCell></TableRow>
-          ) : list.map((q: any) => {
-            const dueDate = getDueDate(q);
-            const overdue = isPendingTab && isDue(q);
-            return (
-              <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
-                <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
-                <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
-                <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
-                {isPendingTab && (
-                  <TableCell className="text-sm">
-                    {q.payment_terms ? `${q.payment_terms} days` : <span className="text-destructive font-medium">Due now</span>}
-                  </TableCell>
-                )}
-                {isPendingTab && (
-                  <TableCell className="text-sm">
-                    {dueDate ? (
-                      <span className={overdue ? "text-destructive font-medium" : ""}>
-                        {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
-                        {dueDate}
-                      </span>
-                    ) : (
-                      <span className="text-destructive font-medium">
-                        <AlertCircle className="h-3 w-3 inline mr-1" />Overdue
-                      </span>
-                    )}
-                  </TableCell>
-                )}
-                <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {q.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
-          <p className="page-description">{currentList.length} quotation{currentList.length !== 1 ? "s" : ""}{currentList.length !== quotations.length && activeTab === "all" ? ` (filtered from ${quotations.length})` : ""}</p>
+          <p className="page-description">{filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
@@ -330,7 +261,7 @@ export default function QuotationsPage() {
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
           <ExportButton
-            data={currentList}
+            data={filtered}
             columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "", "Due Date": (r: any) => getDueDate(r) || "", "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
             dateField={(r: any) => r.quotation_date || ""}
             fileName="Quotations"
