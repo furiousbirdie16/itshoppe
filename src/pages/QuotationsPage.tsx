@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber } from "@/lib/api";
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,13 +47,26 @@ export default function QuotationsPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
+  const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
+  const [newAgentName, setNewAgentName] = useState("");
+  const [addingAgent, setAddingAgent] = useState(false);
 
-  // Derive unique sales agents for filter dropdown
+  const addAgentMut = useMutation({
+    mutationFn: (name: string) => createSalesAgent(name),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["sales_agents"] });
+      setForm({ ...form, sales_agent: data.name });
+      setNewAgentName("");
+      setAddingAgent(false);
+      toast.success("Sales agent added");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Derive unique sales agents for filter dropdown (from DB table)
   const uniqueAgents = useMemo(() => {
-    const agents = new Set<string>();
-    quotations.forEach((q: any) => { if (q.sales_agent) agents.add(q.sales_agent); });
-    return Array.from(agents).sort();
-  }, [quotations]);
+    return salesAgents.map((a: any) => a.name).sort();
+  }, [salesAgents]);
 
   // Compute due date for a quotation
   const getDueDate = (q: any): string | null => {
@@ -400,7 +413,23 @@ export default function QuotationsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
-                <Input value={form.sales_agent} onChange={e => setForm({ ...form, sales_agent: e.target.value })} className="h-9" placeholder="Agent name" />
+                {!addingAgent ? (
+                  <div className="flex gap-1.5">
+                    <Select value={form.sales_agent} onValueChange={v => setForm({ ...form, sales_agent: v })}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Select agent" /></SelectTrigger>
+                      <SelectContent>
+                        {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setAddingAgent(true)} title="Add new agent"><Plus className="h-3.5 w-3.5" /></Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input value={newAgentName} onChange={e => setNewAgentName(e.target.value)} className="h-9" placeholder="New agent name" autoFocus />
+                    <Button type="button" size="sm" className="h-9 px-3 text-xs" disabled={!newAgentName.trim() || addAgentMut.isPending} onClick={() => addAgentMut.mutate(newAgentName.trim())}>Save</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setAddingAgent(false); setNewAgentName(""); }}>Cancel</Button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
