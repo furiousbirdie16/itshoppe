@@ -72,7 +72,8 @@ export interface Quotation {
 export interface QuotationItem {
   id: string;
   quotation_id: string;
-  item_id: string;
+  item_id: string | null;
+  item_name: string | null;
   quantity: number;
   unit_price: number;
   items?: Item;
@@ -96,7 +97,8 @@ export interface Invoice {
 export interface InvoiceItem {
   id: string;
   invoice_id: string;
-  item_id: string;
+  item_id: string | null;
+  item_name: string | null;
   quantity: number;
   unit_price: number;
   items?: Item;
