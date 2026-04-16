@@ -10,14 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, AlertCircle } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
+import { format, addDays, isBefore, isToday, parseISO } from "date-fns";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
@@ -29,9 +31,10 @@ export default function QuotationsPage() {
   const [viewQ, setViewQ] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState("all");
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -39,21 +42,6 @@ export default function QuotationsPage() {
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [filterAgent, setFilterAgent] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
-
-  const toggleAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map(q => q.id)));
-  };
-  const toggleOne = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setSelectedIds(next);
-  };
-
-  const bulkDeleteMut = useMutation({
-    mutationFn: async () => { for (const id of selectedIds) await deleteQuotation(id); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} quotations`); },
-  });
 
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations"], queryFn: getQuotations });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
@@ -67,16 +55,62 @@ export default function QuotationsPage() {
     return Array.from(agents).sort();
   }, [quotations]);
 
-  // Apply filters
-  const filtered = useMemo(() => {
+  // Compute due date for a quotation
+  const getDueDate = (q: any): string | null => {
+    if (q.payment_due_date) return q.payment_due_date;
+    if (q.payment_terms && q.quotation_date) {
+      return format(addDays(parseISO(q.quotation_date), q.payment_terms), "yyyy-MM-dd");
+    }
+    return null; // no terms = due immediately
+  };
+
+  const isDue = (q: any): boolean => {
+    const due = getDueDate(q);
+    if (!due) return true; // no terms = due immediately
+    const dueDate = parseISO(due);
+    return isBefore(dueDate, new Date()) || isToday(dueDate);
+  };
+
+  // Pending payments: accepted/sent quotations that are not yet paid (status != rejected, and due)
+  const pendingPayments = useMemo(() => {
     return quotations.filter((q: any) => {
+      if (q.status === "rejected") return false;
+      if (q.status === "draft") return false;
+      // Sent or accepted quotations with pending payment
+      return true;
+    });
+  }, [quotations]);
+
+  // Apply filters
+  const applyFilters = (list: any[]) => {
+    return list.filter((q: any) => {
       if (filterDateFrom && q.quotation_date < filterDateFrom) return false;
       if (filterDateTo && q.quotation_date > filterDateTo) return false;
       if (filterCustomer !== "all" && q.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (q.sales_agent || "") !== filterAgent) return false;
       return true;
     });
-  }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
+  };
+
+  const filtered = useMemo(() => applyFilters(quotations), [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
+  const filteredPending = useMemo(() => applyFilters(pendingPayments), [pendingPayments, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
+
+  const currentList = activeTab === "pending" ? filteredPending : filtered;
+
+  const toggleAll = () => {
+    if (selectedIds.size === currentList.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(currentList.map((q: any) => q.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteQuotation(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} quotations`); },
+  });
 
   const parseQty = (v: string) => parseInt(v) || 0;
   const parsePrice = (v: string) => parseFloat(v) || 0;
@@ -84,6 +118,7 @@ export default function QuotationsPage() {
 
   const openPreview = async (q: any) => {
     const lineItems = await getQuotationItems(q.id);
+    const dueDate = getDueDate(q);
     setPreviewData({
       type: "quotation",
       number: q.quotation_number,
@@ -99,6 +134,8 @@ export default function QuotationsPage() {
       extraFields: [
         ...(q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : []),
         ...(q.sales_agent ? [{ label: "Sales Agent", value: q.sales_agent }] : []),
+        ...(q.payment_terms ? [{ label: "Payment Terms", value: `${q.payment_terms} days` }] : []),
+        ...(dueDate ? [{ label: "Payment Due", value: dueDate }] : []),
       ],
       items: lineItems.map((li: any) => ({
         name: li.items?.name || li.item_name || "—",
@@ -119,6 +156,8 @@ export default function QuotationsPage() {
       notes: q.notes || "",
       valid_until: q.valid_until || "",
       sales_agent: q.sales_agent || "",
+      payment_terms: q.payment_terms != null ? String(q.payment_terms) : "",
+      payment_due_date: q.payment_due_date || "",
     });
     setLines(
       lineItems.length > 0
@@ -134,10 +173,32 @@ export default function QuotationsPage() {
     setCreateOpen(true);
   };
 
+  const buildPayload = () => {
+    const total = lines.reduce((s, l) => s + lineTotal(l), 0);
+    const paymentTerms = form.payment_terms ? parseInt(form.payment_terms) : null;
+    let paymentDueDate = form.payment_due_date || null;
+    // Auto-calculate due date from terms if not manually set
+    if (!paymentDueDate && paymentTerms && form.valid_until) {
+      // We'll use quotation_date (today for new) to compute
+    }
+    return {
+      customer_id: form.customer_id || null,
+      notes: form.notes,
+      valid_until: form.valid_until || null,
+      total_amount: total,
+      sales_agent: form.sales_agent,
+      payment_terms: paymentTerms,
+      payment_due_date: paymentDueDate,
+    } as any;
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + lineTotal(l), 0);
-      const q = await createQuotation({ quotation_number: await generateQuotationNumber(), customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total, sales_agent: form.sales_agent } as any);
+      const payload = buildPayload();
+      payload.quotation_number = await generateQuotationNumber();
+      payload.total_amount = total;
+      const q = await createQuotation(payload);
       await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
@@ -147,8 +208,9 @@ export default function QuotationsPage() {
   const editMut = useMutation({
     mutationFn: async () => {
       if (!editId) return;
-      const total = lines.reduce((s, l) => s + lineTotal(l), 0);
-      await updateQuotation(editId, { customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total, sales_agent: form.sales_agent } as any);
+      const payload = buildPayload();
+      payload.total_amount = lines.reduce((s, l) => s + lineTotal(l), 0);
+      await updateQuotation(editId, payload);
       await deleteQuotationItems(editId);
       await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
     },
@@ -172,7 +234,7 @@ export default function QuotationsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]); setEditId(null); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "" }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -189,15 +251,84 @@ export default function QuotationsPage() {
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
 
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
-
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); };
+
+  const renderTable = (list: any[], isPendingTab: boolean) => (
+    <div className="data-table-wrapper">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10"><Checkbox checked={list.length > 0 && selectedIds.size === list.length} onCheckedChange={toggleAll} /></TableHead>
+            <TableHead className="text-xs">Quotation #</TableHead>
+            <TableHead className="text-xs">Customer</TableHead>
+            <TableHead className="text-xs">Sales Agent</TableHead>
+            <TableHead className="text-xs">Date</TableHead>
+            {isPendingTab && <TableHead className="text-xs">Terms</TableHead>}
+            {isPendingTab && <TableHead className="text-xs">Due Date</TableHead>}
+            <TableHead className="text-xs">Status</TableHead>
+            <TableHead className="text-xs text-right">Total</TableHead>
+            <TableHead className="text-xs text-right w-28">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {list.length === 0 ? (
+            <TableRow><TableCell colSpan={isPendingTab ? 10 : 8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">{isPendingTab ? "No pending payments" : "No quotations"}</p></div></TableCell></TableRow>
+          ) : list.map((q: any) => {
+            const dueDate = getDueDate(q);
+            const overdue = isPendingTab && isDue(q);
+            return (
+              <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
+                <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
+                <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
+                <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
+                {isPendingTab && (
+                  <TableCell className="text-sm">
+                    {q.payment_terms ? `${q.payment_terms} days` : <span className="text-destructive font-medium">Due now</span>}
+                  </TableCell>
+                )}
+                {isPendingTab && (
+                  <TableCell className="text-sm">
+                    {dueDate ? (
+                      <span className={overdue ? "text-destructive font-medium" : ""}>
+                        {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
+                        {dueDate}
+                      </span>
+                    ) : (
+                      <span className="text-destructive font-medium">
+                        <AlertCircle className="h-3 w-3 inline mr-1" />Overdue
+                      </span>
+                    )}
+                  </TableCell>
+                )}
+                <TableCell><StatusBadge status={q.status} /></TableCell>
+                <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {q.status === "draft" && (
+                      <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
-          <p className="page-description">{filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
+          <p className="page-description">{currentList.length} quotation{currentList.length !== 1 ? "s" : ""}{currentList.length !== quotations.length && activeTab === "all" ? ` (filtered from ${quotations.length})` : ""}</p>
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
@@ -209,8 +340,8 @@ export default function QuotationsPage() {
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
           <ExportButton
-            data={filtered}
-            columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
+            data={currentList}
+            columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "", "Due Date": (r: any) => getDueDate(r) || "", "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
             dateField={(r: any) => r.quotation_date || ""}
             fileName="Quotations"
           />
@@ -254,11 +385,12 @@ export default function QuotationsPage() {
         </div>
       )}
 
+      {/* Create / Edit Dialog */}
       <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Quotation" : "New Quotation"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
                 <Select value={form.customer_id} onValueChange={v => setForm({ ...form, customer_id: v })}>
@@ -270,9 +402,19 @@ export default function QuotationsPage() {
                 <Label className="text-xs font-medium">Sales Agent</Label>
                 <Input value={form.sales_agent} onChange={e => setForm({ ...form, sales_agent: e.target.value })} className="h-9" placeholder="Agent name" />
               </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Valid Until</Label>
                 <Input type="date" value={form.valid_until} onChange={e => setForm({ ...form, valid_until: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Terms (days)</Label>
+                <Input type="number" min={0} value={form.payment_terms} onChange={e => setForm({ ...form, payment_terms: e.target.value })} className="h-9" placeholder="e.g. 30" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Due Date</Label>
+                <Input type="date" value={form.payment_due_date} onChange={e => setForm({ ...form, payment_due_date: e.target.value })} className="h-9" />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -334,6 +476,7 @@ export default function QuotationsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* View Details Dialog */}
       <Dialog open={!!viewQ} onOpenChange={() => setViewQ(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Quotation Details</DialogTitle></DialogHeader>
@@ -356,48 +499,26 @@ export default function QuotationsPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">Quotation #</TableHead>
-              <TableHead className="text-xs">Customer</TableHead>
-              <TableHead className="text-xs">Sales Agent</TableHead>
-              <TableHead className="text-xs">Date</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs text-right">Total</TableHead>
-              <TableHead className="text-xs text-right w-28">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
-            ) : filtered.map((q: any) => (
-              <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
-                <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
-                <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
-                <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
-                <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {q.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      {/* Tabs: All Quotations / Pending Payments */}
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelectedIds(new Set()); }}>
+        <TabsList>
+          <TabsTrigger value="all">All Quotations</TabsTrigger>
+          <TabsTrigger value="pending" className="gap-1.5">
+            Pending Payments
+            {pendingPayments.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center rounded-full bg-destructive/10 text-destructive text-[10px] font-semibold px-1.5 py-0.5 min-w-[18px]">
+                {pendingPayments.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="all" className="mt-4">
+          {renderTable(filtered, false)}
+        </TabsContent>
+        <TabsContent value="pending" className="mt-4">
+          {renderTable(filteredPending, true)}
+        </TabsContent>
+      </Tabs>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
