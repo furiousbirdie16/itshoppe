@@ -47,13 +47,26 @@ export default function QuotationsPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
+  const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
+  const [newAgentName, setNewAgentName] = useState("");
+  const [addingAgent, setAddingAgent] = useState(false);
 
-  // Derive unique sales agents for filter dropdown
+  const addAgentMut = useMutation({
+    mutationFn: (name: string) => createSalesAgent(name),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["sales_agents"] });
+      setForm({ ...form, sales_agent: data.name });
+      setNewAgentName("");
+      setAddingAgent(false);
+      toast.success("Sales agent added");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Derive unique sales agents for filter dropdown (from DB table)
   const uniqueAgents = useMemo(() => {
-    const agents = new Set<string>();
-    quotations.forEach((q: any) => { if (q.sales_agent) agents.add(q.sales_agent); });
-    return Array.from(agents).sort();
-  }, [quotations]);
+    return salesAgents.map((a: any) => a.name).sort();
+  }, [salesAgents]);
 
   // Compute due date for a quotation
   const getDueDate = (q: any): string | null => {
