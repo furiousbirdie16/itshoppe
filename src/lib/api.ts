@@ -578,3 +578,16 @@ export const deleteShipment = async (id: string) => {
   const { error } = await from("shipment_tracking").delete().eq("id", id);
   if (error) throw error;
 };
+
+// Sales Agents
+export const getSalesAgents = async (): Promise<{ id: string; name: string }[]> => {
+  const { data, error } = await from("sales_agents").select("*").order("name");
+  if (error) throw error;
+  return data;
+};
+
+export const createSalesAgent = async (name: string) => {
+  const { data, error } = await from("sales_agents").insert({ name }).select().single();
+  if (error) throw error;
+  return data;
+};
