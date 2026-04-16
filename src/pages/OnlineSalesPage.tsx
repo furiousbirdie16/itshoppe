@@ -1,14 +1,15 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems } from "@/lib/api";
+import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
@@ -58,6 +59,7 @@ export default function OnlineSalesPage() {
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState("completed");
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -66,7 +68,8 @@ export default function OnlineSalesPage() {
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); toast.success("Deleted"); } });
+  const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); toast.success("Deleted"); } });
+  const returnMut = useMutation({ mutationFn: ({ id, status }: { id: string; status: 'returned' | 'cancelled' }) => returnOnlineSale(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); } });
 
   const openNew = () => { setEditingSale(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (s: OnlineSale) => {
@@ -84,8 +87,18 @@ export default function OnlineSalesPage() {
     setDialogOpen(true);
   };
 
+  const handleReturn = async (id: string, status: 'returned' | 'cancelled') => {
+    try {
+      await returnMut.mutateAsync({ id, status });
+      toast.success(status === 'returned' ? 'Order marked as returned — inventory restored' : 'Order cancelled — inventory restored');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed');
+    }
+  };
+
   const handleSave = async () => {
     if (!form.product_name.trim()) { toast.error("Product name is required"); return; }
+    if (!form.order_number.trim()) { toast.error("Order ID is required"); return; }
     setSaving(true);
     try {
       const payload: any = {
@@ -102,11 +115,11 @@ export default function OnlineSalesPage() {
         await updateOnlineSale(editingSale.id, payload);
         toast.success("Updated");
       } else {
-        const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
-        await createOnlineSale({ ...payload, order_number: orderNumber });
+        await createOnlineSale({ ...payload, order_number: form.order_number.trim() });
         toast.success("Created");
       }
       qc.invalidateQueries({ queryKey: ["online_sales"] });
+      qc.invalidateQueries({ queryKey: ["items"] });
       setDialogOpen(false);
     } catch (e: any) {
       toast.error(e.message || "Failed");
@@ -114,8 +127,11 @@ export default function OnlineSalesPage() {
     setSaving(false);
   };
 
-  // Selection helpers
+  // Filter by tab + search
   const filtered = sales.filter((s: any) => {
+    const status = s.status || 'completed';
+    if (activeTab === 'completed' && status !== 'completed') return false;
+    if (activeTab === 'returns' && status !== 'returned' && status !== 'cancelled') return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
@@ -144,6 +160,7 @@ export default function OnlineSalesPage() {
     setBulkDeleting(false);
     setSelected(new Set());
     qc.invalidateQueries({ queryKey: ["online_sales"] });
+    qc.invalidateQueries({ queryKey: ["items"] });
     toast.success(`Deleted ${success} records`);
   };
 
@@ -180,12 +197,12 @@ export default function OnlineSalesPage() {
           const order_date = dateCol && row[dateCol] ? String(row[dateCol]).substring(0, 10) : new Date().toISOString().split("T")[0];
           const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
 
-          // Try to match product name to inventory item
           const matchedItem = items.find(i => i.name.toLowerCase() === product_name.toLowerCase() || i.sku.toLowerCase() === product_name.toLowerCase());
 
           let error: string | undefined;
           if (!product_name) error = "Missing product name";
           else if (posted_price < 0) error = "Negative price";
+          else if (!order_id) error = "Missing order ID";
 
           return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: matchedItem?.id || null, valid: !error, error };
         });
@@ -205,8 +222,7 @@ export default function OnlineSalesPage() {
     let success = 0;
     for (const row of valid) {
       try {
-        const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
+        await createOnlineSale({ order_number: row.order_id, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
         success++;
       } catch { /* skip */ }
     }
@@ -216,6 +232,7 @@ export default function OnlineSalesPage() {
     setBulkFileName("");
     setBulkOpen(false);
     qc.invalidateQueries({ queryKey: ["online_sales"] });
+    qc.invalidateQueries({ queryKey: ["items"] });
   };
 
   const bulkValidCount = bulkRows.filter(r => r.valid).length;
@@ -223,6 +240,11 @@ export default function OnlineSalesPage() {
 
   const channelLabel = (c: string) => c === "shopee" ? "Shopee" : c === "lazada" ? "Lazada" : "Others";
   const channelColor = (c: string) => c === "shopee" ? "bg-orange-100 text-orange-700" : c === "lazada" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-700";
+  const statusColor = (s: string) => s === 'returned' ? 'bg-yellow-100 text-yellow-700' : s === 'cancelled' ? 'bg-red-100 text-red-700' : '';
+  const statusLabel = (s: string) => s === 'returned' ? 'Returned' : s === 'cancelled' ? 'Cancelled' : 'Completed';
+
+  const completedCount = sales.filter((s: any) => (s.status || 'completed') === 'completed').length;
+  const returnsCount = sales.filter((s: any) => s.status === 'returned' || s.status === 'cancelled').length;
 
   return (
     <div className="space-y-6">
@@ -239,7 +261,7 @@ export default function OnlineSalesPage() {
           )}
           <ExportButton
             data={sales}
-            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price }}
+            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price, "Status": (r: any) => r.status || 'completed' }}
             dateField={(r: any) => r.order_date || ""}
             fileName="Online_Sales"
           />
@@ -252,54 +274,110 @@ export default function OnlineSalesPage() {
         </div>
       </div>
 
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input placeholder="Search by product, order ID..." value={filter} onChange={e => setFilter(e.target.value)} className="pl-9 h-9 rounded-lg text-sm" />
-      </div>
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelected(new Set()); }}>
+        <TabsList>
+          <TabsTrigger value="completed">Completed ({completedCount})</TabsTrigger>
+          <TabsTrigger value="returns">Returns / Cancelled ({returnsCount})</TabsTrigger>
+        </TabsList>
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
-              </TableHead>
-              <TableHead className="text-xs">Date</TableHead>
-              <TableHead className="text-xs">Order ID</TableHead>
-              <TableHead className="text-xs">Product Name</TableHead>
-              <TableHead className="text-xs text-center">Qty</TableHead>
-              <TableHead className="text-xs">Channel</TableHead>
-              <TableHead className="text-xs text-right">Selling Price</TableHead>
-              <TableHead className="w-20"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
-            ) : filtered.map((s: any) => (
-              <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
-                <TableCell>
-                  <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
-                </TableCell>
-                <TableCell className="text-sm">{s.order_date}</TableCell>
-                <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
-                <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
-                <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
-                <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)}><Pencil className="h-3 w-3" /></Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)}><Trash2 className="h-3 w-3" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+        <div className="mt-4 relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input placeholder="Search by product, order ID..." value={filter} onChange={e => setFilter(e.target.value)} className="pl-9 h-9 rounded-lg text-sm" />
+        </div>
+
+        <TabsContent value="completed">
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
+                  </TableHead>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Order ID</TableHead>
+                  <TableHead className="text-xs">Product Name</TableHead>
+                  <TableHead className="text-xs text-center">Qty</TableHead>
+                  <TableHead className="text-xs">Channel</TableHead>
+                  <TableHead className="text-xs text-right">Selling Price</TableHead>
+                  <TableHead className="w-28"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                ) : filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+                ) : filtered.map((s: any) => (
+                  <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                    <TableCell>
+                      <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
+                    </TableCell>
+                    <TableCell className="text-sm">{s.order_date}</TableCell>
+                    <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                    <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
+                    <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                    <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="returns">
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
+                  </TableHead>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Order ID</TableHead>
+                  <TableHead className="text-xs">Product Name</TableHead>
+                  <TableHead className="text-xs text-center">Qty</TableHead>
+                  <TableHead className="text-xs">Channel</TableHead>
+                  <TableHead className="text-xs text-right">Selling Price</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                ) : filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No returned / cancelled orders</TableCell></TableRow>
+                ) : filtered.map((s: any) => (
+                  <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                    <TableCell>
+                      <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
+                    </TableCell>
+                    <TableCell className="text-sm">{s.order_date}</TableCell>
+                    <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                    <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
+                    <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                    <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(s.status)}`}>{statusLabel(s.status)}</span></TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -309,6 +387,10 @@ export default function OnlineSalesPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Order ID <span className="text-destructive">*</span></Label>
+              <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Enter order ID" className="h-9" />
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-medium">Inventory Item (optional)</Label>
               <ItemSearch
                 items={items}
@@ -317,15 +399,9 @@ export default function OnlineSalesPage() {
               />
               <p className="text-[10px] text-muted-foreground">Auto-fills product name & price</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Date</Label>
-                <Input type="date" value={form.order_date} onChange={e => setForm(f => ({ ...f, order_date: e.target.value }))} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Order ID</Label>
-                <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated if blank" className="h-9" />
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Date</Label>
+              <Input type="date" value={form.order_date} onChange={e => setForm(f => ({ ...f, order_date: e.target.value }))} className="h-9" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Product Name</Label>
@@ -376,7 +452,7 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>Date</strong>, <strong>Order ID</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
+                <p className="text-xs text-muted-foreground">Columns: <strong>Order ID</strong>, <strong>Date</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
               </div>
               <Button variant="outline" onClick={() => fileRef.current?.click()}>Select File</Button>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" />
@@ -395,8 +471,8 @@ export default function OnlineSalesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-xs w-8">#</TableHead>
-                      <TableHead className="text-xs">Date</TableHead>
                       <TableHead className="text-xs">Order ID</TableHead>
+                      <TableHead className="text-xs">Date</TableHead>
                       <TableHead className="text-xs">Product</TableHead>
                       <TableHead className="text-xs text-center">Qty</TableHead>
                       <TableHead className="text-xs">Channel</TableHead>
@@ -408,8 +484,8 @@ export default function OnlineSalesPage() {
                     {bulkRows.map((row, i) => (
                       <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell className="text-xs">{row.order_date}</TableCell>
                         <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
+                        <TableCell className="text-xs">{row.order_date}</TableCell>
                         <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
                         <TableCell className="text-sm text-center">{row.quantity}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>

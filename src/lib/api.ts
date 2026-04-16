@@ -458,10 +458,41 @@ export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) =>
   return data as OnlineSale;
 };
 
+export const returnOnlineSale = async (id: string, status: 'returned' | 'cancelled') => {
+  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel, quantity, status").eq("id", id).single();
+  if (!sale) throw new Error("Sale not found");
+  const s = sale as any;
+  if (s.status === 'returned' || s.status === 'cancelled') throw new Error("Sale already returned/cancelled");
+
+  // Restore inventory if linked to an item
+  if (s.item_id) {
+    const qty = s.quantity || 1;
+    const { data: currentItem } = await from("items").select("quantity").eq("id", s.item_id).single();
+    await from("items").update({
+      quantity: ((currentItem as any)?.quantity || 0) + qty,
+      updated_at: new Date().toISOString()
+    }).eq("id", s.item_id);
+
+    await from("inventory_movements").insert({
+      item_id: s.item_id,
+      type: "in_po",
+      quantity: qty,
+      reference_id: id,
+      reference_type: `online_sale_${status}`,
+      notes: `${status === 'returned' ? 'Returned' : 'Cancelled'} order ${s.order_number} — inventory restored`
+    });
+  }
+
+  const { data, error } = await from("online_sales").update({ status, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  await logActivity(`${status}_online_sale`, "online_sale", id, { order_number: s.order_number });
+  return data as OnlineSale;
+};
+
 export const deleteOnlineSale = async (id: string) => {
   // Restore inventory if linked to an item
-  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel, quantity").eq("id", id).single();
-  if (sale && (sale as any).item_id) {
+  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel, quantity, status").eq("id", id).single();
+  if (sale && (sale as any).item_id && (sale as any).status === 'completed') {
     const itemId = (sale as any).item_id;
     const qty = (sale as any).quantity || 1;
     const { data: currentItem } = await from("items").select("quantity").eq("id", itemId).single();

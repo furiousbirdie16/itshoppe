@@ -171,6 +171,7 @@ export interface OnlineSale {
   deal_price: number;
   notes: string;
   item_id: string | null;
+  status: 'completed' | 'returned' | 'cancelled';
   created_at: string;
   updated_at: string;
   items?: Item;
