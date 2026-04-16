@@ -6,7 +6,7 @@ import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight, ShoppingCart, Receipt, CalendarIcon } from "lucide-react";
+import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight, ShoppingCart, Receipt, CalendarIcon, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -16,6 +16,7 @@ import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns
 import { useNavigate } from "react-router-dom";
 
 type SalesRange = "daily" | "monthly" | "custom";
+type SalesDetail = "online" | "invoice" | "combined" | null;
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const [salesRange, setSalesRange] = useState<SalesRange>("daily");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
   const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
+  const [showDetail, setShowDetail] = useState<SalesDetail>(null);
 
   const { dateFrom, dateTo } = useMemo(() => {
     const now = new Date();
@@ -48,32 +50,38 @@ export default function DashboardPage() {
     queryFn: getDashboardStats,
   });
 
-  const { data: onlineSalesTotal = 0 } = useQuery({
-    queryKey: ["dashboard_online_sales", dateFromStr, dateToStr],
+  // Fetch full online sales records for the date range
+  const { data: onlineSalesData = [] } = useQuery({
+    queryKey: ["dashboard_online_sales_list", dateFromStr, dateToStr],
     queryFn: async () => {
       const { data } = await supabase
         .from("online_sales")
-        .select("posted_price, quantity, status")
+        .select("*")
         .gte("order_date", dateFromStr)
         .lte("order_date", dateToStr)
-        .eq("status", "completed");
-      return (data || []).reduce((sum: number, s: any) => sum + Number(s.posted_price) * (s.quantity || 1), 0);
+        .eq("status", "completed")
+        .order("order_date", { ascending: false });
+      return data || [];
     },
   });
 
-  const { data: invoiceSalesTotal = 0 } = useQuery({
-    queryKey: ["dashboard_invoice_sales", dateFromStr, dateToStr],
+  // Fetch full invoice records for the date range
+  const { data: invoiceSalesData = [] } = useQuery({
+    queryKey: ["dashboard_invoice_sales_list", dateFromStr, dateToStr],
     queryFn: async () => {
       const { data } = await supabase
         .from("invoices")
-        .select("total_amount, status, invoice_date")
+        .select("*, customers(name)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", dateFromStr)
-        .lte("invoice_date", dateToStr);
-      return (data || []).reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0);
+        .lte("invoice_date", dateToStr)
+        .order("invoice_date", { ascending: false });
+      return data || [];
     },
   });
 
+  const onlineSalesTotal = onlineSalesData.reduce((sum: number, s: any) => sum + Number(s.posted_price) * (s.quantity || 1), 0);
+  const invoiceSalesTotal = invoiceSalesData.reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0);
   const combinedTotal = onlineSalesTotal + invoiceSalesTotal;
 
   if (isLoading) {
@@ -126,7 +134,7 @@ export default function DashboardPage() {
                   variant={salesRange === r ? "default" : "outline"}
                   size="sm"
                   className="h-7 text-xs capitalize"
-                  onClick={() => setSalesRange(r)}
+                  onClick={() => { setSalesRange(r); setShowDetail(null); }}
                 >
                   {r}
                 </Button>
@@ -166,10 +174,101 @@ export default function DashboardPage() {
              `${format(dateFrom, "MMM d, yyyy")} — ${format(dateTo, "MMM d, yyyy")}`}
           </div>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-            <StatCard title="Online Sales" value={peso(onlineSalesTotal)} icon={ShoppingCart} variant="success" />
-            <StatCard title="Invoice Sales" value={peso(invoiceSalesTotal)} icon={Receipt} variant="success" />
-            <StatCard title="Total Sales" value={peso(combinedTotal)} icon={DollarSign} variant="success" />
+            <div className={cn("cursor-pointer rounded-xl transition-all", showDetail === "online" ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border")} onClick={() => setShowDetail(showDetail === "online" ? null : "online")}>
+              <StatCard title="Online Sales" value={peso(onlineSalesTotal)} icon={ShoppingCart} variant="success" />
+            </div>
+            <div className={cn("cursor-pointer rounded-xl transition-all", showDetail === "invoice" ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border")} onClick={() => setShowDetail(showDetail === "invoice" ? null : "invoice")}>
+              <StatCard title="Invoice Sales" value={peso(invoiceSalesTotal)} icon={Receipt} variant="success" />
+            </div>
+            <div className={cn("cursor-pointer rounded-xl transition-all", showDetail === "combined" ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border")} onClick={() => setShowDetail(showDetail === "combined" ? null : "combined")}>
+              <StatCard title="Total Sales" value={peso(combinedTotal)} icon={DollarSign} variant="success" />
+            </div>
           </div>
+
+          {/* Detail tables */}
+          {showDetail && (
+            <div className="mt-4 space-y-4">
+              {(showDetail === "online" || showDetail === "combined") && onlineSalesData.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Online Sales ({onlineSalesData.length})</h3>
+                    {showDetail !== "combined" && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowDetail(null)}><X className="h-3.5 w-3.5" /></Button>
+                    )}
+                  </div>
+                  <div className="data-table-wrapper">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Order #</TableHead>
+                          <TableHead className="text-xs">Product</TableHead>
+                          <TableHead className="text-xs">Channel</TableHead>
+                          <TableHead className="text-xs text-right">Qty</TableHead>
+                          <TableHead className="text-xs text-right">Price</TableHead>
+                          <TableHead className="text-xs text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {onlineSalesData.map((s: any) => (
+                          <TableRow key={s.id} className="hover:bg-muted/30">
+                            <TableCell className="text-sm text-muted-foreground">{s.order_date}</TableCell>
+                            <TableCell className="font-mono text-xs font-semibold">{s.order_number}</TableCell>
+                            <TableCell className="text-sm">{s.product_name}</TableCell>
+                            <TableCell className="text-sm capitalize">{s.sales_channel}</TableCell>
+                            <TableCell className="text-sm text-right">{s.quantity}</TableCell>
+                            <TableCell className="text-sm text-right">{peso(Number(s.posted_price))}</TableCell>
+                            <TableCell className="text-sm text-right font-medium">{peso(Number(s.posted_price) * (s.quantity || 1))}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {(showDetail === "invoice" || showDetail === "combined") && invoiceSalesData.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Invoice Sales ({invoiceSalesData.length})</h3>
+                    {showDetail !== "combined" && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowDetail(null)}><X className="h-3.5 w-3.5" /></Button>
+                    )}
+                  </div>
+                  <div className="data-table-wrapper">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Invoice #</TableHead>
+                          <TableHead className="text-xs">Customer</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invoiceSalesData.map((inv: any) => (
+                          <TableRow key={inv.id} className="hover:bg-muted/30">
+                            <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
+                            <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                            <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
+                            <TableCell><StatusBadge status={inv.status} /></TableCell>
+                            <TableCell className="text-sm text-right font-medium">{peso(Number(inv.total_amount))}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {showDetail === "combined" && (
+                <Button variant="ghost" size="sm" className="text-xs" onClick={() => setShowDetail(null)}>
+                  <X className="h-3 w-3 mr-1" /> Close details
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
