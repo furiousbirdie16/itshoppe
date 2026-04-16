@@ -287,6 +287,7 @@ export type Database = {
           product_name: string
           quantity: number
           sales_channel: Database["public"]["Enums"]["sales_channel"]
+          status: Database["public"]["Enums"]["online_sale_status"]
           updated_at: string | null
         }
         Insert: {
@@ -301,6 +302,7 @@ export type Database = {
           product_name: string
           quantity?: number
           sales_channel: Database["public"]["Enums"]["sales_channel"]
+          status?: Database["public"]["Enums"]["online_sale_status"]
           updated_at?: string | null
         }
         Update: {
@@ -315,6 +317,7 @@ export type Database = {
           product_name?: string
           quantity?: number
           sales_channel?: Database["public"]["Enums"]["sales_channel"]
+          status?: Database["public"]["Enums"]["online_sale_status"]
           updated_at?: string | null
         }
         Relationships: [
@@ -787,6 +790,7 @@ export type Database = {
       app_role: "admin" | "user"
       invoice_status: "draft" | "confirmed" | "paid" | "unpaid"
       movement_type: "in_po" | "out_invoice" | "out_online_sale"
+      online_sale_status: "completed" | "returned" | "cancelled"
       po_status: "draft" | "sent" | "partially_received" | "received"
       quotation_status: "draft" | "sent" | "accepted" | "rejected"
       sales_channel: "shopee" | "lazada" | "others"
@@ -920,6 +924,7 @@ export const Constants = {
       app_role: ["admin", "user"],
       invoice_status: ["draft", "confirmed", "paid", "unpaid"],
       movement_type: ["in_po", "out_invoice", "out_online_sale"],
+      online_sale_status: ["completed", "returned", "cancelled"],
       po_status: ["draft", "sent", "partially_received", "received"],
       quotation_status: ["draft", "sent", "accepted", "rejected"],
       sales_channel: ["shopee", "lazada", "others"],
