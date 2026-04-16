@@ -10,16 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, AlertCircle } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
-import { format, addDays, isBefore, isToday, parseISO } from "date-fns";
+import { format, addDays, parseISO } from "date-fns";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
@@ -34,7 +34,6 @@ export default function QuotationsPage() {
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState("all");
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -77,37 +76,16 @@ export default function QuotationsPage() {
     return null; // no terms = due immediately
   };
 
-  const isDue = (q: any): boolean => {
-    const due = getDueDate(q);
-    if (!due) return true; // no terms = due immediately
-    const dueDate = parseISO(due);
-    return isBefore(dueDate, new Date()) || isToday(dueDate);
-  };
-
-  // Pending payments: accepted/sent quotations that are not yet paid (status != rejected, and due)
-  const pendingPayments = useMemo(() => {
-    return quotations.filter((q: any) => {
-      if (q.status === "rejected") return false;
-      if (q.status === "draft") return false;
-      // Sent or accepted quotations with pending payment
-      return true;
-    });
-  }, [quotations]);
-
   // Apply filters
-  const applyFilters = (list: any[]) => {
-    return list.filter((q: any) => {
+  const filtered = useMemo(() => {
+    return quotations.filter((q: any) => {
       if (filterDateFrom && q.quotation_date < filterDateFrom) return false;
       if (filterDateTo && q.quotation_date > filterDateTo) return false;
       if (filterCustomer !== "all" && q.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (q.sales_agent || "") !== filterAgent) return false;
       return true;
     });
-  };
-
-  const filtered = useMemo(() => applyFilters(quotations), [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
-  const filteredPending = useMemo(() => applyFilters(pendingPayments), [pendingPayments, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
-
+  }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
   const currentList = activeTab === "pending" ? filteredPending : filtered;
 
   const toggleAll = () => {
