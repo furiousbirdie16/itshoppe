@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, generateInvoiceNumber } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, generateInvoiceNumber, deleteInvoiceItems } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2 } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
+import { ItemSearch } from "@/components/ItemSearch";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -22,6 +23,7 @@ interface LineItem { item_id: string; quantity: number; unit_price: number; }
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -76,6 +78,26 @@ export default function InvoicesPage() {
     setPreviewOpen(true);
   };
 
+  const openEdit = async (inv: any) => {
+    const lineItems = await getInvoiceItems(inv.id);
+    setForm({
+      customer_id: inv.customer_id || "",
+      notes: inv.notes || "",
+      due_date: inv.due_date || "",
+    });
+    setLines(
+      lineItems.length > 0
+        ? lineItems.map((li: any) => ({
+            item_id: li.item_id,
+            quantity: li.quantity,
+            unit_price: Number(li.unit_price),
+          }))
+        : [{ item_id: "", quantity: 1, unit_price: 0 }]
+    );
+    setEditId(inv.id);
+    setCreateOpen(true);
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
@@ -83,6 +105,18 @@ export default function InvoicesPage() {
       await createInvoiceItems(lines.filter(l => l.item_id).map(l => ({ invoice_id: inv.id, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const editMut = useMutation({
+    mutationFn: async () => {
+      if (!editId) return;
+      const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+      await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total });
+      await deleteInvoiceItems(editId);
+      await createInvoiceItems(lines.filter(l => l.item_id).map(l => ({ invoice_id: editId, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -118,7 +152,8 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "" }); setLines([{ item_id: "", quantity: 1, unit_price: 0 }]); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "" }); setLines([{ item_id: "", quantity: 1, unit_price: 0 }]); setEditId(null); };
+  const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", quantity: 1, unit_price: 0 }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -156,9 +191,9 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">New Invoice</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Invoice" : "New Invoice"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -184,23 +219,37 @@ export default function InvoicesPage() {
                 <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
               </div>
               <div className="space-y-2">
-                {lines.map((line, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
-                    <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
-                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
-                      <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku}) — Stock: {i.quantity}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                    <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
-                    <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
-                  </div>
-                ))}
+                {lines.map((line, idx) => {
+                  const selectedItem = items.find(i => i.id === line.item_id);
+                  return (
+                    <div key={idx}>
+                      <div className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                        <ItemSearch
+                          items={items}
+                          value={line.item_id}
+                          onChange={(itemId) => updateLine(idx, "item_id", itemId)}
+                          placeholder="Search item..."
+                        />
+                        <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                        <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                        <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      </div>
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
+                    </div>
+                  );
+                })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
                 <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))}</span>
               </div>
             </div>
-            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Invoice</Button>
+            <Button
+              onClick={() => editId ? editMut.mutate() : createMut.mutate()}
+              disabled={createMut.isPending || editMut.isPending}
+              className="rounded-lg h-9"
+            >
+              {editId ? "Update Invoice" : "Create Invoice"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -254,6 +303,9 @@ export default function InvoicesPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
+                    {inv.status === "draft" && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(inv)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => confirmMut.mutate(inv.id)} title="Confirm & Deduct Stock" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
