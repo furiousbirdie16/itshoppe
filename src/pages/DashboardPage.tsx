@@ -1,21 +1,80 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight } from "lucide-react";
+import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight, ShoppingCart, Receipt, CalendarIcon } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { useNavigate } from "react-router-dom";
+
+type SalesRange = "daily" | "monthly" | "custom";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+
+  const [salesRange, setSalesRange] = useState<SalesRange>("daily");
+  const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
+  const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
+
+  const { dateFrom, dateTo } = useMemo(() => {
+    const now = new Date();
+    if (salesRange === "daily") {
+      return { dateFrom: startOfDay(now), dateTo: endOfDay(now) };
+    } else if (salesRange === "monthly") {
+      return { dateFrom: startOfMonth(now), dateTo: endOfMonth(now) };
+    } else {
+      return {
+        dateFrom: customFrom ? startOfDay(customFrom) : startOfDay(now),
+        dateTo: customTo ? endOfDay(customTo) : endOfDay(now),
+      };
+    }
+  }, [salesRange, customFrom, customTo]);
+
+  const dateFromStr = format(dateFrom, "yyyy-MM-dd");
+  const dateToStr = format(dateTo, "yyyy-MM-dd");
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: getDashboardStats,
   });
+
+  const { data: onlineSalesTotal = 0 } = useQuery({
+    queryKey: ["dashboard_online_sales", dateFromStr, dateToStr],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("online_sales")
+        .select("posted_price, quantity, status")
+        .gte("order_date", dateFromStr)
+        .lte("order_date", dateToStr)
+        .eq("status", "completed");
+      return (data || []).reduce((sum: number, s: any) => sum + Number(s.posted_price) * (s.quantity || 1), 0);
+    },
+  });
+
+  const { data: invoiceSalesTotal = 0 } = useQuery({
+    queryKey: ["dashboard_invoice_sales", dateFromStr, dateToStr],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("invoices")
+        .select("total_amount, status, invoice_date")
+        .in("status", ["confirmed", "paid"])
+        .gte("invoice_date", dateFromStr)
+        .lte("invoice_date", dateToStr);
+      return (data || []).reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0);
+    },
+  });
+
+  const combinedTotal = onlineSalesTotal + invoiceSalesTotal;
 
   if (isLoading) {
     return (
@@ -54,6 +113,65 @@ export default function DashboardPage() {
           icon={TrendingUp}
         />
       </div>
+
+      {/* Sales Summary */}
+      {isAdmin && (
+        <div>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-sm font-semibold">Sales Summary</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(["daily", "monthly", "custom"] as SalesRange[]).map((r) => (
+                <Button
+                  key={r}
+                  variant={salesRange === r ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 text-xs capitalize"
+                  onClick={() => setSalesRange(r)}
+                >
+                  {r}
+                </Button>
+              ))}
+              {salesRange === "custom" && (
+                <div className="flex items-center gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn("h-7 text-xs w-[110px] justify-start", !customFrom && "text-muted-foreground")}>
+                        <CalendarIcon className="h-3 w-3 mr-1" />
+                        {customFrom ? format(customFrom, "MM/dd/yyyy") : "From"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} initialFocus className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                  <span className="text-xs text-muted-foreground">—</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn("h-7 text-xs w-[110px] justify-start", !customTo && "text-muted-foreground")}>
+                        <CalendarIcon className="h-3 w-3 mr-1" />
+                        {customTo ? format(customTo, "MM/dd/yyyy") : "To"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={customTo} onSelect={setCustomTo} initialFocus className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground mb-3">
+            {salesRange === "daily" ? `Today: ${format(dateFrom, "MMM d, yyyy")}` :
+             salesRange === "monthly" ? `${format(dateFrom, "MMMM yyyy")}` :
+             `${format(dateFrom, "MMM d, yyyy")} — ${format(dateTo, "MMM d, yyyy")}`}
+          </div>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+            <StatCard title="Online Sales" value={peso(onlineSalesTotal)} icon={ShoppingCart} variant="success" />
+            <StatCard title="Invoice Sales" value={peso(invoiceSalesTotal)} icon={Receipt} variant="success" />
+            <StatCard title="Total Sales" value={peso(combinedTotal)} icon={DollarSign} variant="success" />
+          </div>
+        </div>
+      )}
 
       {/* Low Stock Alert */}
       {stats?.lowStockItems && stats.lowStockItems.length > 0 && (
