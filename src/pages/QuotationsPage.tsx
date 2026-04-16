@@ -19,7 +19,7 @@ import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 
-interface LineItem { item_id: string; quantity: string; unit_price: string; }
+interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();

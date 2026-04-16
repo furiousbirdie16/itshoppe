@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 
-interface LineItem { item_id: string; quantity: number; unit_price: number; }
+interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
