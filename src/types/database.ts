@@ -66,6 +66,8 @@ export interface Quotation {
   notes: string;
   total_amount: number;
   sales_agent: string;
+  payment_terms: number | null;
+  payment_due_date: string | null;
   created_at: string;
   customers?: Customer;
 }
