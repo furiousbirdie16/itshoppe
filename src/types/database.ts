@@ -65,6 +65,7 @@ export interface Quotation {
   valid_until: string | null;
   notes: string;
   total_amount: number;
+  sales_agent: string;
   created_at: string;
   customers?: Customer;
 }
