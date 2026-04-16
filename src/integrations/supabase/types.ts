@@ -143,21 +143,24 @@ export type Database = {
         Row: {
           id: string
           invoice_id: string
-          item_id: string
+          item_id: string | null
+          item_name: string | null
           quantity: number
           unit_price: number
         }
         Insert: {
           id?: string
           invoice_id: string
-          item_id: string
+          item_id?: string | null
+          item_name?: string | null
           quantity?: number
           unit_price?: number
         }
         Update: {
           id?: string
           invoice_id?: string
-          item_id?: string
+          item_id?: string | null
+          item_name?: string | null
           quantity?: number
           unit_price?: number
         }
@@ -595,21 +598,24 @@ export type Database = {
       quotation_items: {
         Row: {
           id: string
-          item_id: string
+          item_id: string | null
+          item_name: string | null
           quantity: number
           quotation_id: string
           unit_price: number
         }
         Insert: {
           id?: string
-          item_id: string
+          item_id?: string | null
+          item_name?: string | null
           quantity?: number
           quotation_id: string
           unit_price?: number
         }
         Update: {
           id?: string
-          item_id?: string
+          item_id?: string | null
+          item_name?: string | null
           quantity?: number
           quotation_id?: string
           unit_price?: number

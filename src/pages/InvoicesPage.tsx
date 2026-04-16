@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 
-interface LineItem { item_id: string; quantity: number; unit_price: number; }
+interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -28,7 +28,7 @@ export default function InvoicesPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_price: 0 }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const toggleAll = () => {
@@ -67,7 +67,7 @@ export default function InvoicesPage() {
       recipientAddress: inv.customers?.address,
       extraFields: inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : [],
       items: lineItems.map((li: any) => ({
-        name: li.items?.name || "—",
+        name: li.items?.name || li.item_name || "—",
         sku: li.items?.sku,
         quantity: li.quantity,
         unitPrice: Number(li.unit_price),
@@ -88,11 +88,12 @@ export default function InvoicesPage() {
     setLines(
       lineItems.length > 0
         ? lineItems.map((li: any) => ({
-            item_id: li.item_id,
+            item_id: li.item_id || "",
+            item_name: li.item_name || li.items?.name || "",
             quantity: li.quantity,
             unit_price: Number(li.unit_price),
           }))
-        : [{ item_id: "", quantity: 1, unit_price: 0 }]
+        : [{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]
     );
     setEditId(inv.id);
     setCreateOpen(true);
@@ -102,7 +103,7 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total });
-      await createInvoiceItems(lines.filter(l => l.item_id).map(l => ({ invoice_id: inv.id, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
+      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -114,7 +115,7 @@ export default function InvoicesPage() {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
       await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total });
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(lines.filter(l => l.item_id).map(l => ({ invoice_id: editId, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
+      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -152,15 +153,18 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "" }); setLines([{ item_id: "", quantity: 1, unit_price: 0 }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]); setEditId(null); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
-  const addLine = () => setLines([...lines, { item_id: "", quantity: 1, unit_price: 0 }]);
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0 }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
     if (field === "item_id") {
       const item = items.find(i => i.id === value);
-      if (item) newLines[idx].unit_price = Number(item.selling_price);
+      if (item) {
+        newLines[idx].unit_price = Number(item.selling_price);
+        newLines[idx].item_name = item.name;
+      }
     }
     setLines(newLines);
   };
@@ -227,8 +231,21 @@ export default function InvoicesPage() {
                         <ItemSearch
                           items={items}
                           value={line.item_id}
-                          onChange={(itemId) => updateLine(idx, "item_id", itemId)}
-                          placeholder="Search item..."
+                          customName={line.item_name}
+                          onChange={(itemId, item, customName) => {
+                            const newLines = [...lines];
+                            if (itemId) {
+                              newLines[idx].item_id = itemId;
+                              newLines[idx].item_name = item?.name || "";
+                              if (item) newLines[idx].unit_price = Number(item.selling_price);
+                            } else {
+                              newLines[idx].item_id = "";
+                              newLines[idx].item_name = customName || "";
+                            }
+                            setLines(newLines);
+                          }}
+                          placeholder="Search or type custom item..."
+                          allowCustom
                         />
                         <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
                         <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
@@ -263,8 +280,8 @@ export default function InvoicesPage() {
               <TableBody>
                 {invItems.map(ii => (
                   <TableRow key={ii.id}>
-                    <TableCell className="font-mono text-xs text-primary font-medium">{ii.items?.sku || "—"}</TableCell>
-                    <TableCell className="text-sm font-medium">{ii.items?.name || "—"}</TableCell>
+                     <TableCell className="font-mono text-xs text-primary font-medium">{ii.items?.sku || "—"}</TableCell>
+                     <TableCell className="text-sm font-medium">{ii.items?.name || (ii as any).item_name || "—"}</TableCell>
                     <TableCell className="text-sm">{ii.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
                     <TableCell className="text-sm text-right font-medium">{peso(ii.quantity * Number(ii.unit_price))}</TableCell>
