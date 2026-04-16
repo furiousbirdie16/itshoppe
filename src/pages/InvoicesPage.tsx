@@ -191,9 +191,9 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">New Invoice</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Invoice" : "New Invoice"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -219,23 +219,37 @@ export default function InvoicesPage() {
                 <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
               </div>
               <div className="space-y-2">
-                {lines.map((line, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
-                    <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
-                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
-                      <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku}) — Stock: {i.quantity}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                    <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
-                    <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
-                  </div>
-                ))}
+                {lines.map((line, idx) => {
+                  const selectedItem = items.find(i => i.id === line.item_id);
+                  return (
+                    <div key={idx}>
+                      <div className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                        <ItemSearch
+                          items={items}
+                          value={line.item_id}
+                          onChange={(itemId) => updateLine(idx, "item_id", itemId)}
+                          placeholder="Search item..."
+                        />
+                        <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                        <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                        <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      </div>
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
+                    </div>
+                  );
+                })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
                 <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))}</span>
               </div>
             </div>
-            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="rounded-lg h-9">Create Invoice</Button>
+            <Button
+              onClick={() => editId ? editMut.mutate() : createMut.mutate()}
+              disabled={createMut.isPending || editMut.isPending}
+              className="rounded-lg h-9"
+            >
+              {editId ? "Update Invoice" : "Create Invoice"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
