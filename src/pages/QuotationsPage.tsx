@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { toast } from "sonner";
@@ -29,13 +29,20 @@ export default function QuotationsPage() {
   const [viewQ, setViewQ] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Filters
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState("all");
+  const [filterAgent, setFilterAgent] = useState("all");
+  const [showFilters, setShowFilters] = useState(false);
+
   const toggleAll = () => {
-    if (selectedIds.size === quotations.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(quotations.map(q => q.id)));
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(q => q.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -52,6 +59,24 @@ export default function QuotationsPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
+
+  // Derive unique sales agents for filter dropdown
+  const uniqueAgents = useMemo(() => {
+    const agents = new Set<string>();
+    quotations.forEach((q: any) => { if (q.sales_agent) agents.add(q.sales_agent); });
+    return Array.from(agents).sort();
+  }, [quotations]);
+
+  // Apply filters
+  const filtered = useMemo(() => {
+    return quotations.filter((q: any) => {
+      if (filterDateFrom && q.quotation_date < filterDateFrom) return false;
+      if (filterDateTo && q.quotation_date > filterDateTo) return false;
+      if (filterCustomer !== "all" && q.customer_id !== filterCustomer) return false;
+      if (filterAgent !== "all" && (q.sales_agent || "") !== filterAgent) return false;
+      return true;
+    });
+  }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
 
   const parseQty = (v: string) => parseInt(v) || 0;
   const parsePrice = (v: string) => parseFloat(v) || 0;
@@ -71,7 +96,10 @@ export default function QuotationsPage() {
       recipientEmail: q.customers?.email,
       recipientPhone: q.customers?.phone,
       recipientAddress: q.customers?.address,
-      extraFields: q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : [],
+      extraFields: [
+        ...(q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : []),
+        ...(q.sales_agent ? [{ label: "Sales Agent", value: q.sales_agent }] : []),
+      ],
       items: lineItems.map((li: any) => ({
         name: li.items?.name || li.item_name || "—",
         sku: li.items?.sku,
@@ -90,6 +118,7 @@ export default function QuotationsPage() {
       customer_id: q.customer_id || "",
       notes: q.notes || "",
       valid_until: q.valid_until || "",
+      sales_agent: q.sales_agent || "",
     });
     setLines(
       lineItems.length > 0
@@ -108,7 +137,7 @@ export default function QuotationsPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + lineTotal(l), 0);
-      const q = await createQuotation({ quotation_number: await generateQuotationNumber(), customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total });
+      const q = await createQuotation({ quotation_number: await generateQuotationNumber(), customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total, sales_agent: form.sales_agent } as any);
       await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
@@ -119,7 +148,7 @@ export default function QuotationsPage() {
     mutationFn: async () => {
       if (!editId) return;
       const total = lines.reduce((s, l) => s + lineTotal(l), 0);
-      await updateQuotation(editId, { customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total });
+      await updateQuotation(editId, { customer_id: form.customer_id || null, notes: form.notes, valid_until: form.valid_until || null, total_amount: total, sales_agent: form.sales_agent } as any);
       await deleteQuotationItems(editId);
       await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
     },
@@ -143,7 +172,7 @@ export default function QuotationsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]); setEditId(null); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "" }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -161,12 +190,14 @@ export default function QuotationsPage() {
 
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
 
+  const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
-          <p className="page-description">{quotations.length} quotations</p>
+          <p className="page-description">{filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
@@ -174,9 +205,12 @@ export default function QuotationsPage() {
               <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
+            <Filter className="h-4 w-4 mr-1.5" /> Filters
+          </Button>
           <ExportButton
-            data={quotations}
-            columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
+            data={filtered}
+            columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
             dateField={(r: any) => r.quotation_date || ""}
             fileName="Quotations"
           />
@@ -186,17 +220,55 @@ export default function QuotationsPage() {
         </div>
       </div>
 
+      {showFilters && (
+        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date From</Label>
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date To</Label>
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Customer</Label>
+            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Customers</SelectItem>
+                {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Sales Agent</Label>
+            <Select value={filterAgent} onValueChange={setFilterAgent}>
+              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                {uniqueAgents.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
+        </div>
+      )}
+
       <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Quotation" : "New Quotation"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
                 <Select value={form.customer_id} onValueChange={v => setForm({ ...form, customer_id: v })}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Select customer" /></SelectTrigger>
                   <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Sales Agent</Label>
+                <Input value={form.sales_agent} onChange={e => setForm({ ...form, sales_agent: e.target.value })} className="h-9" placeholder="Agent name" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Valid Until</Label>
@@ -288,9 +360,10 @@ export default function QuotationsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={quotations.length > 0 && selectedIds.size === quotations.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">Quotation #</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Sales Agent</TableHead>
               <TableHead className="text-xs">Date</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs text-right">Total</TableHead>
@@ -298,13 +371,14 @@ export default function QuotationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {quotations.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
-            ) : quotations.map(q => (
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
+            ) : filtered.map((q: any) => (
               <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
+                <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
                 <TableCell><StatusBadge status={q.status} /></TableCell>
                 <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
