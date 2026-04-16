@@ -643,6 +643,8 @@ export type Database = {
           customer_id: string | null
           id: string
           notes: string | null
+          payment_due_date: string | null
+          payment_terms: number | null
           quotation_date: string | null
           quotation_number: string
           sales_agent: string | null
@@ -655,6 +657,8 @@ export type Database = {
           customer_id?: string | null
           id?: string
           notes?: string | null
+          payment_due_date?: string | null
+          payment_terms?: number | null
           quotation_date?: string | null
           quotation_number: string
           sales_agent?: string | null
@@ -667,6 +671,8 @@ export type Database = {
           customer_id?: string | null
           id?: string
           notes?: string | null
+          payment_due_date?: string | null
+          payment_terms?: number | null
           quotation_date?: string | null
           quotation_number?: string
           sales_agent?: string | null
