@@ -73,7 +73,7 @@ export default function QuotationsPage() {
       recipientAddress: q.customers?.address,
       extraFields: q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : [],
       items: lineItems.map((li: any) => ({
-        name: li.items?.name || "—",
+        name: li.items?.name || li.item_name || "—",
         sku: li.items?.sku,
         quantity: li.quantity,
         unitPrice: Number(li.unit_price),

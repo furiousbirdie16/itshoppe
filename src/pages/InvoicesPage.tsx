@@ -67,7 +67,7 @@ export default function InvoicesPage() {
       recipientAddress: inv.customers?.address,
       extraFields: inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : [],
       items: lineItems.map((li: any) => ({
-        name: li.items?.name || "—",
+        name: li.items?.name || li.item_name || "—",
         sku: li.items?.sku,
         quantity: li.quantity,
         unitPrice: Number(li.unit_price),
