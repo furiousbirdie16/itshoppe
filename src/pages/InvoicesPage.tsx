@@ -78,6 +78,26 @@ export default function InvoicesPage() {
     setPreviewOpen(true);
   };
 
+  const openEdit = async (inv: any) => {
+    const lineItems = await getInvoiceItems(inv.id);
+    setForm({
+      customer_id: inv.customer_id || "",
+      notes: inv.notes || "",
+      due_date: inv.due_date || "",
+    });
+    setLines(
+      lineItems.length > 0
+        ? lineItems.map((li: any) => ({
+            item_id: li.item_id,
+            quantity: li.quantity,
+            unit_price: Number(li.unit_price),
+          }))
+        : [{ item_id: "", quantity: 1, unit_price: 0 }]
+    );
+    setEditId(inv.id);
+    setCreateOpen(true);
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
@@ -85,6 +105,18 @@ export default function InvoicesPage() {
       await createInvoiceItems(lines.filter(l => l.item_id).map(l => ({ invoice_id: inv.id, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const editMut = useMutation({
+    mutationFn: async () => {
+      if (!editId) return;
+      const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+      await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total });
+      await deleteInvoiceItems(editId);
+      await createInvoiceItems(lines.filter(l => l.item_id).map(l => ({ invoice_id: editId, item_id: l.item_id, quantity: l.quantity, unit_price: l.unit_price })));
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
   });
 
