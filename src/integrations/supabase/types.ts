@@ -690,6 +690,24 @@ export type Database = {
           },
         ]
       }
+      sales_agents: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       shipment_tracking: {
         Row: {
           actual_arrival: string | null
