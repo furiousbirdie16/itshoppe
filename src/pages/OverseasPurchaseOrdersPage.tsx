@@ -223,6 +223,7 @@ export default function OverseasPurchaseOrdersPage() {
                   { key: "status", label: "Status", type: "select", options: [
                     { value: "draft", label: "Draft" },
                     { value: "sent", label: "Sent" },
+                    { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
                   ]},
                   { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
