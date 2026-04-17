@@ -101,6 +101,8 @@ const resolveBulkColumns = (rows: BulkCell[][]) => {
 
 export default function OnlineSalesPage() {
   const qc = useQueryClient();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales"], queryFn: getOnlineSales });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
 
