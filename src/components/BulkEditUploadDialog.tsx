@@ -73,16 +73,21 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
   const reset = () => { setRows([]); setFileName(""); };
 
   const downloadCurrent = () => {
-    const data = items.map(i => ({
-      SKU: i.sku,
-      Name: i.name,
-      Description: i.description || "",
-      Quantity: i.quantity,
-      ...(isAdmin ? { "Cost Price": Number(i.cost_price) } : {}),
-      "Selling Price": Number(i.selling_price),
-      ...(isAdmin ? { "Low Stock Threshold": i.low_stock_threshold } : {}),
-      Source: (i as any).source || "local",
-    }));
+    const data = items.map(i => {
+      const isLocal = (((i as any).source as string) || "local") === "local";
+      // Non-admins see Cost Price only for local items (blank for imports)
+      const showCost = isAdmin || isLocal;
+      return {
+        SKU: i.sku,
+        Name: i.name,
+        Description: i.description || "",
+        Quantity: i.quantity,
+        ...(showCost ? { "Cost Price": Number(i.cost_price) } : { "Cost Price": "" }),
+        "Selling Price": Number(i.selling_price),
+        ...(isAdmin ? { "Low Stock Threshold": i.low_stock_threshold } : {}),
+        Source: (i as any).source || "local",
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
