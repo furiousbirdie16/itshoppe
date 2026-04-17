@@ -208,14 +208,14 @@ export default function PendingPaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Pending Payments</h1>
           <p className="page-description">{totalCount} pending · Total: {peso(totalPending)}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           <Button size="sm" onClick={openCreate} className="rounded-lg h-9 px-3 text-sm">
-            <Plus className="h-4 w-4 mr-1.5" /> Add Pending Payment
+            <Plus className="h-4 w-4 mr-1.5" /> Add
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
@@ -242,38 +242,38 @@ export default function PendingPaymentsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1"><Clock className="h-4 w-4" /> Total Pending</div>
-          <p className="text-2xl font-bold">{peso(totalPending)}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="rounded-lg border bg-card p-3 sm:p-4 min-w-0">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground mb-1"><Clock className="h-4 w-4 shrink-0" /> <span className="truncate">Total Pending</span></div>
+          <p className="text-lg sm:text-2xl font-bold truncate">{peso(totalPending)}</p>
           <p className="text-xs text-muted-foreground">{totalCount} pending</p>
         </div>
-        <div className="rounded-lg border bg-destructive/5 border-destructive/20 p-4">
-          <div className="flex items-center gap-2 text-sm text-destructive mb-1"><AlertCircle className="h-4 w-4" /> Overdue</div>
-          <p className="text-2xl font-bold text-destructive">{overdueCount}</p>
+        <div className="rounded-lg border bg-destructive/5 border-destructive/20 p-3 sm:p-4 min-w-0">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-destructive mb-1"><AlertCircle className="h-4 w-4 shrink-0" /> Overdue</div>
+          <p className="text-lg sm:text-2xl font-bold text-destructive">{overdueCount}</p>
           <p className="text-xs text-muted-foreground">past due</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1"><Receipt className="h-4 w-4" /> On Time</div>
-          <p className="text-2xl font-bold">{totalCount - overdueCount}</p>
+        <div className="rounded-lg border bg-card p-3 sm:p-4 min-w-0 col-span-2 sm:col-span-1">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground mb-1"><Receipt className="h-4 w-4 shrink-0" /> On Time</div>
+          <p className="text-lg sm:text-2xl font-bold">{totalCount - overdueCount}</p>
           <p className="text-xs text-muted-foreground">not yet due</p>
         </div>
       </div>
 
       {showFilters && (
-        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+        <div className="filter-bar">
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date From</Label>
-            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date To</Label>
-            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
             <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Customers</SelectItem>
                 {customers.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}

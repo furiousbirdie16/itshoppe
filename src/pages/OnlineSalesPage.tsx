@@ -388,12 +388,12 @@ export default function OnlineSalesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Online Sales</h1>
-          <p className="text-sm text-muted-foreground">Record Shopee, Lazada & other orders</p>
+      <div className="page-toolbar">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Online Sales</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Record Shopee, Lazada & other orders</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           {selected.size > 0 && (
             <>
               <BulkEditDialog
@@ -448,19 +448,19 @@ export default function OnlineSalesPage() {
       </div>
 
       {showFilters && (
-        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+        <div className="filter-bar">
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date From</Label>
-            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date To</Label>
-            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Channel</Label>
             <Select value={filterChannel} onValueChange={setFilterChannel}>
-              <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Channels</SelectItem>
                 <SelectItem value="shopee">Shopee</SelectItem>
@@ -472,7 +472,7 @@ export default function OnlineSalesPage() {
           <div className="space-y-1">
             <Label className="text-xs font-medium">Status</Label>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
@@ -486,12 +486,12 @@ export default function OnlineSalesPage() {
       )}
 
       {isAdmin && (
-        <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
+          <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
             <p className="text-xs text-muted-foreground mt-0.5">Sum of completed sales in current view</p>
           </div>
-          <p className="text-2xl font-bold tabular-nums">{peso(totalSales)}</p>
+          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
         </div>
       )}
 

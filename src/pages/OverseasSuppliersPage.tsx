@@ -80,12 +80,12 @@ export default function OverseasSuppliersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas Suppliers</h1>
           <p className="page-description">{suppliers.length} overseas suppliers</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
               <BulkEditDialog

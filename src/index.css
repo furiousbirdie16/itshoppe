@@ -117,6 +117,21 @@
   .stat-card {
     @apply rounded-xl border bg-card p-3 sm:p-5 transition-shadow hover:shadow-md min-w-0;
   }
+  /* Page header row that holds title + action buttons. Stacks on mobile, side-by-side on desktop. */
+  .page-toolbar {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+  }
+  /* Action button cluster — wraps on mobile so buttons never overflow. */
+  .toolbar-actions {
+    @apply flex flex-wrap gap-2;
+  }
+  /* Filter bar — inputs take full width on mobile, fixed widths on desktop. */
+  .filter-bar {
+    @apply flex flex-col gap-3 p-3 rounded-lg border bg-card sm:flex-row sm:flex-wrap sm:items-end;
+  }
+  .filter-bar > * {
+    @apply w-full sm:w-auto;
+  }
 }
 
 @layer utilities {

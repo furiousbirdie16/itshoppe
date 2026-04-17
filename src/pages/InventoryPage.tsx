@@ -119,12 +119,12 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Inventory</h1>
           <p className="page-description">{items.length} items in stock</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           {selectedIds.size > 0 && (() => {
             const selectedItems = items.filter(i => selectedIds.has(i.id));
             const allLocal = selectedItems.every(i => (((i as any).source as string) || 'local') === 'local');

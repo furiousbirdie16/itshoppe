@@ -262,12 +262,12 @@ export default function QuotationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
           <p className="page-description">{filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
               <BulkEditDialog
@@ -309,19 +309,19 @@ export default function QuotationsPage() {
       </div>
 
       {showFilters && (
-        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+        <div className="filter-bar">
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date From</Label>
-            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date To</Label>
-            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
             <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Customers</SelectItem>
                 {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -331,7 +331,7 @@ export default function QuotationsPage() {
           <div className="space-y-1">
             <Label className="text-xs font-medium">Sales Agent</Label>
             <Select value={filterAgent} onValueChange={setFilterAgent}>
-              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Agents</SelectItem>
                 {uniqueAgents.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
@@ -343,12 +343,12 @@ export default function QuotationsPage() {
       )}
 
       {isAdmin && (
-        <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
+          <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
             <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
           </div>
-          <p className="text-2xl font-bold tabular-nums">{peso(totalSales)}</p>
+          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
         </div>
       )}
 
