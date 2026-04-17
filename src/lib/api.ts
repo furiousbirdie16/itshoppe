@@ -414,7 +414,7 @@ const generateNextNumber = async (seqId: string): Promise<string> => {
 export const generatePONumber = () => generateNextNumber("purchase_order");
 export const generateQuotationNumber = () => generateNextNumber("quotation");
 export const generateInvoiceNumber = () => generateNextNumber("invoice");
-export const generateOverseasPONumber = () => generateNextNumber("overseas_po");
+export const generateOverseasPONumber = () => generateNextNumber("overseas_purchase_order");
 export const generateShopeeOrderNumber = () => generateNextNumber("shopee_order");
 export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order");
 
