@@ -198,8 +198,8 @@ export default function InventoryPage() {
               <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
               <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
             </div>
-            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-1'} gap-3`}>
-              {isAdmin && (
+            <div className={`grid ${isAdmin ? 'grid-cols-3' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
+              {canEditCost && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Cost Price</Label>
                   <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
