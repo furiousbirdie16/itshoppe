@@ -38,6 +38,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState<string>("draft");
+  const [orderDate, setOrderDate] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
