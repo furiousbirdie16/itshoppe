@@ -25,12 +25,12 @@ import { DateField } from "@/components/DateField";
 interface LineItem {
   item_name: string;
   description: string;
-  quantity: number;
-  unit_cost: number;
+  quantity: number | "";
+  unit_cost: number | "";
   item_id: string;
 }
 
-const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0, item_id: "" });
+const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "", unit_cost: "", item_id: "" });
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
