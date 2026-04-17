@@ -135,7 +135,9 @@ export default function InventoryPage() {
                 entityLabel="items"
                 fields={([
                   { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ...(isAdmin ? [
+                    { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ] : []),
                   ...(canBulkEditCost ? [
                     { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
                   ] : []),
