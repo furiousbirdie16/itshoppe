@@ -313,7 +313,7 @@ export default function InvoicesPage() {
                 <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
-                <TableCell><StatusBadge status={inv.status} /></TableCell>
+                <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
                 <TableCell className="text-right text-sm font-medium">{peso(Number(inv.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
