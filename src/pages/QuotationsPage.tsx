@@ -94,6 +94,13 @@ export default function QuotationsPage() {
     });
   }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
 
+  // Admin-only total: sum of accepted quotations in current filter
+  const totalSales = useMemo(() => {
+    return filtered
+      .filter((q: any) => q.status === "accepted")
+      .reduce((s: number, q: any) => s + Number(q.total_amount || 0), 0);
+  }, [filtered]);
+
   const toggleAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map((q: any) => q.id)));
