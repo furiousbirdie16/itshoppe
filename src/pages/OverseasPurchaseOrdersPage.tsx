@@ -131,11 +131,26 @@ export default function OverseasPurchaseOrdersPage() {
   });
 
   const receiveMut = useMutation({
-    mutationFn: receiveOverseasPO,
+    mutationFn: async () => {
+      const itemsToReceive = Object.entries(receiveQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const pi = receiveItems.find((i) => i.id === poItemId);
+          return { poItemId, itemId: pi?.item_id || null, quantity: qty };
+        });
+      if (itemsToReceive.length === 0) {
+        toast.info("Enter a quantity for at least one item");
+        return;
+      }
+      await receiveOverseasPO(receiveOpen!, itemsToReceive);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setReceiveOpen(null);
+      setReceiveQtys({});
       toast.success("Items received and added to stock");
     },
     onError: (e: any) => toast.error(e.message),
