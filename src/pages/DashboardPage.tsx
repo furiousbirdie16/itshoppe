@@ -20,15 +20,33 @@ import { useNavigate } from "react-router-dom";
 type SalesRange = "daily" | "monthly" | "custom";
 type SalesDetail = "online" | "invoice" | "combined" | null;
 
+type SalesRange = "daily" | "monthly" | "custom";
+type SalesDetail = "online" | "invoice" | "combined" | null;
+type LowStockFilter = "all" | "ordered" | "not_ordered";
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const queryClient = useQueryClient();
 
   const [salesRange, setSalesRange] = useState<SalesRange>("daily");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
   const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
   const [showDetail, setShowDetail] = useState<SalesDetail>(null);
+  const [lowStockFilter, setLowStockFilter] = useState<LowStockFilter>("all");
+  const [editingThreshold, setEditingThreshold] = useState<Record<string, string>>({});
+
+  const updateThresholdMutation = useMutation({
+    mutationFn: ({ id, threshold }: { id: string; threshold: number }) =>
+      updateItem(id, { low_stock_threshold: threshold }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      toast.success("Threshold updated");
+    },
+    onError: (e: any) => toast.error(e.message || "Failed to update threshold"),
+  });
 
   const { dateFrom, dateTo } = useMemo(() => {
     const now = new Date();
