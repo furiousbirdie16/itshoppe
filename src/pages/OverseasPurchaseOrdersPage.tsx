@@ -457,13 +457,9 @@ export default function OverseasPurchaseOrdersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => {
-                          if (confirm(`Mark PO ${po.po_number} as received? Linked inventory items will be added to stock.`)) {
-                            receiveMut.mutate(po.id);
-                          }
-                        }}
+                        onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }}
                         className="h-7 w-7 rounded-md"
-                        title="Mark as received & add to stock"
+                        title="Receive items"
                       >
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
                       </Button>
