@@ -156,9 +156,36 @@ export default function ShipmentTrackingPage() {
           <h1 className="page-title">Shipment Tracking</h1>
           <p className="page-description">{shipments.length} shipments logged</p>
         </div>
-        <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> Log Shipment
-        </Button>
+        <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="shipments"
+                fields={[
+                  { key: "status", label: "Status", type: "select", options: [
+                    { value: "in_transit", label: "In Transit" },
+                    { value: "customs", label: "At Customs" },
+                    { value: "delivered", label: "Delivered" },
+                  ]},
+                  { key: "shipping_method", label: "Shipping Method", type: "text" },
+                  { key: "ship_date", label: "Ship Date", type: "date" },
+                  { key: "estimated_arrival", label: "Estimated Arrival", type: "date" },
+                  { key: "actual_arrival", label: "Actual Arrival", type: "date" },
+                  { key: "notes", label: "Notes", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updateShipment(id, patch as any); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["shipments"] }); setSelectedIds(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+              </Button>
+            </>
+          )}
+          <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> Log Shipment
+          </Button>
+        </div>
       </div>
 
       {/* Dialog */}
@@ -221,6 +248,7 @@ export default function ShipmentTrackingPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={shipments.length > 0 && selectedIds.size === shipments.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">PO #</TableHead>
               <TableHead className="text-xs">Supplier</TableHead>
               <TableHead className="text-xs">Tracking #</TableHead>
@@ -234,14 +262,15 @@ export default function ShipmentTrackingPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={9} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : shipments.length === 0 ? (
-              <TableRow><TableCell colSpan={9}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
             ) : shipments.map(s => {
               const po = s.overseas_purchase_orders as any;
               const daysLeft = getDaysRemaining(s);
               return (
-                <TableRow key={s.id} className="hover:bg-muted/30">
+                <TableRow key={s.id} className={selectedIds.has(s.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                  <TableCell><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} /></TableCell>
                   <TableCell className="font-medium text-sm font-mono">{po?.po_number || "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{po?.overseas_suppliers?.name || "—"}</TableCell>
                   <TableCell className="text-sm font-mono">{s.tracking_number || "—"}</TableCell>

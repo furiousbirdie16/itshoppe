@@ -380,6 +380,7 @@ export default function OverseasPurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={orders.length > 0 && selectedIds.size === orders.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">PO #</TableHead>
               <TableHead className="text-xs">Supplier</TableHead>
               <TableHead className="text-xs">Status</TableHead>
@@ -391,11 +392,12 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : orders.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : orders.map(po => (
-              <TableRow key={po.id} className="hover:bg-muted/30">
+              <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} /></TableCell>
