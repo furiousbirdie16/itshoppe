@@ -58,12 +58,13 @@ export default function InventoryPage() {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0 };
       if (isAdmin) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
-    } else if (isAdmin) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), cost_price: parseFloat(form.cost_price), quantity: parseInt(form.quantity) || 0 };
-      updateMut.mutate({ id: editing.id, data });
     } else {
-      // Non-admin: quantity only
-      updateMut.mutate({ id: editing.id, data: { quantity: parseInt(form.quantity) || 0 } });
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0 };
+      if (isAdmin) {
+        data.cost_price = parseFloat(form.cost_price);
+        data.low_stock_threshold = parseInt(form.low_stock_threshold);
+      }
+      updateMut.mutate({ id: editing.id, data });
     }
   };
 
