@@ -313,7 +313,7 @@ export default function InventoryPage() {
                     {((item as any).source as string) || 'local'}
                   </Badge>
                 </TableCell>
-                <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
+                <TableCell className={`text-right text-sm font-semibold ${item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
                 </TableCell>
                 <TableCell className="text-right text-sm text-muted-foreground">
