@@ -15,6 +15,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { ShipmentTracking, OverseasPurchaseOrder } from "@/types/database";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 const statusColors: Record<string, string> = {
   in_transit: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -55,6 +57,22 @@ export default function ShipmentTrackingPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ShipmentTracking | null>(null);
   const [form, setForm] = useState<FormState>(defaultForm);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === shipments.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(shipments.map(s => s.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteShipment(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["shipments"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} shipments`); },
+  });
 
   const { data: shipments = [], isLoading } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
   const { data: orders = [] } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
