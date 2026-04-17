@@ -19,6 +19,8 @@ import * as XLSX from "xlsx";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
+type BulkCell = string | number | Date | boolean | null | undefined;
+
 interface SaleForm {
   order_date: string;
   order_number: string;
@@ -45,6 +47,55 @@ const generateOrderNumber = async (channel: SalesChannel) => {
   if (channel === "shopee") return generateShopeeOrderNumber();
   if (channel === "lazada") return generateLazadaOrderNumber();
   return `OTH-${Date.now().toString(36).toUpperCase()}`;
+};
+
+const bulkColumnKeywords = {
+  product: ["product", "item", "name"],
+  channel: ["channel", "platform", "store", "marketplace", "shopee", "lazada"],
+  price: ["price", "amount", "selling", "srp", "posted"],
+  date: ["date", "created"],
+  quantity: ["qty", "quantity", "pieces", "pcs"],
+  orderId: ["order id", "order_id", "orderid", "order no", "order number", "order"],
+};
+
+const normalizeBulkCell = (value: BulkCell) => String(value ?? "").trim();
+
+const parseBulkNumber = (value: BulkCell, fallback: number) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  const normalized = normalizeBulkCell(value).replace(/,/g, "").replace(/[^\d.-]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const matchBulkColumnIndex = (row: BulkCell[], keywords: string[]) => row.findIndex((cell) => {
+  const normalized = normalizeBulkCell(cell).toLowerCase();
+  return normalized && keywords.some((keyword) => normalized.includes(keyword));
+});
+
+const resolveBulkColumns = (rows: BulkCell[][]) => {
+  const headerRow = rows[0] ?? [];
+  const headerIndexes = {
+    product: matchBulkColumnIndex(headerRow, bulkColumnKeywords.product),
+    channel: matchBulkColumnIndex(headerRow, bulkColumnKeywords.channel),
+    price: matchBulkColumnIndex(headerRow, bulkColumnKeywords.price),
+    date: matchBulkColumnIndex(headerRow, bulkColumnKeywords.date),
+    quantity: matchBulkColumnIndex(headerRow, bulkColumnKeywords.quantity),
+    orderId: matchBulkColumnIndex(headerRow, bulkColumnKeywords.orderId),
+  };
+
+  const headerScore = Object.values(headerIndexes).filter((index) => index >= 0).length;
+  if (headerScore >= 2 || headerIndexes.product >= 0) {
+    return { indexes: headerIndexes, dataRows: rows.slice(1) };
+  }
+
+  if (headerRow.length >= 6) {
+    return {
+      indexes: { product: 2, channel: 4, price: 5, date: 0, quantity: 3, orderId: 1 },
+      dataRows: rows,
+    };
+  }
+
+  return null;
 };
 
 export default function OnlineSalesPage() {
@@ -174,19 +225,15 @@ export default function OnlineSalesPage() {
       try {
         const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
-        if (json.length === 0) { toast.error("File is empty"); return; }
+        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: true, blankrows: false })
+          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
+        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
 
-        const headers = Object.keys(json[0]);
-        const findCol = (keywords: string[]) => headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
-        const productCol = findCol(["product", "item", "name"]);
-        const channelCol = findCol(["channel", "platform", "shopee", "lazada"]);
-        const priceCol = findCol(["price", "amount", "selling", "srp"]);
-        const dateCol = findCol(["date"]);
-        const qtyCol = findCol(["qty", "quantity"]);
-        const orderIdCol = findCol(["order id", "order_id", "orderid", "order"]);
-
-        if (!productCol) { toast.error("Could not find a 'Product/Name' column"); return; }
+        const resolvedColumns = resolveBulkColumns(sheetRows);
+        if (!resolvedColumns || resolvedColumns.indexes.product < 0) {
+          toast.error("Could not detect the product column");
+          return;
+        }
 
         const today = new Date().toISOString().split("T")[0];
         const parseDate = (v: unknown): string => {
@@ -207,14 +254,15 @@ export default function OnlineSalesPage() {
           return today;
         };
 
-        const parsed = json.map((row) => {
-          const product_name = String(productCol ? row[productCol] : "").trim();
-          const rawChannel = String(channelCol ? row[channelCol] : "shopee").toLowerCase().trim();
+        const { indexes, dataRows } = resolvedColumns;
+        const parsed = dataRows.map((row) => {
+          const product_name = normalizeBulkCell(row[indexes.product]);
+          const rawChannel = normalizeBulkCell(indexes.channel >= 0 ? row[indexes.channel] : "shopee").toLowerCase();
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : rawChannel.includes("shopee") ? "shopee" : "others";
-          const posted_price = Number(priceCol ? row[priceCol] : 0) || 0;
-          const quantity = Number(qtyCol ? row[qtyCol] : 1) || 1;
-          const order_date = parseDate(dateCol ? row[dateCol] : null);
-          const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
+          const posted_price = parseBulkNumber(indexes.price >= 0 ? row[indexes.price] : 0, 0);
+          const quantity = parseBulkNumber(indexes.quantity >= 0 ? row[indexes.quantity] : 1, 1) || 1;
+          const order_date = parseDate(indexes.date >= 0 ? row[indexes.date] : null);
+          const order_id = normalizeBulkCell(indexes.orderId >= 0 ? row[indexes.orderId] : "");
 
           const matchedItem = items.find(i => i.name.toLowerCase() === product_name.toLowerCase() || i.sku.toLowerCase() === product_name.toLowerCase());
 
