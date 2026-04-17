@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { peso } from "@/lib/currency";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
