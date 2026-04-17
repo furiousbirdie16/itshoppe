@@ -16,6 +16,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
+import { CustomerSearch } from "@/components/CustomerSearch";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -317,10 +318,7 @@ export default function QuotationsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
-                <Select value={form.customer_id} onValueChange={v => setForm({ ...form, customer_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                  <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <CustomerSearch customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
