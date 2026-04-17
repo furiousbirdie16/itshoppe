@@ -92,12 +92,13 @@ export default function OverseasPurchaseOrdersPage() {
         po_number: poNumber,
         supplier_id: supplierId || null,
         status: status as any,
+        order_date: orderDate || new Date().toISOString().slice(0, 10),
         expected_delivery: expectedDelivery || null,
         notes,
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
-      });
+      } as any);
       const valid = normalized.filter(l => l.item_name);
       if (valid.length > 0) {
         await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
