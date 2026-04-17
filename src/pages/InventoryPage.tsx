@@ -252,6 +252,14 @@ export default function InventoryPage() {
                         </Button>
                       </>
                     ) : (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
+                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                        </Button>
+                      </>
+                    ) : (
                       <Button variant="ghost" size="sm" onClick={() => openEdit(item)} className="h-7 px-2 rounded-md text-xs">
                         <Pencil className="h-3 w-3 mr-1" /> Qty
                       </Button>
