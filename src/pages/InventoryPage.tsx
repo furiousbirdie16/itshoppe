@@ -16,6 +16,7 @@ import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
+import BulkEditUploadDialog from "@/components/BulkEditUploadDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
@@ -27,6 +28,7 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [filter, setFilter] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
@@ -148,6 +150,9 @@ export default function InventoryPage() {
           <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
           </Button>
+          <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit (Excel)
+          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
           </Button>
@@ -216,6 +221,7 @@ export default function InventoryPage() {
       </Dialog>
 
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
+      <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative max-w-xs flex-1 min-w-[200px]">
