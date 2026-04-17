@@ -479,6 +479,14 @@ export default function OverseasPurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
+      <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
+        </div>
+        <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
+      </div>
+
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
