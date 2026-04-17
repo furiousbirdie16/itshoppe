@@ -247,7 +247,7 @@ export default function OverseasPurchaseOrdersPage() {
                 entityLabel="overseas POs"
                 fields={[
                   { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Draft" },
+                    { value: "draft", label: "Unpaid" },
                     { value: "sent", label: "Sent" },
                     { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
@@ -312,7 +312,7 @@ export default function OverseasPurchaseOrdersPage() {
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="draft">Unpaid</SelectItem>
                     <SelectItem value="sent">Sent</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
@@ -417,7 +417,7 @@ export default function OverseasPurchaseOrdersPage() {
             <div className="space-y-4 pt-2">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Supplier:</span> <span className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</span></div>
-                <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} /></div>
+                <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
                 <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>
                 <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>
               </div>
@@ -537,7 +537,7 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
-                <TableCell><StatusBadge status={po.status} /></TableCell>
+                <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
                 <TableCell className="text-sm">
                   <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
                     {po.currency === "USD" ? "$ USD" : "¥ RMB"}
