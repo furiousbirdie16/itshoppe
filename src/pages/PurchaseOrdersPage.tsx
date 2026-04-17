@@ -18,6 +18,7 @@ import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
 
@@ -30,6 +31,8 @@ const addDays = (dateStr: string, days: number) => {
 };
 
 export default function PurchaseOrdersPage() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewPO, setViewPO] = useState<string | null>(null);
