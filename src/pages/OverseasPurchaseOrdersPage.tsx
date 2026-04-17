@@ -413,7 +413,53 @@ export default function OverseasPurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Table */}
+      {/* Receive Dialog */}
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Enter the quantity that just arrived for each item. You can do this multiple times as more shipments come in.</p>
+          <div className="space-y-3 pt-2 max-h-[60vh] overflow-y-auto">
+            {receiveItems.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">No line items on this PO.</p>
+            )}
+            {receiveItems.map((pi: any) => {
+              const remaining = pi.quantity - (pi.received_quantity || 0);
+              const isCustom = !pi.item_id;
+              const isFull = remaining <= 0;
+              return (
+                <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isCustom
+                        ? `Custom item — not tracked in inventory · Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0}`
+                        : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0} · Remaining: ${remaining}`}
+                    </p>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={remaining}
+                    value={receiveQtys[pi.id] ?? ""}
+                    disabled={isFull}
+                    placeholder="0"
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      const clamped = isNaN(v) ? 0 : Math.max(0, Math.min(v, remaining));
+                      setReceiveQtys({ ...receiveQtys, [pi.id]: clamped });
+                    }}
+                    className="w-20 h-9 text-sm"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">
+            Confirm Receipt
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
