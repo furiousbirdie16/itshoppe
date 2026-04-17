@@ -272,6 +272,9 @@ export default function OverseasPurchaseOrdersPage() {
             dateField={(r: any) => r.order_date || ""}
             fileName="Overseas_POs"
           />
+          <Button variant="outline" onClick={() => setBulkUploadOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
+          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
           </Button>
