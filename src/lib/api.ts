@@ -567,6 +567,36 @@ export const deleteOverseasPOItems = async (poId: string) => {
   if (error) throw error;
 };
 
+// Receive an Overseas PO: add all linked items back to stock and mark as received.
+// Idempotent — if already 'received', it's a no-op.
+export const receiveOverseasPO = async (poId: string) => {
+  const { data: po } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
+  if ((po as any)?.status === "received") return;
+
+  const { data: poItems } = await from("overseas_purchase_order_items").select("*").eq("po_id", poId);
+  const linked = ((poItems as any[]) || []).filter((i) => !!i.item_id && i.quantity > 0);
+
+  for (const item of linked) {
+    const { data: currentItem } = await from("items").select("quantity").eq("id", item.item_id).single();
+    await from("items").update({
+      quantity: ((currentItem as any)?.quantity || 0) + item.quantity,
+      updated_at: new Date().toISOString(),
+    }).eq("id", item.item_id);
+
+    await from("inventory_movements").insert({
+      item_id: item.item_id,
+      type: "in_po",
+      quantity: item.quantity,
+      reference_id: poId,
+      reference_type: "overseas_purchase_order",
+      notes: "Received from overseas PO",
+    });
+  }
+
+  await from("overseas_purchase_orders").update({ status: "received", updated_at: new Date().toISOString() }).eq("id", poId);
+  await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { items_received: linked.length });
+};
+
 // Shipment Tracking
 export const getShipments = async (): Promise<ShipmentTracking[]> => {
   const { data, error } = await from("shipment_tracking").select("*, overseas_purchase_orders(*, overseas_suppliers(*))").order("created_at", { ascending: false });
