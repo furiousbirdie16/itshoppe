@@ -23,6 +23,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
@@ -267,9 +268,29 @@ export default function QuotationsPage() {
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
-              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-            </Button>
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="quotations"
+                fields={[
+                  { key: "status", label: "Status", type: "select", options: [
+                    { value: "draft", label: "Draft" },
+                    { value: "sent", label: "Sent" },
+                    { value: "accepted", label: "Accepted" },
+                    { value: "rejected", label: "Rejected" },
+                  ]},
+                  { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
+                  { key: "valid_until", label: "Valid Until", type: "date" },
+                  { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
+                  { key: "notes", label: "Notes", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updateQuotation(id, patch as any); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+              </Button>
+            </>
           )}
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters

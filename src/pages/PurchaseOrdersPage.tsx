@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, generatePONumber } from "@/lib/api";
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -180,9 +181,29 @@ export default function PurchaseOrdersPage() {
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
-              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-            </Button>
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="POs"
+                fields={[
+                  { key: "status", label: "Status", type: "select", options: [
+                    { value: "draft", label: "Draft" },
+                    { value: "sent", label: "Sent" },
+                    { value: "partially_received", label: "Partially Received" },
+                    { value: "received", label: "Received" },
+                  ]},
+                  { key: "order_date", label: "Order Date", type: "date" },
+                  { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
+                  { key: "payment_due_date", label: "Payment Due Date", type: "date" },
+                  { key: "notes", label: "Notes", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updatePurchaseOrder(id, patch as any); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setSelectedIds(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+              </Button>
+            </>
           )}
           <ExportButton
             data={pos}
