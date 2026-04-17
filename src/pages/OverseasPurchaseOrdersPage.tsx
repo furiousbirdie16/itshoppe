@@ -116,12 +116,13 @@ export default function OverseasPurchaseOrdersPage() {
       await updateOverseasPurchaseOrder(editing.id, {
         supplier_id: supplierId || null,
         status: status as any,
+        order_date: orderDate || null,
         expected_delivery: expectedDelivery || null,
         notes,
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
-      });
+      } as any);
       await deleteOverseasPOItems(editing.id);
       const valid = normalized.filter(l => l.item_name);
       if (valid.length > 0) {
