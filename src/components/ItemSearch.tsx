@@ -11,9 +11,12 @@ interface ItemSearchProps {
   placeholder?: string;
   className?: string;
   allowCustom?: boolean;
+  /** Optional source filter — when set, only items with matching source are shown */
+  sourceFilter?: 'local' | 'import';
 }
 
-export function ItemSearch({ items, value, customName, onChange, placeholder = "Search by SKU or name...", className, allowCustom = false }: ItemSearchProps) {
+export function ItemSearch({ items: itemsRaw, value, customName, onChange, placeholder = "Search by SKU or name...", className, allowCustom = false, sourceFilter }: ItemSearchProps) {
+  const items = sourceFilter ? itemsRaw.filter(i => (i.source ?? 'local') === sourceFilter) : itemsRaw;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
