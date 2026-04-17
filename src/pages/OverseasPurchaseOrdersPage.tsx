@@ -169,6 +169,7 @@ export default function OverseasPurchaseOrdersPage() {
     setEditing(null);
     setSupplierId("");
     setStatus("draft");
+    setOrderDate(new Date().toISOString().slice(0, 10));
     setExpectedDelivery("");
     setNotes("");
     setLines([emptyLine()]);
@@ -181,6 +182,7 @@ export default function OverseasPurchaseOrdersPage() {
     setEditing(po);
     setSupplierId(po.supplier_id || "");
     setStatus(po.status);
+    setOrderDate(po.order_date || "");
     setExpectedDelivery(po.expected_delivery || "");
     setNotes(po.notes);
     setCurrency(po.currency);
