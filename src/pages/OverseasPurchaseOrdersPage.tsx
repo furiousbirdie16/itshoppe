@@ -234,12 +234,12 @@ export default function OverseasPurchaseOrdersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas Purchase Orders</h1>
           <p className="page-description">{orders.length} orders • Stock added when marked received</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
               <BulkEditDialog

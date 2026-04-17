@@ -224,12 +224,12 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Invoices</h1>
           <p className="page-description">{filtered.length} invoice{filtered.length !== 1 ? "s" : ""}{filtered.length !== invoices.length ? ` (filtered from ${invoices.length})` : ""}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
               <BulkEditDialog
