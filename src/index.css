@@ -97,24 +97,35 @@
 
 @layer components {
   .page-header {
-    @apply mb-8;
+    @apply mb-5 sm:mb-8;
   }
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-foreground;
+    @apply text-xl sm:text-2xl font-semibold tracking-tight text-foreground;
   }
   .page-description {
-    @apply text-sm text-muted-foreground mt-1;
+    @apply text-xs sm:text-sm text-muted-foreground mt-1;
   }
   .data-table-wrapper {
-    @apply rounded-xl border bg-card overflow-hidden;
+    @apply rounded-xl border bg-card overflow-x-auto;
   }
   .empty-state {
-    @apply flex flex-col items-center justify-center py-16 text-muted-foreground;
+    @apply flex flex-col items-center justify-center py-12 sm:py-16 text-muted-foreground;
   }
   .empty-state-icon {
     @apply h-10 w-10 mb-3 text-muted-foreground/40;
   }
   .stat-card {
-    @apply rounded-xl border bg-card p-5 transition-shadow hover:shadow-md;
+    @apply rounded-xl border bg-card p-3 sm:p-5 transition-shadow hover:shadow-md min-w-0;
+  }
+}
+
+@layer utilities {
+  /* Prevent iOS zoom on input focus by ensuring 16px font on mobile inputs */
+  @media (max-width: 640px) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 }
