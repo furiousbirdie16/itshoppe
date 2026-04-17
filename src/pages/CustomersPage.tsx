@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import type { Customer } from "@/types/database";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
@@ -69,9 +70,23 @@ export default function CustomersPage() {
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
-              <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-            </Button>
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="customers"
+                fields={[
+                  { key: "contact_person", label: "Contact Person", type: "text" },
+                  { key: "email", label: "Email", type: "text" },
+                  { key: "phone", label: "Phone", type: "text" },
+                  { key: "address", label: "Address", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updateCustomer(id, patch as Partial<Customer>); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["customers"] }); setSelectedIds(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+              </Button>
+            </>
           )}
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Customer

@@ -18,6 +18,8 @@ import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 interface LineItem {
   item_name: string;
@@ -40,6 +42,22 @@ export default function OverseasPurchaseOrdersPage() {
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
   const [exchangeRate, setExchangeRate] = useState("1");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === orders.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(orders.map(o => o.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteOverseasPurchaseOrder(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
+  });
 
   // View dialog
   const [viewPO, setViewPO] = useState<OverseasPurchaseOrder | null>(null);
@@ -160,6 +178,30 @@ export default function OverseasPurchaseOrdersPage() {
           <p className="page-description">{orders.length} orders • No inventory impact</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="overseas POs"
+                fields={[
+                  { key: "status", label: "Status", type: "select", options: [
+                    { value: "draft", label: "Draft" },
+                    { value: "sent", label: "Sent" },
+                    { value: "received", label: "Received" },
+                  ]},
+                  { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
+                  { key: "exchange_rate", label: "Exchange Rate", type: "number", transform: v => parseFloat(v) || 1 },
+                  { key: "expected_delivery", label: "Expected Delivery", type: "date" },
+                  { key: "notes", label: "Notes", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updateOverseasPurchaseOrder(id, patch as any); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setSelectedIds(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+              </Button>
+            </>
+          )}
           <ExportButton
             data={orders}
             columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.overseas_suppliers?.name || "", "Status": (r: any) => r.status, "Currency": (r: any) => r.currency, "Exchange Rate": (r: any) => r.exchange_rate, "Order Date": (r: any) => r.order_date, "Total": (r: any) => r.total_amount }}
@@ -338,6 +380,7 @@ export default function OverseasPurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={orders.length > 0 && selectedIds.size === orders.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">PO #</TableHead>
               <TableHead className="text-xs">Supplier</TableHead>
               <TableHead className="text-xs">Status</TableHead>
@@ -349,11 +392,12 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : orders.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : orders.map(po => (
-              <TableRow key={po.id} className="hover:bg-muted/30">
+              <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} /></TableCell>

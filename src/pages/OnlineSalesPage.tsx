@@ -17,6 +17,7 @@ import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
 import { useAuth } from "@/contexts/AuthContext";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -358,9 +359,33 @@ export default function OnlineSalesPage() {
         </div>
         <div className="flex gap-2">
           {selected.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
-              <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
-            </Button>
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selected)}
+                entityLabel="sales"
+                fields={[
+                  { key: "sales_channel", label: "Channel", type: "select", options: [
+                    { value: "shopee", label: "Shopee" },
+                    { value: "lazada", label: "Lazada" },
+                    { value: "others", label: "Others" },
+                  ]},
+                  { key: "status", label: "Status", type: "select", options: [
+                    { value: "completed", label: "Completed" },
+                    { value: "returned", label: "Returned" },
+                    { value: "cancelled", label: "Cancelled" },
+                  ]},
+                  { key: "posted_price", label: "Selling Price", type: "number", transform: v => parseFloat(v) || 0 },
+                  { key: "deal_price", label: "Deal Price", type: "number", transform: v => parseFloat(v) || 0 },
+                  { key: "order_date", label: "Order Date", type: "date" },
+                  { key: "notes", label: "Notes", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updateOnlineSale(id, patch as any); }}
+                onSuccess={() => { qc.invalidateQueries({ queryKey: ["online_sales"] }); setSelected(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
+              </Button>
+            </>
           )}
           <ExportButton
             data={sales}

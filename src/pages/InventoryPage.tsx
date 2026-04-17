@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
 import { useAuth } from "@/contexts/AuthContext";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 export default function InventoryPage() {
   const { role } = useAuth();
@@ -108,6 +109,22 @@ export default function InventoryPage() {
           <p className="page-description">{items.length} items in stock</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <BulkEditDialog
+              selectedIds={Array.from(selectedIds)}
+              entityLabel="items"
+              fields={([
+                { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                ...(isAdmin ? [
+                  { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
+                ] : []),
+                { key: "description", label: "Description", type: "textarea" },
+              ]) as BulkField[]}
+              updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
+              onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
+            />
+          )}
           {selectedIds.size > 0 && isAdmin && (
             <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
               <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size} selected
