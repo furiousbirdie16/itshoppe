@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 interface StatusBadgeProps {
   status: string;
   className?: string;
+  context?: "invoice" | "default";
 }
 
 const statusStyles: Record<string, string> = {
@@ -17,7 +18,16 @@ const statusStyles: Record<string, string> = {
   unpaid: "bg-warning/10 text-warning",
 };
 
-export function StatusBadge({ status, className }: StatusBadgeProps) {
+const invoiceLabels: Record<string, string> = {
+  draft: "not shipped",
+  confirmed: "shipped",
+};
+
+export function StatusBadge({ status, className, context = "default" }: StatusBadgeProps) {
+  const label =
+    context === "invoice" && invoiceLabels[status]
+      ? invoiceLabels[status]
+      : status.replace(/_/g, " ");
   return (
     <span
       className={cn(
@@ -26,7 +36,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         className
       )}
     >
-      {status.replace(/_/g, " ")}
+      {label}
     </span>
   );
 }
