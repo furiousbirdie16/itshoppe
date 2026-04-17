@@ -283,6 +283,50 @@ export type Database = {
         }
         Relationships: []
       }
+      manual_receivables: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_id: string | null
+          description: string
+          due_date: string | null
+          id: string
+          notes: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          customer_id?: string | null
+          description?: string
+          due_date?: string | null
+          id?: string
+          notes?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_id?: string | null
+          description?: string
+          due_date?: string | null
+          id?: string
+          notes?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_receivables_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       online_sales: {
         Row: {
           created_at: string | null
