@@ -329,11 +329,11 @@ export default function OverseasPurchaseOrdersPage() {
                        </div>
                        <div className="space-y-1">
                          {idx === 0 && <Label className="text-[10px] text-muted-foreground">Qty</Label>}
-                         <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-8 text-sm" />
+                         <Input type="number" value={line.quantity} placeholder="0" onChange={e => updateLine(idx, "quantity", e.target.value === "" ? "" : (parseInt(e.target.value) || 0))} className="h-8 text-sm" />
                        </div>
                        <div className="space-y-1">
                          {idx === 0 && <Label className="text-[10px] text-muted-foreground">Unit Cost ({currencySymbol})</Label>}
-                         <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-8 text-sm" />
+                         <Input type="number" value={line.unit_cost} placeholder="0.00" onChange={e => updateLine(idx, "unit_cost", e.target.value === "" ? "" : (parseFloat(e.target.value) || 0))} className="h-8 text-sm" />
                        </div>
                        <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-8" disabled={lines.length === 1}>
                          <X className="h-3.5 w-3.5 text-muted-foreground" />
