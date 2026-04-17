@@ -320,6 +320,16 @@ export default function QuotationsPage() {
         </div>
       )}
 
+      {isAdmin && (
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
+          </div>
+          <p className="text-2xl font-bold tabular-nums">{peso(totalSales)}</p>
+        </div>
+      )}
+
       {/* Create / Edit Dialog */}
       <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
