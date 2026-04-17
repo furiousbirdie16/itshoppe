@@ -391,7 +391,7 @@ export const getDashboardStats = async () => {
 
   const itemsList = (items as any[]) || [];
   const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
-  const lowStockItems = itemsList.filter((i: any) => i.quantity <= i.low_stock_threshold);
+  const lowStockItems = itemsList.filter((i: any) => (i.low_stock_threshold ?? 0) > 0 && i.quantity <= i.low_stock_threshold);
 
   return {
     totalItems: itemsList.length,
