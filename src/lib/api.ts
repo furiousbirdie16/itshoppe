@@ -581,6 +581,8 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
   const { data, error } = await from("overseas_purchase_orders").update({ ...po, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
 
+  const updatedPo = data as OverseasPurchaseOrder;
+
   // When a PO is moved into "sent" (and wasn't already sent), make sure it has a shipment row.
   if (po.status === "sent" && prevStatus !== "sent") {
     const { data: existing } = await from("shipment_tracking").select("id").eq("po_id", id).limit(1);
@@ -589,13 +591,21 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
         po_id: id,
         status: "in_transit",
         ship_date: new Date().toISOString().slice(0, 10),
+        estimated_arrival: (updatedPo as any).expected_delivery || null,
         notes: "Auto-created when PO marked as sent",
       });
       await logActivity("created_shipment_tracking", "shipment_tracking", id, { auto: true, po_id: id });
     }
   }
 
-  return data as OverseasPurchaseOrder;
+  // Keep shipment ETA in sync when the PO's estimated arrival changes.
+  if (Object.prototype.hasOwnProperty.call(po, "expected_delivery")) {
+    await from("shipment_tracking")
+      .update({ estimated_arrival: (po as any).expected_delivery || null, updated_at: new Date().toISOString() })
+      .eq("po_id", id);
+  }
+
+  return updatedPo;
 };
 
 export const deleteOverseasPurchaseOrder = async (id: string) => {
