@@ -263,39 +263,15 @@ export default function PurchaseOrdersPage() {
               <div className="space-y-2">
                 {lines.map((line, idx) => (
                   <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
-                    {isAdmin ? (
-                      <ItemSearch
-                        items={items}
-                        value={line.item_id}
-                        customName={line.item_name && !line.item_id ? line.item_name : undefined}
-                        onChange={(id, item, customName) => setItemForLine(idx, id, item, customName)}
-                        allowCustom
-                        placeholder="Search inventory or type custom item..."
-                      />
-                    ) : (
-                      <Select
-                        value={line.item_id || ""}
-                        onValueChange={(id) => {
-                          const item = items.find(i => i.id === id);
-                          if (item) setItemForLine(idx, id, item);
-                        }}
-                      >
-                        <SelectTrigger className="h-9 text-sm">
-                          <SelectValue placeholder="Select a local item..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {items.filter(i => ((i as any).source || 'local') === 'local').length === 0 ? (
-                            <div className="px-2 py-1.5 text-xs text-muted-foreground">No local items in inventory</div>
-                          ) : items
-                            .filter(i => ((i as any).source || 'local') === 'local')
-                            .map(i => (
-                              <SelectItem key={i.id} value={i.id}>
-                                {i.name} <span className="text-muted-foreground text-xs ml-1">(Stock: {i.quantity})</span>
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    )}
+                    <ItemSearch
+                      items={items}
+                      value={line.item_id}
+                      customName={line.item_name && !line.item_id ? line.item_name : undefined}
+                      onChange={(id, item, customName) => setItemForLine(idx, id, item, customName)}
+                      allowCustom
+                      sourceFilter={isAdmin ? undefined : 'local'}
+                      placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
+                    />
                     <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
                     <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
                     <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8">
