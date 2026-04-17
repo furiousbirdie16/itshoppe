@@ -250,22 +250,45 @@ export default function OnlineSalesPage() {
           return;
         }
 
-        const today = new Date().toISOString().split("T")[0];
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const fmtLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const today = fmtLocal(new Date());
         const parseDate = (v: unknown): string => {
           if (!v) return today;
-          if (v instanceof Date) return v.toISOString().split("T")[0];
+          // xlsx with cellDates:true gives a Date at LOCAL midnight; use local components
+          // (toISOString() shifts to UTC and can roll back a day in +TZ regions like PHT)
+          if (v instanceof Date) {
+            if (isNaN(v.getTime())) return today;
+            return fmtLocal(v);
+          }
           if (typeof v === "number") {
-            // Excel serial date → JS date (Excel epoch: 1899-12-30)
-            const ms = Math.round((v - 25569) * 86400 * 1000);
-            const d = new Date(ms);
-            if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-            return today;
+            // Excel serial date → date parts (avoid timezone drift)
+            const totalDays = Math.floor(v);
+            // Excel epoch 1899-12-30 in UTC, then read UTC parts
+            const utc = new Date(Date.UTC(1899, 11, 30) + totalDays * 86400000);
+            if (isNaN(utc.getTime())) return today;
+            return `${utc.getUTCFullYear()}-${pad(utc.getUTCMonth() + 1)}-${pad(utc.getUTCDate())}`;
           }
           const s = String(v).trim();
-          // ISO-like already
-          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+          if (!s) return today;
+          // ISO YYYY-MM-DD already
+          const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (iso) return `${iso[1]}-${pad(+iso[2])}-${pad(+iso[3])}`;
+          // M/D/YY or M/D/YYYY (also handles D/M with slash; default to MM/DD/YYYY which matches Excel US locale exports)
+          const slash = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+          if (slash) {
+            let [, a, b, y] = slash;
+            let yr = parseInt(y);
+            if (yr < 100) yr += 2000;
+            // Treat as M/D/Y (most common Excel export)
+            const m = parseInt(a);
+            const d = parseInt(b);
+            if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+              return `${yr}-${pad(m)}-${pad(d)}`;
+            }
+          }
           const d = new Date(s);
-          if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+          if (!isNaN(d.getTime())) return fmtLocal(d);
           return today;
         };
 
