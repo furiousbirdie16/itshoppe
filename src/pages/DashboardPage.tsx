@@ -292,19 +292,58 @@ export default function DashboardPage() {
       )}
 
       {/* Low Stock Alert */}
-      {stats?.lowStockItems && stats.lowStockItems.length > 0 && (
+      {stats?.lowStockItems && stats.lowStockItems.length > 0 && (() => {
+        const filteredLowStock = stats.lowStockItems.filter((item: any) => {
+          const oo = item.on_order || { localQty: 0, overseasQty: 0 };
+          const totalOnOrder = (oo.localQty || 0) + (oo.overseasQty || 0);
+          if (lowStockFilter === "ordered") return totalOnOrder > 0;
+          if (lowStockFilter === "not_ordered") return totalOnOrder === 0;
+          return true;
+        });
+        const orderedCount = stats.lowStockItems.filter((item: any) => {
+          const oo = item.on_order || { localQty: 0, overseasQty: 0 };
+          return (oo.localQty || 0) + (oo.overseasQty || 0) > 0;
+        }).length;
+        const notOrderedCount = stats.lowStockItems.length - orderedCount;
+        return (
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-warning" />
               <h2 className="text-sm font-semibold">Low Stock Alerts</h2>
             </div>
-            <button
-              onClick={() => navigate("/inventory")}
-              className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
-            >
-              View all <ArrowRight className="h-3 w-3" />
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant={lowStockFilter === "all" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setLowStockFilter("all")}
+              >
+                All ({stats.lowStockItems.length})
+              </Button>
+              <Button
+                variant={lowStockFilter === "ordered" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setLowStockFilter("ordered")}
+              >
+                Ordered ({orderedCount})
+              </Button>
+              <Button
+                variant={lowStockFilter === "not_ordered" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setLowStockFilter("not_ordered")}
+              >
+                Not Ordered ({notOrderedCount})
+              </Button>
+              <button
+                onClick={() => navigate("/inventory")}
+                className="text-xs font-medium text-primary flex items-center gap-1 hover:underline ml-2"
+              >
+                View all <ArrowRight className="h-3 w-3" />
+              </button>
+            </div>
           </div>
           <div className="data-table-wrapper">
             <Table>
@@ -318,15 +357,62 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.lowStockItems.map((item: any) => {
+                {filteredLowStock.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
+                      No items match this filter.
+                    </TableCell>
+                  </TableRow>
+                ) : filteredLowStock.map((item: any) => {
                   const oo = item.on_order || { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
                   const totalOnOrder = oo.localQty + oo.overseasQty;
+                  const editValue = editingThreshold[item.id];
+                  const currentValue = editValue !== undefined ? editValue : String(item.low_stock_threshold);
+                  const commit = () => {
+                    const parsed = parseInt(currentValue, 10);
+                    if (Number.isNaN(parsed) || parsed < 0) {
+                      setEditingThreshold((prev) => {
+                        const next = { ...prev };
+                        delete next[item.id];
+                        return next;
+                      });
+                      return;
+                    }
+                    if (parsed !== item.low_stock_threshold) {
+                      updateThresholdMutation.mutate({ id: item.id, threshold: parsed });
+                    }
+                    setEditingThreshold((prev) => {
+                      const next = { ...prev };
+                      delete next[item.id];
+                      return next;
+                    });
+                  };
                   return (
                     <TableRow key={item.id} className="hover:bg-muted/50">
                       <TableCell className="font-medium text-sm">{item.name}</TableCell>
                       <TableCell className="text-xs text-muted-foreground font-mono">{item.sku}</TableCell>
                       <TableCell className="text-right text-sm font-semibold text-destructive">{item.quantity}</TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">{item.low_stock_threshold}</TableCell>
+                      <TableCell className="text-right">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={currentValue}
+                          onChange={(e) => setEditingThreshold((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                          onBlur={commit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            if (e.key === "Escape") {
+                              setEditingThreshold((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                          className="h-7 w-20 text-sm text-right ml-auto"
+                        />
+                      </TableCell>
                       <TableCell>
                         {totalOnOrder > 0 ? (
                           <div className="flex flex-col gap-0.5">
@@ -356,7 +442,8 @@ export default function DashboardPage() {
             </Table>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent POs */}
