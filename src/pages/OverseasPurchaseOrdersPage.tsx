@@ -57,7 +57,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   const bulkDeleteMut = useMutation({
     mutationFn: async () => { for (const id of selectedIds) await deleteOverseasPurchaseOrder(id); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
   });
 
   // View dialog
