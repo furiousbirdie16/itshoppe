@@ -139,9 +139,14 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
           const changes: DiffRow["changes"] = [];
           const patch: Partial<Item> = {};
 
+          const existingIsLocal = (((existing as any).source as string) || "local") === "local";
+
           for (const [col, field] of Object.entries(colToField)) {
-            // Non-admins: ignore restricted fields
-            if (!isAdmin && (field === "cost_price" || field === "low_stock_threshold")) continue;
+            // Non-admins: low_stock_threshold always blocked; cost_price allowed only for local items
+            if (!isAdmin) {
+              if (field === "low_stock_threshold") continue;
+              if (field === "cost_price" && !existingIsLocal) continue;
+            }
 
             const raw = row[col];
             const oldVal = (existing as any)[field];
