@@ -281,6 +281,15 @@ export default function OverseasPurchaseOrdersPage() {
         </div>
       </div>
 
+      <OverseasPOBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+          queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+        }}
+      />
+
       {/* Create / Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
