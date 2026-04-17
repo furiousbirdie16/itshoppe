@@ -112,7 +112,7 @@ export default function InventoryPage() {
     },
   });
 
-  const colCount = (isAdmin ? 8 : 7);
+  const colCount = 8; // Cost column always shown (admin: all items, non-admin: only local values)
 
   return (
     <div className="space-y-6">
