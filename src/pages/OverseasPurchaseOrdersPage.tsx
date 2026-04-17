@@ -275,6 +275,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <SelectContent>
                     <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
                   </SelectContent>
                 </Select>
