@@ -59,15 +59,18 @@ export default function InventoryPage() {
     setOpen(true);
   };
 
+  // Non-admins can edit cost_price ONLY for local items
+  const canEditCost = isAdmin || form.source === "local";
+
   const handleSubmit = () => {
     if (!editing) {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0, source: form.source };
-      if (isAdmin) data.cost_price = parseFloat(form.cost_price);
+      if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
     } else {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0, source: form.source };
+      if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
-        data.cost_price = parseFloat(form.cost_price);
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
       }
       updateMut.mutate({ id: editing.id, data });
