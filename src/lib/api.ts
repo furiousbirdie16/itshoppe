@@ -237,13 +237,24 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
   const { data: qItems } = await from("quotation_items").select("*").eq("quotation_id", quotationId);
   const q = quotation as any;
   const invNumber = await generateInvoiceNumber();
+  const invoiceDate = new Date().toISOString().split("T")[0];
+
+  // Carry over payment terms / due date from the quotation.
+  // Priority: explicit payment_due_date > computed from payment_terms (relative to invoice date).
+  let dueDate: string | null = q.payment_due_date || null;
+  if (!dueDate && q.payment_terms != null) {
+    const d = new Date(invoiceDate);
+    d.setDate(d.getDate() + Number(q.payment_terms));
+    dueDate = d.toISOString().split("T")[0];
+  }
 
   const { data: invoice, error } = await from("invoices").insert({
     invoice_number: invNumber,
     customer_id: q.customer_id,
     quotation_id: quotationId,
     status: "draft",
-    invoice_date: new Date().toISOString().split("T")[0],
+    invoice_date: invoiceDate,
+    due_date: dueDate,
     notes: q.notes,
     total_amount: q.total_amount,
     sales_agent: q.sales_agent || "",
