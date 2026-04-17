@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, getAllOverseasPOItems,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,12 +25,12 @@ import { DateField } from "@/components/DateField";
 interface LineItem {
   item_name: string;
   description: string;
-  quantity: number;
-  unit_cost: number;
+  quantity: number | "";
+  unit_cost: number | "";
   item_id: string;
 }
 
-const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: 1, unit_cost: 0, item_id: "" });
+const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "", unit_cost: "", item_id: "" });
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
@@ -57,7 +57,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   const bulkDeleteMut = useMutation({
     mutationFn: async () => { for (const id of selectedIds) await deleteOverseasPurchaseOrder(id); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
   });
 
   // View dialog
@@ -70,6 +70,7 @@ export default function OverseasPurchaseOrdersPage() {
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
   const { data: viewItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
@@ -84,7 +85,8 @@ export default function OverseasPurchaseOrdersPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const poNumber = await generateOverseasPONumber();
-      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
+      const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const po = await createOverseasPurchaseOrder({
         po_number: poNumber,
         supplier_id: supplierId || null,
@@ -95,18 +97,20 @@ export default function OverseasPurchaseOrdersPage() {
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
       });
-      if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
+      const valid = normalized.filter(l => l.item_name);
+      if (valid.length > 0) {
+        await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); toast.success("Overseas PO created"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); toast.success("Overseas PO created"); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const updateMut = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
+      const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       await updateOverseasPurchaseOrder(editing.id, {
         supplier_id: supplierId || null,
         status: status as any,
@@ -117,17 +121,18 @@ export default function OverseasPurchaseOrdersPage() {
         exchange_rate: parseFloat(exchangeRate) || 1,
       });
       await deleteOverseasPOItems(editing.id);
-      if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
+      const valid = normalized.filter(l => l.item_name);
+      if (valid.length > 0) {
+        await createOverseasPOItems(valid.map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteOverseasPurchaseOrder,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); toast.success("Deleted"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); toast.success("Deleted"); },
   });
 
   const receiveMut = useMutation({
@@ -147,6 +152,7 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
@@ -197,9 +203,22 @@ export default function OverseasPurchaseOrdersPage() {
   const addLine = () => setLines([...lines, emptyLine()]);
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
 
-  const foreignTotal = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+  const foreignTotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0);
   const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
   const currencySymbol = currency === "USD" ? "$" : "¥";
+
+  // Total value of items not yet received across all open POs (in PHP)
+  const notReceivedPhpTotal = (() => {
+    const rateByPo = new Map(orders.map(o => [o.id, o.exchange_rate || 1]));
+    let total = 0;
+    for (const li of allPOItems) {
+      const remaining = (li.quantity || 0) - (li.received_quantity || 0);
+      if (remaining <= 0) continue;
+      const rate = rateByPo.get(li.po_id) || 1;
+      total += remaining * (li.unit_cost || 0) * rate;
+    }
+    return total;
+  })();
 
   const handleSubmit = () => {
     if (editing) updateMut.mutate();
@@ -325,11 +344,11 @@ export default function OverseasPurchaseOrdersPage() {
                        </div>
                        <div className="space-y-1">
                          {idx === 0 && <Label className="text-[10px] text-muted-foreground">Qty</Label>}
-                         <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-8 text-sm" />
+                         <Input type="number" value={line.quantity} placeholder="0" onChange={e => updateLine(idx, "quantity", e.target.value === "" ? "" : (parseInt(e.target.value) || 0))} className="h-8 text-sm" />
                        </div>
                        <div className="space-y-1">
                          {idx === 0 && <Label className="text-[10px] text-muted-foreground">Unit Cost ({currencySymbol})</Label>}
-                         <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-8 text-sm" />
+                         <Input type="number" value={line.unit_cost} placeholder="0.00" onChange={e => updateLine(idx, "unit_cost", e.target.value === "" ? "" : (parseFloat(e.target.value) || 0))} className="h-8 text-sm" />
                        </div>
                        <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-8" disabled={lines.length === 1}>
                          <X className="h-3.5 w-3.5 text-muted-foreground" />
@@ -459,6 +478,14 @@ export default function OverseasPurchaseOrdersPage() {
           </Button>
         </DialogContent>
       </Dialog>
+
+      <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
+        </div>
+        <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
+      </div>
 
       <div className="data-table-wrapper">
         <Table>
