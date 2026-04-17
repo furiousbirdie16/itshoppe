@@ -252,7 +252,8 @@ export default function OverseasPurchaseOrdersPage() {
                   ]},
                   { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
                   { key: "exchange_rate", label: "Exchange Rate", type: "number", transform: v => parseFloat(v) || 1 },
-                  { key: "expected_delivery", label: "Expected Delivery", type: "date" },
+                  { key: "order_date", label: "Date Ordered", type: "date" },
+                  { key: "expected_delivery", label: "Estimated Date of Arrival", type: "date" },
                   { key: "notes", label: "Notes", type: "textarea" },
                 ] as BulkField[]}
                 updateOne={async (id, patch) => { await updateOverseasPurchaseOrder(id, patch as any); }}
