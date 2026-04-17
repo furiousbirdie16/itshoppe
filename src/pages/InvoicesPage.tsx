@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
+import { CustomerSearch } from "@/components/CustomerSearch";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -202,10 +203,7 @@ export default function InvoicesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
-                <Select value={form.customer_id} onValueChange={v => setForm({ ...form, customer_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                  <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <CustomerSearch customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Due Date</Label>
