@@ -254,7 +254,7 @@ export default function DashboardPage() {
                             <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
                             <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                             <TableCell className="text-sm">{inv.quotations?.sales_agent || "—"}</TableCell>
-                            <TableCell><StatusBadge status={inv.status} /></TableCell>
+                            <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
                             <TableCell className="text-sm text-right font-medium">{peso(Number(inv.total_amount))}</TableCell>
                           </TableRow>
                         ))}
@@ -362,7 +362,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium">{inv.invoice_number}</p>
                     <p className="text-xs text-muted-foreground">{inv.customers?.name || "No customer"}</p>
                   </div>
-                  <StatusBadge status={inv.status} />
+                  <StatusBadge status={inv.status} context="invoice" />
                 </div>
               ))
             ) : (
