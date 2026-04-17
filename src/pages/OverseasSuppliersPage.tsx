@@ -211,6 +211,7 @@ export default function OverseasSuppliersPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"><Checkbox checked={suppliers.length > 0 && selectedIds.size === suppliers.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">Country</TableHead>
               <TableHead className="text-xs">Contact</TableHead>
@@ -222,11 +223,12 @@ export default function OverseasSuppliersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : suppliers.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><div className="empty-state"><Globe className="empty-state-icon" /><p className="text-sm">No overseas suppliers yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><Globe className="empty-state-icon" /><p className="text-sm">No overseas suppliers yet</p></div></TableCell></TableRow>
             ) : suppliers.map(s => (
-              <TableRow key={s.id} className="hover:bg-muted/30">
+              <TableRow key={s.id} className={selectedIds.has(s.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} /></TableCell>
                 <TableCell className="font-medium text-sm">{s.name}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.country}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.contact_person}</TableCell>
