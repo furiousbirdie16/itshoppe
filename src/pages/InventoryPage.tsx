@@ -59,15 +59,18 @@ export default function InventoryPage() {
     setOpen(true);
   };
 
+  // Non-admins can edit cost_price ONLY for local items
+  const canEditCost = isAdmin || form.source === "local";
+
   const handleSubmit = () => {
     if (!editing) {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0, source: form.source };
-      if (isAdmin) data.cost_price = parseFloat(form.cost_price);
+      if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
     } else {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0, source: form.source };
+      if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
-        data.cost_price = parseFloat(form.cost_price);
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
       }
       updateMut.mutate({ id: editing.id, data });
@@ -109,7 +112,7 @@ export default function InventoryPage() {
     },
   });
 
-  const colCount = (isAdmin ? 8 : 7);
+  const colCount = 8; // Cost column always shown (admin: all items, non-admin: only local values)
 
   return (
     <div className="space-y-6">
@@ -119,23 +122,30 @@ export default function InventoryPage() {
           <p className="page-description">{items.length} items in stock</p>
         </div>
         <div className="flex gap-2">
-          {selectedIds.size > 0 && (
-            <BulkEditDialog
-              selectedIds={Array.from(selectedIds)}
-              entityLabel="items"
-              fields={([
-                { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
-                ...(isAdmin ? [
-                  { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
-                ] : []),
-                { key: "description", label: "Description", type: "textarea" },
-              ]) as BulkField[]}
-              updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
-              onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
-            />
-          )}
+          {selectedIds.size > 0 && (() => {
+            const selectedItems = items.filter(i => selectedIds.has(i.id));
+            const allLocal = selectedItems.every(i => (((i as any).source as string) || 'local') === 'local');
+            const canBulkEditCost = isAdmin || allLocal;
+            return (
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="items"
+                fields={([
+                  { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ...(canBulkEditCost ? [
+                    { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  ] : []),
+                  ...(isAdmin ? [
+                    { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
+                  ] : []),
+                  { key: "description", label: "Description", type: "textarea" },
+                ]) as BulkField[]}
+                updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
+              />
+            );
+          })()}
           {selectedIds.size > 0 && isAdmin && (
             <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
               <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size} selected
@@ -195,8 +205,8 @@ export default function InventoryPage() {
               <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
               <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
             </div>
-            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-1'} gap-3`}>
-              {isAdmin && (
+            <div className={`grid ${isAdmin ? 'grid-cols-3' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
+              {canEditCost && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Cost Price</Label>
                   <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
@@ -258,7 +268,7 @@ export default function InventoryPage() {
               <TableHead className="text-xs">SKU</TableHead>
               <TableHead className="text-xs">Source</TableHead>
               <TableHead className="text-xs text-right">Qty</TableHead>
-              {isAdmin && <TableHead className="text-xs text-right">Cost</TableHead>}
+              <TableHead className="text-xs text-right">Cost</TableHead>
               <TableHead className="text-xs text-right">Sell</TableHead>
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
@@ -298,7 +308,9 @@ export default function InventoryPage() {
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
                 </TableCell>
-                {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{peso(Number(item.cost_price))}</TableCell>}
+                <TableCell className="text-right text-sm text-muted-foreground">
+                  {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
+                </TableCell>
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
