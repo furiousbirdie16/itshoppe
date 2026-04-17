@@ -64,11 +64,14 @@ export default function InventoryPage() {
 
   const handleSubmit = () => {
     if (!editing) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0, source: form.source };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0 };
+      if (isAdmin) data.source = form.source;
+      else data.source = "local"; // non-admin new items default to local
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
     } else {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0, source: form.source };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0 };
+      if (isAdmin) data.source = form.source; // non-admins cannot change source
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
