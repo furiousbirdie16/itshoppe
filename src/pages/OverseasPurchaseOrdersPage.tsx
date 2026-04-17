@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
@@ -121,6 +121,17 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); toast.success("Deleted"); },
   });
 
+  const receiveMut = useMutation({
+    mutationFn: receiveOverseasPO,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Items received and added to stock");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const openCreate = () => {
     setEditing(null);
     setSupplierId("");
@@ -176,7 +187,7 @@ export default function OverseasPurchaseOrdersPage() {
       <div className="flex items-center justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas Purchase Orders</h1>
-          <p className="page-description">{orders.length} orders • No inventory impact</p>
+          <p className="page-description">{orders.length} orders • Stock added when marked received</p>
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
@@ -416,6 +427,21 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {po.status !== "received" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (confirm(`Mark PO ${po.po_number} as received? Linked inventory items will be added to stock.`)) {
+                            receiveMut.mutate(po.id);
+                          }
+                        }}
+                        className="h-7 w-7 rounded-md"
+                        title="Mark as received & add to stock"
+                      >
+                        <PackageCheck className="h-3.5 w-3.5 text-success" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                   </div>
