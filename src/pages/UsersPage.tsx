@@ -84,10 +84,10 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="page-toolbar">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">User Management</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage team members and their roles</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Manage team members and their roles</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
