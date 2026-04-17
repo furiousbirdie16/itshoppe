@@ -80,7 +80,7 @@ export default function CustomersPage() {
                   { key: "phone", label: "Phone", type: "text" },
                   { key: "address", label: "Address", type: "textarea" },
                 ] as BulkField[]}
-                updateOne={(id, patch) => updateCustomer(id, patch as Partial<Customer>)}
+                updateOne={async (id, patch) => { await updateCustomer(id, patch as Partial<Customer>); }}
                 onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["customers"] }); setSelectedIds(new Set()); }}
               />
               <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>

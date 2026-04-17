@@ -121,7 +121,7 @@ export default function InventoryPage() {
                 ] : []),
                 { key: "description", label: "Description", type: "textarea" },
               ]) as BulkField[]}
-              updateOne={(id, patch) => updateItem(id, patch as Partial<Item>)}
+              updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
               onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
             />
           )}
