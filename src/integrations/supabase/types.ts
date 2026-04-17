@@ -191,6 +191,7 @@ export type Database = {
           invoice_number: string
           notes: string | null
           quotation_id: string | null
+          sales_agent: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           total_amount: number | null
           updated_at: string | null
@@ -204,6 +205,7 @@ export type Database = {
           invoice_number: string
           notes?: string | null
           quotation_id?: string | null
+          sales_agent?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           total_amount?: number | null
           updated_at?: string | null
@@ -217,6 +219,7 @@ export type Database = {
           invoice_number?: string
           notes?: string | null
           quotation_id?: string | null
+          sales_agent?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           total_amount?: number | null
           updated_at?: string | null
