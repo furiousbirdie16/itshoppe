@@ -23,6 +23,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
@@ -385,7 +386,7 @@ export default function QuotationsPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Valid Until</Label>
-                <Input type="date" value={form.valid_until} onChange={e => setForm({ ...form, valid_until: e.target.value })} className="h-9" />
+                <DateField value={form.valid_until} onChange={v => setForm({ ...form, valid_until: v })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Terms (days)</Label>
@@ -393,7 +394,7 @@ export default function QuotationsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Due Date</Label>
-                <Input type="date" value={form.payment_due_date} onChange={e => setForm({ ...form, payment_due_date: e.target.value })} className="h-9" />
+                <DateField value={form.payment_due_date} onChange={v => setForm({ ...form, payment_due_date: v })} />
               </div>
             </div>
             <div className="space-y-1.5">

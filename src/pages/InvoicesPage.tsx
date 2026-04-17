@@ -20,6 +20,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { DateField } from "@/components/DateField";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
 
@@ -357,7 +358,7 @@ export default function InvoicesPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Due Date</Label>
-              <Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="h-9" />
+              <DateField value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>

@@ -18,6 +18,7 @@ import type { DocumentData } from "@/lib/pdf";
 import { parseISO, isBefore, isToday } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { DateField } from "@/components/DateField";
 
 interface ManualForm {
   customer_id: string;
@@ -331,7 +332,7 @@ export default function PendingPaymentsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Due Date</Label>
-                <Input type="date" value={manualForm.due_date} onChange={e => setManualForm({ ...manualForm, due_date: e.target.value })} className="h-9" />
+                <DateField value={manualForm.due_date} onChange={v => setManualForm({ ...manualForm, due_date: v })} />
               </div>
             </div>
             <div className="space-y-1.5">
