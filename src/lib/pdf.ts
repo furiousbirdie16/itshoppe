@@ -151,6 +151,7 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
   y = Math.max(y, dy) + 10;
 
   // ── Items Table ──
+  // Note: SKU is intentionally omitted from purchase orders per business preference
   autoTable(doc, {
     startY: y,
     margin: { left: ml, right: mr },
