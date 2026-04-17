@@ -557,6 +557,12 @@ export const getOverseasPOItems = async (poId: string): Promise<OverseasPurchase
   return data;
 };
 
+export const getAllOverseasPOItems = async (): Promise<OverseasPurchaseOrderItem[]> => {
+  const { data, error } = await from("overseas_purchase_order_items").select("*");
+  if (error) throw error;
+  return data as any;
+};
+
 export const createOverseasPOItems = async (items: Partial<OverseasPurchaseOrderItem>[]) => {
   const { error } = await from("overseas_purchase_order_items").insert(items);
   if (error) throw error;
