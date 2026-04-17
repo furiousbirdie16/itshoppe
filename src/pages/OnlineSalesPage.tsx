@@ -172,9 +172,9 @@ export default function OnlineSalesPage() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const wb = XLSX.read(evt.target?.result, { type: "array" });
+        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
         if (json.length === 0) { toast.error("File is empty"); return; }
 
         const headers = Object.keys(json[0]);
@@ -188,26 +188,45 @@ export default function OnlineSalesPage() {
 
         if (!productCol) { toast.error("Could not find a 'Product/Name' column"); return; }
 
+        const today = new Date().toISOString().split("T")[0];
+        const parseDate = (v: unknown): string => {
+          if (!v) return today;
+          if (v instanceof Date) return v.toISOString().split("T")[0];
+          if (typeof v === "number") {
+            // Excel serial date → JS date (Excel epoch: 1899-12-30)
+            const ms = Math.round((v - 25569) * 86400 * 1000);
+            const d = new Date(ms);
+            if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+            return today;
+          }
+          const s = String(v).trim();
+          // ISO-like already
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+          const d = new Date(s);
+          if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+          return today;
+        };
+
         const parsed = json.map((row) => {
           const product_name = String(productCol ? row[productCol] : "").trim();
           const rawChannel = String(channelCol ? row[channelCol] : "shopee").toLowerCase().trim();
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : rawChannel.includes("shopee") ? "shopee" : "others";
           const posted_price = Number(priceCol ? row[priceCol] : 0) || 0;
           const quantity = Number(qtyCol ? row[qtyCol] : 1) || 1;
-          const order_date = dateCol && row[dateCol] ? String(row[dateCol]).substring(0, 10) : new Date().toISOString().split("T")[0];
+          const order_date = parseDate(dateCol ? row[dateCol] : null);
           const order_id = String(orderIdCol ? row[orderIdCol] || "" : "").trim();
 
           const matchedItem = items.find(i => i.name.toLowerCase() === product_name.toLowerCase() || i.sku.toLowerCase() === product_name.toLowerCase());
 
           let error: string | undefined;
           if (!product_name) error = "Missing product name";
-          else if (!matchedItem) error = "Product not found in inventory";
           else if (posted_price < 0) error = "Negative price";
 
           return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: matchedItem?.id || null, valid: !error, error };
         });
         setBulkRows(parsed);
-      } catch {
+      } catch (err) {
+        console.error("Bulk parse error", err);
         toast.error("Failed to parse file");
       }
     };
@@ -220,18 +239,27 @@ export default function OnlineSalesPage() {
     if (valid.length === 0) return;
     setBulkUploading(true);
     let success = 0;
+    let failed = 0;
+    let lastError = "";
     for (const row of valid) {
       try {
         const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
         await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
         success++;
-      } catch { /* skip */ }
+      } catch (e: any) {
+        failed++;
+        lastError = e?.message || String(e);
+        console.error("Bulk row failed:", row, e);
+      }
     }
     setBulkUploading(false);
-    toast.success(`Uploaded ${success} sales records`);
-    setBulkRows([]);
-    setBulkFileName("");
-    setBulkOpen(false);
+    if (success > 0) toast.success(`Uploaded ${success} sales records${failed ? ` (${failed} failed)` : ""}`);
+    if (success === 0 && failed > 0) toast.error(`All ${failed} rows failed: ${lastError}`);
+    if (success > 0) {
+      setBulkRows([]);
+      setBulkFileName("");
+      setBulkOpen(false);
+    }
     qc.invalidateQueries({ queryKey: ["online_sales"] });
     qc.invalidateQueries({ queryKey: ["items"] });
   };
