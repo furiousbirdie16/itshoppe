@@ -190,11 +190,15 @@ export default function OnlineSalesPage() {
     setSaving(false);
   };
 
-  // Filter by tab + search
+  // Filter by tab + search + advanced filters
   const filtered = sales.filter((s: any) => {
     const status = s.status || 'completed';
     if (activeTab === 'completed' && status !== 'completed') return false;
     if (activeTab === 'returns' && status !== 'returned' && status !== 'cancelled') return false;
+    if (filterDateFrom && (s.order_date || "") < filterDateFrom) return false;
+    if (filterDateTo && (s.order_date || "") > filterDateTo) return false;
+    if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
+    if (filterStatus !== "all" && status !== filterStatus) return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
