@@ -48,20 +48,20 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku, description: item.description, quantity: String(item.quantity), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold) });
+    setForm({ name: item.name, sku: item.sku, description: item.description, quantity: String(item.quantity), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
     setOpen(true);
   };
 
   const handleSubmit = () => {
     if (!editing) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0 };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0, source: form.source };
       if (isAdmin) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
     } else {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0 };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0, source: form.source };
       if (isAdmin) {
         data.cost_price = parseFloat(form.cost_price);
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
@@ -70,7 +70,12 @@ export default function InventoryPage() {
     }
   };
 
-  const filtered = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase()));
+  const filtered = items.filter(i => {
+    const matchesText = i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase());
+    const itemSource = ((i as any).source as string) || "local";
+    const matchesSource = sourceFilter === "all" || itemSource === sourceFilter;
+    return matchesText && matchesSource;
+  });
 
   const allSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
   const someSelected = filtered.some(i => selectedIds.has(i.id));
