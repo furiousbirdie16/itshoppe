@@ -19,9 +19,6 @@ import { useNavigate } from "react-router-dom";
 
 type SalesRange = "daily" | "monthly" | "custom";
 type SalesDetail = "online" | "invoice" | "combined" | null;
-
-type SalesRange = "daily" | "monthly" | "custom";
-type SalesDetail = "online" | "invoice" | "combined" | null;
 type LowStockFilter = "all" | "ordered" | "not_ordered";
 
 export default function DashboardPage() {
