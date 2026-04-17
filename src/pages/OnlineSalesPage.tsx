@@ -239,18 +239,27 @@ export default function OnlineSalesPage() {
     if (valid.length === 0) return;
     setBulkUploading(true);
     let success = 0;
+    let failed = 0;
+    let lastError = "";
     for (const row of valid) {
       try {
         const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
         await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
         success++;
-      } catch { /* skip */ }
+      } catch (e: any) {
+        failed++;
+        lastError = e?.message || String(e);
+        console.error("Bulk row failed:", row, e);
+      }
     }
     setBulkUploading(false);
-    toast.success(`Uploaded ${success} sales records`);
-    setBulkRows([]);
-    setBulkFileName("");
-    setBulkOpen(false);
+    if (success > 0) toast.success(`Uploaded ${success} sales records${failed ? ` (${failed} failed)` : ""}`);
+    if (success === 0 && failed > 0) toast.error(`All ${failed} rows failed: ${lastError}`);
+    if (success > 0) {
+      setBulkRows([]);
+      setBulkFileName("");
+      setBulkOpen(false);
+    }
     qc.invalidateQueries({ queryKey: ["online_sales"] });
     qc.invalidateQueries({ queryKey: ["items"] });
   };
