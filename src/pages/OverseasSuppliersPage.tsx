@@ -12,6 +12,8 @@ import { Plus, Pencil, Trash2, Globe, ArrowRightLeft } from "lucide-react";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import type { OverseasSupplier } from "@/types/database";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
 const defaultForm = { name: "", contact_person: "", email: "", phone: "", address: "", country: "", currency: "USD" as "USD" | "RMB", exchange_rate: "1", notes: "" };
 
@@ -20,6 +22,22 @@ export default function OverseasSuppliersPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasSupplier | null>(null);
   const [form, setForm] = useState(defaultForm);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleAll = () => {
+    if (selectedIds.size === suppliers.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(suppliers.map(s => s.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => { for (const id of selectedIds) await deleteOverseasSupplier(id); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_suppliers"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} suppliers`); },
+  });
 
   // Converter state
   const [convAmount, setConvAmount] = useState("");
@@ -67,9 +85,33 @@ export default function OverseasSuppliersPage() {
           <h1 className="page-title">Overseas Suppliers</h1>
           <p className="page-description">{suppliers.length} overseas suppliers</p>
         </div>
-        <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
-          <Plus className="h-4 w-4 mr-1.5" /> Add Supplier
-        </Button>
+        <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <>
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="overseas suppliers"
+                fields={[
+                  { key: "country", label: "Country", type: "text" },
+                  { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
+                  { key: "exchange_rate", label: "Exchange Rate to PHP", type: "number", transform: v => parseFloat(v) || 1 },
+                  { key: "contact_person", label: "Contact Person", type: "text" },
+                  { key: "email", label: "Email", type: "text" },
+                  { key: "phone", label: "Phone", type: "text" },
+                  { key: "notes", label: "Notes", type: "textarea" },
+                ] as BulkField[]}
+                updateOne={async (id, patch) => { await updateOverseasSupplier(id, patch as any); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["overseas_suppliers"] }); setSelectedIds(new Set()); }}
+              />
+              <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+              </Button>
+            </>
+          )}
+          <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Plus className="h-4 w-4 mr-1.5" /> Add Supplier
+          </Button>
+        </div>
       </div>
 
       {/* Currency Converter Card */}
