@@ -122,23 +122,30 @@ export default function InventoryPage() {
           <p className="page-description">{items.length} items in stock</p>
         </div>
         <div className="flex gap-2">
-          {selectedIds.size > 0 && (
-            <BulkEditDialog
-              selectedIds={Array.from(selectedIds)}
-              entityLabel="items"
-              fields={([
-                { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
-                ...(isAdmin ? [
-                  { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
-                ] : []),
-                { key: "description", label: "Description", type: "textarea" },
-              ]) as BulkField[]}
-              updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
-              onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
-            />
-          )}
+          {selectedIds.size > 0 && (() => {
+            const selectedItems = items.filter(i => selectedIds.has(i.id));
+            const allLocal = selectedItems.every(i => (((i as any).source as string) || 'local') === 'local');
+            const canBulkEditCost = isAdmin || allLocal;
+            return (
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="items"
+                fields={([
+                  { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ...(canBulkEditCost ? [
+                    { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  ] : []),
+                  ...(isAdmin ? [
+                    { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
+                  ] : []),
+                  { key: "description", label: "Description", type: "textarea" },
+                ]) as BulkField[]}
+                updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
+              />
+            );
+          })()}
           {selectedIds.size > 0 && isAdmin && (
             <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
               <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size} selected
