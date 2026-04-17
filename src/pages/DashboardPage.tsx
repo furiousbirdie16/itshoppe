@@ -110,13 +110,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
         <p className="page-description">Overview of your business operations</p>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
         {isAdmin && (
           <StatCard
