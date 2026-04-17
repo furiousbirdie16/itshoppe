@@ -31,7 +31,8 @@ const emptyManualForm: ManualForm = { customer_id: "", description: "", amount: 
 
 export default function PendingPaymentsPage() {
   const queryClient = useQueryClient();
-  const { isAdmin } = useAuth();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
