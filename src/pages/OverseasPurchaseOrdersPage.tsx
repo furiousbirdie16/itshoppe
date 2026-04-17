@@ -201,7 +201,7 @@ export default function OverseasPurchaseOrdersPage() {
   const addLine = () => setLines([...lines, emptyLine()]);
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
 
-  const foreignTotal = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+  const foreignTotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0);
   const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
   const currencySymbol = currency === "USD" ? "$" : "¥";
 
