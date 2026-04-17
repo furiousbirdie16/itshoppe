@@ -116,6 +116,14 @@ export default function OnlineSalesPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState("completed");
 
+  // Filters (Quotations-style panel)
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterChannel, setFilterChannel] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all"); setFilter(""); };
+
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; valid: boolean; error?: string }[]>([]);
