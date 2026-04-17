@@ -63,6 +63,10 @@ export default function OverseasPurchaseOrdersPage() {
   // View dialog
   const [viewPO, setViewPO] = useState<OverseasPurchaseOrder | null>(null);
 
+  // Receive dialog
+  const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
+  const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -70,6 +74,11 @@ export default function OverseasPurchaseOrdersPage() {
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
     enabled: !!viewPO,
+  });
+  const { data: receiveItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
+    queryKey: ["overseas_po_items", receiveOpen],
+    queryFn: () => getOverseasPOItems(receiveOpen!),
+    enabled: !!receiveOpen,
   });
 
   const createMut = useMutation({
@@ -122,11 +131,26 @@ export default function OverseasPurchaseOrdersPage() {
   });
 
   const receiveMut = useMutation({
-    mutationFn: receiveOverseasPO,
+    mutationFn: async () => {
+      const itemsToReceive = Object.entries(receiveQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const pi = receiveItems.find((i) => i.id === poItemId);
+          return { poItemId, itemId: pi?.item_id || null, quantity: qty };
+        });
+      if (itemsToReceive.length === 0) {
+        toast.info("Enter a quantity for at least one item");
+        return;
+      }
+      await receiveOverseasPO(receiveOpen!, itemsToReceive);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setReceiveOpen(null);
+      setReceiveQtys({});
       toast.success("Items received and added to stock");
     },
     onError: (e: any) => toast.error(e.message),
@@ -199,6 +223,7 @@ export default function OverseasPurchaseOrdersPage() {
                   { key: "status", label: "Status", type: "select", options: [
                     { value: "draft", label: "Draft" },
                     { value: "sent", label: "Sent" },
+                    { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
                   ]},
                   { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
@@ -250,6 +275,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <SelectContent>
                     <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
                   </SelectContent>
                 </Select>
@@ -387,7 +413,53 @@ export default function OverseasPurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Table */}
+      {/* Receive Dialog */}
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Enter the quantity that just arrived for each item. You can do this multiple times as more shipments come in.</p>
+          <div className="space-y-3 pt-2 max-h-[60vh] overflow-y-auto">
+            {receiveItems.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">No line items on this PO.</p>
+            )}
+            {receiveItems.map((pi: any) => {
+              const remaining = pi.quantity - (pi.received_quantity || 0);
+              const isCustom = !pi.item_id;
+              const isFull = remaining <= 0;
+              return (
+                <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isCustom
+                        ? `Custom item — not tracked in inventory · Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0}`
+                        : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0} · Remaining: ${remaining}`}
+                    </p>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={remaining}
+                    value={receiveQtys[pi.id] ?? ""}
+                    disabled={isFull}
+                    placeholder="0"
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      const clamped = isNaN(v) ? 0 : Math.max(0, Math.min(v, remaining));
+                      setReceiveQtys({ ...receiveQtys, [pi.id]: clamped });
+                    }}
+                    className="w-20 h-9 text-sm"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">
+            Confirm Receipt
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
@@ -431,13 +503,9 @@ export default function OverseasPurchaseOrdersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => {
-                          if (confirm(`Mark PO ${po.po_number} as received? Linked inventory items will be added to stock.`)) {
-                            receiveMut.mutate(po.id);
-                          }
-                        }}
+                        onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }}
                         className="h-7 w-7 rounded-md"
-                        title="Mark as received & add to stock"
+                        title="Receive items"
                       >
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
                       </Button>

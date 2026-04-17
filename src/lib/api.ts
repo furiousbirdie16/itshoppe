@@ -567,34 +567,58 @@ export const deleteOverseasPOItems = async (poId: string) => {
   if (error) throw error;
 };
 
-// Receive an Overseas PO: add all linked items back to stock and mark as received.
-// Idempotent — if already 'received', it's a no-op.
-export const receiveOverseasPO = async (poId: string) => {
-  const { data: po } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
-  if ((po as any)?.status === "received") return;
+// Receive an Overseas PO partially: only the line items + quantities specified are added to stock.
+// itemsToReceive: list of { poItemId, itemId (nullable for custom), quantity }
+// Custom (non-inventory) lines can also be marked received but won't touch stock.
+export const receiveOverseasPO = async (
+  poId: string,
+  itemsToReceive: { poItemId: string; itemId: string | null; quantity: number }[],
+) => {
+  for (const item of itemsToReceive) {
+    if (item.quantity <= 0) continue;
 
-  const { data: poItems } = await from("overseas_purchase_order_items").select("*").eq("po_id", poId);
-  const linked = ((poItems as any[]) || []).filter((i) => !!i.item_id && i.quantity > 0);
+    const { data: poItem } = await from("overseas_purchase_order_items")
+      .select("received_quantity, quantity")
+      .eq("id", item.poItemId)
+      .single();
+    const prevReceived = ((poItem as any)?.received_quantity || 0);
+    const ordered = ((poItem as any)?.quantity || 0);
+    const newReceived = Math.min(prevReceived + item.quantity, ordered);
+    await from("overseas_purchase_order_items")
+      .update({ received_quantity: newReceived })
+      .eq("id", item.poItemId);
 
-  for (const item of linked) {
-    const { data: currentItem } = await from("items").select("quantity").eq("id", item.item_id).single();
-    await from("items").update({
-      quantity: ((currentItem as any)?.quantity || 0) + item.quantity,
-      updated_at: new Date().toISOString(),
-    }).eq("id", item.item_id);
+    if (item.itemId) {
+      const { data: currentItem } = await from("items").select("quantity").eq("id", item.itemId).single();
+      await from("items").update({
+        quantity: ((currentItem as any)?.quantity || 0) + item.quantity,
+        updated_at: new Date().toISOString(),
+      }).eq("id", item.itemId);
 
-    await from("inventory_movements").insert({
-      item_id: item.item_id,
-      type: "in_po",
-      quantity: item.quantity,
-      reference_id: poId,
-      reference_type: "overseas_purchase_order",
-      notes: "Received from overseas PO",
-    });
+      await from("inventory_movements").insert({
+        item_id: item.itemId,
+        type: "in_po",
+        quantity: item.quantity,
+        reference_id: poId,
+        reference_type: "overseas_purchase_order",
+        notes: "Received from overseas PO",
+      });
+    }
   }
 
-  await from("overseas_purchase_orders").update({ status: "received", updated_at: new Date().toISOString() }).eq("id", poId);
-  await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { items_received: linked.length });
+  // Recompute PO status based on all line items
+  const { data: allItems } = await from("overseas_purchase_order_items")
+    .select("quantity, received_quantity")
+    .eq("po_id", poId);
+  const list = (allItems as any[]) || [];
+  const allReceived = list.length > 0 && list.every((i) => (i.received_quantity || 0) >= i.quantity);
+  const someReceived = list.some((i) => (i.received_quantity || 0) > 0);
+  const newStatus = allReceived ? "received" : someReceived ? "partially_received" : "draft";
+
+  await from("overseas_purchase_orders")
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq("id", poId);
+  await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus });
 };
 
 // Shipment Tracking
