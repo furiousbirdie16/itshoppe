@@ -142,9 +142,10 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
           const existingIsLocal = (((existing as any).source as string) || "local") === "local";
 
           for (const [col, field] of Object.entries(colToField)) {
-            // Non-admins: low_stock_threshold always blocked; cost_price allowed only for local items
+            // Non-admins: low_stock_threshold always blocked; source change blocked; cost_price allowed only for local items
             if (!isAdmin) {
               if (field === "low_stock_threshold") continue;
+              if (field === "source") continue;
               if (field === "cost_price" && !existingIsLocal) continue;
             }
 

@@ -64,11 +64,14 @@ export default function InventoryPage() {
 
   const handleSubmit = () => {
     if (!editing) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0, source: form.source };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0 };
+      if (isAdmin) data.source = form.source;
+      else data.source = "local"; // non-admin new items default to local
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
     } else {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0, source: form.source };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0 };
+      if (isAdmin) data.source = form.source; // non-admins cannot change source
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
@@ -132,7 +135,9 @@ export default function InventoryPage() {
                 entityLabel="items"
                 fields={([
                   { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ...(isAdmin ? [
+                    { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ] : []),
                   ...(canBulkEditCost ? [
                     { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
                   ] : []),
@@ -192,13 +197,16 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Source</Label>
-                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })}>
+                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })} disabled={!isAdmin}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="local">Local</SelectItem>
                     <SelectItem value="import">Import</SelectItem>
                   </SelectContent>
                 </Select>
+                {!isAdmin && (
+                  <p className="text-[10px] text-muted-foreground">Only admins can change source.</p>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
