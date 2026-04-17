@@ -20,6 +20,7 @@ import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { DateField } from "@/components/DateField";
 
 interface LineItem {
   item_name: string;
@@ -260,7 +261,7 @@ export default function OverseasPurchaseOrdersPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Expected Delivery</Label>
-                <Input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)} className="h-9" />
+                <DateField value={expectedDelivery} onChange={setExpectedDelivery} />
               </div>
             </div>
 

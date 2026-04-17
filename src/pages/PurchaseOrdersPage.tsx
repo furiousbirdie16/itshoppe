@@ -20,6 +20,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { DateField } from "@/components/DateField";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
 
@@ -237,7 +238,7 @@ export default function PurchaseOrdersPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Order Date</Label>
-                <Input type="date" value={form.order_date} onChange={e => setForm({ ...form, order_date: e.target.value })} className="h-9" />
+                <DateField value={form.order_date} onChange={v => setForm({ ...form, order_date: v })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Terms (days)</Label>

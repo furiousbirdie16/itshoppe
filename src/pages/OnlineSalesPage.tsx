@@ -18,6 +18,7 @@ import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { DateField } from "@/components/DateField";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -621,7 +622,7 @@ export default function OnlineSalesPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Date</Label>
-              <Input type="date" value={form.order_date} onChange={e => setForm(f => ({ ...f, order_date: e.target.value }))} className="h-9" />
+              <DateField value={form.order_date} onChange={v => setForm(f => ({ ...f, order_date: v }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Product Name</Label>

@@ -18,6 +18,7 @@ import type { DocumentData } from "@/lib/pdf";
 import { parseISO, isBefore, isToday } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { DateField } from "@/components/DateField";
 
 interface ManualForm {
   customer_id: string;
