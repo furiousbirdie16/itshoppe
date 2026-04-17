@@ -509,7 +509,8 @@ export type Database = {
       purchase_order_items: {
         Row: {
           id: string
-          item_id: string
+          item_id: string | null
+          item_name: string | null
           po_id: string
           quantity: number
           received_quantity: number
@@ -517,7 +518,8 @@ export type Database = {
         }
         Insert: {
           id?: string
-          item_id: string
+          item_id?: string | null
+          item_name?: string | null
           po_id: string
           quantity?: number
           received_quantity?: number
@@ -525,7 +527,8 @@ export type Database = {
         }
         Update: {
           id?: string
-          item_id?: string
+          item_id?: string | null
+          item_name?: string | null
           po_id?: string
           quantity?: number
           received_quantity?: number
@@ -555,6 +558,8 @@ export type Database = {
           id: string
           notes: string | null
           order_date: string | null
+          payment_due_date: string | null
+          payment_terms: number | null
           po_number: string
           status: Database["public"]["Enums"]["po_status"]
           supplier_id: string | null
@@ -567,6 +572,8 @@ export type Database = {
           id?: string
           notes?: string | null
           order_date?: string | null
+          payment_due_date?: string | null
+          payment_terms?: number | null
           po_number: string
           status?: Database["public"]["Enums"]["po_status"]
           supplier_id?: string | null
@@ -579,6 +586,8 @@ export type Database = {
           id?: string
           notes?: string | null
           order_date?: string | null
+          payment_due_date?: string | null
+          payment_terms?: number | null
           po_number?: string
           status?: Database["public"]["Enums"]["po_status"]
           supplier_id?: string | null
