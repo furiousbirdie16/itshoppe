@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
@@ -116,6 +116,14 @@ export default function OnlineSalesPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState("completed");
 
+  // Filters (Quotations-style panel)
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterChannel, setFilterChannel] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all"); setFilter(""); };
+
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; valid: boolean; error?: string }[]>([]);
@@ -182,11 +190,15 @@ export default function OnlineSalesPage() {
     setSaving(false);
   };
 
-  // Filter by tab + search
+  // Filter by tab + search + advanced filters
   const filtered = sales.filter((s: any) => {
     const status = s.status || 'completed';
     if (activeTab === 'completed' && status !== 'completed') return false;
     if (activeTab === 'returns' && status !== 'returned' && status !== 'cancelled') return false;
+    if (filterDateFrom && (s.order_date || "") < filterDateFrom) return false;
+    if (filterDateTo && (s.order_date || "") > filterDateTo) return false;
+    if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
+    if (filterStatus !== "all" && status !== filterStatus) return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
@@ -416,6 +428,15 @@ export default function OnlineSalesPage() {
             dateField={(r: any) => r.order_date || ""}
             fileName="Online_Sales"
           />
+          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
+            <Filter className="h-4 w-4 mr-1.5" /> Filters
+          </Button>
+          <ExportButton
+            data={filtered}
+            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price, "Status": (r: any) => r.status || 'completed' }}
+            dateField={(r: any) => r.order_date || ""}
+            fileName="Online_Sales"
+          />
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Bulk Upload
           </Button>
@@ -424,6 +445,44 @@ export default function OnlineSalesPage() {
           </Button>
         </div>
       </div>
+
+      {showFilters && (
+        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date From</Label>
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date To</Label>
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Channel</Label>
+            <Select value={filterChannel} onValueChange={setFilterChannel}>
+              <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Channels</SelectItem>
+                <SelectItem value="shopee">Shopee</SelectItem>
+                <SelectItem value="lazada">Lazada</SelectItem>
+                <SelectItem value="others">Others</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Status</Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="returned">Returned</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
