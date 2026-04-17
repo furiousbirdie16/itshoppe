@@ -63,6 +63,10 @@ export default function OverseasPurchaseOrdersPage() {
   // View dialog
   const [viewPO, setViewPO] = useState<OverseasPurchaseOrder | null>(null);
 
+  // Receive dialog
+  const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
+  const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -70,6 +74,11 @@ export default function OverseasPurchaseOrdersPage() {
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
     enabled: !!viewPO,
+  });
+  const { data: receiveItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
+    queryKey: ["overseas_po_items", receiveOpen],
+    queryFn: () => getOverseasPOItems(receiveOpen!),
+    enabled: !!receiveOpen,
   });
 
   const createMut = useMutation({
