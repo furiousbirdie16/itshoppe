@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, generatePONumber } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -7,17 +7,26 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
+import { SupplierSearch } from "@/components/SupplierSearch";
+import { ItemSearch } from "@/components/ItemSearch";
 import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
 
-interface LineItem { item_id: string; quantity: number; unit_cost: number; }
+interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
+
+const todayISO = () => new Date().toISOString().split("T")[0];
+const addDays = (dateStr: string, days: number) => {
+  if (!dateStr || !days) return "";
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+};
 
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
@@ -26,9 +35,11 @@ export default function PurchaseOrdersPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
-  const [form, setForm] = useState({ supplier_id: "", notes: "", expected_delivery: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", quantity: 1, unit_cost: 0 }]);
+  const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const dueDate = form.payment_terms ? addDays(form.order_date, parseInt(form.payment_terms) || 0) : "";
 
   const toggleAll = () => {
     if (selectedIds.size === pos.length) setSelectedIds(new Set());
@@ -52,6 +63,9 @@ export default function PurchaseOrdersPage() {
 
   const openPreview = async (po: any) => {
     const lineItems = await getPOItems(po.id);
+    const extra: { label: string; value: string }[] = [];
+    if (po.payment_terms) extra.push({ label: "Payment Terms", value: `${po.payment_terms} days` });
+    if (po.payment_due_date) extra.push({ label: "Payment Due", value: po.payment_due_date });
     setPreviewData({
       type: "purchase_order",
       number: po.po_number,
@@ -64,10 +78,9 @@ export default function PurchaseOrdersPage() {
       recipientEmail: po.suppliers?.email,
       recipientPhone: po.suppliers?.phone,
       recipientAddress: po.suppliers?.address,
-      extraFields: po.expected_delivery ? [{ label: "Expected Delivery", value: po.expected_delivery }] : [],
+      extraFields: extra,
       items: lineItems.map((li: any) => ({
-        name: li.items?.name || "—",
-        sku: li.items?.sku,
+        name: li.items?.name || li.item_name || "—",
         quantity: li.quantity,
         unitPrice: Number(li.unit_cost),
         total: li.quantity * Number(li.unit_cost),
@@ -81,9 +94,27 @@ export default function PurchaseOrdersPage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
-      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
-      const po = await createPurchaseOrder({ po_number: await generatePONumber(), supplier_id: form.supplier_id || null, notes: form.notes, expected_delivery: form.expected_delivery || null, total_amount: total });
-      await createPOItems(lines.filter(l => l.item_id).map(l => ({ po_id: po.id, item_id: l.item_id, quantity: l.quantity, unit_cost: l.unit_cost })));
+      const validLines = lines.filter(l => l.item_id || l.item_name.trim());
+      if (validLines.length === 0) throw new Error("Add at least one line item");
+      const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const terms = form.payment_terms ? parseInt(form.payment_terms) : null;
+      const due = terms ? addDays(form.order_date, terms) : null;
+      const po = await createPurchaseOrder({
+        po_number: await generatePONumber(),
+        supplier_id: form.supplier_id || null,
+        notes: form.notes,
+        order_date: form.order_date || todayISO(),
+        payment_terms: terms,
+        payment_due_date: due,
+        total_amount: total,
+      } as any);
+      await createPOItems(validLines.map(l => ({
+        po_id: po.id,
+        item_id: l.item_id || null,
+        item_name: l.item_id ? null : l.item_name.trim(),
+        quantity: l.quantity,
+        unit_cost: l.unit_cost,
+      })) as any);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setCreateOpen(false); toast.success("PO created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -96,10 +127,13 @@ export default function PurchaseOrdersPage() {
 
   const receiveMut = useMutation({
     mutationFn: async () => {
-      const itemsToReceive = Object.entries(receiveQtys).filter(([, qty]) => qty > 0).map(([poItemId, qty]) => {
-        const poItem = poItems.find(pi => pi.id === poItemId);
-        return { poItemId, itemId: poItem!.item_id, quantity: qty };
-      });
+      const itemsToReceive = Object.entries(receiveQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const poItem = poItems.find(pi => pi.id === poItemId);
+          return { poItemId, itemId: poItem!.item_id, quantity: qty };
+        })
+        .filter(i => !!i.itemId); // can't deduct stock for custom (non-inventory) items
       await receivePO(receiveOpen!, itemsToReceive);
     },
     onSuccess: () => {
@@ -112,15 +146,26 @@ export default function PurchaseOrdersPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ supplier_id: "", notes: "", expected_delivery: "" }); setLines([{ item_id: "", quantity: 1, unit_cost: 0 }]); };
+  const resetForm = () => {
+    setForm({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
+    setLines([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  };
 
-  const addLine = () => setLines([...lines, { item_id: "", quantity: 1, unit_cost: 0 }]);
-  const updateLine = (idx: number, field: string, value: any) => {
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  const updateLine = (idx: number, field: keyof LineItem, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
-    if (field === "item_id") {
-      const item = items.find(i => i.id === value);
-      if (item) newLines[idx].unit_cost = Number(item.cost_price);
+    setLines(newLines);
+  };
+  const setItemForLine = (idx: number, itemId: string, item: any | null, customName?: string) => {
+    const newLines = [...lines];
+    if (item) {
+      newLines[idx].item_id = item.id;
+      newLines[idx].item_name = item.name;
+      newLines[idx].unit_cost = Number(item.cost_price);
+    } else {
+      newLines[idx].item_id = "";
+      newLines[idx].item_name = customName || "";
     }
     setLines(newLines);
   };
@@ -141,7 +186,7 @@ export default function PurchaseOrdersPage() {
           )}
           <ExportButton
             data={pos}
-            columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.suppliers?.name || "", "Status": (r: any) => r.status, "Order Date": (r: any) => r.order_date, "Expected Delivery": (r: any) => r.expected_delivery || "", "Total": (r: any) => r.total_amount }}
+            columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.suppliers?.name || "", "Status": (r: any) => r.status, "Order Date": (r: any) => r.order_date, "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "", "Payment Due": (r: any) => r.payment_due_date || "", "Total": (r: any) => r.total_amount }}
             dateField={(r: any) => r.order_date || ""}
             fileName="Purchase_Orders"
           />
@@ -156,17 +201,26 @@ export default function PurchaseOrdersPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">New Purchase Order</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Supplier</Label>
+              <SupplierSearch
+                suppliers={suppliers}
+                value={form.supplier_id}
+                onChange={(id) => setForm({ ...form, supplier_id: id })}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Supplier</Label>
-                <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Select supplier" /></SelectTrigger>
-                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <Label className="text-xs font-medium">Order Date</Label>
+                <Input type="date" value={form.order_date} onChange={e => setForm({ ...form, order_date: e.target.value })} className="h-9" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Expected Delivery</Label>
-                <Input type="date" value={form.expected_delivery} onChange={e => setForm({ ...form, expected_delivery: e.target.value })} className="h-9" />
+                <Label className="text-xs font-medium">Payment Terms (days)</Label>
+                <Input type="number" min={0} value={form.payment_terms} onChange={e => setForm({ ...form, payment_terms: e.target.value })} placeholder="e.g. 30" className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Due Date</Label>
+                <Input type="date" value={dueDate} disabled className="h-9 bg-muted/40" />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -184,10 +238,14 @@ export default function PurchaseOrdersPage() {
               <div className="space-y-2">
                 {lines.map((line, idx) => (
                   <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
-                    <Select value={line.item_id} onValueChange={v => updateLine(idx, "item_id", v)}>
-                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select item" /></SelectTrigger>
-                      <SelectContent>{items.map(i => <SelectItem key={i.id} value={i.id}>{i.name} ({i.sku})</SelectItem>)}</SelectContent>
-                    </Select>
+                    <ItemSearch
+                      items={items}
+                      value={line.item_id}
+                      customName={line.item_name && !line.item_id ? line.item_name : undefined}
+                      onChange={(id, item, customName) => setItemForLine(idx, id, item, customName)}
+                      allowCustom
+                      placeholder="Search inventory or type custom item..."
+                    />
                     <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
                     <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
                     <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8">
@@ -211,14 +269,16 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">PO Details</DialogTitle></DialogHeader>
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
               <TableBody>
-                {poItems.map(pi => (
+                {poItems.map((pi: any) => (
                   <TableRow key={pi.id}>
-                    <TableCell className="font-mono text-xs text-primary font-medium">{pi.items?.sku || "—"}</TableCell>
-                    <TableCell className="text-sm font-medium">{pi.items?.name || "—"}</TableCell>
+                    <TableCell className="text-sm font-medium">
+                      {pi.items?.name || pi.item_name || "—"}
+                      {!pi.items && pi.item_name && <span className="ml-2 text-xs text-muted-foreground">(custom)</span>}
+                    </TableCell>
                     <TableCell className="text-sm">{pi.quantity}</TableCell>
-                    <TableCell className="text-sm">{pi.received_quantity}</TableCell>
+                    <TableCell className="text-sm">{pi.item_id ? pi.received_quantity : "—"}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(pi.unit_cost))}</TableCell>
                   </TableRow>
                 ))}
@@ -234,15 +294,18 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">Enter quantities received for each item:</p>
           <div className="space-y-3 pt-2">
-            {poItems.map(pi => {
+            {poItems.map((pi: any) => {
               const remaining = pi.quantity - pi.received_quantity;
+              const isCustom = !pi.item_id;
               return (
                 <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{pi.items?.name}</p>
-                    <p className="text-xs text-muted-foreground">Ordered: {pi.quantity} · Received: {pi.received_quantity} · Remaining: {remaining}</p>
+                    <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isCustom ? "Custom item — not tracked in inventory" : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`}
+                    </p>
                   </div>
-                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="w-20 h-9 text-sm" />
+                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="w-20 h-9 text-sm" />
                 </div>
               );
             })}
@@ -259,7 +322,8 @@ export default function PurchaseOrdersPage() {
               <TableHead className="w-10"><Checkbox checked={pos.length > 0 && selectedIds.size === pos.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">PO #</TableHead>
               <TableHead className="text-xs">Supplier</TableHead>
-              <TableHead className="text-xs">Date</TableHead>
+              <TableHead className="text-xs">Order Date</TableHead>
+              <TableHead className="text-xs">Payment Due</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs text-right">Total</TableHead>
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
@@ -267,13 +331,14 @@ export default function PurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {pos.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No purchase orders</p></div></TableCell></TableRow>
-            ) : pos.map(po => (
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No purchase orders</p></div></TableCell></TableRow>
+            ) : pos.map((po: any) => (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{po.order_date}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{po.payment_due_date || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} /></TableCell>
                 <TableCell className="text-right text-sm font-medium">{peso(Number(po.total_amount))}</TableCell>
                 <TableCell className="text-right">
