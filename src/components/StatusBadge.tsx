@@ -34,11 +34,12 @@ export function StatusBadge({ status, className, context = "default" }: StatusBa
       : context === "overseas_po" && overseasPoLabels[status]
         ? overseasPoLabels[status]
         : status.replace(/_/g, " ");
+  const styleKey = context === "overseas_po" && status === "draft" ? "unpaid" : status;
   return (
     <span
       className={cn(
         "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider",
-        statusStyles[status] || "bg-muted text-muted-foreground",
+        statusStyles[styleKey] || "bg-muted text-muted-foreground",
         className
       )}
     >
