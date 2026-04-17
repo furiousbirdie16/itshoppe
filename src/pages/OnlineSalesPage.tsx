@@ -98,7 +98,6 @@ export default function OnlineSalesPage() {
 
   const handleSave = async () => {
     if (!form.product_name.trim()) { toast.error("Product name is required"); return; }
-    if (!form.order_number.trim()) { toast.error("Order ID is required"); return; }
     setSaving(true);
     try {
       const payload: any = {
@@ -115,7 +114,8 @@ export default function OnlineSalesPage() {
         await updateOnlineSale(editingSale.id, payload);
         toast.success("Updated");
       } else {
-        await createOnlineSale({ ...payload, order_number: form.order_number.trim() });
+        const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
+        await createOnlineSale({ ...payload, order_number: orderNumber });
         toast.success("Created");
       }
       qc.invalidateQueries({ queryKey: ["online_sales"] });
@@ -203,7 +203,6 @@ export default function OnlineSalesPage() {
           if (!product_name) error = "Missing product name";
           else if (!matchedItem) error = "Product not found in inventory";
           else if (posted_price < 0) error = "Negative price";
-          else if (!order_id) error = "Missing order ID";
 
           return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: matchedItem?.id || null, valid: !error, error };
         });
@@ -223,7 +222,8 @@ export default function OnlineSalesPage() {
     let success = 0;
     for (const row of valid) {
       try {
-        await createOnlineSale({ order_number: row.order_id, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
+        const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, notes: "" });
         success++;
       } catch { /* skip */ }
     }
@@ -234,6 +234,18 @@ export default function OnlineSalesPage() {
     setBulkOpen(false);
     qc.invalidateQueries({ queryKey: ["online_sales"] });
     qc.invalidateQueries({ queryKey: ["items"] });
+  };
+
+  const downloadTemplate = () => {
+    const template = [
+      { "Order ID": "", "Date": new Date().toISOString().split("T")[0], "Product Name": "Sample Product", "Quantity": 1, "Channel": "shopee", "Selling Price": 100 },
+      { "Order ID": "", "Date": new Date().toISOString().split("T")[0], "Product Name": "Another Product", "Quantity": 2, "Channel": "lazada", "Selling Price": 250 },
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    ws["!cols"] = [{ wch: 18 }, { wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Online Sales");
+    XLSX.writeFile(wb, "online_sales_template.xlsx");
   };
 
   const bulkValidCount = bulkRows.filter(r => r.valid).length;
@@ -388,8 +400,8 @@ export default function OnlineSalesPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Order ID <span className="text-destructive">*</span></Label>
-              <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Enter order ID" className="h-9" />
+              <Label className="text-xs font-medium">Order ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated if blank" className="h-9" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Inventory Item (optional)</Label>
@@ -453,9 +465,12 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>Order ID</strong>, <strong>Date</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
+                <p className="text-xs text-muted-foreground">Columns: <strong>Order ID</strong> (optional), <strong>Date</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
               </div>
-              <Button variant="outline" onClick={() => fileRef.current?.click()}>Select File</Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={downloadTemplate}><FileSpreadsheet className="h-4 w-4 mr-1" /> Download Template</Button>
+                <Button onClick={() => fileRef.current?.click()}>Select File</Button>
+              </div>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" />
             </div>
           ) : (
