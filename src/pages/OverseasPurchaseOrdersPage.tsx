@@ -121,6 +121,17 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); toast.success("Deleted"); },
   });
 
+  const receiveMut = useMutation({
+    mutationFn: receiveOverseasPO,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Items received and added to stock");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const openCreate = () => {
     setEditing(null);
     setSupplierId("");
