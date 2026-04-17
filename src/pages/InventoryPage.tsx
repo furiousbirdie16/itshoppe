@@ -192,13 +192,16 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Source</Label>
-                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })}>
+                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })} disabled={!isAdmin}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="local">Local</SelectItem>
                     <SelectItem value="import">Import</SelectItem>
                   </SelectContent>
                 </Select>
+                {!isAdmin && (
+                  <p className="text-[10px] text-muted-foreground">Only admins can change source.</p>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
