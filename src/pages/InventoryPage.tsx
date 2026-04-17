@@ -28,6 +28,7 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [filter, setFilter] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
