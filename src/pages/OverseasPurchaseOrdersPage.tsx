@@ -84,7 +84,8 @@ export default function OverseasPurchaseOrdersPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const poNumber = await generateOverseasPONumber();
-      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
+      const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const po = await createOverseasPurchaseOrder({
         po_number: poNumber,
         supplier_id: supplierId || null,
@@ -95,8 +96,9 @@ export default function OverseasPurchaseOrdersPage() {
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
       });
-      if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
+      const valid = normalized.filter(l => l.item_name);
+      if (valid.length > 0) {
+        await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); toast.success("Overseas PO created"); },
@@ -106,7 +108,8 @@ export default function OverseasPurchaseOrdersPage() {
   const updateMut = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const total = lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
+      const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       await updateOverseasPurchaseOrder(editing.id, {
         supplier_id: supplierId || null,
         status: status as any,
@@ -117,8 +120,9 @@ export default function OverseasPurchaseOrdersPage() {
         exchange_rate: parseFloat(exchangeRate) || 1,
       });
       await deleteOverseasPOItems(editing.id);
-      if (lines.filter(l => l.item_name).length > 0) {
-        await createOverseasPOItems(lines.filter(l => l.item_name).map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
+      const valid = normalized.filter(l => l.item_name);
+      if (valid.length > 0) {
+        await createOverseasPOItems(valid.map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
