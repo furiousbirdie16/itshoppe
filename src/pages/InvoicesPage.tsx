@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, generateInvoiceNumber, deleteInvoiceItems } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,30 +11,79 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearch } from "@/components/CustomerSearch";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Filters
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState("all");
+  const [filterAgent, setFilterAgent] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
+  const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
+  const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
+  const [newAgentName, setNewAgentName] = useState("");
+  const [addingAgent, setAddingAgent] = useState(false);
+
+  const addAgentMut = useMutation({
+    mutationFn: (name: string) => createSalesAgent(name),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["sales_agents"] });
+      setForm(f => ({ ...f, sales_agent: data.name }));
+      setNewAgentName("");
+      setAddingAgent(false);
+      toast.success("Sales agent added");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const filtered = useMemo(() => {
+    return invoices.filter((inv: any) => {
+      if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
+      if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
+      if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) return false;
+      if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
+      if (filterStatus !== "all" && inv.status !== filterStatus) return false;
+      return true;
+    });
+  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus]);
+
+  // Total sales (admin only) — sum of confirmed/paid invoices in current filter
+  const totalSales = useMemo(() => {
+    return filtered
+      .filter((inv: any) => inv.status === "confirmed" || inv.status === "paid")
+      .reduce((s: number, inv: any) => s + Number(inv.total_amount || 0), 0);
+  }, [filtered]);
+
   const toggleAll = () => {
-    if (selectedIds.size === invoices.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(invoices.map(i => i.id)));
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((i: any) => i.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -46,11 +95,6 @@ export default function InvoicesPage() {
     mutationFn: async () => { for (const id of selectedIds) await deleteInvoice(id); },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} invoices`); },
   });
-
-  const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
-  const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
-  const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
 
   const openPreview = async (inv: any) => {
     const lineItems = await getInvoiceItems(inv.id);
@@ -66,7 +110,10 @@ export default function InvoicesPage() {
       recipientEmail: inv.customers?.email,
       recipientPhone: inv.customers?.phone,
       recipientAddress: inv.customers?.address,
-      extraFields: inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : [],
+      extraFields: [
+        ...(inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : []),
+        ...(inv.sales_agent ? [{ label: "Sales Agent", value: inv.sales_agent }] : []),
+      ],
       items: lineItems.map((li: any) => ({
         name: li.items?.name || li.item_name || "—",
         sku: li.items?.sku,
@@ -85,6 +132,7 @@ export default function InvoicesPage() {
       customer_id: inv.customer_id || "",
       notes: inv.notes || "",
       due_date: inv.due_date || "",
+      sales_agent: inv.sales_agent || "",
     });
     setLines(
       lineItems.length > 0
@@ -103,7 +151,7 @@ export default function InvoicesPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
-      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total });
+      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
@@ -114,7 +162,7 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       if (!editId) return;
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
-      await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total });
+      await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await deleteInvoiceItems(editId);
       await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
     },
@@ -154,7 +202,7 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]); setEditId(null); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0 }]);
   const updateLine = (idx: number, field: string, value: any) => {
@@ -170,13 +218,14 @@ export default function InvoicesPage() {
     setLines(newLines);
   };
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
+  const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Invoices</h1>
-          <p className="page-description">{invoices.length} invoices</p>
+          <p className="page-description">{filtered.length} invoice{filtered.length !== 1 ? "s" : ""}{filtered.length !== invoices.length ? ` (filtered from ${invoices.length})` : ""}</p>
         </div>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
@@ -184,9 +233,12 @@ export default function InvoicesPage() {
               <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
+            <Filter className="h-4 w-4 mr-1.5" /> Filters
+          </Button>
           <ExportButton
-            data={invoices}
-            columns={{ "Invoice #": (r: any) => r.invoice_number, "Customer": (r: any) => r.customers?.name || "", "Status": (r: any) => r.status, "Date": (r: any) => r.invoice_date, "Due Date": (r: any) => r.due_date || "", "Total": (r: any) => r.total_amount }}
+            data={filtered}
+            columns={{ "Invoice #": (r: any) => r.invoice_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.invoice_date, "Due Date": (r: any) => r.due_date || "", "Total": (r: any) => r.total_amount }}
             dateField={(r: any) => r.invoice_date || ""}
             fileName="Invoices"
           />
@@ -195,6 +247,63 @@ export default function InvoicesPage() {
           </Button>
         </div>
       </div>
+
+      {showFilters && (
+        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date From</Label>
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date To</Label>
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Customer</Label>
+            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Customers</SelectItem>
+                {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Sales Agent</Label>
+            <Select value={filterAgent} onValueChange={setFilterAgent}>
+              <SelectTrigger className="h-8 w-44 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Status</Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 w-40 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="draft">Not Shipped</SelectItem>
+                <SelectItem value="confirmed">Shipped</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Sum of shipped &amp; paid invoices in current filter</p>
+          </div>
+          <p className="text-2xl font-bold tabular-nums">{peso(totalSales)}</p>
+        </div>
+      )}
 
       <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -206,9 +315,29 @@ export default function InvoicesPage() {
                 <CustomerSearch customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Due Date</Label>
-                <Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="h-9" />
+                <Label className="text-xs font-medium">Sales Agent</Label>
+                {!addingAgent ? (
+                  <div className="flex gap-1.5">
+                    <Select value={form.sales_agent} onValueChange={v => setForm({ ...form, sales_agent: v })}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Select agent" /></SelectTrigger>
+                      <SelectContent>
+                        {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setAddingAgent(true)} title="Add new agent"><Plus className="h-3.5 w-3.5" /></Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input value={newAgentName} onChange={e => setNewAgentName(e.target.value)} className="h-9" placeholder="New agent name" autoFocus />
+                    <Button type="button" size="sm" className="h-9 px-3 text-xs" disabled={!newAgentName.trim() || addAgentMut.isPending} onClick={() => addAgentMut.mutate(newAgentName.trim())}>Save</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setAddingAgent(false); setNewAgentName(""); }}>Cancel</Button>
+                  </div>
+                )}
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Due Date</Label>
+              <Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="h-9" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
@@ -295,9 +424,10 @@ export default function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={invoices.length > 0 && selectedIds.size === invoices.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead className="text-xs">Invoice #</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Sales Agent</TableHead>
               <TableHead className="text-xs">Date</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs text-right">Total</TableHead>
@@ -305,13 +435,14 @@ export default function InvoicesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {invoices.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
-            ) : invoices.map(inv => (
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
+            ) : filtered.map((inv: any) => (
               <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
+                <TableCell className="text-sm">{inv.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                 <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
                 <TableCell className="text-right text-sm font-medium">{peso(Number(inv.total_amount))}</TableCell>

@@ -92,6 +92,7 @@ export interface Invoice {
   due_date: string | null;
   notes: string;
   total_amount: number;
+  sales_agent: string;
   created_at: string;
   updated_at: string;
   customers?: Customer;

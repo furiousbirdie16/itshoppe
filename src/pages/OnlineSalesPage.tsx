@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { peso } from "@/lib/currency";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -100,6 +101,8 @@ const resolveBulkColumns = (rows: BulkCell[][]) => {
 
 export default function OnlineSalesPage() {
   const qc = useQueryClient();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales"], queryFn: getOnlineSales });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
 
@@ -187,6 +190,17 @@ export default function OnlineSalesPage() {
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
   });
+
+  // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
+  const totalSales = useMemo(() => {
+    return filtered
+      .filter((s: any) => (s.status || "completed") === "completed")
+      .reduce((sum: number, s: any) => {
+        const price = Number(s.deal_price) > 0 ? Number(s.deal_price) : Number(s.posted_price || 0);
+        const qty = Number(s.quantity || 1);
+        return sum + price * qty;
+      }, 0);
+  }, [filtered]);
 
   const allSelected = filtered.length > 0 && filtered.every((s: any) => selected.has(s.id));
   const toggleSelectAll = () => {
@@ -362,6 +376,16 @@ export default function OnlineSalesPage() {
           </Button>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Sum of completed sales in current view</p>
+          </div>
+          <p className="text-2xl font-bold tabular-nums">{peso(totalSales)}</p>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelected(new Set()); }}>
         <TabsList>

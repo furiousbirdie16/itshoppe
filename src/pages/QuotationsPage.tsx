@@ -22,12 +22,15 @@ import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewQ, setViewQ] = useState<string | null>(null);
@@ -90,6 +93,13 @@ export default function QuotationsPage() {
       return true;
     });
   }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
+
+  // Admin-only total: sum of accepted quotations in current filter
+  const totalSales = useMemo(() => {
+    return filtered
+      .filter((q: any) => q.status === "accepted")
+      .reduce((s: number, q: any) => s + Number(q.total_amount || 0), 0);
+  }, [filtered]);
 
   const toggleAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set());
@@ -307,6 +317,16 @@ export default function QuotationsPage() {
             </Select>
           </div>
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
+          </div>
+          <p className="text-2xl font-bold tabular-nums">{peso(totalSales)}</p>
         </div>
       )}
 
