@@ -18,6 +18,7 @@ import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
 
@@ -30,6 +31,8 @@ const addDays = (dateStr: string, days: number) => {
 };
 
 export default function PurchaseOrdersPage() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewPO, setViewPO] = useState<string | null>(null);
@@ -265,7 +268,8 @@ export default function PurchaseOrdersPage() {
                       customName={line.item_name && !line.item_id ? line.item_name : undefined}
                       onChange={(id, item, customName) => setItemForLine(idx, id, item, customName)}
                       allowCustom
-                      placeholder="Search inventory or type custom item..."
+                      sourceFilter={isAdmin ? undefined : 'local'}
+                      placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
                     />
                     <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
                     <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />

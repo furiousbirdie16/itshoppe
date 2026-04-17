@@ -8,6 +8,7 @@ export interface Item {
   cost_price: number;
   selling_price: number;
   low_stock_threshold: number;
+  source: 'local' | 'import';
   created_at: string;
   updated_at: string;
 }
