@@ -392,6 +392,7 @@ export type Database = {
           item_name: string
           po_id: string
           quantity: number
+          received_quantity: number
           unit_cost: number
         }
         Insert: {
@@ -402,6 +403,7 @@ export type Database = {
           item_name: string
           po_id: string
           quantity?: number
+          received_quantity?: number
           unit_cost?: number
         }
         Update: {
@@ -412,6 +414,7 @@ export type Database = {
           item_name?: string
           po_id?: string
           quantity?: number
+          received_quantity?: number
           unit_cost?: number
         }
         Relationships: [
