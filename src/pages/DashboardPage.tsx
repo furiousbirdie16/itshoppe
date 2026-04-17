@@ -71,7 +71,7 @@ export default function DashboardPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("invoices")
-        .select("*, customers(name)")
+        .select("*, customers(name), quotations(sales_agent)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", dateFromStr)
         .lte("invoice_date", dateToStr)
@@ -242,6 +242,7 @@ export default function DashboardPage() {
                           <TableHead className="text-xs">Date</TableHead>
                           <TableHead className="text-xs">Invoice #</TableHead>
                           <TableHead className="text-xs">Customer</TableHead>
+                          <TableHead className="text-xs">Sales Agent</TableHead>
                           <TableHead className="text-xs">Status</TableHead>
                           <TableHead className="text-xs text-right">Total</TableHead>
                         </TableRow>
@@ -252,6 +253,7 @@ export default function DashboardPage() {
                             <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                             <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
                             <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
+                            <TableCell className="text-sm">{inv.quotations?.sales_agent || "—"}</TableCell>
                             <TableCell><StatusBadge status={inv.status} /></TableCell>
                             <TableCell className="text-sm text-right font-medium">{peso(Number(inv.total_amount))}</TableCell>
                           </TableRow>
