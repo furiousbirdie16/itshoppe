@@ -571,8 +571,30 @@ export const createOverseasPurchaseOrder = async (po: Partial<OverseasPurchaseOr
 };
 
 export const updateOverseasPurchaseOrder = async (id: string, po: Partial<OverseasPurchaseOrder>) => {
+  // Detect a status transition into "sent" so we can auto-create a shipment.
+  let prevStatus: string | null = null;
+  if (po.status === "sent") {
+    const { data: prev } = await from("overseas_purchase_orders").select("status").eq("id", id).single();
+    prevStatus = (prev as any)?.status ?? null;
+  }
+
   const { data, error } = await from("overseas_purchase_orders").update({ ...po, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
+
+  // When a PO is moved into "sent" (and wasn't already sent), make sure it has a shipment row.
+  if (po.status === "sent" && prevStatus !== "sent") {
+    const { data: existing } = await from("shipment_tracking").select("id").eq("po_id", id).limit(1);
+    if (!existing || (existing as any[]).length === 0) {
+      await from("shipment_tracking").insert({
+        po_id: id,
+        status: "in_transit",
+        ship_date: new Date().toISOString().slice(0, 10),
+        notes: "Auto-created when PO marked as sent",
+      });
+      await logActivity("created_shipment_tracking", "shipment_tracking", id, { auto: true, po_id: id });
+    }
+  }
+
   return data as OverseasPurchaseOrder;
 };
 

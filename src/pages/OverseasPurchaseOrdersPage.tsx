@@ -247,7 +247,7 @@ export default function OverseasPurchaseOrdersPage() {
                 entityLabel="overseas POs"
                 fields={[
                   { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Draft" },
+                    { value: "draft", label: "Unpaid" },
                     { value: "sent", label: "Sent" },
                     { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
@@ -312,7 +312,7 @@ export default function OverseasPurchaseOrdersPage() {
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="draft">Unpaid</SelectItem>
                     <SelectItem value="sent">Sent</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
