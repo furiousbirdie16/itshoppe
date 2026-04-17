@@ -246,6 +246,7 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
     invoice_date: new Date().toISOString().split("T")[0],
     notes: q.notes,
     total_amount: q.total_amount,
+    sales_agent: q.sales_agent || "",
   }).select().single();
 
   if (error) throw error;
