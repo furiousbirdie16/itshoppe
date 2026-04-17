@@ -107,7 +107,7 @@ export default function InventoryPage() {
     },
   });
 
-  const colCount = (isAdmin ? 7 : 6);
+  const colCount = (isAdmin ? 8 : 7);
 
   return (
     <div className="space-y-6">
@@ -123,6 +123,7 @@ export default function InventoryPage() {
               entityLabel="items"
               fields={([
                 { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
                 ...(isAdmin ? [
                   { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
                   { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
@@ -140,7 +141,7 @@ export default function InventoryPage() {
           )}
           <ExportButton
             data={items}
-            columns={{ "Name": (r: any) => r.name, "SKU": (r: any) => r.sku, "Description": (r: any) => r.description, "Quantity": (r: any) => r.quantity, "Cost Price": (r: any) => r.cost_price, "Selling Price": (r: any) => r.selling_price }}
+            columns={{ "Name": (r: any) => r.name, "SKU": (r: any) => r.sku, "Source": (r: any) => r.source || "local", "Description": (r: any) => r.description, "Quantity": (r: any) => r.quantity, "Cost Price": (r: any) => r.cost_price, "Selling Price": (r: any) => r.selling_price }}
             dateField={(r: any) => r.created_at?.split("T")[0] || ""}
             fileName="Inventory"
           />
@@ -169,9 +170,21 @@ export default function InventoryPage() {
                 <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Description</Label>
-              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Description</Label>
+                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Source</Label>
+                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">Local</SelectItem>
+                    <SelectItem value="import">Import</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
@@ -204,14 +217,24 @@ export default function InventoryPage() {
 
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
 
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          placeholder="Filter by name or SKU..."
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          className="pl-9 h-9 rounded-lg text-sm"
-        />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative max-w-xs flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Filter by name or SKU..."
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="pl-9 h-9 rounded-lg text-sm"
+          />
+        </div>
+        <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as "all" | "local" | "import")}>
+          <SelectTrigger className="h-9 w-[140px] rounded-lg text-sm"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="local">Local Only</SelectItem>
+            <SelectItem value="import">Import Only</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="data-table-wrapper">
@@ -227,6 +250,7 @@ export default function InventoryPage() {
               </TableHead>
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">SKU</TableHead>
+              <TableHead className="text-xs">Source</TableHead>
               <TableHead className="text-xs text-right">Qty</TableHead>
               {isAdmin && <TableHead className="text-xs text-right">Cost</TableHead>}
               <TableHead className="text-xs text-right">Sell</TableHead>
@@ -260,6 +284,11 @@ export default function InventoryPage() {
                 </TableCell>
                 <TableCell className="font-medium text-sm">{item.name}</TableCell>
                 <TableCell className="text-muted-foreground font-mono text-xs">{item.sku}</TableCell>
+                <TableCell>
+                  <Badge variant={((item as any).source === 'import') ? 'secondary' : 'outline'} className="text-[10px] uppercase">
+                    {((item as any).source as string) || 'local'}
+                  </Badge>
+                </TableCell>
                 <TableCell className={`text-right text-sm font-semibold ${item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
                 </TableCell>
