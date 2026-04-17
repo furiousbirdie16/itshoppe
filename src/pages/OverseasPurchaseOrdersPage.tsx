@@ -207,6 +207,19 @@ export default function OverseasPurchaseOrdersPage() {
   const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
   const currencySymbol = currency === "USD" ? "$" : "¥";
 
+  // Total value of items not yet received across all open POs (in PHP)
+  const notReceivedPhpTotal = (() => {
+    const rateByPo = new Map(orders.map(o => [o.id, o.exchange_rate || 1]));
+    let total = 0;
+    for (const li of allPOItems) {
+      const remaining = (li.quantity || 0) - (li.received_quantity || 0);
+      if (remaining <= 0) continue;
+      const rate = rateByPo.get(li.po_id) || 1;
+      total += remaining * (li.unit_cost || 0) * rate;
+    }
+    return total;
+  })();
+
   const handleSubmit = () => {
     if (editing) updateMut.mutate();
     else createMut.mutate();
