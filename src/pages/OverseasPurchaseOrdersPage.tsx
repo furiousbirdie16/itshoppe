@@ -46,6 +46,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [exchangeRate, setExchangeRate] = useState("1");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   const toggleAll = () => {
     if (selectedIds.size === orders.length) setSelectedIds(new Set());
