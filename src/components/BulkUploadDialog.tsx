@@ -121,6 +121,18 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
     onSuccess();
   };
 
+  const downloadTemplate = () => {
+    const template = [
+      { "Item": "Sample Product A", "SKU": "SKU-001", "Description": "Brief description", "Qty": 10, "Cost": 50, "Price": 100 },
+      { "Item": "Sample Product B", "SKU": "SKU-002", "Description": "", "Qty": 25, "Cost": 120, "Price": 250 },
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 8 }, { wch: 10 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+    XLSX.writeFile(wb, "inventory_template.xlsx");
+  };
+
   const validCount = rows.filter(r => r.valid).length;
   const invalidCount = rows.filter(r => !r.valid).length;
 
@@ -144,9 +156,14 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                 Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Qty</strong>, <strong>Cost</strong>, <strong>Price</strong>
               </p>
             </div>
-            <Button variant="outline" onClick={() => fileRef.current?.click()} className="rounded-lg">
-              Select File
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={downloadTemplate} className="rounded-lg">
+                <FileSpreadsheet className="h-4 w-4 mr-1" /> Download Template
+              </Button>
+              <Button onClick={() => fileRef.current?.click()} className="rounded-lg">
+                Select File
+              </Button>
+            </div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="hidden" />
           </div>
         ) : (
