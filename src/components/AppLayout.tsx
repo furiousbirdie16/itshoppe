@@ -32,7 +32,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <HeaderBar />
-          <main className="flex-1 p-4 md:p-8 overflow-auto">
+          <main className="flex-1 p-3 sm:p-4 md:p-8 overflow-auto">
             <div className="max-w-6xl mx-auto animate-fade-in">
               {children}
             </div>
