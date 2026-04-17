@@ -130,47 +130,60 @@ export default function InventoryPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg">{editing ? "Edit Item" : "New Item"}</DialogTitle>
+            <DialogTitle className="text-lg">{editing ? (isAdmin ? "Edit Item" : "Adjust Quantity") : "New Item"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Name</Label>
-                <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">SKU</Label>
-                <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Description</Label>
-              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
-            </div>
-            {(!editing || isAdmin) && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
-                <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
-              </div>
-            )}
-            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
-              {isAdmin && (
+            {editing && !isAdmin ? (
+              <>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Cost Price</Label>
-                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
+                  <Label className="text-xs font-medium">Item</Label>
+                  <div className="text-sm font-medium">{form.name} <span className="text-muted-foreground font-mono text-xs ml-2">{form.sku}</span></div>
                 </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Selling Price</Label>
-                <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Low Stock Alert</Label>
-                <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
-              </div>
-            </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Quantity</Label>
+                  <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" autoFocus />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Name</Label>
+                    <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">SKU</Label>
+                    <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Description</Label>
+                  <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
+                  <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
+                </div>
+                <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+                  {isAdmin && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Cost Price</Label>
+                      <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Selling Price</Label>
+                    <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Low Stock Alert</Label>
+                    <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
+                  </div>
+                </div>
+              </>
+            )}
             <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="mt-2 rounded-lg h-9">
-              {editing ? "Update Item" : "Create Item"}
+              {editing ? (isAdmin ? "Update Item" : "Save Quantity") : "Create Item"}
             </Button>
           </div>
         </DialogContent>
