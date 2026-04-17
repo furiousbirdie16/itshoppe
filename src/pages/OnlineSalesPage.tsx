@@ -428,6 +428,15 @@ export default function OnlineSalesPage() {
             dateField={(r: any) => r.order_date || ""}
             fileName="Online_Sales"
           />
+          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
+            <Filter className="h-4 w-4 mr-1.5" /> Filters
+          </Button>
+          <ExportButton
+            data={filtered}
+            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price, "Status": (r: any) => r.status || 'completed' }}
+            dateField={(r: any) => r.order_date || ""}
+            fileName="Online_Sales"
+          />
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Bulk Upload
           </Button>
@@ -436,6 +445,44 @@ export default function OnlineSalesPage() {
           </Button>
         </div>
       </div>
+
+      {showFilters && (
+        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border bg-card">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date From</Label>
+            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Date To</Label>
+            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 w-36 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Channel</Label>
+            <Select value={filterChannel} onValueChange={setFilterChannel}>
+              <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Channels</SelectItem>
+                <SelectItem value="shopee">Shopee</SelectItem>
+                <SelectItem value="lazada">Lazada</SelectItem>
+                <SelectItem value="others">Others</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Status</Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="returned">Returned</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
