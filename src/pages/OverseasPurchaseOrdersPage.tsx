@@ -305,7 +305,7 @@ export default function OverseasPurchaseOrdersPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Currency</Label>
                 <Select value={currency} onValueChange={(v: "USD" | "RMB") => setCurrency(v)}>
@@ -320,8 +320,14 @@ export default function OverseasPurchaseOrdersPage() {
                 <Label className="text-xs font-medium">Exchange Rate to PHP</Label>
                 <Input type="number" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} className="h-9" />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Expected Delivery</Label>
+                <Label className="text-xs font-medium">Date Ordered</Label>
+                <DateField value={orderDate} onChange={setOrderDate} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Estimated Date of Arrival</Label>
                 <DateField value={expectedDelivery} onChange={setExpectedDelivery} />
               </div>
             </div>
