@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
+import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -45,6 +46,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [exchangeRate, setExchangeRate] = useState("1");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   const toggleAll = () => {
     if (selectedIds.size === orders.length) setSelectedIds(new Set());
@@ -270,11 +272,23 @@ export default function OverseasPurchaseOrdersPage() {
             dateField={(r: any) => r.order_date || ""}
             fileName="Overseas_POs"
           />
+          <Button variant="outline" onClick={() => setBulkUploadOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
+          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
           </Button>
         </div>
       </div>
+
+      <OverseasPOBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+          queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+        }}
+      />
 
       {/* Create / Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
