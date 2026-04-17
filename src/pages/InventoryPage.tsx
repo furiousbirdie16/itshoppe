@@ -58,12 +58,13 @@ export default function InventoryPage() {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0 };
       if (isAdmin) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
-    } else if (isAdmin) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), cost_price: parseFloat(form.cost_price), quantity: parseInt(form.quantity) || 0 };
-      updateMut.mutate({ id: editing.id, data });
     } else {
-      // Non-admin: quantity only
-      updateMut.mutate({ id: editing.id, data: { quantity: parseInt(form.quantity) || 0 } });
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0 };
+      if (isAdmin) {
+        data.cost_price = parseFloat(form.cost_price);
+        data.low_stock_threshold = parseInt(form.low_stock_threshold);
+      }
+      updateMut.mutate({ id: editing.id, data });
     }
   };
 
@@ -130,60 +131,47 @@ export default function InventoryPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg">{editing ? (isAdmin ? "Edit Item" : "Adjust Quantity") : "New Item"}</DialogTitle>
+            <DialogTitle className="text-lg">{editing ? "Edit Item" : "New Item"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 pt-2">
-            {editing && !isAdmin ? (
-              <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Name</Label>
+                <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">SKU</Label>
+                <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Description</Label>
+              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
+              <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
+            </div>
+            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-1'} gap-3`}>
+              {isAdmin && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Item</Label>
-                  <div className="text-sm font-medium">{form.name} <span className="text-muted-foreground font-mono text-xs ml-2">{form.sku}</span></div>
+                  <Label className="text-xs font-medium">Cost Price</Label>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
                 </div>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Selling Price</Label>
+                <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
+              </div>
+              {isAdmin && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Quantity</Label>
-                  <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" autoFocus />
+                  <Label className="text-xs font-medium">Low Stock Alert</Label>
+                  <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">SKU</Label>
-                    <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Description</Label>
-                  <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
-                  <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
-                </div>
-                <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
-                  {isAdmin && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Cost Price</Label>
-                      <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
-                    </div>
-                  )}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Selling Price</Label>
-                    <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Low Stock Alert</Label>
-                    <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
-                  </div>
-                </div>
-              </>
-            )}
+              )}
+            </div>
             <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="mt-2 rounded-lg h-9">
-              {editing ? (isAdmin ? "Update Item" : "Save Quantity") : "Create Item"}
+              {editing ? "Update Item" : "Create Item"}
             </Button>
           </div>
         </DialogContent>
@@ -264,8 +252,8 @@ export default function InventoryPage() {
                         </Button>
                       </>
                     ) : (
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(item)} className="h-7 px-2 rounded-md text-xs">
-                        <Pencil className="h-3 w-3 mr-1" /> Qty
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
                     )}
                   </div>
