@@ -297,17 +297,44 @@ export default function DashboardPage() {
                   <TableHead className="text-xs">SKU</TableHead>
                   <TableHead className="text-xs text-right">Qty</TableHead>
                   <TableHead className="text-xs text-right">Threshold</TableHead>
+                  <TableHead className="text-xs">On Order</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.lowStockItems.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium text-sm">{item.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground font-mono">{item.sku}</TableCell>
-                    <TableCell className="text-right text-sm font-semibold text-destructive">{item.quantity}</TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">{item.low_stock_threshold}</TableCell>
-                  </TableRow>
-                ))}
+                {stats.lowStockItems.map((item: any) => {
+                  const oo = item.on_order || { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
+                  const totalOnOrder = oo.localQty + oo.overseasQty;
+                  return (
+                    <TableRow key={item.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium text-sm">{item.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">{item.sku}</TableCell>
+                      <TableCell className="text-right text-sm font-semibold text-destructive">{item.quantity}</TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">{item.low_stock_threshold}</TableCell>
+                      <TableCell>
+                        {totalOnOrder > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {oo.localQty > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-success" />
+                                <span className="font-medium">Local: +{oo.localQty}</span>
+                                <span className="text-muted-foreground font-mono">({oo.localPOs.join(", ")})</span>
+                              </span>
+                            )}
+                            {oo.overseasQty > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
+                                <span className="font-medium">Overseas: +{oo.overseasQty}</span>
+                                <span className="text-muted-foreground font-mono">({oo.overseasPOs.join(", ")})</span>
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">Not ordered</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

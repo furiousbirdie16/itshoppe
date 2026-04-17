@@ -38,6 +38,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState<string>("draft");
+  const [orderDate, setOrderDate] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
@@ -91,12 +92,13 @@ export default function OverseasPurchaseOrdersPage() {
         po_number: poNumber,
         supplier_id: supplierId || null,
         status: status as any,
+        order_date: orderDate || new Date().toISOString().slice(0, 10),
         expected_delivery: expectedDelivery || null,
         notes,
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
-      });
+      } as any);
       const valid = normalized.filter(l => l.item_name);
       if (valid.length > 0) {
         await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
@@ -114,12 +116,13 @@ export default function OverseasPurchaseOrdersPage() {
       await updateOverseasPurchaseOrder(editing.id, {
         supplier_id: supplierId || null,
         status: status as any,
+        order_date: orderDate || null,
         expected_delivery: expectedDelivery || null,
         notes,
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
-      });
+      } as any);
       await deleteOverseasPOItems(editing.id);
       const valid = normalized.filter(l => l.item_name);
       if (valid.length > 0) {
@@ -166,6 +169,7 @@ export default function OverseasPurchaseOrdersPage() {
     setEditing(null);
     setSupplierId("");
     setStatus("draft");
+    setOrderDate(new Date().toISOString().slice(0, 10));
     setExpectedDelivery("");
     setNotes("");
     setLines([emptyLine()]);
@@ -178,6 +182,7 @@ export default function OverseasPurchaseOrdersPage() {
     setEditing(po);
     setSupplierId(po.supplier_id || "");
     setStatus(po.status);
+    setOrderDate(po.order_date || "");
     setExpectedDelivery(po.expected_delivery || "");
     setNotes(po.notes);
     setCurrency(po.currency);
@@ -247,7 +252,8 @@ export default function OverseasPurchaseOrdersPage() {
                   ]},
                   { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
                   { key: "exchange_rate", label: "Exchange Rate", type: "number", transform: v => parseFloat(v) || 1 },
-                  { key: "expected_delivery", label: "Expected Delivery", type: "date" },
+                  { key: "order_date", label: "Date Ordered", type: "date" },
+                  { key: "expected_delivery", label: "Estimated Date of Arrival", type: "date" },
                   { key: "notes", label: "Notes", type: "textarea" },
                 ] as BulkField[]}
                 updateOne={async (id, patch) => { await updateOverseasPurchaseOrder(id, patch as any); }}
@@ -300,7 +306,7 @@ export default function OverseasPurchaseOrdersPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Currency</Label>
                 <Select value={currency} onValueChange={(v: "USD" | "RMB") => setCurrency(v)}>
@@ -315,8 +321,14 @@ export default function OverseasPurchaseOrdersPage() {
                 <Label className="text-xs font-medium">Exchange Rate to PHP</Label>
                 <Input type="number" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} className="h-9" />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Expected Delivery</Label>
+                <Label className="text-xs font-medium">Date Ordered</Label>
+                <DateField value={orderDate} onChange={setOrderDate} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Estimated Date of Arrival</Label>
                 <DateField value={expectedDelivery} onChange={setExpectedDelivery} />
               </div>
             </div>
