@@ -22,12 +22,15 @@ import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewQ, setViewQ] = useState<string | null>(null);
