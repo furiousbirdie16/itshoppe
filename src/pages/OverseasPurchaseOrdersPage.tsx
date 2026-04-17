@@ -102,7 +102,7 @@ export default function OverseasPurchaseOrdersPage() {
         await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); toast.success("Overseas PO created"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); toast.success("Overseas PO created"); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -126,13 +126,13 @@ export default function OverseasPurchaseOrdersPage() {
         await createOverseasPOItems(valid.map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteOverseasPurchaseOrder,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); toast.success("Deleted"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); toast.success("Deleted"); },
   });
 
   const receiveMut = useMutation({
@@ -152,6 +152,7 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
