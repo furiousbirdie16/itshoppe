@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { SupplierSearch } from "@/components/SupplierSearch";
 import { ItemSearch } from "@/components/ItemSearch";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown } from "lucide-react";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -41,6 +41,9 @@ export default function PurchaseOrdersPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
+  const [editPO, setEditPO] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ supplier_id: "", notes: "", order_date: "", payment_terms: "", status: "draft" as string });
+  const [editLines, setEditLines] = useState<LineItem[]>([]);
   const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -130,6 +133,76 @@ export default function PurchaseOrdersPage() {
     mutationFn: deletePurchaseOrder,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); toast.success("PO deleted"); },
   });
+
+  const editDueDate = editForm.payment_terms ? addDays(editForm.order_date, parseInt(editForm.payment_terms) || 0) : "";
+
+  const openEdit = async (po: any) => {
+    const items = await getPOItems(po.id);
+    setEditForm({
+      supplier_id: po.supplier_id || "",
+      notes: po.notes || "",
+      order_date: po.order_date || todayISO(),
+      payment_terms: po.payment_terms?.toString() || "",
+      status: po.status || "draft",
+    });
+    setEditLines(items.map((pi: any) => ({
+      item_id: pi.item_id || "",
+      item_name: pi.items?.name || pi.item_name || "",
+      quantity: pi.quantity,
+      unit_cost: Number(pi.unit_cost),
+    })));
+    setEditPO(po);
+  };
+
+  const editMut = useMutation({
+    mutationFn: async () => {
+      if (!editPO) return;
+      const validLines = editLines.filter(l => l.item_id || l.item_name.trim());
+      if (validLines.length === 0) throw new Error("Add at least one line item");
+      const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const terms = editForm.payment_terms ? parseInt(editForm.payment_terms) : null;
+      const due = terms ? addDays(editForm.order_date, terms) : null;
+      await updatePurchaseOrder(editPO.id, {
+        supplier_id: editForm.supplier_id || null,
+        notes: editForm.notes,
+        order_date: editForm.order_date,
+        payment_terms: terms,
+        payment_due_date: due,
+        status: editForm.status,
+        total_amount: total,
+      } as any);
+      await deletePOItems(editPO.id);
+      await createPOItems(validLines.map(l => ({
+        po_id: editPO.id,
+        item_id: l.item_id || null,
+        item_name: l.item_id ? null : l.item_name.trim(),
+        quantity: l.quantity,
+        unit_cost: l.unit_cost,
+      })) as any);
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setEditPO(null); toast.success("PO updated"); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const addEditLine = () => setEditLines([...editLines, { item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  const updateEditLine = (idx: number, field: keyof LineItem, value: any) => {
+    const newLines = [...editLines];
+    (newLines[idx] as any)[field] = value;
+    setEditLines(newLines);
+  };
+  const setEditItemForLine = (idx: number, itemId: string, item: any | null, customName?: string) => {
+    const newLines = [...editLines];
+    if (item) {
+      newLines[idx].item_id = item.id;
+      newLines[idx].item_name = item.name;
+      newLines[idx].unit_cost = Number(item.cost_price);
+    } else {
+      newLines[idx].item_id = "";
+      newLines[idx].item_name = customName || "";
+    }
+    setEditLines(newLines);
+  };
+  const removeEditLine = (idx: number) => setEditLines(editLines.filter((_, i) => i !== idx));
 
   const receiveMut = useMutation({
     mutationFn: async () => {
@@ -372,6 +445,7 @@ export default function PurchaseOrdersPage() {
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(po)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {po.status !== "received" && (
                       <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
                     )}
@@ -383,6 +457,81 @@ export default function PurchaseOrdersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editPO} onOpenChange={(o) => { if (!o) setEditPO(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-lg">Edit Purchase Order {editPO?.po_number}</DialogTitle></DialogHeader>
+          <div className="grid gap-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Supplier</Label>
+              <SupplierSearch suppliers={suppliers} value={editForm.supplier_id} onChange={(id) => setEditForm({ ...editForm, supplier_id: id })} />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Order Date</Label>
+                <DateField value={editForm.order_date} onChange={v => setEditForm({ ...editForm, order_date: v })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Terms (days)</Label>
+                <Input type="number" min={0} value={editForm.payment_terms} onChange={e => setEditForm({ ...editForm, payment_terms: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Due</Label>
+                <Input type="date" value={editDueDate} disabled className="h-9 bg-muted/40" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Status</Label>
+                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="partially_received">Partially Received</SelectItem>
+                    <SelectItem value="received">Received</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={editForm.notes} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} className="resize-none" rows={2} />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-xs font-medium">Line Items</Label>
+                <Button variant="outline" size="sm" onClick={addEditLine} className="h-7 rounded-md text-xs">
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {editLines.map((line, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                    <ItemSearch
+                      items={items}
+                      value={line.item_id}
+                      customName={line.item_name && !line.item_id ? line.item_name : undefined}
+                      onChange={(id, item, customName) => setEditItemForLine(idx, id, item, customName)}
+                      allowCustom
+                      sourceFilter={isAdmin ? undefined : 'local'}
+                      placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
+                    />
+                    <Input type="number" min={1} value={line.quantity} onChange={e => updateEditLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                    <Input type="number" value={line.unit_cost} onChange={e => updateEditLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
+                    <Button variant="ghost" size="icon" onClick={() => removeEditLine(idx)} className="h-9 w-8">
+                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end mt-3 pt-3 border-t">
+                <span className="text-sm font-semibold">Total: {peso(editLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0))}</span>
+              </div>
+            </div>
+            <Button onClick={() => editMut.mutate()} disabled={editMut.isPending} className="rounded-lg h-9">Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
