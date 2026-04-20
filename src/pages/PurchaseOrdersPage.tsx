@@ -425,32 +425,41 @@ export default function PurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
             <Label className="text-xs">Date Received</Label>
             <DateField value={receiveDate} onChange={setReceiveDate} />
           </div>
-          <p className="text-sm text-muted-foreground">Enter quantities received for each item:</p>
-          <div className="space-y-3 pt-2 max-h-[50vh] overflow-y-auto">
+          <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory, or in <span className="font-medium text-foreground">Undo</span> to deduct from inventory and reverse a prior receipt.</p>
+          <div className="grid grid-cols-[1fr_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
+            <span>Item</span>
+            <span className="text-center">Receive</span>
+            <span className="text-center">Undo</span>
+          </div>
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto">
             {poItems.map((pi: any) => {
               const remaining = pi.quantity - pi.received_quantity;
               const isCustom = !pi.item_id;
               return (
-                <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                  <div className="flex-1 min-w-0">
+                <div key={pi.id} className="grid grid-cols-[1fr_80px_80px] items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {isCustom ? "Custom item — not tracked in inventory" : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`}
                     </p>
                   </div>
-                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="w-20 h-9 text-sm" />
+                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom || remaining <= 0} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="h-9 text-sm text-center" />
+                  <Input type="number" min={0} max={pi.received_quantity} value={undoQtys[pi.id] || 0} disabled={isCustom || pi.received_quantity <= 0} onChange={e => setUndoQtys({ ...undoQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, pi.received_quantity) })} className="h-9 text-sm text-center" />
                 </div>
               );
             })}
           </div>
-          <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">Confirm Receipt</Button>
+          <div className="flex gap-2 mt-2">
+            <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending || Object.values(receiveQtys).every(v => !v)} className="flex-1 rounded-lg h-9">Confirm Receipt</Button>
+            <Button variant="outline" onClick={() => undoMut.mutate()} disabled={undoMut.isPending || Object.values(undoQtys).every(v => !v)} className="flex-1 rounded-lg h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">Undo Receipt</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
