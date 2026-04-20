@@ -428,27 +428,35 @@ export default function QuotationsPage() {
                         <ItemSearch
                           items={items}
                           value={line.item_id}
+                          variationId={line.variation_id}
                           customName={line.item_name}
-                          onChange={(itemId, item, customName) => {
+                          onChange={(itemId, item, customName, variation) => {
                             const newLines = [...lines];
-                            if (itemId) {
+                            if (variation && item) {
+                              newLines[idx].item_id = item.id;
+                              newLines[idx].item_name = `${item.name} — ${variation.name}`;
+                              newLines[idx].variation_id = variation.id;
+                              newLines[idx].unit_price = String(Number(variation.selling_price));
+                            } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
+                              newLines[idx].variation_id = null;
                               if (item) newLines[idx].unit_price = String(Number(item.selling_price));
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
+                              newLines[idx].variation_id = null;
                             }
                             setLines(newLines);
                           }}
-                          placeholder="Search or type custom item..."
+                          placeholder="Search item or variation..."
                           allowCustom
                         />
                         <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
                         <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
                         <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                       </div>
-                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
                     </div>
                   );
                 })}

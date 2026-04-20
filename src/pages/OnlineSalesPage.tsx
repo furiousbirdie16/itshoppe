@@ -35,6 +35,7 @@ interface SaleForm {
   posted_price: number;
   notes: string;
   item_id: string;
+  variation_id: string | null;
 }
 
 const emptyForm: SaleForm = {
@@ -46,6 +47,7 @@ const emptyForm: SaleForm = {
   posted_price: 0,
   notes: "",
   item_id: "",
+  variation_id: null,
 };
 
 const generateOrderNumber = async (channel: SalesChannel) => {
@@ -149,6 +151,7 @@ export default function OnlineSalesPage() {
       posted_price: s.posted_price,
       notes: s.notes || "",
       item_id: s.item_id || "",
+      variation_id: (s as any).variation_id || null,
     });
     setDialogOpen(true);
   };
@@ -175,6 +178,7 @@ export default function OnlineSalesPage() {
         deal_price: 0,
         notes: form.notes,
         item_id: form.item_id || null,
+        variation_id: form.variation_id || null,
       };
       if (editingSale) {
         await updateOnlineSale(editingSale.id, payload);
@@ -626,13 +630,20 @@ export default function OnlineSalesPage() {
               <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated if blank" className="h-9" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Inventory Item (optional)</Label>
+              <Label className="text-xs font-medium">Inventory Item / Variation (optional)</Label>
               <ItemSearch
                 items={items}
                 value={form.item_id}
-                onChange={(itemId, item) => setForm(f => ({ ...f, item_id: itemId, product_name: item.name, posted_price: Number(item.selling_price) }))}
+                variationId={form.variation_id}
+                onChange={(itemId, item, _custom, variation) => {
+                  if (variation && item) {
+                    setForm(f => ({ ...f, item_id: item.id, variation_id: variation.id, product_name: `${item.name} — ${variation.name}`, posted_price: Number(variation.selling_price) }));
+                  } else if (item) {
+                    setForm(f => ({ ...f, item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) }));
+                  }
+                }}
               />
-              <p className="text-[10px] text-muted-foreground">Auto-fills product name & price</p>
+              <p className="text-[10px] text-muted-foreground">Pick item or a variation (e.g. "DC male 5pcs"). Auto-fills name & price.</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Date</Label>
