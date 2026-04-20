@@ -154,6 +154,7 @@ export default function InvoicesPage() {
             item_name: li.item_name || li.items?.name || "",
             quantity: li.quantity,
             unit_price: Number(li.unit_price),
+            variation_id: li.variation_id || null,
           }))
         : [{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]
     );
@@ -165,7 +166,7 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
-      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
+      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -177,7 +178,7 @@ export default function InvoicesPage() {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
       await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
+      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),

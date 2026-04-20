@@ -183,6 +183,7 @@ export default function QuotationsPage() {
             item_name: li.item_name || li.items?.name || "",
             quantity: String(li.quantity),
             unit_price: String(Number(li.unit_price)),
+            variation_id: li.variation_id || null,
           }))
         : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
     );
@@ -216,7 +217,7 @@ export default function QuotationsPage() {
       payload.quotation_number = await generateQuotationNumber();
       payload.total_amount = total;
       const q = await createQuotation(payload);
-      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
+      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -229,7 +230,7 @@ export default function QuotationsPage() {
       payload.total_amount = lines.reduce((s, l) => s + lineTotal(l), 0);
       await updateQuotation(editId, payload);
       await deleteQuotationItems(editId);
-      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
+      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); setEditId(null); toast.success("Quotation updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
