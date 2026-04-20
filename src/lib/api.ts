@@ -305,7 +305,7 @@ export const deleteQuotation = async (id: string) => {
 };
 
 export const getQuotationItems = async (qId: string): Promise<QuotationItem[]> => {
-  const { data, error } = await from("quotation_items").select("*, items(*)").eq("quotation_id", qId);
+  const { data, error } = await from("quotation_items").select("*, items(*), item_variations(*)").eq("quotation_id", qId);
   if (error) throw error;
   return data;
 };
@@ -396,7 +396,7 @@ export const deleteInvoice = async (id: string) => {
 };
 
 export const getInvoiceItems = async (invId: string): Promise<InvoiceItem[]> => {
-  const { data, error } = await from("invoice_items").select("*, items(*)").eq("invoice_id", invId);
+  const { data, error } = await from("invoice_items").select("*, items(*), item_variations(*)").eq("invoice_id", invId);
   if (error) throw error;
   return data;
 };
@@ -545,7 +545,7 @@ export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order"
 
 // Online Sales
 export const getOnlineSales = async (): Promise<OnlineSale[]> => {
-  const { data, error } = await from("online_sales").select("*, items(*)").order("created_at", { ascending: false });
+  const { data, error } = await from("online_sales").select("*, items(*), item_variations(*)").order("created_at", { ascending: false });
   if (error) throw error;
   return data;
 };
