@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers } from "lucide-react";
+import { VariationsManager } from "@/components/VariationsManager";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
@@ -33,6 +34,7 @@ export default function InventoryPage() {
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
+  const [variationsItem, setVariationsItem] = useState<Item | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -326,6 +328,11 @@ export default function InventoryPage() {
                 </TableCell>
                 <TableCell className={`text-right text-sm font-semibold ${item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                   {item.quantity}
+                  {(item.units_per_stock ?? 1) > 1 && (item.open_roll_remaining ?? 0) > 0 && (
+                    <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                      + {item.open_roll_remaining}{item.base_unit || 'm'} open
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right text-sm text-muted-foreground">
                   {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
@@ -333,6 +340,9 @@ export default function InventoryPage() {
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
+                      <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                     {isAdmin ? (
                       <>
                         <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">
@@ -354,6 +364,14 @@ export default function InventoryPage() {
           </TableBody>
         </Table>
       </div>
+
+      {variationsItem && (
+        <VariationsManager
+          item={variationsItem}
+          open={!!variationsItem}
+          onOpenChange={(o) => { if (!o) setVariationsItem(null); }}
+        />
+      )}
     </div>
   );
 }
