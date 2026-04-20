@@ -184,7 +184,7 @@ export default function BulkVariationsUploadDialog({ open, onOpenChange, onSucce
               <span className="text-muted-foreground">{fileName} — {rows.length} rows</span>
               <div className="flex gap-3">
                 {validCount > 0 && (
-                  <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{validCount} valid</span>
+                  <span className="flex items-center gap-1 text-success"><Check className="h-3 w-3" />{validCount} valid</span>
                 )}
                 {invalidCount > 0 && (
                   <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{invalidCount} invalid</span>
@@ -220,7 +220,7 @@ export default function BulkVariationsUploadDialog({ open, onOpenChange, onSucce
                       <TableCell className="text-sm text-right">{row.factor}</TableCell>
                       <TableCell className="text-sm text-right">{peso(row.selling_price)}</TableCell>
                       <TableCell className="text-xs">
-                        {row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}
+                        {row.valid ? <span className="text-success">✓</span> : <span className="text-destructive">{row.error}</span>}
                       </TableCell>
                     </TableRow>
                   ))}
