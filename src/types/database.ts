@@ -148,6 +148,7 @@ export interface OverseasPurchaseOrderItem {
   description: string;
   quantity: number;
   received_quantity: number;
+  received_date: string | null;
   unit_cost: number;
   item_id: string | null;
   created_at: string;
