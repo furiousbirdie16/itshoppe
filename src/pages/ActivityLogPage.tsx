@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Search } from "lucide-react";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 const actionColors: Record<string, string> = {
   created: "bg-success/10 text-success border-success/20",
@@ -29,7 +31,7 @@ export default function ActivityLogPage() {
     queryFn: getActivityLogs,
   });
 
-  const filtered = logs?.filter((log) => {
+  const filtered = (logs || []).filter((log) => {
     const s = search.toLowerCase();
     return (
       !s ||
@@ -39,6 +41,13 @@ export default function ActivityLogPage() {
       (log.entity_id && log.entity_id.toLowerCase().includes(s)) ||
       JSON.stringify(log.details).toLowerCase().includes(s)
     );
+  });
+
+  const { sort, toggle, sorted: sortedLogs } = useSort<any>(filtered, {
+    created_at: (r) => r.created_at,
+    user_email: (r) => r.user_email,
+    action: (r) => r.action,
+    entity_type: (r) => r.entity_type,
   });
 
   return (
@@ -62,10 +71,10 @@ export default function ActivityLogPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-xs">When</TableHead>
-              <TableHead className="text-xs">Who</TableHead>
-              <TableHead className="text-xs">Action</TableHead>
-              <TableHead className="text-xs">Module</TableHead>
+              <SortableHeader sortKey="created_at" label="When" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="user_email" label="Who" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="action" label="Action" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="entity_type" label="Module" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs hidden md:table-cell">Details</TableHead>
             </TableRow>
           </TableHeader>
@@ -76,8 +85,8 @@ export default function ActivityLogPage() {
                   <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
                 </TableCell>
               </TableRow>
-            ) : filtered && filtered.length > 0 ? (
-              filtered.map((log) => (
+            ) : sortedLogs && sortedLogs.length > 0 ? (
+              sortedLogs.map((log) => (
                 <TableRow key={log.id} className="hover:bg-muted/50">
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                     {format(new Date(log.created_at), "MMM d, yyyy h:mm a")}

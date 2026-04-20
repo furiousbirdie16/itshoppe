@@ -19,6 +19,8 @@ import * as XLSX from "xlsx";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -203,6 +205,16 @@ export default function OnlineSalesPage() {
     if (!filter) return true;
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
+  });
+
+  const { sort, toggle, sorted: sortedFiltered } = useSort<any>(filtered, {
+    order_date: (r) => r.order_date,
+    order_number: (r) => r.order_number,
+    product_name: (r) => r.product_name,
+    quantity: (r) => Number(r.quantity || 1),
+    sales_channel: (r) => r.sales_channel,
+    posted_price: (r) => Number(r.posted_price),
+    status: (r) => r.status || "completed",
   });
 
   // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
@@ -514,21 +526,21 @@ export default function OnlineSalesPage() {
                   <TableHead className="w-10">
                     <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
                   </TableHead>
-                  <TableHead className="text-xs">Date</TableHead>
-                  <TableHead className="text-xs">Order ID</TableHead>
-                  <TableHead className="text-xs">Product Name</TableHead>
-                  <TableHead className="text-xs text-center">Qty</TableHead>
-                  <TableHead className="text-xs">Channel</TableHead>
-                  <TableHead className="text-xs text-right">Selling Price</TableHead>
+                  <SortableHeader sortKey="order_date" label="Date" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="order_number" label="Order ID" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="product_name" label="Product Name" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
+                  <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
                   <TableHead className="w-28"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : filtered.length === 0 ? (
+                ) : sortedFiltered.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
-                ) : filtered.map((s: any) => (
+                ) : sortedFiltered.map((s: any) => (
                   <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
                     <TableCell>
                       <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
@@ -562,22 +574,22 @@ export default function OnlineSalesPage() {
                   <TableHead className="w-10">
                     <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
                   </TableHead>
-                  <TableHead className="text-xs">Date</TableHead>
-                  <TableHead className="text-xs">Order ID</TableHead>
-                  <TableHead className="text-xs">Product Name</TableHead>
-                  <TableHead className="text-xs text-center">Qty</TableHead>
-                  <TableHead className="text-xs">Channel</TableHead>
-                  <TableHead className="text-xs text-right">Selling Price</TableHead>
-                  <TableHead className="text-xs">Status</TableHead>
+                  <SortableHeader sortKey="order_date" label="Date" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="order_number" label="Order ID" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="product_name" label="Product Name" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
+                  <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
+                  <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
+                  <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
                   <TableHead className="w-16"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : filtered.length === 0 ? (
+                ) : sortedFiltered.length === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No returned / cancelled orders</TableCell></TableRow>
-                ) : filtered.map((s: any) => (
+                ) : sortedFiltered.map((s: any) => (
                   <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
                     <TableCell>
                       <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />

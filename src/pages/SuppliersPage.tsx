@@ -12,6 +12,8 @@ import { Plus, Pencil, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import type { Supplier } from "@/types/database";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 export default function SuppliersPage() {
   const queryClient = useQueryClient();
@@ -36,6 +38,12 @@ export default function SuppliersPage() {
   });
 
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
+  const { sort, toggle, sorted: sortedSuppliers } = useSort<Supplier>(suppliers, {
+    name: (r) => r.name,
+    contact_person: (r) => r.contact_person,
+    email: (r) => r.email,
+    phone: (r) => r.phone,
+  });
 
   const createMut = useMutation({
     mutationFn: (data: Partial<Supplier>) => createSupplier(data),
@@ -130,19 +138,19 @@ export default function SuppliersPage() {
           <TableHeader>
            <TableRow>
               <TableHead className="w-10"><Checkbox checked={suppliers.length > 0 && selectedIds.size === suppliers.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">Name</TableHead>
-              <TableHead className="text-xs">Contact</TableHead>
-              <TableHead className="text-xs">Email</TableHead>
-              <TableHead className="text-xs">Phone</TableHead>
+              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={6} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
-            ) : suppliers.length === 0 ? (
+            ) : sortedSuppliers.length === 0 ? (
               <TableRow><TableCell colSpan={6}><div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No suppliers yet</p></div></TableCell></TableRow>
-            ) : suppliers.map(s => (
+            ) : sortedSuppliers.map(s => (
               <TableRow key={s.id} className={selectedIds.has(s.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} /></TableCell>
                 <TableCell className="font-medium text-sm">{s.name}</TableCell>

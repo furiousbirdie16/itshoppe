@@ -21,6 +21,8 @@ import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
 
@@ -69,6 +71,15 @@ export default function PurchaseOrdersPage() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: poItems = [] } = useQuery({ queryKey: ["po_items", viewPO || receiveOpen], queryFn: () => getPOItems(viewPO || receiveOpen || ""), enabled: !!(viewPO || receiveOpen) });
+
+  const { sort, toggle, sorted: sortedPOs } = useSort<any>(pos, {
+    po_number: (r) => r.po_number,
+    supplier: (r) => r.suppliers?.name || "",
+    order_date: (r) => r.order_date,
+    payment_due_date: (r) => r.payment_due_date,
+    status: (r) => r.status,
+    total_amount: (r) => Number(r.total_amount),
+  });
 
   const openPreview = async (po: any) => {
     const lineItems = await getPOItems(po.id);
@@ -420,19 +431,19 @@ export default function PurchaseOrdersPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={pos.length > 0 && selectedIds.size === pos.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">PO #</TableHead>
-              <TableHead className="text-xs">Supplier</TableHead>
-              <TableHead className="text-xs">Order Date</TableHead>
-              <TableHead className="text-xs">Payment Due</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs text-right">Total</TableHead>
+              <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="order_date" label="Order Date" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="payment_due_date" label="Payment Due" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="total_amount" label="Total" sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pos.length === 0 ? (
+            {sortedPOs.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No purchase orders</p></div></TableCell></TableRow>
-            ) : pos.map((po: any) => (
+            ) : sortedPOs.map((po: any) => (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{po.po_number}</TableCell>

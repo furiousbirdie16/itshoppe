@@ -19,6 +19,8 @@ import BulkUploadDialog from "@/components/BulkUploadDialog";
 import BulkEditUploadDialog from "@/components/BulkEditUploadDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 export default function InventoryPage() {
   const { role } = useAuth();
@@ -85,6 +87,15 @@ export default function InventoryPage() {
     const itemSource = ((i as any).source as string) || "local";
     const matchesSource = sourceFilter === "all" || itemSource === sourceFilter;
     return matchesText && matchesSource;
+  });
+
+  const { sort, toggle, sorted: sortedFiltered } = useSort<typeof filtered[number]>(filtered, {
+    name: (r) => r.name,
+    sku: (r) => r.sku,
+    source: (r: any) => (r.source as string) || "local",
+    quantity: (r) => Number(r.quantity),
+    cost_price: (r) => Number(r.cost_price),
+    selling_price: (r) => Number(r.selling_price),
   });
 
   const allSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
@@ -272,12 +283,12 @@ export default function InventoryPage() {
                   aria-label="Select all"
                 />
               </TableHead>
-              <TableHead className="text-xs">Name</TableHead>
-              <TableHead className="text-xs">SKU</TableHead>
-              <TableHead className="text-xs">Source</TableHead>
-              <TableHead className="text-xs text-right">Qty</TableHead>
-              <TableHead className="text-xs text-right">Cost</TableHead>
-              <TableHead className="text-xs text-right">Sell</TableHead>
+              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="source" label="Source" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="cost_price" label="Cost" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="selling_price" label="Sell" sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -288,7 +299,7 @@ export default function InventoryPage() {
                   <div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
                 </TableCell>
               </TableRow>
-            ) : filtered.length === 0 ? (
+            ) : sortedFiltered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={colCount}>
                   <div className="empty-state">
@@ -297,7 +308,7 @@ export default function InventoryPage() {
                   </div>
                 </TableCell>
               </TableRow>
-            ) : filtered.map(item => (
+            ) : sortedFiltered.map(item => (
               <TableRow key={item.id} className={`hover:bg-muted/30 ${selectedIds.has(item.id) ? 'bg-muted/40' : ''}`} data-state={selectedIds.has(item.id) ? "selected" : undefined}>
                 <TableCell>
                   <Checkbox

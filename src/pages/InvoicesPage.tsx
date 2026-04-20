@@ -21,6 +21,8 @@ import type { DocumentData } from "@/lib/pdf";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
 
@@ -75,6 +77,15 @@ export default function InvoicesPage() {
       return true;
     });
   }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus]);
+
+  const { sort, toggle, sorted: sortedInvoices } = useSort<any>(filtered, {
+    invoice_number: (r) => r.invoice_number,
+    customer: (r) => r.customers?.name || "",
+    sales_agent: (r) => r.sales_agent || "",
+    invoice_date: (r) => r.invoice_date,
+    status: (r) => r.status,
+    total_amount: (r) => Number(r.total_amount),
+  });
 
   // Total sales (admin only) — sum of confirmed/paid invoices in current filter
   const totalSales = useMemo(() => {
@@ -446,19 +457,19 @@ export default function InvoicesPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">Invoice #</TableHead>
-              <TableHead className="text-xs">Customer</TableHead>
-              <TableHead className="text-xs">Sales Agent</TableHead>
-              <TableHead className="text-xs">Date</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs text-right">Total</TableHead>
+              <SortableHeader sortKey="invoice_number" label="Invoice #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="sales_agent" label="Sales Agent" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="invoice_date" label="Date" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="total_amount" label="Total" sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {sortedInvoices.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
-            ) : filtered.map((inv: any) => (
+            ) : sortedInvoices.map((inv: any) => (
               <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
