@@ -41,6 +41,9 @@ export default function PurchaseOrdersPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
+  const [editPO, setEditPO] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ supplier_id: "", notes: "", order_date: "", payment_terms: "", status: "draft" as string });
+  const [editLines, setEditLines] = useState<LineItem[]>([]);
   const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
