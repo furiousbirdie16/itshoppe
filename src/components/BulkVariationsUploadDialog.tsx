@@ -48,7 +48,6 @@ export default function BulkVariationsUploadDialog({ open, onOpenChange, onSucce
       toast.error("Failed to load inventory for matching"); return;
     }
     const bySku = new Map(items.map(i => [i.sku.toLowerCase().trim(), i]));
-    const byName = new Map(items.map(i => [i.name.toLowerCase().trim(), i]));
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -83,11 +82,12 @@ export default function BulkVariationsUploadDialog({ open, onOpenChange, onSucce
           const factor = Number(row[factorCol]) || 0;
           const selling_price = priceCol ? Number(row[priceCol]) || 0 : 0;
 
-          const match = bySku.get(itemRef.toLowerCase()) || byName.get(itemRef.toLowerCase());
+          // Strict SKU match — itemRef MUST equal an inventory SKU
+          const match = bySku.get(itemRef.toLowerCase());
 
           let error: string | undefined;
-          if (!itemRef) error = "Missing item reference";
-          else if (!match) error = "Item not found";
+          if (!itemRef) error = "Missing item SKU";
+          else if (!match) error = `SKU "${itemRef}" not found in inventory`;
           else if (!name) error = "Missing variation name";
           else if (!["pack", "cut"].includes(type)) error = "Type must be pack or cut";
           else if (factor <= 0) error = "Factor must be > 0";
