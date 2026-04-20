@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -111,6 +111,7 @@ export default function PurchaseOrdersPage() {
   };
 
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const createMut = useMutation({
@@ -225,14 +226,36 @@ export default function PurchaseOrdersPage() {
           return { poItemId, itemId: poItem!.item_id, quantity: qty };
         })
         .filter(i => !!i.itemId); // can't deduct stock for custom (non-inventory) items
-      await receivePO(receiveOpen!, itemsToReceive, receiveDate);
+      if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
+      setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and inventory updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const undoMut = useMutation({
+    mutationFn: async () => {
+      const itemsToUndo = Object.entries(undoQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const poItem = poItems.find(pi => pi.id === poItemId);
+          return { poItemId, itemId: poItem?.item_id ?? null, quantity: qty };
+        });
+      if (itemsToUndo.length === 0) throw new Error("Enter quantities to undo");
+      await unreceivePO(receiveOpen!, itemsToUndo);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["po_items"] });
+      setUndoQtys({});
+      toast.success("Receipt undone — inventory adjusted");
     },
     onError: (e: any) => toast.error(e.message),
   });
