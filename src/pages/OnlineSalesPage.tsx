@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems } from "@/lib/api";
+import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems, getItemVariations } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -111,6 +111,7 @@ export default function OnlineSalesPage() {
   const isAdmin = role === "admin";
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales"], queryFn: getOnlineSales });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<OnlineSale | null>(null);
@@ -131,7 +132,7 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; valid: boolean; error?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }[]>([]);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -337,15 +338,21 @@ export default function OnlineSalesPage() {
           const order_date = parseDate(indexes.date >= 0 ? row[indexes.date] : null);
           const order_id = normalizeBulkCell(indexes.orderId >= 0 ? row[indexes.orderId] : "");
 
-          // Strict SKU match — product_name in the Excel MUST equal an inventory SKU
-          const matchedItem = items.find(i => i.sku.toLowerCase() === product_name.toLowerCase());
+          // Strict SKU match — try parent item SKU first, then variation SKU
+          const skuLower = product_name.toLowerCase();
+          const matchedItem = items.find(i => i.sku.toLowerCase() === skuLower);
+          const matchedVariation = !matchedItem
+            ? variations.find(v => (v.sku || "").toLowerCase() === skuLower)
+            : null;
+          const resolvedItemId = matchedItem?.id || matchedVariation?.item_id || null;
+          const resolvedVariationId = matchedVariation?.id || null;
 
           let error: string | undefined;
           if (!product_name) error = "Missing SKU";
-          else if (!matchedItem) error = `SKU "${product_name}" not found in inventory`;
+          else if (!resolvedItemId) error = `SKU "${product_name}" not found in inventory`;
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: matchedItem?.id || null, valid: !error, error };
+          return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: resolvedItemId, variation_id: resolvedVariationId, valid: !error, error };
         });
         setBulkRows(parsed);
       } catch (err) {
