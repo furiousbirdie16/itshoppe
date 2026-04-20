@@ -225,13 +225,13 @@ export default function PurchaseOrdersPage() {
           return { poItemId, itemId: poItem!.item_id, quantity: qty };
         })
         .filter(i => !!i.itemId); // can't deduct stock for custom (non-inventory) items
-      await receivePO(receiveOpen!, itemsToReceive);
+      await receivePO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({});
+      setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and inventory updated");
     },
     onError: (e: any) => toast.error(e.message),
