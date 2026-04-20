@@ -134,6 +134,76 @@ export default function PurchaseOrdersPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); toast.success("PO deleted"); },
   });
 
+  const editDueDate = editForm.payment_terms ? addDays(editForm.order_date, parseInt(editForm.payment_terms) || 0) : "";
+
+  const openEdit = async (po: any) => {
+    const items = await getPOItems(po.id);
+    setEditForm({
+      supplier_id: po.supplier_id || "",
+      notes: po.notes || "",
+      order_date: po.order_date || todayISO(),
+      payment_terms: po.payment_terms?.toString() || "",
+      status: po.status || "draft",
+    });
+    setEditLines(items.map((pi: any) => ({
+      item_id: pi.item_id || "",
+      item_name: pi.items?.name || pi.item_name || "",
+      quantity: pi.quantity,
+      unit_cost: Number(pi.unit_cost),
+    })));
+    setEditPO(po);
+  };
+
+  const editMut = useMutation({
+    mutationFn: async () => {
+      if (!editPO) return;
+      const validLines = editLines.filter(l => l.item_id || l.item_name.trim());
+      if (validLines.length === 0) throw new Error("Add at least one line item");
+      const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
+      const terms = editForm.payment_terms ? parseInt(editForm.payment_terms) : null;
+      const due = terms ? addDays(editForm.order_date, terms) : null;
+      await updatePurchaseOrder(editPO.id, {
+        supplier_id: editForm.supplier_id || null,
+        notes: editForm.notes,
+        order_date: editForm.order_date,
+        payment_terms: terms,
+        payment_due_date: due,
+        status: editForm.status,
+        total_amount: total,
+      } as any);
+      await deletePOItems(editPO.id);
+      await createPOItems(validLines.map(l => ({
+        po_id: editPO.id,
+        item_id: l.item_id || null,
+        item_name: l.item_id ? null : l.item_name.trim(),
+        quantity: l.quantity,
+        unit_cost: l.unit_cost,
+      })) as any);
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setEditPO(null); toast.success("PO updated"); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const addEditLine = () => setEditLines([...editLines, { item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  const updateEditLine = (idx: number, field: keyof LineItem, value: any) => {
+    const newLines = [...editLines];
+    (newLines[idx] as any)[field] = value;
+    setEditLines(newLines);
+  };
+  const setEditItemForLine = (idx: number, itemId: string, item: any | null, customName?: string) => {
+    const newLines = [...editLines];
+    if (item) {
+      newLines[idx].item_id = item.id;
+      newLines[idx].item_name = item.name;
+      newLines[idx].unit_cost = Number(item.cost_price);
+    } else {
+      newLines[idx].item_id = "";
+      newLines[idx].item_name = customName || "";
+    }
+    setEditLines(newLines);
+  };
+  const removeEditLine = (idx: number) => setEditLines(editLines.filter((_, i) => i !== idx));
+
   const receiveMut = useMutation({
     mutationFn: async () => {
       const itemsToReceive = Object.entries(receiveQtys)
