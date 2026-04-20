@@ -411,25 +411,21 @@ export const deleteInvoiceItems = async (invId: string) => {
   if (error) throw error;
 };
 
-// Confirm Invoice - deduct stock
+// Confirm Invoice - deduct stock (variation-aware)
 export const confirmInvoice = async (invoiceId: string) => {
   const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
 
   if (invItems) {
     for (const invItem of invItems as any[]) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", invItem.item_id).single();
-      await from("items").update({
-        quantity: Math.max(0, ((currentItem as any)?.quantity || 0) - invItem.quantity),
-        updated_at: new Date().toISOString()
-      }).eq("id", invItem.item_id);
-
-      await from("inventory_movements").insert({
-        item_id: invItem.item_id,
-        type: "out_invoice",
-        quantity: invItem.quantity,
-        reference_id: invoiceId,
-        reference_type: "invoice",
-        notes: "Deducted from invoice"
+      if (!invItem.item_id) continue;
+      await applyStockChange({
+        itemId: invItem.item_id,
+        variationId: invItem.variation_id || null,
+        qty: invItem.quantity,
+        referenceId: invoiceId,
+        referenceType: "invoice",
+        movementType: "out_invoice",
+        notes: "Deducted from invoice",
       });
     }
   }
@@ -438,25 +434,21 @@ export const confirmInvoice = async (invoiceId: string) => {
   await logActivity("confirmed_invoice", "invoice", invoiceId);
 };
 
-// Revert confirmed invoice - restore stock
+// Revert confirmed invoice - restore stock (variation-aware)
 export const revertInvoice = async (invoiceId: string) => {
   const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
 
   if (invItems) {
     for (const invItem of invItems as any[]) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", invItem.item_id).single();
-      await from("items").update({
-        quantity: ((currentItem as any)?.quantity || 0) + invItem.quantity,
-        updated_at: new Date().toISOString()
-      }).eq("id", invItem.item_id);
-
-      await from("inventory_movements").insert({
-        item_id: invItem.item_id,
-        type: "in_po",
-        quantity: invItem.quantity,
-        reference_id: invoiceId,
-        reference_type: "invoice_revert",
-        notes: "Reverted from confirmed invoice"
+      if (!invItem.item_id) continue;
+      await applyStockChange({
+        itemId: invItem.item_id,
+        variationId: invItem.variation_id || null,
+        qty: -invItem.quantity, // negative = restore
+        referenceId: invoiceId,
+        referenceType: "invoice_revert",
+        movementType: "in_po",
+        notes: "Reverted from confirmed invoice",
       });
     }
   }
