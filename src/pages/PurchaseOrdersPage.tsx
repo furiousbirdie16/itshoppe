@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -111,6 +111,7 @@ export default function PurchaseOrdersPage() {
   };
 
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const createMut = useMutation({
@@ -225,14 +226,36 @@ export default function PurchaseOrdersPage() {
           return { poItemId, itemId: poItem!.item_id, quantity: qty };
         })
         .filter(i => !!i.itemId); // can't deduct stock for custom (non-inventory) items
-      await receivePO(receiveOpen!, itemsToReceive, receiveDate);
+      if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
+      setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and inventory updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const undoMut = useMutation({
+    mutationFn: async () => {
+      const itemsToUndo = Object.entries(undoQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const poItem = poItems.find(pi => pi.id === poItemId);
+          return { poItemId, itemId: poItem?.item_id ?? null, quantity: qty };
+        });
+      if (itemsToUndo.length === 0) throw new Error("Enter quantities to undo");
+      await unreceivePO(receiveOpen!, itemsToUndo);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["po_items"] });
+      setUndoQtys({});
+      toast.success("Receipt undone — inventory adjusted");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -402,32 +425,41 @@ export default function PurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
             <Label className="text-xs">Date Received</Label>
             <DateField value={receiveDate} onChange={setReceiveDate} />
           </div>
-          <p className="text-sm text-muted-foreground">Enter quantities received for each item:</p>
-          <div className="space-y-3 pt-2 max-h-[50vh] overflow-y-auto">
+          <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory, or in <span className="font-medium text-foreground">Undo</span> to deduct from inventory and reverse a prior receipt.</p>
+          <div className="grid grid-cols-[1fr_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
+            <span>Item</span>
+            <span className="text-center">Receive</span>
+            <span className="text-center">Undo</span>
+          </div>
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto">
             {poItems.map((pi: any) => {
               const remaining = pi.quantity - pi.received_quantity;
               const isCustom = !pi.item_id;
               return (
-                <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                  <div className="flex-1 min-w-0">
+                <div key={pi.id} className="grid grid-cols-[1fr_80px_80px] items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {isCustom ? "Custom item — not tracked in inventory" : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`}
                     </p>
                   </div>
-                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="w-20 h-9 text-sm" />
+                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom || remaining <= 0} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="h-9 text-sm text-center" />
+                  <Input type="number" min={0} max={pi.received_quantity} value={undoQtys[pi.id] || 0} disabled={isCustom || pi.received_quantity <= 0} onChange={e => setUndoQtys({ ...undoQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, pi.received_quantity) })} className="h-9 text-sm text-center" />
                 </div>
               );
             })}
           </div>
-          <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">Confirm Receipt</Button>
+          <div className="flex gap-2 mt-2">
+            <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending || Object.values(receiveQtys).every(v => !v)} className="flex-1 rounded-lg h-9">Confirm Receipt</Button>
+            <Button variant="outline" onClick={() => undoMut.mutate()} disabled={undoMut.isPending || Object.values(undoQtys).every(v => !v)} className="flex-1 rounded-lg h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">Undo Receipt</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -463,9 +495,7 @@ export default function PurchaseOrdersPage() {
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {po.status !== "received" && (
-                      <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
-                    )}
+                    <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); setUndoQtys({}); }} title={po.status === "received" ? "Undo Receipt" : "Receive / Undo"} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                   </div>
                 </TableCell>

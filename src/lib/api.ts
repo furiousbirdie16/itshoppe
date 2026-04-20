@@ -278,6 +278,46 @@ export const receivePO = async (
   await logActivity("received_purchase_order", "purchase_order", poId, { status: newStatus });
 };
 
+// Undo Receive — reverses received quantities for selected PO line items and deducts inventory
+export const unreceivePO = async (
+  poId: string,
+  itemsToUnreceive: { poItemId: string; itemId: string | null; quantity: number }[],
+) => {
+  for (const item of itemsToUnreceive) {
+    if (item.quantity <= 0) continue;
+    const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
+    const currentReceived = (poItem as any)?.received_quantity || 0;
+    const undoQty = Math.min(item.quantity, currentReceived);
+    if (undoQty <= 0) continue;
+    const newReceived = currentReceived - undoQty;
+    await from("purchase_order_items")
+      .update({ received_quantity: newReceived, received_date: newReceived === 0 ? null : undefined })
+      .eq("id", item.poItemId);
+
+    if (item.itemId) {
+      const { data: currentItem } = await from("items").select("quantity").eq("id", item.itemId).single();
+      const newQty = Math.max(0, ((currentItem as any)?.quantity || 0) - undoQty);
+      await from("items").update({ quantity: newQty, updated_at: new Date().toISOString() }).eq("id", item.itemId);
+
+      await from("inventory_movements").insert({
+        item_id: item.itemId,
+        type: "in_po",
+        quantity: -undoQty,
+        reference_id: poId,
+        reference_type: "purchase_order",
+        notes: `Undo receive from PO`,
+      });
+    }
+  }
+
+  const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
+  const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
+  const someReceived = (allItems as any[])?.some((i: any) => i.received_quantity > 0);
+  const newStatus = allReceived ? "received" : someReceived ? "partially_received" : "draft";
+  await from("purchase_orders").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", poId);
+  await logActivity("undo_receive_purchase_order", "purchase_order", poId, { status: newStatus });
+};
+
 // Quotations
 export const getQuotations = async (): Promise<Quotation[]> => {
   const { data, error } = await from("quotations").select("*, customers(*)").order("created_at", { ascending: false });
