@@ -14,6 +14,8 @@ import { peso } from "@/lib/currency";
 import type { OverseasSupplier } from "@/types/database";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 const defaultForm = { name: "", contact_person: "", email: "", phone: "", address: "", country: "", currency: "USD" as "USD" | "RMB", exchange_rate: "1", notes: "" };
 
@@ -45,6 +47,14 @@ export default function OverseasSuppliersPage() {
   const [convRate, setConvRate] = useState("");
 
   const { data: suppliers = [], isLoading } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
+  const { sort, toggle, sorted: sortedSuppliers } = useSort<OverseasSupplier>(suppliers, {
+    name: (r) => r.name,
+    country: (r) => r.country,
+    contact_person: (r) => r.contact_person,
+    currency: (r) => r.currency,
+    exchange_rate: (r) => Number(r.exchange_rate),
+    email: (r) => r.email,
+  });
 
   const createMut = useMutation({
     mutationFn: (data: Partial<OverseasSupplier>) => createOverseasSupplier(data),
@@ -212,21 +222,21 @@ export default function OverseasSuppliersPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={suppliers.length > 0 && selectedIds.size === suppliers.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">Name</TableHead>
-              <TableHead className="text-xs">Country</TableHead>
-              <TableHead className="text-xs">Contact</TableHead>
-              <TableHead className="text-xs">Currency</TableHead>
-              <TableHead className="text-xs">Rate to PHP</TableHead>
-              <TableHead className="text-xs">Email</TableHead>
+              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="country" label="Country" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="exchange_rate" label="Rate to PHP" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
-            ) : suppliers.length === 0 ? (
+            ) : sortedSuppliers.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><Globe className="empty-state-icon" /><p className="text-sm">No overseas suppliers yet</p></div></TableCell></TableRow>
-            ) : suppliers.map(s => (
+            ) : sortedSuppliers.map(s => (
               <TableRow key={s.id} className={selectedIds.has(s.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} /></TableCell>
                 <TableCell className="font-medium text-sm">{s.name}</TableCell>
