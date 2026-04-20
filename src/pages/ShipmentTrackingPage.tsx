@@ -300,6 +300,9 @@ export default function ShipmentTrackingPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-0.5">
+                      {s.po_id && (
+                        <Button variant="ghost" size="icon" onClick={() => setItemsShipment(s)} className="h-7 w-7 rounded-md" title="View PO items"><Package className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(s)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(s.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     </div>
@@ -310,6 +313,62 @@ export default function ShipmentTrackingPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* PO Items Dialog */}
+      <Dialog open={!!itemsShipment} onOpenChange={(o) => !o && setItemsShipment(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              PO Items — {(itemsShipment?.overseas_purchase_orders as any)?.po_number || "—"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="pt-2">
+            {poItemsLoading ? (
+              <div className="flex justify-center py-8"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+            ) : poItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No items on this PO.</p>
+            ) : (
+              <div className="data-table-wrapper">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Item</TableHead>
+                      <TableHead className="text-xs">Description</TableHead>
+                      <TableHead className="text-xs text-right">Ordered</TableHead>
+                      <TableHead className="text-xs text-right">Received</TableHead>
+                      <TableHead className="text-xs text-right">Unit Cost</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {poItems.map((it) => {
+                      const fully = (it.received_quantity || 0) >= it.quantity;
+                      const partial = (it.received_quantity || 0) > 0 && !fully;
+                      return (
+                        <TableRow key={it.id}>
+                          <TableCell className="text-sm font-medium">{it.item_name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{it.description || "—"}</TableCell>
+                          <TableCell className="text-sm text-right">{it.quantity}</TableCell>
+                          <TableCell className="text-sm text-right">{it.received_quantity || 0}</TableCell>
+                          <TableCell className="text-sm text-right">{Number(it.unit_cost).toFixed(2)}</TableCell>
+                          <TableCell>
+                            <span className={cn(
+                              "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
+                              fully ? statusColors.delivered : partial ? statusColors.customs : statusColors.in_transit,
+                            )}>
+                              {fully ? "Delivered" : partial ? "Partial" : "Pending"}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
