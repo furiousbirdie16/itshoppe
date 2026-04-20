@@ -19,6 +19,8 @@ import { parseISO, isBefore, isToday } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 interface ManualForm {
   customer_id: string;
@@ -206,6 +208,38 @@ export default function PendingPaymentsPage() {
   const overdueCount = overdueInvoices + overdueManual;
   const totalCount = filteredInvoices.length + filteredManual.length;
 
+  // Merge invoices + manual into a single sortable list
+  const combinedRows = useMemo(() => [
+    ...filteredInvoices.map((inv: any) => ({
+      kind: "invoice" as const, raw: inv,
+      source: "Invoice", reference: inv.invoice_number,
+      customer: inv.customers?.name || "",
+      date: inv.invoice_date || "",
+      due_date: inv.due_date || "",
+      status: inv.status || "",
+      amount: Number(inv.total_amount),
+    })),
+    ...filteredManual.map((m: any) => ({
+      kind: "manual" as const, raw: m,
+      source: "Manual", reference: m.description || "",
+      customer: m.customers?.name || "",
+      date: (m.created_at || "").split("T")[0],
+      due_date: m.due_date || "",
+      status: m.status || "",
+      amount: Number(m.amount),
+    })),
+  ], [filteredInvoices, filteredManual]);
+
+  const { sort, toggle, sorted: sortedRows } = useSort<typeof combinedRows[number]>(combinedRows, {
+    source: (r) => r.source,
+    reference: (r) => r.reference,
+    customer: (r) => r.customer,
+    date: (r) => r.date,
+    due_date: (r) => r.due_date,
+    status: (r) => r.status,
+    amount: (r) => r.amount,
+  });
+
   return (
     <div className="space-y-6">
       <div className="page-toolbar">
@@ -351,83 +385,81 @@ export default function PendingPaymentsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-xs">Source</TableHead>
-              <TableHead className="text-xs">Reference</TableHead>
-              <TableHead className="text-xs">Customer</TableHead>
-              <TableHead className="text-xs">Date</TableHead>
-              <TableHead className="text-xs">Due Date</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs text-right">Amount</TableHead>
+              <SortableHeader sortKey="source" label="Source" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="reference" label="Reference" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="date" label="Date" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="due_date" label="Due Date" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {totalCount === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No pending payments</p></div></TableCell></TableRow>
-            ) : (
-              <>
-                {filteredInvoices.map((inv: any) => {
-                  const overdue = isOverdue(inv);
-                  return (
-                    <TableRow key={`inv-${inv.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
-                      <TableCell className="text-xs text-muted-foreground">Invoice</TableCell>
-                      <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
-                      <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
-                      <TableCell className="text-sm">
-                        {inv.due_date ? (
-                          <span className={overdue ? "text-destructive font-medium" : ""}>
-                            {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
-                            {inv.due_date}
-                          </span>
-                        ) : (
-                          <span className="text-destructive font-medium"><AlertCircle className="h-3 w-3 inline mr-1" />Due now</span>
-                        )}
-                      </TableCell>
-                      <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
-                      <TableCell className="text-right text-sm font-medium">{peso(Number(inv.total_amount))}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-0.5">
-                          <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview" className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filteredManual.map((m: any) => {
-                  const overdue = isOverdue(m);
-                  return (
-                    <TableRow key={`man-${m.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
-                      <TableCell className="text-xs text-muted-foreground">Manual</TableCell>
-                      <TableCell className="text-sm">{m.description || "—"}</TableCell>
-                      <TableCell className="text-sm">{m.customers?.name || "—"}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{(m.created_at || "").split("T")[0]}</TableCell>
-                      <TableCell className="text-sm">
-                        {m.due_date ? (
-                          <span className={overdue ? "text-destructive font-medium" : ""}>
-                            {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
-                            {m.due_date}
-                          </span>
-                        ) : (
-                          <span className="text-destructive font-medium"><AlertCircle className="h-3 w-3 inline mr-1" />Due now</span>
-                        )}
-                      </TableCell>
-                      <TableCell><StatusBadge status={m.status} context="invoice" /></TableCell>
-                      <TableCell className="text-right text-sm font-medium">{peso(Number(m.amount))}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-0.5">
-                          <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(m.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(m)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                          {isAdmin && (
-                            <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this pending payment?")) deleteManualMut.mutate(m.id); }} title="Delete" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </>
-            )}
+            ) : sortedRows.map((row) => {
+              if (row.kind === "invoice") {
+                const inv = row.raw;
+                const overdue = isOverdue(inv);
+                return (
+                  <TableRow key={`inv-${inv.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
+                    <TableCell className="text-xs text-muted-foreground">Invoice</TableCell>
+                    <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                    <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
+                    <TableCell className="text-sm">
+                      {inv.due_date ? (
+                        <span className={overdue ? "text-destructive font-medium" : ""}>
+                          {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
+                          {inv.due_date}
+                        </span>
+                      ) : (
+                        <span className="text-destructive font-medium"><AlertCircle className="h-3 w-3 inline mr-1" />Due now</span>
+                      )}
+                    </TableCell>
+                    <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
+                    <TableCell className="text-right text-sm font-medium">{peso(Number(inv.total_amount))}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-0.5">
+                        <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview" className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              }
+              const m = row.raw;
+              const overdue = isOverdue(m);
+              return (
+                <TableRow key={`man-${m.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
+                  <TableCell className="text-xs text-muted-foreground">Manual</TableCell>
+                  <TableCell className="text-sm">{m.description || "—"}</TableCell>
+                  <TableCell className="text-sm">{m.customers?.name || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(m.created_at || "").split("T")[0]}</TableCell>
+                  <TableCell className="text-sm">
+                    {m.due_date ? (
+                      <span className={overdue ? "text-destructive font-medium" : ""}>
+                        {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
+                        {m.due_date}
+                      </span>
+                    ) : (
+                      <span className="text-destructive font-medium"><AlertCircle className="h-3 w-3 inline mr-1" />Due now</span>
+                    )}
+                  </TableCell>
+                  <TableCell><StatusBadge status={m.status} context="invoice" /></TableCell>
+                  <TableCell className="text-right text-sm font-medium">{peso(Number(m.amount))}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-0.5">
+                      <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(m.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(m)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                      {isAdmin && (
+                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this pending payment?")) deleteManualMut.mutate(m.id); }} title="Delete" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
