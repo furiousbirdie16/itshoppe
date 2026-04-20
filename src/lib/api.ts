@@ -157,11 +157,16 @@ export const deletePOItems = async (poId: string) => {
 };
 
 // Receive PO
-export const receivePO = async (poId: string, itemsToReceive: { poItemId: string; itemId: string; quantity: number }[]) => {
+export const receivePO = async (
+  poId: string,
+  itemsToReceive: { poItemId: string; itemId: string; quantity: number }[],
+  receivedDate?: string,
+) => {
+  const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   for (const item of itemsToReceive) {
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
     const newReceived = ((poItem as any)?.received_quantity || 0) + item.quantity;
-    await from("purchase_order_items").update({ received_quantity: newReceived }).eq("id", item.poItemId);
+    await from("purchase_order_items").update({ received_quantity: newReceived, received_date: rcvDate }).eq("id", item.poItemId);
 
     const { data: currentItem } = await from("items").select("quantity").eq("id", item.itemId).single();
     await from("items").update({
@@ -175,7 +180,7 @@ export const receivePO = async (poId: string, itemsToReceive: { poItemId: string
       quantity: item.quantity,
       reference_id: poId,
       reference_type: "purchase_order",
-      notes: "Received from PO"
+      notes: `Received from PO on ${rcvDate}`,
     });
   }
 
