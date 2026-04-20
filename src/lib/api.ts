@@ -1,6 +1,92 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
+import { applyVariationDelta } from "@/lib/variations";
+
+// ---------- Item Variations ----------
+export const getItemVariations = async (itemId?: string): Promise<ItemVariation[]> => {
+  let q = from("item_variations").select("*, items(*)").order("name");
+  if (itemId) q = q.eq("item_id", itemId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data as ItemVariation[];
+};
+
+export const createItemVariation = async (v: Partial<ItemVariation>) => {
+  const { data, error } = await from("item_variations").insert(v).select().single();
+  if (error) throw error;
+  return data as ItemVariation;
+};
+
+export const updateItemVariation = async (id: string, v: Partial<ItemVariation>) => {
+  const { data, error } = await from("item_variations").update(v).eq("id", id).select().single();
+  if (error) throw error;
+  return data as ItemVariation;
+};
+
+export const deleteItemVariation = async (id: string) => {
+  const { error } = await from("item_variations").delete().eq("id", id);
+  if (error) throw error;
+};
+
+/**
+ * Apply a sale (qty>0) or restore (qty<0) of a variation against the parent item.
+ * Updates item.quantity + open_roll_remaining and writes an inventory_movement row.
+ * For non-variation lines, falls back to a plain whole-unit deduction.
+ */
+export const applyStockChange = async (params: {
+  itemId: string;
+  variationId: string | null;
+  qty: number; // positive = deduct, negative = restore
+  referenceId: string;
+  referenceType: string;
+  movementType: 'in_po' | 'out_invoice' | 'out_online_sale';
+  notes?: string;
+}) => {
+  const { itemId, variationId, qty, referenceId, referenceType, movementType, notes } = params;
+  if (qty === 0) return;
+
+  const { data: item } = await from("items")
+    .select("quantity, open_roll_remaining, units_per_stock")
+    .eq("id", itemId)
+    .single();
+  if (!item) return;
+  const cur = item as any;
+
+  let next = { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0 };
+  let baseUnitsMoved = qty; // for movement log when no variation
+
+  if (variationId) {
+    const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
+    if (v) {
+      const variation = v as any;
+      next = applyVariationDelta(
+        { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0, units_per_stock: cur.units_per_stock || 1 },
+        { type: variation.type, factor: Number(variation.factor) },
+        qty,
+      );
+      baseUnitsMoved = Number(variation.factor) * qty;
+    }
+  } else {
+    // Plain whole-unit deduction (legacy behavior).
+    next.quantity = Math.max(0, (cur.quantity || 0) - qty);
+  }
+
+  await from("items").update({
+    quantity: next.quantity,
+    open_roll_remaining: next.open_roll_remaining,
+    updated_at: new Date().toISOString(),
+  }).eq("id", itemId);
+
+  await from("inventory_movements").insert({
+    item_id: itemId,
+    type: movementType,
+    quantity: Math.abs(baseUnitsMoved),
+    reference_id: referenceId,
+    reference_type: referenceType,
+    notes: notes || (qty > 0 ? "Stock deducted" : "Stock restored"),
+  });
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
