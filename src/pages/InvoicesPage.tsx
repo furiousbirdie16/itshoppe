@@ -24,7 +24,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
-interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
+interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; variation_id: string | null; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();

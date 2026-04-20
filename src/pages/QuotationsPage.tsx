@@ -28,7 +28,7 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
-interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
+interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
