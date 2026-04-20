@@ -8,13 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Ship, CalendarIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Ship, CalendarIcon, Package } from "lucide-react";
 import { toast } from "sonner";
 import { format, differenceInDays } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { ShipmentTracking, OverseasPurchaseOrder } from "@/types/database";
+import type { ShipmentTracking, OverseasPurchaseOrder, OverseasPurchaseOrderItem } from "@/types/database";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 
@@ -58,6 +58,13 @@ export default function ShipmentTrackingPage() {
   const [editing, setEditing] = useState<ShipmentTracking | null>(null);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [itemsShipment, setItemsShipment] = useState<ShipmentTracking | null>(null);
+
+  const { data: poItems = [], isLoading: poItemsLoading } = useQuery<OverseasPurchaseOrderItem[]>({
+    queryKey: ["overseas_po_items", itemsShipment?.po_id],
+    queryFn: () => getOverseasPOItems(itemsShipment!.po_id!),
+    enabled: !!itemsShipment?.po_id,
+  });
 
   const toggleAll = () => {
     if (selectedIds.size === shipments.length) setSelectedIds(new Set());
