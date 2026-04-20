@@ -24,7 +24,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
-interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; }
+interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; variation_id: string | null; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -36,7 +36,7 @@ export default function InvoicesPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters
@@ -154,8 +154,9 @@ export default function InvoicesPage() {
             item_name: li.item_name || li.items?.name || "",
             quantity: li.quantity,
             unit_price: Number(li.unit_price),
+            variation_id: li.variation_id || null,
           }))
-        : [{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]
+        : [{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]
     );
     setEditId(inv.id);
     setCreateOpen(true);
@@ -165,7 +166,7 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
-      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
+      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -177,7 +178,7 @@ export default function InvoicesPage() {
       const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
       await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price })));
+      await createInvoiceItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -215,9 +216,9 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0 }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]); setEditId(null); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
-  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0 }]);
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
@@ -390,27 +391,35 @@ export default function InvoicesPage() {
                         <ItemSearch
                           items={items}
                           value={line.item_id}
+                          variationId={line.variation_id}
                           customName={line.item_name}
-                          onChange={(itemId, item, customName) => {
+                          onChange={(itemId, item, customName, variation) => {
                             const newLines = [...lines];
-                            if (itemId) {
+                            if (variation && item) {
+                              newLines[idx].item_id = item.id;
+                              newLines[idx].item_name = `${item.name} — ${variation.name}`;
+                              newLines[idx].variation_id = variation.id;
+                              newLines[idx].unit_price = Number(variation.selling_price);
+                            } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
+                              newLines[idx].variation_id = null;
                               if (item) newLines[idx].unit_price = Number(item.selling_price);
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
+                              newLines[idx].variation_id = null;
                             }
                             setLines(newLines);
                           }}
-                          placeholder="Search or type custom item..."
+                          placeholder="Search item or variation..."
                           allowCustom
                         />
                         <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
                         <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
                         <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                       </div>
-                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
                     </div>
                   );
                 })}

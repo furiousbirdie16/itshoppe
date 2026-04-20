@@ -28,7 +28,7 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
-interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
+interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
@@ -41,7 +41,7 @@ export default function QuotationsPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
@@ -183,8 +183,9 @@ export default function QuotationsPage() {
             item_name: li.item_name || li.items?.name || "",
             quantity: String(li.quantity),
             unit_price: String(Number(li.unit_price)),
+            variation_id: li.variation_id || null,
           }))
-        : [{ item_id: "", item_name: "", quantity: "", unit_price: "" }]
+        : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
     );
     setEditId(q.id);
     setCreateOpen(true);
@@ -216,7 +217,7 @@ export default function QuotationsPage() {
       payload.quotation_number = await generateQuotationNumber();
       payload.total_amount = total;
       const q = await createQuotation(payload);
-      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
+      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -229,7 +230,7 @@ export default function QuotationsPage() {
       payload.total_amount = lines.reduce((s, l) => s + lineTotal(l), 0);
       await updateQuotation(editId, payload);
       await deleteQuotationItems(editId);
-      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price) })));
+      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); setEditId(null); toast.success("Quotation updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -251,8 +252,8 @@ export default function QuotationsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "" }]); setEditId(null); };
-  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "" }]);
+  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); };
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
@@ -427,27 +428,35 @@ export default function QuotationsPage() {
                         <ItemSearch
                           items={items}
                           value={line.item_id}
+                          variationId={line.variation_id}
                           customName={line.item_name}
-                          onChange={(itemId, item, customName) => {
+                          onChange={(itemId, item, customName, variation) => {
                             const newLines = [...lines];
-                            if (itemId) {
+                            if (variation && item) {
+                              newLines[idx].item_id = item.id;
+                              newLines[idx].item_name = `${item.name} — ${variation.name}`;
+                              newLines[idx].variation_id = variation.id;
+                              newLines[idx].unit_price = String(Number(variation.selling_price));
+                            } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
+                              newLines[idx].variation_id = null;
                               if (item) newLines[idx].unit_price = String(Number(item.selling_price));
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
+                              newLines[idx].variation_id = null;
                             }
                             setLines(newLines);
                           }}
-                          placeholder="Search or type custom item..."
+                          placeholder="Search item or variation..."
                           allowCustom
                         />
                         <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
                         <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
                         <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                       </div>
-                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}</p>}
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
                     </div>
                   );
                 })}

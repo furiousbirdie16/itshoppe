@@ -147,6 +147,7 @@ export type Database = {
           item_name: string | null
           quantity: number
           unit_price: number
+          variation_id: string | null
         }
         Insert: {
           id?: string
@@ -155,6 +156,7 @@ export type Database = {
           item_name?: string | null
           quantity?: number
           unit_price?: number
+          variation_id?: string | null
         }
         Update: {
           id?: string
@@ -163,6 +165,7 @@ export type Database = {
           item_name?: string | null
           quantity?: number
           unit_price?: number
+          variation_id?: string | null
         }
         Relationships: [
           {
@@ -177,6 +180,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
             referencedColumns: ["id"]
           },
         ]
@@ -241,44 +251,97 @@ export type Database = {
           },
         ]
       }
+      item_variations: {
+        Row: {
+          created_at: string
+          factor: number
+          id: string
+          item_id: string
+          name: string
+          selling_price: number
+          sku: string | null
+          type: Database["public"]["Enums"]["variation_type"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          factor?: number
+          id?: string
+          item_id: string
+          name: string
+          selling_price?: number
+          sku?: string | null
+          type: Database["public"]["Enums"]["variation_type"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          factor?: number
+          id?: string
+          item_id?: string
+          name?: string
+          selling_price?: number
+          sku?: string | null
+          type?: Database["public"]["Enums"]["variation_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_variations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
+          base_unit: string
           cost_price: number
           created_at: string | null
           description: string | null
           id: string
           low_stock_threshold: number | null
           name: string
+          open_roll_remaining: number
           quantity: number
           selling_price: number
           sku: string
           source: string
+          units_per_stock: number
           updated_at: string | null
         }
         Insert: {
+          base_unit?: string
           cost_price?: number
           created_at?: string | null
           description?: string | null
           id?: string
           low_stock_threshold?: number | null
           name: string
+          open_roll_remaining?: number
           quantity?: number
           selling_price?: number
           sku: string
           source?: string
+          units_per_stock?: number
           updated_at?: string | null
         }
         Update: {
+          base_unit?: string
           cost_price?: number
           created_at?: string | null
           description?: string | null
           id?: string
           low_stock_threshold?: number | null
           name?: string
+          open_roll_remaining?: number
           quantity?: number
           selling_price?: number
           sku?: string
           source?: string
+          units_per_stock?: number
           updated_at?: string | null
         }
         Relationships: []
@@ -342,6 +405,7 @@ export type Database = {
           sales_channel: Database["public"]["Enums"]["sales_channel"]
           status: Database["public"]["Enums"]["online_sale_status"]
           updated_at: string | null
+          variation_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -357,6 +421,7 @@ export type Database = {
           sales_channel: Database["public"]["Enums"]["sales_channel"]
           status?: Database["public"]["Enums"]["online_sale_status"]
           updated_at?: string | null
+          variation_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -372,6 +437,7 @@ export type Database = {
           sales_channel?: Database["public"]["Enums"]["sales_channel"]
           status?: Database["public"]["Enums"]["online_sale_status"]
           updated_at?: string | null
+          variation_id?: string | null
         }
         Relationships: [
           {
@@ -379,6 +445,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "online_sales_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
             referencedColumns: ["id"]
           },
         ]
@@ -671,6 +744,7 @@ export type Database = {
           quantity: number
           quotation_id: string
           unit_price: number
+          variation_id: string | null
         }
         Insert: {
           id?: string
@@ -679,6 +753,7 @@ export type Database = {
           quantity?: number
           quotation_id: string
           unit_price?: number
+          variation_id?: string | null
         }
         Update: {
           id?: string
@@ -687,6 +762,7 @@ export type Database = {
           quantity?: number
           quotation_id?: string
           unit_price?: number
+          variation_id?: string | null
         }
         Relationships: [
           {
@@ -701,6 +777,13 @@ export type Database = {
             columns: ["quotation_id"]
             isOneToOne: false
             referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_items_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
             referencedColumns: ["id"]
           },
         ]
@@ -895,6 +978,7 @@ export type Database = {
       po_status: "draft" | "sent" | "partially_received" | "received"
       quotation_status: "draft" | "sent" | "accepted" | "rejected"
       sales_channel: "shopee" | "lazada" | "others"
+      variation_type: "pack" | "cut"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1029,6 +1113,7 @@ export const Constants = {
       po_status: ["draft", "sent", "partially_received", "received"],
       quotation_status: ["draft", "sent", "accepted", "rejected"],
       sales_channel: ["shopee", "lazada", "others"],
+      variation_type: ["pack", "cut"],
     },
   },
 } as const

@@ -1,6 +1,92 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
+import { applyVariationDelta } from "@/lib/variations";
+
+// ---------- Item Variations ----------
+export const getItemVariations = async (itemId?: string): Promise<ItemVariation[]> => {
+  let q = from("item_variations").select("*, items(*)").order("name");
+  if (itemId) q = q.eq("item_id", itemId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data as ItemVariation[];
+};
+
+export const createItemVariation = async (v: Partial<ItemVariation>) => {
+  const { data, error } = await from("item_variations").insert(v).select().single();
+  if (error) throw error;
+  return data as ItemVariation;
+};
+
+export const updateItemVariation = async (id: string, v: Partial<ItemVariation>) => {
+  const { data, error } = await from("item_variations").update(v).eq("id", id).select().single();
+  if (error) throw error;
+  return data as ItemVariation;
+};
+
+export const deleteItemVariation = async (id: string) => {
+  const { error } = await from("item_variations").delete().eq("id", id);
+  if (error) throw error;
+};
+
+/**
+ * Apply a sale (qty>0) or restore (qty<0) of a variation against the parent item.
+ * Updates item.quantity + open_roll_remaining and writes an inventory_movement row.
+ * For non-variation lines, falls back to a plain whole-unit deduction.
+ */
+export const applyStockChange = async (params: {
+  itemId: string;
+  variationId: string | null;
+  qty: number; // positive = deduct, negative = restore
+  referenceId: string;
+  referenceType: string;
+  movementType: 'in_po' | 'out_invoice' | 'out_online_sale';
+  notes?: string;
+}) => {
+  const { itemId, variationId, qty, referenceId, referenceType, movementType, notes } = params;
+  if (qty === 0) return;
+
+  const { data: item } = await from("items")
+    .select("quantity, open_roll_remaining, units_per_stock")
+    .eq("id", itemId)
+    .single();
+  if (!item) return;
+  const cur = item as any;
+
+  let next = { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0 };
+  let baseUnitsMoved = qty; // for movement log when no variation
+
+  if (variationId) {
+    const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
+    if (v) {
+      const variation = v as any;
+      next = applyVariationDelta(
+        { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0, units_per_stock: cur.units_per_stock || 1 },
+        { type: variation.type, factor: Number(variation.factor) },
+        qty,
+      );
+      baseUnitsMoved = Number(variation.factor) * qty;
+    }
+  } else {
+    // Plain whole-unit deduction (legacy behavior).
+    next.quantity = Math.max(0, (cur.quantity || 0) - qty);
+  }
+
+  await from("items").update({
+    quantity: next.quantity,
+    open_roll_remaining: next.open_roll_remaining,
+    updated_at: new Date().toISOString(),
+  }).eq("id", itemId);
+
+  await from("inventory_movements").insert({
+    item_id: itemId,
+    type: movementType,
+    quantity: Math.abs(baseUnitsMoved),
+    reference_id: referenceId,
+    reference_type: referenceType,
+    notes: notes || (qty > 0 ? "Stock deducted" : "Stock restored"),
+  });
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
@@ -219,7 +305,7 @@ export const deleteQuotation = async (id: string) => {
 };
 
 export const getQuotationItems = async (qId: string): Promise<QuotationItem[]> => {
-  const { data, error } = await from("quotation_items").select("*, items(*)").eq("quotation_id", qId);
+  const { data, error } = await from("quotation_items").select("*, items(*), item_variations(*)").eq("quotation_id", qId);
   if (error) throw error;
   return data;
 };
@@ -310,7 +396,7 @@ export const deleteInvoice = async (id: string) => {
 };
 
 export const getInvoiceItems = async (invId: string): Promise<InvoiceItem[]> => {
-  const { data, error } = await from("invoice_items").select("*, items(*)").eq("invoice_id", invId);
+  const { data, error } = await from("invoice_items").select("*, items(*), item_variations(*)").eq("invoice_id", invId);
   if (error) throw error;
   return data;
 };
@@ -325,25 +411,21 @@ export const deleteInvoiceItems = async (invId: string) => {
   if (error) throw error;
 };
 
-// Confirm Invoice - deduct stock
+// Confirm Invoice - deduct stock (variation-aware)
 export const confirmInvoice = async (invoiceId: string) => {
   const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
 
   if (invItems) {
     for (const invItem of invItems as any[]) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", invItem.item_id).single();
-      await from("items").update({
-        quantity: Math.max(0, ((currentItem as any)?.quantity || 0) - invItem.quantity),
-        updated_at: new Date().toISOString()
-      }).eq("id", invItem.item_id);
-
-      await from("inventory_movements").insert({
-        item_id: invItem.item_id,
-        type: "out_invoice",
-        quantity: invItem.quantity,
-        reference_id: invoiceId,
-        reference_type: "invoice",
-        notes: "Deducted from invoice"
+      if (!invItem.item_id) continue;
+      await applyStockChange({
+        itemId: invItem.item_id,
+        variationId: invItem.variation_id || null,
+        qty: invItem.quantity,
+        referenceId: invoiceId,
+        referenceType: "invoice",
+        movementType: "out_invoice",
+        notes: "Deducted from invoice",
       });
     }
   }
@@ -352,25 +434,21 @@ export const confirmInvoice = async (invoiceId: string) => {
   await logActivity("confirmed_invoice", "invoice", invoiceId);
 };
 
-// Revert confirmed invoice - restore stock
+// Revert confirmed invoice - restore stock (variation-aware)
 export const revertInvoice = async (invoiceId: string) => {
   const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
 
   if (invItems) {
     for (const invItem of invItems as any[]) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", invItem.item_id).single();
-      await from("items").update({
-        quantity: ((currentItem as any)?.quantity || 0) + invItem.quantity,
-        updated_at: new Date().toISOString()
-      }).eq("id", invItem.item_id);
-
-      await from("inventory_movements").insert({
-        item_id: invItem.item_id,
-        type: "in_po",
-        quantity: invItem.quantity,
-        reference_id: invoiceId,
-        reference_type: "invoice_revert",
-        notes: "Reverted from confirmed invoice"
+      if (!invItem.item_id) continue;
+      await applyStockChange({
+        itemId: invItem.item_id,
+        variationId: invItem.variation_id || null,
+        qty: -invItem.quantity, // negative = restore
+        referenceId: invoiceId,
+        referenceType: "invoice_revert",
+        movementType: "in_po",
+        notes: "Reverted from confirmed invoice",
       });
     }
   }
@@ -467,7 +545,7 @@ export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order"
 
 // Online Sales
 export const getOnlineSales = async (): Promise<OnlineSale[]> => {
-  const { data, error } = await from("online_sales").select("*, items(*)").order("created_at", { ascending: false });
+  const { data, error } = await from("online_sales").select("*, items(*), item_variations(*)").order("created_at", { ascending: false });
   if (error) throw error;
   return data;
 };
@@ -477,22 +555,16 @@ export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
   if (error) throw error;
   const created = data as OnlineSale;
 
-  // Deduct inventory if linked to an item
+  // Deduct inventory if linked to an item (variation-aware)
   if (created.item_id) {
-    const qty = created.quantity || 1;
-    const { data: currentItem } = await from("items").select("quantity").eq("id", created.item_id).single();
-    await from("items").update({
-      quantity: Math.max(0, ((currentItem as any)?.quantity || 0) - qty),
-      updated_at: new Date().toISOString()
-    }).eq("id", created.item_id);
-
-    await from("inventory_movements").insert({
-      item_id: created.item_id,
-      type: "out_online_sale",
-      quantity: qty,
-      reference_id: created.id,
-      reference_type: "online_sale",
-      notes: `Sold via ${created.sales_channel} - ${created.order_number}`
+    await applyStockChange({
+      itemId: created.item_id,
+      variationId: (created as any).variation_id || null,
+      qty: created.quantity || 1,
+      referenceId: created.id,
+      referenceType: "online_sale",
+      movementType: "out_online_sale",
+      notes: `Sold via ${created.sales_channel} - ${created.order_number}`,
     });
   }
   await logActivity("created_online_sale", "online_sale", created.id, { order_number: created.order_number, channel: created.sales_channel });
@@ -506,27 +578,21 @@ export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) =>
 };
 
 export const returnOnlineSale = async (id: string, status: 'returned' | 'cancelled') => {
-  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel, quantity, status").eq("id", id).single();
+  const { data: sale } = await from("online_sales").select("item_id, variation_id, order_number, sales_channel, quantity, status").eq("id", id).single();
   if (!sale) throw new Error("Sale not found");
   const s = sale as any;
   if (s.status === 'returned' || s.status === 'cancelled') throw new Error("Sale already returned/cancelled");
 
-  // Restore inventory if linked to an item
+  // Restore inventory if linked to an item (variation-aware)
   if (s.item_id) {
-    const qty = s.quantity || 1;
-    const { data: currentItem } = await from("items").select("quantity").eq("id", s.item_id).single();
-    await from("items").update({
-      quantity: ((currentItem as any)?.quantity || 0) + qty,
-      updated_at: new Date().toISOString()
-    }).eq("id", s.item_id);
-
-    await from("inventory_movements").insert({
-      item_id: s.item_id,
-      type: "in_po",
-      quantity: qty,
-      reference_id: id,
-      reference_type: `online_sale_${status}`,
-      notes: `${status === 'returned' ? 'Returned' : 'Cancelled'} order ${s.order_number} — inventory restored`
+    await applyStockChange({
+      itemId: s.item_id,
+      variationId: s.variation_id || null,
+      qty: -(s.quantity || 1),
+      referenceId: id,
+      referenceType: `online_sale_${status}`,
+      movementType: "in_po",
+      notes: `${status === 'returned' ? 'Returned' : 'Cancelled'} order ${s.order_number} — inventory restored`,
     });
   }
 
@@ -537,24 +603,18 @@ export const returnOnlineSale = async (id: string, status: 'returned' | 'cancell
 };
 
 export const deleteOnlineSale = async (id: string) => {
-  // Restore inventory if linked to an item
-  const { data: sale } = await from("online_sales").select("item_id, order_number, sales_channel, quantity, status").eq("id", id).single();
+  // Restore inventory if linked to an item (variation-aware)
+  const { data: sale } = await from("online_sales").select("item_id, variation_id, order_number, sales_channel, quantity, status").eq("id", id).single();
   if (sale && (sale as any).item_id && (sale as any).status === 'completed') {
-    const itemId = (sale as any).item_id;
-    const qty = (sale as any).quantity || 1;
-    const { data: currentItem } = await from("items").select("quantity").eq("id", itemId).single();
-    await from("items").update({
-      quantity: ((currentItem as any)?.quantity || 0) + qty,
-      updated_at: new Date().toISOString()
-    }).eq("id", itemId);
-
-    await from("inventory_movements").insert({
-      item_id: itemId,
-      type: "in_po",
-      quantity: qty,
-      reference_id: id,
-      reference_type: "online_sale_delete",
-      notes: `Restored from deleted online sale`
+    const s = sale as any;
+    await applyStockChange({
+      itemId: s.item_id,
+      variationId: s.variation_id || null,
+      qty: -(s.quantity || 1),
+      referenceId: id,
+      referenceType: "online_sale_delete",
+      movementType: "in_po",
+      notes: `Restored from deleted online sale`,
     });
   }
 
