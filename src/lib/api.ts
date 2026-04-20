@@ -686,6 +686,15 @@ export const receiveOverseasPO = async (
   await from("overseas_purchase_orders")
     .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq("id", poId);
+
+  // If the PO is fully received, mark any linked shipment as delivered
+  if (allReceived) {
+    const today = new Date().toISOString().split("T")[0];
+    await from("shipment_tracking")
+      .update({ status: "delivered", actual_arrival: today, updated_at: new Date().toISOString() })
+      .eq("po_id", poId);
+  }
+
   await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus });
 };
 
