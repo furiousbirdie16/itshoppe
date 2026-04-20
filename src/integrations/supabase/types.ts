@@ -392,6 +392,7 @@ export type Database = {
           item_name: string
           po_id: string
           quantity: number
+          received_date: string | null
           received_quantity: number
           unit_cost: number
         }
@@ -403,6 +404,7 @@ export type Database = {
           item_name: string
           po_id: string
           quantity?: number
+          received_date?: string | null
           received_quantity?: number
           unit_cost?: number
         }
@@ -414,6 +416,7 @@ export type Database = {
           item_name?: string
           po_id?: string
           quantity?: number
+          received_date?: string | null
           received_quantity?: number
           unit_cost?: number
         }
@@ -566,6 +569,7 @@ export type Database = {
           item_name: string | null
           po_id: string
           quantity: number
+          received_date: string | null
           received_quantity: number
           unit_cost: number
         }
@@ -575,6 +579,7 @@ export type Database = {
           item_name?: string | null
           po_id: string
           quantity?: number
+          received_date?: string | null
           received_quantity?: number
           unit_cost?: number
         }
@@ -584,6 +589,7 @@ export type Database = {
           item_name?: string | null
           po_id?: string
           quantity?: number
+          received_date?: string | null
           received_quantity?: number
           unit_cost?: number
         }
