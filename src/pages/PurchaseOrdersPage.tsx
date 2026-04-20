@@ -381,7 +381,7 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">PO Details</DialogTitle></DialogHeader>
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs">Date Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
               <TableBody>
                 {poItems.map((pi: any) => (
                   <TableRow key={pi.id}>
@@ -391,6 +391,7 @@ export default function PurchaseOrdersPage() {
                     </TableCell>
                     <TableCell className="text-sm">{pi.quantity}</TableCell>
                     <TableCell className="text-sm">{pi.item_id ? pi.received_quantity : "—"}</TableCell>
+                    <TableCell className="text-sm">{pi.received_date ? new Date(pi.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(pi.unit_cost))}</TableCell>
                   </TableRow>
                 ))}

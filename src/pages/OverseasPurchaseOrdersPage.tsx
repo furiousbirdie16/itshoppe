@@ -441,6 +441,8 @@ export default function OverseasPurchaseOrdersPage() {
                     <TableHead className="text-xs">SKU</TableHead>
                     <TableHead className="text-xs">Item</TableHead>
                     <TableHead className="text-xs text-right">Qty</TableHead>
+                    <TableHead className="text-xs text-right">Received</TableHead>
+                    <TableHead className="text-xs">Date Received</TableHead>
                     <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
                     <TableHead className="text-xs text-right">PHP</TableHead>
                   </TableRow>
@@ -451,6 +453,8 @@ export default function OverseasPurchaseOrdersPage() {
                       <TableCell className="font-mono text-xs text-primary font-medium">{item.items?.sku || "—"}</TableCell>
                       <TableCell className="text-sm">{item.item_name}</TableCell>
                       <TableCell className="text-sm text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-sm text-right">{item.item_id ? (item.received_quantity || 0) : "—"}</TableCell>
+                      <TableCell className="text-sm">{item.received_date ? new Date(item.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
                       <TableCell className="text-sm text-right">{item.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-sm text-right">{peso(item.quantity * item.unit_cost * viewPO.exchange_rate)}</TableCell>
                     </TableRow>
