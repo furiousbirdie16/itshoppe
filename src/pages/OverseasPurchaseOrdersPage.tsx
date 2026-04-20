@@ -71,6 +71,7 @@ export default function OverseasPurchaseOrdersPage() {
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(orders, {
@@ -164,7 +165,7 @@ export default function OverseasPurchaseOrdersPage() {
         toast.info("Enter a quantity for at least one item");
         return;
       }
-      await receiveOverseasPO(receiveOpen!, itemsToReceive);
+      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -174,6 +175,7 @@ export default function OverseasPurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
       setReceiveQtys({});
+      setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and added to stock");
     },
     onError: (e: any) => toast.error(e.message),
@@ -471,9 +473,13 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); }}>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Date Received</Label>
+            <DateField value={receiveDate} onChange={setReceiveDate} />
+          </div>
           <p className="text-sm text-muted-foreground">Enter the quantity that just arrived for each item. You can do this multiple times as more shipments come in.</p>
           <div className="space-y-3 pt-2 max-h-[60vh] overflow-y-auto">
             {receiveItems.length === 0 && (
