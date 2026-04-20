@@ -22,6 +22,8 @@ import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 interface LineItem {
   item_name: string;
@@ -71,6 +73,16 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
+  const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(orders, {
+    po_number: (r) => r.po_number,
+    supplier: (r: any) => r.overseas_suppliers?.name || "",
+    status: (r) => r.status,
+    currency: (r) => r.currency,
+    total_amount: (r) => Number(r.total_amount),
+    php_total: (r) => Number(r.total_amount) * Number(r.exchange_rate || 1),
+    order_date: (r) => r.order_date,
+    expected_delivery: (r) => r.expected_delivery,
+  });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
@@ -518,21 +530,21 @@ export default function OverseasPurchaseOrdersPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={orders.length > 0 && selectedIds.size === orders.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">PO #</TableHead>
-              <TableHead className="text-xs">Supplier</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs">Currency</TableHead>
-              <TableHead className="text-xs text-right">Amount</TableHead>
-              <TableHead className="text-xs text-right">PHP Equiv.</TableHead>
+              <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
-            ) : orders.length === 0 ? (
+            ) : sortedOrders.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
-            ) : orders.map(po => (
+            ) : sortedOrders.map(po => (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>

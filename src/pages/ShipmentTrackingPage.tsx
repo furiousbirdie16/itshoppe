@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import type { ShipmentTracking, OverseasPurchaseOrder, OverseasPurchaseOrderItem } from "@/types/database";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 const statusColors: Record<string, string> = {
   in_transit: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -83,6 +85,20 @@ export default function ShipmentTrackingPage() {
 
   const { data: shipments = [], isLoading } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
   const { data: orders = [] } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
+
+  const { sort, toggle, sorted: sortedShipments } = useSort<ShipmentTracking>(shipments, {
+    po_number: (r: any) => r.overseas_purchase_orders?.po_number || "",
+    supplier: (r: any) => r.overseas_purchase_orders?.overseas_suppliers?.name || "",
+    tracking_number: (r) => r.tracking_number,
+    shipping_method: (r) => r.shipping_method,
+    ship_date: (r) => r.ship_date,
+    estimated_arrival: (r) => r.estimated_arrival,
+    status: (r) => r.status,
+    days_left: (r) => {
+      if (r.status === "delivered" || !r.estimated_arrival) return null;
+      return differenceInDays(new Date(r.estimated_arrival), new Date());
+    },
+  });
 
   const createMut = useMutation({
     mutationFn: (data: Partial<ShipmentTracking>) => createShipment(data),
@@ -256,23 +272,23 @@ export default function ShipmentTrackingPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={shipments.length > 0 && selectedIds.size === shipments.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">PO #</TableHead>
-              <TableHead className="text-xs">Supplier</TableHead>
-              <TableHead className="text-xs">Tracking #</TableHead>
-              <TableHead className="text-xs">Method</TableHead>
-              <TableHead className="text-xs">Shipped</TableHead>
-              <TableHead className="text-xs">ETA</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs">Days Left</TableHead>
+              <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="tracking_number" label="Tracking #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="shipping_method" label="Method" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="ship_date" label="Shipped" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="estimated_arrival" label="ETA" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="days_left" label="Days Left" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
-            ) : shipments.length === 0 ? (
+            ) : sortedShipments.length === 0 ? (
               <TableRow><TableCell colSpan={10}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
-            ) : shipments.map(s => {
+            ) : sortedShipments.map(s => {
               const po = s.overseas_purchase_orders as any;
               const daysLeft = getDaysRemaining(s);
               return (
