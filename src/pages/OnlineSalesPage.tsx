@@ -267,9 +267,13 @@ export default function OnlineSalesPage() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: true });
+        // IMPORTANT: do NOT use cellDates — it converts Excel serials into JS Date
+        // objects in local time, which causes -1 day shifts depending on timezone.
+        // Using raw:false returns the formatted display string (e.g. "4/21/26"),
+        // which we parse explicitly below as-is, ignoring any timezone.
+        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: true, blankrows: false })
+        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
           .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
         if (sheetRows.length === 0) { toast.error("File is empty"); return; }
 
