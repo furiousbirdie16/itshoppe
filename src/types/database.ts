@@ -9,8 +9,25 @@ export interface Item {
   selling_price: number;
   low_stock_threshold: number;
   source: 'local' | 'import';
+  base_unit: string;
+  units_per_stock: number;
+  open_roll_remaining: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface ItemVariation {
+  id: string;
+  item_id: string;
+  name: string;
+  sku: string | null;
+  type: 'pack' | 'cut';
+  /** For pack: pieces per pack. For cut: meters per cut. */
+  factor: number;
+  selling_price: number;
+  created_at: string;
+  updated_at: string;
+  items?: Item;
 }
 
 export interface Supplier {
@@ -81,7 +98,9 @@ export interface QuotationItem {
   item_name: string | null;
   quantity: number;
   unit_price: number;
+  variation_id: string | null;
   items?: Item;
+  item_variations?: ItemVariation;
 }
 
 export interface Invoice {
@@ -107,7 +126,9 @@ export interface InvoiceItem {
   item_name: string | null;
   quantity: number;
   unit_price: number;
+  variation_id: string | null;
   items?: Item;
+  item_variations?: ItemVariation;
 }
 
 export interface OverseasSupplier {
@@ -181,10 +202,12 @@ export interface OnlineSale {
   deal_price: number;
   notes: string;
   item_id: string | null;
+  variation_id: string | null;
   status: 'completed' | 'returned' | 'cancelled';
   created_at: string;
   updated_at: string;
   items?: Item;
+  item_variations?: ItemVariation;
 }
 
 export interface InventoryMovement {
