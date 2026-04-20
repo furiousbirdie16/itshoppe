@@ -25,6 +25,8 @@ import { format, addDays, parseISO } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { useSort } from "@/hooks/use-sort";
+import { SortableHeader } from "@/components/SortableHeader";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; }
 
@@ -95,6 +97,15 @@ export default function QuotationsPage() {
       return true;
     });
   }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
+
+  const { sort, toggle, sorted: sortedQuotations } = useSort<any>(filtered, {
+    quotation_number: (r) => r.quotation_number,
+    customer: (r) => r.customers?.name || "",
+    sales_agent: (r) => r.sales_agent || "",
+    quotation_date: (r) => r.quotation_date,
+    status: (r) => r.status,
+    total_amount: (r) => Number(r.total_amount),
+  });
 
   // Admin-only total: sum of accepted quotations in current filter
   const totalSales = useMemo(() => {
@@ -484,19 +495,19 @@ export default function QuotationsPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
-              <TableHead className="text-xs">Quotation #</TableHead>
-              <TableHead className="text-xs">Customer</TableHead>
-              <TableHead className="text-xs">Sales Agent</TableHead>
-              <TableHead className="text-xs">Date</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs text-right">Total</TableHead>
+              <SortableHeader sortKey="quotation_number" label="Quotation #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="sales_agent" label="Sales Agent" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="quotation_date" label="Date" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="total_amount" label="Total" sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {sortedQuotations.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
-            ) : filtered.map((q: any) => (
+            ) : sortedQuotations.map((q: any) => (
               <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
                 <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
