@@ -277,14 +277,16 @@ export default function OnlineSalesPage() {
 
         const pad = (n: number) => String(n).padStart(2, "0");
         const fmtLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const fmtUTC = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
         const today = fmtLocal(new Date());
         const parseDate = (v: unknown): string => {
           if (!v) return today;
-          // xlsx with cellDates:true gives a Date at LOCAL midnight; use local components
-          // (toISOString() shifts to UTC and can roll back a day in +TZ regions like PHT)
+          // xlsx with cellDates:true returns a Date whose UTC components hold the
+          // sheet's date. Reading local components causes a -1 day shift in
+          // negative-UTC zones; reading UTC components is always correct.
           if (v instanceof Date) {
             if (isNaN(v.getTime())) return today;
-            return fmtLocal(v);
+            return fmtUTC(v);
           }
           if (typeof v === "number") {
             // Excel serial date → date parts (avoid timezone drift)
