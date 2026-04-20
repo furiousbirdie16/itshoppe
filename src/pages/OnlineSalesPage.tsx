@@ -337,10 +337,12 @@ export default function OnlineSalesPage() {
           const order_date = parseDate(indexes.date >= 0 ? row[indexes.date] : null);
           const order_id = normalizeBulkCell(indexes.orderId >= 0 ? row[indexes.orderId] : "");
 
-          const matchedItem = items.find(i => i.name.toLowerCase() === product_name.toLowerCase() || i.sku.toLowerCase() === product_name.toLowerCase());
+          // Strict SKU match — product_name in the Excel MUST equal an inventory SKU
+          const matchedItem = items.find(i => i.sku.toLowerCase() === product_name.toLowerCase());
 
           let error: string | undefined;
-          if (!product_name) error = "Missing product name";
+          if (!product_name) error = "Missing SKU";
+          else if (!matchedItem) error = `SKU "${product_name}" not found in inventory`;
           else if (posted_price < 0) error = "Negative price";
 
           return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: matchedItem?.id || null, valid: !error, error };
