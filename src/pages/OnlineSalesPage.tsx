@@ -779,6 +779,10 @@ export default function OnlineSalesPage() {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
+                    const expected = expectedForItem(s);
+                    const paid = Number(s.amount_paid || 0);
+                    const isPaid = s.payment_status === 'paid';
+                    const fees = isPaid ? expected - paid : 0;
                     return [(
                       <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
                         <TableCell>
@@ -790,8 +794,18 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
+                            {isPaid ? (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => markUnpaid([s.id])} title="Mark as unpaid"><X className="h-3 w-3" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => openPayDialog([s.id], s.order_number, expected, paid)} title="Mark as paid"><CircleDollarSign className="h-3 w-3" /></Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
