@@ -136,7 +136,21 @@ export default function OnlineSalesPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterChannel, setFilterChannel] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all"); setFilter(""); };
+  const [filterPayment, setFilterPayment] = useState<string>("all");
+  const [filterPriceMin, setFilterPriceMin] = useState("");
+  const [filterPriceMax, setFilterPriceMax] = useState("");
+  const [filterPaidMin, setFilterPaidMin] = useState("");
+  const [filterPaidMax, setFilterPaidMax] = useState("");
+  const [filterFeesMin, setFilterFeesMin] = useState("");
+  const [filterFeesMax, setFilterFeesMax] = useState("");
+  const [filterQtyMin, setFilterQtyMin] = useState("");
+  const [filterQtyMax, setFilterQtyMax] = useState("");
+  const clearFilters = () => {
+    setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all");
+    setFilterPayment("all"); setFilterPriceMin(""); setFilterPriceMax("");
+    setFilterPaidMin(""); setFilterPaidMax(""); setFilterFeesMin(""); setFilterFeesMax("");
+    setFilterQtyMin(""); setFilterQtyMax(""); setFilter("");
+  };
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
