@@ -100,6 +100,7 @@ export default function InventoryPage() {
     quantity: (r) => Number(r.quantity),
     cost_price: (r) => Number(r.cost_price),
     selling_price: (r) => Number(r.selling_price),
+    low_stock_threshold: (r) => Number(r.low_stock_threshold ?? 0),
   });
 
   const allSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
