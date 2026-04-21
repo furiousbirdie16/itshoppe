@@ -1201,7 +1201,7 @@ export default function OnlineSalesPage() {
                         setForm(f => {
                           const lines = [...f.lines];
                           if (variation && item) {
-                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: variation.id, product_name: `${item.name} — ${variation.name}`, posted_price: Number(variation.selling_price) };
+                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: variation.id, product_name: variation.name, posted_price: Number(variation.selling_price) };
                           } else if (item) {
                             lines[idx] = { ...lines[idx], item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) };
                           }
