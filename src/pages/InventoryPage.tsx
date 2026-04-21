@@ -131,7 +131,7 @@ export default function InventoryPage() {
     },
   });
 
-  const colCount = 8; // Cost column always shown (admin: all items, non-admin: only local values)
+  const colCount = 9; // includes threshold column
 
   return (
     <div className="space-y-6">
