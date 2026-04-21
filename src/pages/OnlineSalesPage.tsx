@@ -819,8 +819,12 @@ export default function OnlineSalesPage() {
                   const isOpen = expandedOrders.has(groupKey);
                   const totalQty = group.items.reduce((sum, x) => sum + (Number(x.quantity) || 1), 0);
                   const totalAmount = group.items.reduce((sum, x) => sum + (Number(x.posted_price) || 0) * (Number(x.quantity) || 1), 0);
+                  const totalPaid = group.items.reduce((sum, x) => sum + Number(x.amount_paid || 0), 0);
+                  const allPaid = group.items.every(x => x.payment_status === 'paid');
+                  const groupFees = allPaid ? totalAmount - totalPaid : 0;
                   const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
                   const groupSelected = group.items.every(x => selected.has(x.id));
+                  const groupIds = group.items.map(x => x.id);
                   return [
                     (
                       <TableRow key={`g-${groupKey}`} className="cursor-pointer hover:bg-muted/40 bg-muted/20" onClick={() => toggleExpand(groupKey)}>
@@ -855,8 +859,18 @@ export default function OnlineSalesPage() {
                             : <span className="text-xs text-muted-foreground">Mixed</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums font-semibold">{allPaid ? peso(totalPaid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{allPaid ? <span className={groupFees > 0 ? "text-amber-600" : groupFees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(groupFees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{allPaid ? 'Paid' : 'Unpaid'}</span>
+                        </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-1">
+                            {allPaid ? (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Mark order as unpaid" onClick={() => markUnpaid(groupIds)}><X className="h-3 w-3" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Mark order as paid" onClick={() => openPayDialog(groupIds, group.orderNumber, totalAmount, totalPaid)}><CircleDollarSign className="h-3 w-3" /></Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" title="Return all items in this order" onClick={async () => {
                               for (const x of group.items) { try { await returnMut.mutateAsync({ id: x.id, status: 'returned' }); } catch {} }
                               toast.success(`Order ${group.orderNumber}: ${group.items.length} items returned`);
@@ -875,7 +889,12 @@ export default function OnlineSalesPage() {
                         </TableCell>
                       </TableRow>
                     ),
-                    ...(isOpen ? group.items.map((s: any) => (
+                    ...(isOpen ? group.items.map((s: any) => {
+                      const expected = expectedForItem(s);
+                      const paid = Number(s.amount_paid || 0);
+                      const isPaid = s.payment_status === 'paid';
+                      const fees = isPaid ? expected - paid : 0;
+                      return (
                       <TableRow key={s.id} className={`${selected.has(s.id) ? "bg-muted/50" : ""}`}>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.product_name}`} />
@@ -886,8 +905,18 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
+                            {isPaid ? (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => markUnpaid([s.id])} title="Mark as unpaid"><X className="h-3 w-3" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => openPayDialog([s.id], s.order_number, expected, paid)} title="Mark this line as paid"><CircleDollarSign className="h-3 w-3" /></Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
@@ -895,7 +924,8 @@ export default function OnlineSalesPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    )) : []),
+                      );
+                    }) : []),
                   ];
                 })}
               </TableBody>
