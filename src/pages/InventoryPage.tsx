@@ -372,6 +372,30 @@ export default function InventoryPage() {
                   {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
                 </TableCell>
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
+                <TableCell className="text-right text-sm">
+                  <div className="flex items-center justify-end gap-1">
+                    <span className={item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                      {item.low_stock_threshold ?? 0}
+                    </span>
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-md"
+                        title="Edit threshold"
+                        onClick={() => {
+                          const raw = window.prompt(`Set low stock threshold for "${item.name}":`, String(item.low_stock_threshold ?? 0));
+                          if (raw === null) return;
+                          const n = parseInt(raw);
+                          if (Number.isNaN(n) || n < 0) { toast.error("Enter a non-negative number"); return; }
+                          updateMut.mutate({ id: item.id, data: { low_stock_threshold: n } as Partial<Item> });
+                        }}
+                      >
+                        <Pencil className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
