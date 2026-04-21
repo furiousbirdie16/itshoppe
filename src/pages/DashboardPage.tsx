@@ -8,7 +8,7 @@ import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Package, DollarSign, AlertTriangle, TrendingUp, ArrowRight, ShoppingCart, Receipt, CalendarIcon, X } from "lucide-react";
+import { Package, DollarSign, AlertTriangle, TruckIcon, ArrowRight, ShoppingCart, Receipt, CalendarIcon, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -132,11 +132,14 @@ export default function DashboardPage() {
           icon={AlertTriangle}
           variant="warning"
         />
-        <StatCard
-          title="Recent Activity"
-          value={(stats?.recentPOs.length || 0) + (stats?.recentInvoices.length || 0)}
-          icon={TrendingUp}
-        />
+        {isAdmin && (
+          <StatCard
+            title="Incoming Stock Value"
+            value={peso(stats?.incomingStockValue || 0)}
+            icon={TruckIcon}
+            description="From unreceived POs"
+          />
+        )}
       </div>
 
       {/* Sales Summary */}
@@ -445,63 +448,6 @@ export default function DashboardPage() {
         );
       })()}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent POs */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Recent Purchase Orders</h2>
-            <button
-              onClick={() => navigate("/purchase-orders")}
-              className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
-            >
-              View all <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="rounded-xl border bg-card divide-y">
-            {stats?.recentPOs.length ? (
-              stats.recentPOs.map((po) => (
-                <div key={po.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
-                  <div>
-                    <p className="text-sm font-medium">{po.po_number}</p>
-                    <p className="text-xs text-muted-foreground">{po.suppliers?.name || "No supplier"}</p>
-                  </div>
-                  <StatusBadge status={po.status} />
-                </div>
-              ))
-            ) : (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">No purchase orders yet</div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Invoices */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Recent Invoices</h2>
-            <button
-              onClick={() => navigate("/invoices")}
-              className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
-            >
-              View all <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="rounded-xl border bg-card divide-y">
-            {stats?.recentInvoices.length ? (
-              stats.recentInvoices.map((inv) => (
-                <div key={inv.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
-                  <div>
-                    <p className="text-sm font-medium">{inv.invoice_number}</p>
-                    <p className="text-xs text-muted-foreground">{inv.customers?.name || "No customer"}</p>
-                  </div>
-                  <StatusBadge status={inv.status} context="invoice" />
-                </div>
-              ))
-            ) : (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">No invoices yet</div>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
