@@ -601,29 +601,100 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : sortedFiltered.length === 0 ? (
+                ) : groupedFiltered.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
-                ) : sortedFiltered.map((s: any) => (
-                  <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
-                    <TableCell>
-                      <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
-                    </TableCell>
-                    <TableCell className="text-sm">{s.order_date}</TableCell>
-                    <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
-                    <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
-                    <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
-                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                    <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ) : groupedFiltered.flatMap((group) => {
+                  const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
+                  if (group.items.length === 1) {
+                    const s = group.items[0];
+                    return [(
+                      <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                        <TableCell>
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
+                        </TableCell>
+                        <TableCell className="text-sm">{s.order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                        <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
+                        <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )];
+                  }
+                  // Multi-item group
+                  const isOpen = expandedOrders.has(groupKey);
+                  const totalQty = group.items.reduce((sum, x) => sum + (Number(x.quantity) || 1), 0);
+                  const totalAmount = group.items.reduce((sum, x) => sum + (Number(x.posted_price) || 0) * (Number(x.quantity) || 1), 0);
+                  const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
+                  const groupSelected = group.items.every(x => selected.has(x.id));
+                  return [
+                    (
+                      <TableRow key={`g-${groupKey}`} className="cursor-pointer hover:bg-muted/40 bg-muted/20" onClick={() => toggleExpand(groupKey)}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={groupSelected}
+                            onCheckedChange={() => {
+                              setSelected(prev => {
+                                const next = new Set(prev);
+                                if (groupSelected) group.items.forEach(x => next.delete(x.id));
+                                else group.items.forEach(x => next.add(x.id));
+                                return next;
+                              });
+                            }}
+                            aria-label={`Select order ${group.orderNumber}`}
+                          />
+                        </TableCell>
+                        <TableCell className="text-sm">{group.items[0].order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          <div className="flex items-center gap-1">
+                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            {group.orderNumber}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">
+                          <span className="text-muted-foreground italic">{group.items.length} items</span>
+                        </TableCell>
+                        <TableCell className="text-sm text-center font-semibold">{totalQty}</TableCell>
+                        <TableCell>
+                          {allChannelsSame
+                            ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(group.items[0].sales_channel)}`}>{channelLabel(group.items[0].sales_channel)}</span>
+                            : <span className="text-xs text-muted-foreground">Mixed</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    ),
+                    ...(isOpen ? group.items.map((s: any) => (
+                      <TableRow key={s.id} className={`${selected.has(s.id) ? "bg-muted/50" : ""}`}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.product_name}`} />
+                        </TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="text-xs text-muted-foreground pl-8">↳</TableCell>
+                        <TableCell className="text-sm pl-4">{s.product_name}</TableCell>
+                        <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )) : []),
+                  ];
+                })}
               </TableBody>
             </Table>
           </div>
