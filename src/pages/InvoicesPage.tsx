@@ -275,81 +275,32 @@ export default function InvoicesPage() {
           </Button>
           <ExportButton
             data={filtered}
-            columns={{ "Invoice #": (r: any) => r.invoice_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.invoice_date, "Due Date": (r: any) => r.due_date || "", "Total": (r: any) => r.total_amount }}
+            columns={{
+              "Invoice #": (r: any) => r.invoice_number,
+              "Date": (r: any) => r.invoice_date,
+              "Customer": (r: any) => r.customers?.name || "",
+              "Sales Agent": (r: any) => r.sales_agent || "",
+              "Status": (r: any) => r.status,
+              "Due Date": (r: any) => r.due_date || "",
+              "Invoice Total": (r: any) => r.total_amount,
+              "Notes": (r: any) => r.notes || "",
+            }}
+            childItems={{
+              table: "invoice_items",
+              foreignKey: "invoice_id",
+              select: "*, items(name, sku), item_variations(name, sku)",
+              columns: {
+                "Item Name": (li: any) => li.item_name || li.items?.name || "",
+                "SKU": (li: any) => li.items?.sku || li.item_variations?.sku || "",
+                "Variation": (li: any) => li.item_variations?.name || "",
+                "Quantity": (li: any) => Number(li.quantity || 0),
+                "Unit Price": (li: any) => Number(li.unit_price || 0),
+                "Line Total": (li: any) => Number(li.quantity || 0) * Number(li.unit_price || 0),
+              },
+            }}
             dateField={(r: any) => r.invoice_date || ""}
             fileName="Invoices"
           />
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-lg h-9 px-3 text-sm"
-            onClick={async () => {
-              if (filtered.length === 0) { toast.error("No invoices to export"); return; }
-              const ids = filtered.map((i: any) => i.id);
-              const { data: allItems, error } = await supabase
-                .from("invoice_items")
-                .select("*, items(name, sku), item_variations(name, sku)")
-                .in("invoice_id", ids);
-              if (error) { toast.error(error.message); return; }
-              const byInv: Record<string, any[]> = {};
-              (allItems || []).forEach((it: any) => {
-                (byInv[it.invoice_id] ||= []).push(it);
-              });
-              const rows: Record<string, unknown>[] = [];
-              filtered.forEach((inv: any) => {
-                const lines = byInv[inv.id] || [];
-                if (lines.length === 0) {
-                  rows.push({
-                    "Invoice #": inv.invoice_number,
-                    "Date": inv.invoice_date,
-                    "Customer": inv.customers?.name || "",
-                    "Sales Agent": inv.sales_agent || "",
-                    "Status": inv.status,
-                    "Due Date": inv.due_date || "",
-                    "Item Name": "",
-                    "SKU": "",
-                    "Variation": "",
-                    "Quantity": "",
-                    "Unit Price": "",
-                    "Line Total": "",
-                    "Invoice Total": inv.total_amount,
-                    "Notes": inv.notes || "",
-                  });
-                  return;
-                }
-                lines.forEach((li: any) => {
-                  const name = li.item_name || li.items?.name || "";
-                  const sku = li.items?.sku || li.item_variations?.sku || "";
-                  const variation = li.item_variations?.name || "";
-                  const qty = Number(li.quantity || 0);
-                  const price = Number(li.unit_price || 0);
-                  rows.push({
-                    "Invoice #": inv.invoice_number,
-                    "Date": inv.invoice_date,
-                    "Customer": inv.customers?.name || "",
-                    "Sales Agent": inv.sales_agent || "",
-                    "Status": inv.status,
-                    "Due Date": inv.due_date || "",
-                    "Item Name": name,
-                    "SKU": sku,
-                    "Variation": variation,
-                    "Quantity": qty,
-                    "Unit Price": price,
-                    "Line Total": qty * price,
-                    "Invoice Total": inv.total_amount,
-                    "Notes": inv.notes || "",
-                  });
-                });
-              });
-              const ws = XLSX.utils.json_to_sheet(rows);
-              const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "Invoices with Items");
-              XLSX.writeFile(wb, `Invoices_with_Items_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
-              toast.success(`Exported ${rows.length} line(s) from ${filtered.length} invoice(s)`);
-            }}
-          >
-            <Download className="h-4 w-4 mr-1.5" /> Export with Items
-          </Button>
           <Button onClick={() => { resetForm(); setCreateOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> New Invoice
           </Button>
