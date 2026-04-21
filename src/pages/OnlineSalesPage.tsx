@@ -805,7 +805,14 @@ export default function OnlineSalesPage() {
                             ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(group.items[0].status)}`}>{statusLabel(group.items[0].status)}</span>
                             : <span className="text-xs text-muted-foreground">Mixed</span>}
                         </TableCell>
-                        <TableCell></TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Delete entire order" onClick={async () => {
+                            for (const x of group.items) { try { await deleteOnlineSale(x.id); } catch {} }
+                            qc.invalidateQueries({ queryKey: ["online_sales"] });
+                            qc.invalidateQueries({ queryKey: ["items"] });
+                            toast.success(`Order ${group.orderNumber} deleted`);
+                          }}><Trash2 className="h-3 w-3" /></Button>
+                        </TableCell>
                       </TableRow>
                     ),
                     ...(isOpen ? group.items.map((s: any) => (
