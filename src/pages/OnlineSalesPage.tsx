@@ -1220,6 +1220,110 @@ export default function OnlineSalesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Mark Paid Dialog */}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><CircleDollarSign className="h-5 w-5 text-emerald-600" /> Mark as Paid</DialogTitle>
+          </DialogHeader>
+          {payTarget && (
+            <div className="space-y-4">
+              <div className="text-sm">
+                <p className="text-muted-foreground">Order ID</p>
+                <p className="font-mono">{payTarget.orderNumber || "—"}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Selling Total</p>
+                  <p className="font-semibold tabular-nums">{peso(payTarget.expected)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Fees (auto)</p>
+                  <p className={`font-semibold tabular-nums ${(payTarget.expected - (parseFloat(payAmount) || 0)) > 0 ? "text-amber-600" : "text-emerald-600"}`}>{peso(payTarget.expected - (parseFloat(payAmount) || 0))}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Amount Paid (received from platform)</Label>
+                <Input type="number" min={0} step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="h-9" autoFocus />
+                <p className="text-[11px] text-muted-foreground">The difference between the selling total and the amount paid will be recorded as fees.</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>Cancel</Button>
+            <Button onClick={submitPayment}>Mark Paid</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Payment Upload Dialog */}
+      <Dialog open={bulkPayOpen} onOpenChange={(v) => { if (!v) { setBulkPayRows([]); setBulkPayFileName(""); } setBulkPayOpen(v); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5" /> Bulk Upload Payments</DialogTitle>
+          </DialogHeader>
+
+          {bulkPayRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
+                <p className="text-xs text-muted-foreground">Required columns: <strong>Order ID</strong> and <strong>Amount Paid</strong></p>
+                <p className="text-[11px] text-muted-foreground">Rows without an Order ID will be rejected.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={downloadPaymentsTemplate}><FileSpreadsheet className="h-4 w-4 mr-1" /> Download Template</Button>
+                <Button onClick={() => payFileRef.current?.click()}>Select File</Button>
+              </div>
+              <input ref={payFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkPayFile} className="hidden" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 overflow-hidden">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{bulkPayFileName} — {bulkPayRows.length} rows</span>
+                <div className="flex gap-3">
+                  {bulkPayValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkPayValidCount} valid</span>}
+                  {bulkPayInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkPayInvalidCount} invalid</span>}
+                </div>
+              </div>
+              <div className="overflow-auto max-h-[40vh] border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs w-8">#</TableHead>
+                      <TableHead className="text-xs">Order ID</TableHead>
+                      <TableHead className="text-xs text-right">Selling Total</TableHead>
+                      <TableHead className="text-xs text-right">Amount Paid</TableHead>
+                      <TableHead className="text-xs text-right">Fees</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bulkPayRows.map((row, i) => {
+                      const fees = row.valid ? row.expected - row.amount_paid : 0;
+                      return (
+                        <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
+                          <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
+                          <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{row.valid ? peso(row.expected) : "—"}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{peso(row.amount_paid)}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums"><span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{row.valid ? peso(fees) : "—"}</span></TableCell>
+                          <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setBulkPayRows([]); setBulkPayFileName(""); }}>Clear</Button>
+                <Button onClick={handleBulkPayUpload} disabled={bulkPayUploading || bulkPayValidCount === 0}>{bulkPayUploading ? "Uploading..." : `Apply Payments to ${bulkPayValidCount} Orders`}</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
