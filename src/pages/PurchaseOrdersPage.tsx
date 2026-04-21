@@ -320,7 +320,31 @@ export default function PurchaseOrdersPage() {
           )}
           <ExportButton
             data={pos}
-            columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.suppliers?.name || "", "Status": (r: any) => r.status, "Order Date": (r: any) => r.order_date, "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "", "Payment Due": (r: any) => r.payment_due_date || "", "Total": (r: any) => r.total_amount }}
+            columns={{
+              "PO #": (r: any) => r.po_number,
+              "Order Date": (r: any) => r.order_date,
+              "Supplier": (r: any) => r.suppliers?.name || "",
+              "Status": (r: any) => r.status,
+              "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "",
+              "Payment Due": (r: any) => r.payment_due_date || "",
+              "Expected Delivery": (r: any) => r.expected_delivery || "",
+              "PO Total": (r: any) => r.total_amount,
+              "Notes": (r: any) => r.notes || "",
+            }}
+            childItems={{
+              table: "purchase_order_items",
+              foreignKey: "po_id",
+              select: "*, items(name, sku)",
+              columns: {
+                "Item Name": (li: any) => li.item_name || li.items?.name || "",
+                "SKU": (li: any) => li.items?.sku || "",
+                "Quantity": (li: any) => Number(li.quantity || 0),
+                "Received": (li: any) => Number(li.received_quantity || 0),
+                "Received Date": (li: any) => li.received_date || "",
+                "Unit Cost": (li: any) => Number(li.unit_cost || 0),
+                "Line Total": (li: any) => Number(li.quantity || 0) * Number(li.unit_cost || 0),
+              },
+            }}
             dateField={(r: any) => r.order_date || ""}
             fileName="Purchase_Orders"
           />
