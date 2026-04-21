@@ -696,18 +696,30 @@ export default function OnlineSalesPage() {
               </Button>
             </>
           )}
-          <ExportButton
-            data={sales}
-            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price, "Status": (r: any) => r.status || 'completed' }}
-            dateField={(r: any) => r.order_date || ""}
-            fileName="Online_Sales"
-          />
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
           <ExportButton
             data={filtered}
-            columns={{ "Order ID": (r: any) => r.order_number, "Date": (r: any) => r.order_date, "Product": (r: any) => r.product_name, "Qty": (r: any) => r.quantity || 1, "Channel": (r: any) => r.sales_channel, "Selling Price": (r: any) => r.posted_price, "Status": (r: any) => r.status || 'completed' }}
+            columns={{
+              "Order ID": (r: any) => r.order_number,
+              "Date": (r: any) => r.order_date,
+              "Product": (r: any) => r.product_name,
+              "Variation": (r: any) => r.variation?.name || "",
+              "SKU": (r: any) => r.item?.sku || r.variation?.sku || "",
+              "Qty": (r: any) => r.quantity || 1,
+              "Channel": (r: any) => r.sales_channel,
+              "Posted Price": (r: any) => r.posted_price,
+              "Deal Price": (r: any) => r.deal_price,
+              "Total Selling": (r: any) => Number(r.posted_price || 0) * Number(r.quantity || 1),
+              "Amount Paid": (r: any) => r.amount_paid || 0,
+              "Fees": (r: any) => r.payment_status === 'paid' ? (Number(r.posted_price || 0) * Number(r.quantity || 1)) - Number(r.amount_paid || 0) : 0,
+              "Payment Status": (r: any) => r.payment_status || 'unpaid',
+              "Paid At": (r: any) => r.paid_at || "",
+              "Status": (r: any) => r.status || 'completed',
+              "Notes": (r: any) => r.notes || "",
+              "Created At": (r: any) => r.created_at || "",
+            }}
             dateField={(r: any) => r.order_date || ""}
             fileName="Online_Sales"
           />
