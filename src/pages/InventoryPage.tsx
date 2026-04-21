@@ -187,6 +187,8 @@ export default function InventoryPage() {
               "Units Per Stock": (r: any) => r.units_per_stock || 1,
               "Open Roll Remaining": (r: any) => r.open_roll_remaining || 0,
               "Quantity": (r: any) => r.quantity,
+              "Warehouse Qty": (r: any) => r.warehouse_quantity ?? 0,
+              "Store Qty": (r: any) => r.store_quantity ?? 0,
               "Low Stock Threshold": (r: any) => r.low_stock_threshold ?? "",
               "Cost Price": (r: any) => r.cost_price,
               "Selling Price": (r: any) => r.selling_price,
