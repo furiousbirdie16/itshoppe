@@ -80,7 +80,7 @@ export default function InventoryPage() {
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       createMut.mutate(data);
     } else {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), quantity: parseInt(form.quantity) || 0 };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), warehouse_quantity: wh, store_quantity: st };
       if (isAdmin) data.source = form.source; // non-admins cannot change source
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
@@ -271,9 +271,15 @@ export default function InventoryPage() {
                 )}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">{editing ? "Quantity (Manual Adjust)" : "Initial Quantity"}</Label>
-              <Input type="number" min={0} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">{editing ? "Warehouse Qty (Manual Adjust)" : "Initial Warehouse Qty"}</Label>
+                <Input type="number" min={0} value={form.warehouse_quantity} onChange={e => setForm({ ...form, warehouse_quantity: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">{editing ? "Store Qty (Manual Adjust)" : "Initial Store Qty"}</Label>
+                <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" />
+              </div>
             </div>
             <div className={`grid ${isAdmin ? 'grid-cols-3' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
               {canEditCost && (
