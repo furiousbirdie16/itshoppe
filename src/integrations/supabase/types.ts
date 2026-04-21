@@ -392,6 +392,7 @@ export type Database = {
       }
       online_sales: {
         Row: {
+          amount_paid: number
           created_at: string | null
           deal_price: number
           id: string
@@ -399,6 +400,8 @@ export type Database = {
           notes: string | null
           order_date: string
           order_number: string
+          paid_at: string | null
+          payment_status: string
           posted_price: number
           product_name: string
           quantity: number
@@ -408,6 +411,7 @@ export type Database = {
           variation_id: string | null
         }
         Insert: {
+          amount_paid?: number
           created_at?: string | null
           deal_price?: number
           id?: string
@@ -415,6 +419,8 @@ export type Database = {
           notes?: string | null
           order_date?: string
           order_number: string
+          paid_at?: string | null
+          payment_status?: string
           posted_price?: number
           product_name: string
           quantity?: number
@@ -424,6 +430,7 @@ export type Database = {
           variation_id?: string | null
         }
         Update: {
+          amount_paid?: number
           created_at?: string | null
           deal_price?: number
           id?: string
@@ -431,6 +438,8 @@ export type Database = {
           notes?: string | null
           order_date?: string
           order_number?: string
+          paid_at?: string | null
+          payment_status?: string
           posted_price?: number
           product_name?: string
           quantity?: number

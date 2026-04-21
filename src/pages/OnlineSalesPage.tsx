@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
@@ -144,6 +144,18 @@ export default function OnlineSalesPage() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Payment marking state
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [payTarget, setPayTarget] = useState<{ ids: string[]; orderNumber: string; expected: number } | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+
+  // Bulk payment upload state
+  const [bulkPayOpen, setBulkPayOpen] = useState(false);
+  const [bulkPayRows, setBulkPayRows] = useState<{ order_id: string; amount_paid: number; matched_ids: string[]; expected: number; valid: boolean; error?: string }[]>([]);
+  const [bulkPayUploading, setBulkPayUploading] = useState(false);
+  const [bulkPayFileName, setBulkPayFileName] = useState("");
+  const payFileRef = useRef<HTMLInputElement>(null);
 
   const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); toast.success("Deleted"); } });
   const returnMut = useMutation({ mutationFn: ({ id, status }: { id: string; status: 'returned' | 'cancelled' }) => returnOnlineSale(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); } });
@@ -438,6 +450,160 @@ export default function OnlineSalesPage() {
     qc.invalidateQueries({ queryKey: ["items"] });
   };
 
+  // ── Payment helpers ─────────────────────────────────────────────────
+  const expectedForItem = (s: any) => Number(s.posted_price || 0) * Number(s.quantity || 1);
+  const expectedForGroup = (items: any[]) => items.reduce((sum, x) => sum + expectedForItem(x), 0);
+
+  const openPayDialog = (ids: string[], orderNumber: string, expected: number, currentPaid: number) => {
+    setPayTarget({ ids, orderNumber, expected });
+    setPayAmount(currentPaid > 0 ? String(currentPaid) : String(expected));
+    setPayDialogOpen(true);
+  };
+
+  const submitPayment = async () => {
+    if (!payTarget) return;
+    const amt = parseFloat(payAmount);
+    if (!Number.isFinite(amt) || amt < 0) { toast.error("Enter a valid amount"); return; }
+    // Distribute amount proportionally across line items by their expected value
+    const ids = payTarget.ids;
+    if (ids.length === 1) {
+      try {
+        await updateOnlineSale(ids[0], { amount_paid: amt, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+        toast.success(`Order ${payTarget.orderNumber} marked as paid`);
+      } catch (e: any) { toast.error(e.message || "Failed"); }
+    } else {
+      // Split proportionally
+      const lineSales = sales.filter((s: any) => ids.includes(s.id));
+      const totalExpected = lineSales.reduce((sum: number, s: any) => sum + expectedForItem(s), 0) || 1;
+      let allocated = 0;
+      for (let i = 0; i < lineSales.length; i++) {
+        const s = lineSales[i];
+        const share = i === lineSales.length - 1
+          ? Math.max(0, amt - allocated)
+          : Math.round((amt * (expectedForItem(s) / totalExpected)) * 100) / 100;
+        allocated += share;
+        try {
+          await updateOnlineSale(s.id, { amount_paid: share, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+        } catch (e) { console.error(e); }
+      }
+      toast.success(`Order ${payTarget.orderNumber}: ${ids.length} items marked paid`);
+    }
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+    setPayDialogOpen(false);
+    setPayTarget(null);
+  };
+
+  const markUnpaid = async (ids: string[]) => {
+    try {
+      for (const id of ids) {
+        await updateOnlineSale(id, { amount_paid: 0, payment_status: 'unpaid', paid_at: null } as any);
+      }
+      qc.invalidateQueries({ queryKey: ["online_sales"] });
+      toast.success(ids.length > 1 ? `${ids.length} items marked unpaid` : "Marked unpaid");
+    } catch (e: any) { toast.error(e.message || "Failed"); }
+  };
+
+  // ── Bulk payment upload ─────────────────────────────────────────────
+  const handleBulkPayFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkPayFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
+          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
+        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        const header = sheetRows[0] ?? [];
+        const orderIdx = matchBulkColumnIndex(header, bulkColumnKeywords.orderId);
+        const amountIdx = matchBulkColumnIndex(header, ["amount paid", "paid", "payout", "amount", "net"]);
+        if (orderIdx < 0) { toast.error("Could not find an Order ID column"); return; }
+        if (amountIdx < 0) { toast.error("Could not find an Amount Paid column"); return; }
+
+        const dataRows = sheetRows.slice(1);
+        const parsed = dataRows.map((row) => {
+          const order_id = normalizeBulkCell(row[orderIdx]);
+          const amount_paid = parseBulkNumber(row[amountIdx], 0);
+          let error: string | undefined;
+          let matched_ids: string[] = [];
+          let expected = 0;
+          if (!order_id) {
+            error = "Missing Order ID — row rejected";
+          } else {
+            const matches = sales.filter((s: any) => s.order_number === order_id);
+            if (matches.length === 0) error = `Order "${order_id}" not found`;
+            else {
+              matched_ids = matches.map((s: any) => s.id);
+              expected = expectedForGroup(matches);
+            }
+          }
+          if (!error && amount_paid < 0) error = "Negative amount";
+          return { order_id, amount_paid, matched_ids, expected, valid: !error, error };
+        });
+        setBulkPayRows(parsed);
+      } catch (err) {
+        console.error("Bulk payment parse error", err);
+        toast.error("Failed to parse file");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
+  const handleBulkPayUpload = async () => {
+    const valid = bulkPayRows.filter(r => r.valid);
+    if (valid.length === 0) return;
+    setBulkPayUploading(true);
+    let success = 0; let failed = 0;
+    for (const row of valid) {
+      try {
+        if (row.matched_ids.length === 1) {
+          await updateOnlineSale(row.matched_ids[0], { amount_paid: row.amount_paid, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+        } else {
+          const lineSales = sales.filter((s: any) => row.matched_ids.includes(s.id));
+          const totalExpected = lineSales.reduce((sum: number, s: any) => sum + expectedForItem(s), 0) || 1;
+          let allocated = 0;
+          for (let i = 0; i < lineSales.length; i++) {
+            const s = lineSales[i];
+            const share = i === lineSales.length - 1
+              ? Math.max(0, row.amount_paid - allocated)
+              : Math.round((row.amount_paid * (expectedForItem(s) / totalExpected)) * 100) / 100;
+            allocated += share;
+            await updateOnlineSale(s.id, { amount_paid: share, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+          }
+        }
+        success++;
+      } catch (e) { failed++; console.error(e); }
+    }
+    setBulkPayUploading(false);
+    if (success > 0) toast.success(`Marked ${success} orders as paid${failed ? ` (${failed} failed)` : ""}`);
+    if (success === 0 && failed > 0) toast.error(`All ${failed} payments failed`);
+    if (success > 0) {
+      setBulkPayRows([]);
+      setBulkPayFileName("");
+      setBulkPayOpen(false);
+    }
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+  };
+
+  const downloadPaymentsTemplate = () => {
+    const template = [
+      { "Order ID": "SHOPEE12345", "Amount Paid": 95.50 },
+      { "Order ID": "LAZADA67890", "Amount Paid": 240.00 },
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    ws["!cols"] = [{ wch: 22 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Payments");
+    XLSX.writeFile(wb, "online_sales_payments_template.xlsx");
+  };
+
+  const bulkPayValidCount = bulkPayRows.filter(r => r.valid).length;
+  const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid).length;
+
   const downloadTemplate = () => {
     const template = [
       { "Order ID": "", "Date": new Date().toISOString().split("T")[0], "Product Name": "Sample Product", "Quantity": 1, "Channel": "shopee", "Selling Price": 100 },
@@ -515,6 +681,9 @@ export default function OnlineSalesPage() {
           />
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Bulk Upload
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setBulkPayOpen(true)}>
+            <DollarSign className="h-4 w-4 mr-1" /> Bulk Upload Payments
           </Button>
           <Button size="sm" onClick={openNew}>
             <Plus className="h-4 w-4 mr-1" /> Add Sale
@@ -595,18 +764,25 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
                   <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
                   <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
-                  <TableHead className="w-28"></TableHead>
+                  <TableHead className="text-right text-xs">Amount Paid</TableHead>
+                  <TableHead className="text-right text-xs">Fees</TableHead>
+                  <TableHead className="text-xs">Payment</TableHead>
+                  <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
                 ) : groupedFiltered.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
                 ) : groupedFiltered.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
+                    const expected = expectedForItem(s);
+                    const paid = Number(s.amount_paid || 0);
+                    const isPaid = s.payment_status === 'paid';
+                    const fees = isPaid ? expected - paid : 0;
                     return [(
                       <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
                         <TableCell>
@@ -618,8 +794,18 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
+                            {isPaid ? (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => markUnpaid([s.id])} title="Mark as unpaid"><X className="h-3 w-3" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => openPayDialog([s.id], s.order_number, expected, paid)} title="Mark as paid"><CircleDollarSign className="h-3 w-3" /></Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
@@ -633,8 +819,12 @@ export default function OnlineSalesPage() {
                   const isOpen = expandedOrders.has(groupKey);
                   const totalQty = group.items.reduce((sum, x) => sum + (Number(x.quantity) || 1), 0);
                   const totalAmount = group.items.reduce((sum, x) => sum + (Number(x.posted_price) || 0) * (Number(x.quantity) || 1), 0);
+                  const totalPaid = group.items.reduce((sum, x) => sum + Number(x.amount_paid || 0), 0);
+                  const allPaid = group.items.every(x => x.payment_status === 'paid');
+                  const groupFees = allPaid ? totalAmount - totalPaid : 0;
                   const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
                   const groupSelected = group.items.every(x => selected.has(x.id));
+                  const groupIds = group.items.map(x => x.id);
                   return [
                     (
                       <TableRow key={`g-${groupKey}`} className="cursor-pointer hover:bg-muted/40 bg-muted/20" onClick={() => toggleExpand(groupKey)}>
@@ -669,8 +859,18 @@ export default function OnlineSalesPage() {
                             : <span className="text-xs text-muted-foreground">Mixed</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums font-semibold">{allPaid ? peso(totalPaid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{allPaid ? <span className={groupFees > 0 ? "text-amber-600" : groupFees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(groupFees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{allPaid ? 'Paid' : 'Unpaid'}</span>
+                        </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-1">
+                            {allPaid ? (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Mark order as unpaid" onClick={() => markUnpaid(groupIds)}><X className="h-3 w-3" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Mark order as paid" onClick={() => openPayDialog(groupIds, group.orderNumber, totalAmount, totalPaid)}><CircleDollarSign className="h-3 w-3" /></Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" title="Return all items in this order" onClick={async () => {
                               for (const x of group.items) { try { await returnMut.mutateAsync({ id: x.id, status: 'returned' }); } catch {} }
                               toast.success(`Order ${group.orderNumber}: ${group.items.length} items returned`);
@@ -689,7 +889,12 @@ export default function OnlineSalesPage() {
                         </TableCell>
                       </TableRow>
                     ),
-                    ...(isOpen ? group.items.map((s: any) => (
+                    ...(isOpen ? group.items.map((s: any) => {
+                      const expected = expectedForItem(s);
+                      const paid = Number(s.amount_paid || 0);
+                      const isPaid = s.payment_status === 'paid';
+                      const fees = isPaid ? expected - paid : 0;
+                      return (
                       <TableRow key={s.id} className={`${selected.has(s.id) ? "bg-muted/50" : ""}`}>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.product_name}`} />
@@ -700,8 +905,18 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
+                            {isPaid ? (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => markUnpaid([s.id])} title="Mark as unpaid"><X className="h-3 w-3" /></Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => openPayDialog([s.id], s.order_number, expected, paid)} title="Mark this line as paid"><CircleDollarSign className="h-3 w-3" /></Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
@@ -709,7 +924,8 @@ export default function OnlineSalesPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    )) : []),
+                      );
+                    }) : []),
                   ];
                 })}
               </TableBody>
@@ -999,6 +1215,110 @@ export default function OnlineSalesPage() {
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => { setBulkRows([]); setBulkFileName(""); }}>Clear</Button>
                 <Button onClick={handleBulkUpload} disabled={bulkUploading || bulkValidCount === 0}>{bulkUploading ? "Uploading..." : `Upload ${bulkValidCount} Records`}</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Paid Dialog */}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><CircleDollarSign className="h-5 w-5 text-emerald-600" /> Mark as Paid</DialogTitle>
+          </DialogHeader>
+          {payTarget && (
+            <div className="space-y-4">
+              <div className="text-sm">
+                <p className="text-muted-foreground">Order ID</p>
+                <p className="font-mono">{payTarget.orderNumber || "—"}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Selling Total</p>
+                  <p className="font-semibold tabular-nums">{peso(payTarget.expected)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Fees (auto)</p>
+                  <p className={`font-semibold tabular-nums ${(payTarget.expected - (parseFloat(payAmount) || 0)) > 0 ? "text-amber-600" : "text-emerald-600"}`}>{peso(payTarget.expected - (parseFloat(payAmount) || 0))}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Amount Paid (received from platform)</Label>
+                <Input type="number" min={0} step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="h-9" autoFocus />
+                <p className="text-[11px] text-muted-foreground">The difference between the selling total and the amount paid will be recorded as fees.</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>Cancel</Button>
+            <Button onClick={submitPayment}>Mark Paid</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Payment Upload Dialog */}
+      <Dialog open={bulkPayOpen} onOpenChange={(v) => { if (!v) { setBulkPayRows([]); setBulkPayFileName(""); } setBulkPayOpen(v); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5" /> Bulk Upload Payments</DialogTitle>
+          </DialogHeader>
+
+          {bulkPayRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
+                <p className="text-xs text-muted-foreground">Required columns: <strong>Order ID</strong> and <strong>Amount Paid</strong></p>
+                <p className="text-[11px] text-muted-foreground">Rows without an Order ID will be rejected.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={downloadPaymentsTemplate}><FileSpreadsheet className="h-4 w-4 mr-1" /> Download Template</Button>
+                <Button onClick={() => payFileRef.current?.click()}>Select File</Button>
+              </div>
+              <input ref={payFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkPayFile} className="hidden" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 overflow-hidden">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{bulkPayFileName} — {bulkPayRows.length} rows</span>
+                <div className="flex gap-3">
+                  {bulkPayValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkPayValidCount} valid</span>}
+                  {bulkPayInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkPayInvalidCount} invalid</span>}
+                </div>
+              </div>
+              <div className="overflow-auto max-h-[40vh] border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs w-8">#</TableHead>
+                      <TableHead className="text-xs">Order ID</TableHead>
+                      <TableHead className="text-xs text-right">Selling Total</TableHead>
+                      <TableHead className="text-xs text-right">Amount Paid</TableHead>
+                      <TableHead className="text-xs text-right">Fees</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bulkPayRows.map((row, i) => {
+                      const fees = row.valid ? row.expected - row.amount_paid : 0;
+                      return (
+                        <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
+                          <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
+                          <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{row.valid ? peso(row.expected) : "—"}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{peso(row.amount_paid)}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums"><span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{row.valid ? peso(fees) : "—"}</span></TableCell>
+                          <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setBulkPayRows([]); setBulkPayFileName(""); }}>Clear</Button>
+                <Button onClick={handleBulkPayUpload} disabled={bulkPayUploading || bulkPayValidCount === 0}>{bulkPayUploading ? "Uploading..." : `Apply Payments to ${bulkPayValidCount} Orders`}</Button>
               </div>
             </div>
           )}

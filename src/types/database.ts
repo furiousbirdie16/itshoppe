@@ -204,6 +204,9 @@ export interface OnlineSale {
   item_id: string | null;
   variation_id: string | null;
   status: 'completed' | 'returned' | 'cancelled';
+  amount_paid: number;
+  payment_status: 'paid' | 'unpaid';
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
   items?: Item;
