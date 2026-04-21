@@ -1,4 +1,4 @@
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign, BarChart3 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +27,7 @@ const navItems = [
   { title: "Invoices", url: "/invoices", icon: Receipt, adminOnly: false },
   { title: "Pending Payments", url: "/pending-payments", icon: CircleDollarSign, adminOnly: false },
   { title: "Online Sales", url: "/online-sales", icon: Store, adminOnly: false },
+  { title: "Business Insights", url: "/business-insights", icon: BarChart3, adminOnly: true },
   { title: "Activity Log", url: "/activity-log", icon: ClipboardList, adminOnly: true },
   { title: "Users", url: "/users", icon: UserCog, adminOnly: true },
   { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },

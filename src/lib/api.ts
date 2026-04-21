@@ -514,26 +514,30 @@ export const getDashboardStats = async () => {
 
   // Outstanding (not fully received) line items from local + overseas POs
   const { data: openPOItems } = await from("purchase_order_items")
-    .select("item_id, quantity, received_quantity, purchase_orders!inner(po_number, status)")
+    .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status)")
     .neq("purchase_orders.status", "received");
   const { data: openOverseasItems } = await from("overseas_purchase_order_items")
-    .select("item_id, quantity, received_quantity, overseas_purchase_orders!inner(po_number, status)")
+    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate)")
     .neq("overseas_purchase_orders.status", "received");
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};
+  let incomingStockValue = 0;
   for (const li of (openPOItems as any[]) || []) {
-    if (!li.item_id) continue;
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
+    incomingStockValue += remaining * Number(li.unit_cost || 0);
+    if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.localQty += remaining;
     const num = li.purchase_orders?.po_number;
     if (num && !e.localPOs.includes(num)) e.localPOs.push(num);
   }
   for (const li of (openOverseasItems as any[]) || []) {
-    if (!li.item_id) continue;
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
+    const rate = Number(li.overseas_purchase_orders?.exchange_rate || 1);
+    incomingStockValue += remaining * Number(li.unit_cost || 0) * rate;
+    if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.overseasQty += remaining;
     const num = li.overseas_purchase_orders?.po_number;
@@ -549,6 +553,7 @@ export const getDashboardStats = async () => {
   return {
     totalItems: itemsList.length,
     totalValue,
+    incomingStockValue,
     lowStockItems: lowStockItems as (Item & { on_order: { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] } })[],
     recentPOs: (recentPOs || []) as PurchaseOrder[],
     recentInvoices: (recentInvoices || []) as Invoice[],
