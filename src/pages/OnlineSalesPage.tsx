@@ -669,7 +669,24 @@ export default function OnlineSalesPage() {
                             : <span className="text-xs text-muted-foreground">Mixed</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
-                        <TableCell></TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" title="Return all items in this order" onClick={async () => {
+                              for (const x of group.items) { try { await returnMut.mutateAsync({ id: x.id, status: 'returned' }); } catch {} }
+                              toast.success(`Order ${group.orderNumber}: ${group.items.length} items returned`);
+                            }}><Undo2 className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Cancel all items in this order" onClick={async () => {
+                              for (const x of group.items) { try { await returnMut.mutateAsync({ id: x.id, status: 'cancelled' }); } catch {} }
+                              toast.success(`Order ${group.orderNumber}: ${group.items.length} items cancelled`);
+                            }}><XCircle className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Delete entire order" onClick={async () => {
+                              for (const x of group.items) { try { await deleteOnlineSale(x.id); } catch {} }
+                              qc.invalidateQueries({ queryKey: ["online_sales"] });
+                              qc.invalidateQueries({ queryKey: ["items"] });
+                              toast.success(`Order ${group.orderNumber} deleted`);
+                            }}><Trash2 className="h-3 w-3" /></Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ),
                     ...(isOpen ? group.items.map((s: any) => (
