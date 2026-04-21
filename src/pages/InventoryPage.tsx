@@ -446,6 +446,12 @@ export default function InventoryPage() {
           onOpenChange={(o) => { if (!o) setVariationsItem(null); }}
         />
       )}
+
+      <TransferStockDialog
+        item={transferItem}
+        open={!!transferItem}
+        onOpenChange={(o) => { if (!o) setTransferItem(null); }}
+      />
     </div>
   );
 }
