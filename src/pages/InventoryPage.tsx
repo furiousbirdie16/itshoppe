@@ -324,6 +324,7 @@ export default function InventoryPage() {
               <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="cost_price" label="Cost" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="selling_price" label="Sell" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="low_stock_threshold" label="Threshold" sort={sort} onToggle={toggle} align="right" />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
