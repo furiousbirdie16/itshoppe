@@ -135,7 +135,7 @@ export default function InventoryPage() {
     },
   });
 
-  const colCount = 9; // includes threshold column
+  const colCount = 10; // checkbox + name + source + qty + warehouse + store + cost + sell + threshold + actions
 
   return (
     <div className="space-y-6">
