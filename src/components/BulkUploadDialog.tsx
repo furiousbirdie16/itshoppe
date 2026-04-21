@@ -12,7 +12,8 @@ interface ParsedRow {
   item: string;
   description: string;
   sku: string;
-  qty: number;
+  warehouse_qty: number;
+  store_qty: number;
   cost: number;
   price: number;
   valid: boolean;
@@ -49,15 +50,22 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
 
         // Find columns by common names (case-insensitive)
         const headers = Object.keys(json[0]);
-        const findCol = (keywords: string[]) =>
-          headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
+        const findCol = (keywords: string[], excludeKeywords: string[] = []) =>
+          headers.find(h => {
+            const lower = h.toLowerCase();
+            if (excludeKeywords.some(k => lower.includes(k))) return false;
+            return keywords.some(k => lower.includes(k));
+          });
 
         const itemCol = findCol(["item", "name", "product"]);
         const descCol = findCol(["description", "desc"]);
         const skuCol = findCol(["sku", "code", "barcode"]);
-        const qtyCol = findCol(["qty", "quantity", "stock"]);
-        const costCol = findCol(["cost", "cost_price", "buying"]);
-        const priceCol = findCol(["price", "selling", "selling_price", "amount"]);
+        const warehouseCol = findCol(["warehouse", "wh"]);
+        const storeCol = findCol(["store", "shop"]);
+        // Generic qty (used as fallback when warehouse/store not split)
+        const qtyCol = findCol(["qty", "quantity", "stock"], ["warehouse", "wh", "store", "shop"]);
+        const costCol = findCol(["cost", "buying"]);
+        const priceCol = findCol(["price", "selling", "amount"]);
 
         if (!itemCol) { toast.error("Could not find an 'Item' or 'Name' column"); return; }
         if (!skuCol) { toast.error("Could not find a 'SKU' column"); return; }
@@ -66,18 +74,24 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
           const item = String(row[itemCol] || "").trim();
           const description = String(descCol ? row[descCol] || "" : "").trim();
           const sku = String(skuCol ? row[skuCol] || "" : "").trim();
-          const qty = Number(qtyCol ? row[qtyCol] : 0) || 0;
+          const warehouse_qty_raw = warehouseCol ? Number(row[warehouseCol]) || 0 : NaN;
+          const store_qty_raw = storeCol ? Number(row[storeCol]) || 0 : NaN;
+          const fallback_qty = qtyCol ? Number(row[qtyCol]) || 0 : 0;
+          // If neither warehouse nor store provided, put total in warehouse
+          const warehouse_qty = !isNaN(warehouse_qty_raw) ? warehouse_qty_raw : (isNaN(store_qty_raw) ? fallback_qty : 0);
+          const store_qty = !isNaN(store_qty_raw) ? store_qty_raw : 0;
           const cost = Number(costCol ? row[costCol] : 0) || 0;
           const price = Number(priceCol ? row[priceCol] : 0) || 0;
 
           let error: string | undefined;
           if (!item) error = "Missing item name";
           else if (!sku) error = "Missing SKU";
-          else if (qty < 0) error = "Negative quantity";
+          else if (warehouse_qty < 0) error = "Negative warehouse qty";
+          else if (store_qty < 0) error = "Negative store qty";
           else if (cost < 0) error = "Negative cost";
           else if (price < 0) error = "Negative price";
 
-          return { item, description, sku, qty, cost, price, valid: !error, error };
+          return { item, description, sku, warehouse_qty, store_qty, cost, price, valid: !error, error };
         });
 
         setRows(parsed);
@@ -103,11 +117,12 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
           name: row.item,
           sku: row.sku,
           description: row.description,
-          quantity: row.qty,
+          warehouse_quantity: row.warehouse_qty,
+          store_quantity: row.store_qty,
           cost_price: row.cost,
           selling_price: row.price,
           low_stock_threshold: 10,
-        });
+        } as any);
         success++;
       } catch {
         failed++;
@@ -123,11 +138,11 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
 
   const downloadTemplate = () => {
     const template = [
-      { "Item": "Sample Product A", "SKU": "SKU-001", "Description": "Brief description", "Qty": 10, "Cost": 50, "Price": 100 },
-      { "Item": "Sample Product B", "SKU": "SKU-002", "Description": "", "Qty": 25, "Cost": 120, "Price": 250 },
+      { "Item": "Sample Product A", "SKU": "SKU-001", "Description": "Brief description", "Warehouse Qty": 8, "Store Qty": 2, "Cost": 50, "Price": 100 },
+      { "Item": "Sample Product B", "SKU": "SKU-002", "Description": "", "Warehouse Qty": 20, "Store Qty": 5, "Cost": 120, "Price": 250 },
     ];
     const ws = XLSX.utils.json_to_sheet(template);
-    ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 8 }, { wch: 10 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
     XLSX.writeFile(wb, "inventory_template.xlsx");
@@ -153,8 +168,9 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
             <div className="text-center space-y-1">
               <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls)</p>
               <p className="text-xs text-muted-foreground">
-                Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Qty</strong>, <strong>Cost</strong>, <strong>Price</strong>
+                Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Warehouse Qty</strong>, <strong>Store Qty</strong>, <strong>Cost</strong>, <strong>Price</strong>
               </p>
+              <p className="text-[11px] text-muted-foreground">A single <strong>Qty</strong> column is also accepted (loaded into Warehouse).</p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={downloadTemplate} className="rounded-lg">
@@ -188,7 +204,8 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                     <TableHead className="text-xs">Item</TableHead>
                     <TableHead className="text-xs">SKU</TableHead>
                     <TableHead className="text-xs">Description</TableHead>
-                    <TableHead className="text-xs text-right">Qty</TableHead>
+                    <TableHead className="text-xs text-right">Warehouse</TableHead>
+                    <TableHead className="text-xs text-right">Store</TableHead>
                     <TableHead className="text-xs text-right">Cost</TableHead>
                     <TableHead className="text-xs text-right">Price</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
@@ -201,7 +218,8 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: Bulk
                       <TableCell className="text-sm">{row.item || "—"}</TableCell>
                       <TableCell className="text-sm">{row.sku || "—"}</TableCell>
                       <TableCell className="text-sm truncate max-w-[120px]">{row.description || "—"}</TableCell>
-                      <TableCell className="text-sm text-right">{row.qty}</TableCell>
+                      <TableCell className="text-sm text-right">{row.warehouse_qty}</TableCell>
+                      <TableCell className="text-sm text-right">{row.store_qty}</TableCell>
                       <TableCell className="text-sm text-right">{peso(row.cost)}</TableCell>
                       <TableCell className="text-sm text-right">{peso(row.price)}</TableCell>
                       <TableCell className="text-xs">
