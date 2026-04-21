@@ -38,6 +38,7 @@ export default function InventoryPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
+  const [transferItem, setTransferItem] = useState<Item | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
