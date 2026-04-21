@@ -658,43 +658,19 @@ export default function OnlineSalesPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingSale ? "Edit Sale" : "New Online Sale"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Order ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated if blank" className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Inventory Item / Variation (optional)</Label>
-              <ItemSearch
-                items={items}
-                value={form.item_id}
-                variationId={form.variation_id}
-                onChange={(itemId, item, _custom, variation) => {
-                  if (variation && item) {
-                    setForm(f => ({ ...f, item_id: item.id, variation_id: variation.id, product_name: `${item.name} — ${variation.name}`, posted_price: Number(variation.selling_price) }));
-                  } else if (item) {
-                    setForm(f => ({ ...f, item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) }));
-                  }
-                }}
-              />
-              <p className="text-[10px] text-muted-foreground">Pick item or a variation (e.g. "DC male 5pcs"). Auto-fills name & price.</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Date</Label>
-              <DateField value={form.order_date} onChange={v => setForm(f => ({ ...f, order_date: v }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Product Name</Label>
-              <Input value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="Product name" className="h-9" />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Quantity</Label>
-                <Input type="number" min={1} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} className="h-9" />
+                <Label className="text-xs font-medium">Order ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated" className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Date</Label>
+                <DateField value={form.order_date} onChange={v => setForm(f => ({ ...f, order_date: v }))} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Channel</Label>
@@ -707,11 +683,64 @@ export default function OnlineSalesPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Selling Price</Label>
-                <Input type="number" min={0} step="0.01" value={form.posted_price} onChange={e => setForm(f => ({ ...f, posted_price: parseFloat(e.target.value) || 0 }))} className="h-9" />
-              </div>
             </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Items {!editingSale && form.lines.length > 1 && <span className="text-muted-foreground font-normal">({form.lines.length})</span>}</Label>
+                {!editingSale && (
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setForm(f => ({ ...f, lines: [...f.lines, { ...emptyLine }] }))}>
+                    <Plus className="h-3 w-3 mr-1" /> Add another item
+                  </Button>
+                )}
+              </div>
+              {form.lines.map((line, idx) => (
+                <div key={idx} className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
+                    {!editingSale && form.lines.length > 1 && (
+                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Inventory Item / Variation (optional)</Label>
+                    <ItemSearch
+                      items={items}
+                      value={line.item_id}
+                      variationId={line.variation_id}
+                      onChange={(_itemId, item, _custom, variation) => {
+                        setForm(f => {
+                          const lines = [...f.lines];
+                          if (variation && item) {
+                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: variation.id, product_name: `${item.name} — ${variation.name}`, posted_price: Number(variation.selling_price) };
+                          } else if (item) {
+                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) };
+                          }
+                          return { ...f, lines };
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Product Name</Label>
+                    <Input value={line.product_name} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], product_name: e.target.value }; return { ...f, lines }; })} placeholder="Product name" className="h-9" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Quantity</Label>
+                      <Input type="number" min={1} value={line.quantity} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 1 }; return { ...f, lines }; })} className="h-9" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Selling Price</Label>
+                      <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
               <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
