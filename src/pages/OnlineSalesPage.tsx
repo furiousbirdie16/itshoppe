@@ -764,14 +764,17 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
                   <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
                   <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
-                  <TableHead className="w-28"></TableHead>
+                  <TableHead className="text-right text-xs">Amount Paid</TableHead>
+                  <TableHead className="text-right text-xs">Fees</TableHead>
+                  <TableHead className="text-xs">Payment</TableHead>
+                  <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
                 ) : groupedFiltered.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
                 ) : groupedFiltered.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
