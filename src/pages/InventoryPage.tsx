@@ -360,8 +360,12 @@ export default function InventoryPage() {
                     aria-label={`Select ${item.name}`}
                   />
                 </TableCell>
-                <TableCell className="font-medium text-sm">{item.name}</TableCell>
-                <TableCell className="text-muted-foreground font-mono text-xs">{item.sku}</TableCell>
+                <TableCell className="font-medium text-sm">
+                  <div className="flex flex-col">
+                    <span>{item.name}</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">{item.sku}</span>
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Badge variant={((item as any).source === 'import') ? 'secondary' : 'outline'} className="text-[10px] uppercase">
                     {((item as any).source as string) || 'local'}
@@ -375,6 +379,8 @@ export default function InventoryPage() {
                     </span>
                   )}
                 </TableCell>
+                <TableCell className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>
+                <TableCell className="text-right text-sm">{(item as any).store_quantity ?? 0}</TableCell>
                 <TableCell className="text-right text-sm text-muted-foreground">
                   {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
                 </TableCell>
