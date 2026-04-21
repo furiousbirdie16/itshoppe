@@ -450,6 +450,160 @@ export default function OnlineSalesPage() {
     qc.invalidateQueries({ queryKey: ["items"] });
   };
 
+  // ── Payment helpers ─────────────────────────────────────────────────
+  const expectedForItem = (s: any) => Number(s.posted_price || 0) * Number(s.quantity || 1);
+  const expectedForGroup = (items: any[]) => items.reduce((sum, x) => sum + expectedForItem(x), 0);
+
+  const openPayDialog = (ids: string[], orderNumber: string, expected: number, currentPaid: number) => {
+    setPayTarget({ ids, orderNumber, expected });
+    setPayAmount(currentPaid > 0 ? String(currentPaid) : String(expected));
+    setPayDialogOpen(true);
+  };
+
+  const submitPayment = async () => {
+    if (!payTarget) return;
+    const amt = parseFloat(payAmount);
+    if (!Number.isFinite(amt) || amt < 0) { toast.error("Enter a valid amount"); return; }
+    // Distribute amount proportionally across line items by their expected value
+    const ids = payTarget.ids;
+    if (ids.length === 1) {
+      try {
+        await updateOnlineSale(ids[0], { amount_paid: amt, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+        toast.success(`Order ${payTarget.orderNumber} marked as paid`);
+      } catch (e: any) { toast.error(e.message || "Failed"); }
+    } else {
+      // Split proportionally
+      const lineSales = sales.filter((s: any) => ids.includes(s.id));
+      const totalExpected = lineSales.reduce((sum: number, s: any) => sum + expectedForItem(s), 0) || 1;
+      let allocated = 0;
+      for (let i = 0; i < lineSales.length; i++) {
+        const s = lineSales[i];
+        const share = i === lineSales.length - 1
+          ? Math.max(0, amt - allocated)
+          : Math.round((amt * (expectedForItem(s) / totalExpected)) * 100) / 100;
+        allocated += share;
+        try {
+          await updateOnlineSale(s.id, { amount_paid: share, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+        } catch (e) { console.error(e); }
+      }
+      toast.success(`Order ${payTarget.orderNumber}: ${ids.length} items marked paid`);
+    }
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+    setPayDialogOpen(false);
+    setPayTarget(null);
+  };
+
+  const markUnpaid = async (ids: string[]) => {
+    try {
+      for (const id of ids) {
+        await updateOnlineSale(id, { amount_paid: 0, payment_status: 'unpaid', paid_at: null } as any);
+      }
+      qc.invalidateQueries({ queryKey: ["online_sales"] });
+      toast.success(ids.length > 1 ? `${ids.length} items marked unpaid` : "Marked unpaid");
+    } catch (e: any) { toast.error(e.message || "Failed"); }
+  };
+
+  // ── Bulk payment upload ─────────────────────────────────────────────
+  const handleBulkPayFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkPayFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
+          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
+        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        const header = sheetRows[0] ?? [];
+        const orderIdx = matchBulkColumnIndex(header, bulkColumnKeywords.orderId);
+        const amountIdx = matchBulkColumnIndex(header, ["amount paid", "paid", "payout", "amount", "net"]);
+        if (orderIdx < 0) { toast.error("Could not find an Order ID column"); return; }
+        if (amountIdx < 0) { toast.error("Could not find an Amount Paid column"); return; }
+
+        const dataRows = sheetRows.slice(1);
+        const parsed = dataRows.map((row) => {
+          const order_id = normalizeBulkCell(row[orderIdx]);
+          const amount_paid = parseBulkNumber(row[amountIdx], 0);
+          let error: string | undefined;
+          let matched_ids: string[] = [];
+          let expected = 0;
+          if (!order_id) {
+            error = "Missing Order ID — row rejected";
+          } else {
+            const matches = sales.filter((s: any) => s.order_number === order_id);
+            if (matches.length === 0) error = `Order "${order_id}" not found`;
+            else {
+              matched_ids = matches.map((s: any) => s.id);
+              expected = expectedForGroup(matches);
+            }
+          }
+          if (!error && amount_paid < 0) error = "Negative amount";
+          return { order_id, amount_paid, matched_ids, expected, valid: !error, error };
+        });
+        setBulkPayRows(parsed);
+      } catch (err) {
+        console.error("Bulk payment parse error", err);
+        toast.error("Failed to parse file");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
+  const handleBulkPayUpload = async () => {
+    const valid = bulkPayRows.filter(r => r.valid);
+    if (valid.length === 0) return;
+    setBulkPayUploading(true);
+    let success = 0; let failed = 0;
+    for (const row of valid) {
+      try {
+        if (row.matched_ids.length === 1) {
+          await updateOnlineSale(row.matched_ids[0], { amount_paid: row.amount_paid, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+        } else {
+          const lineSales = sales.filter((s: any) => row.matched_ids.includes(s.id));
+          const totalExpected = lineSales.reduce((sum: number, s: any) => sum + expectedForItem(s), 0) || 1;
+          let allocated = 0;
+          for (let i = 0; i < lineSales.length; i++) {
+            const s = lineSales[i];
+            const share = i === lineSales.length - 1
+              ? Math.max(0, row.amount_paid - allocated)
+              : Math.round((row.amount_paid * (expectedForItem(s) / totalExpected)) * 100) / 100;
+            allocated += share;
+            await updateOnlineSale(s.id, { amount_paid: share, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
+          }
+        }
+        success++;
+      } catch (e) { failed++; console.error(e); }
+    }
+    setBulkPayUploading(false);
+    if (success > 0) toast.success(`Marked ${success} orders as paid${failed ? ` (${failed} failed)` : ""}`);
+    if (success === 0 && failed > 0) toast.error(`All ${failed} payments failed`);
+    if (success > 0) {
+      setBulkPayRows([]);
+      setBulkPayFileName("");
+      setBulkPayOpen(false);
+    }
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+  };
+
+  const downloadPaymentsTemplate = () => {
+    const template = [
+      { "Order ID": "SHOPEE12345", "Amount Paid": 95.50 },
+      { "Order ID": "LAZADA67890", "Amount Paid": 240.00 },
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    ws["!cols"] = [{ wch: 22 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Payments");
+    XLSX.writeFile(wb, "online_sales_payments_template.xlsx");
+  };
+
+  const bulkPayValidCount = bulkPayRows.filter(r => r.valid).length;
+  const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid).length;
+
   const downloadTemplate = () => {
     const template = [
       { "Order ID": "", "Date": new Date().toISOString().split("T")[0], "Product Name": "Sample Product", "Quantity": 1, "Channel": "shopee", "Selling Price": 100 },
