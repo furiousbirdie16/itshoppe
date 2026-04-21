@@ -26,28 +26,36 @@ type SalesChannel = "shopee" | "lazada" | "others";
 
 type BulkCell = string | number | Date | boolean | null | undefined;
 
-interface SaleForm {
-  order_date: string;
-  order_number: string;
+interface SaleLine {
   product_name: string;
   quantity: number;
-  sales_channel: SalesChannel;
   posted_price: number;
-  notes: string;
   item_id: string;
   variation_id: string | null;
 }
 
+interface SaleForm {
+  order_date: string;
+  order_number: string;
+  sales_channel: SalesChannel;
+  notes: string;
+  lines: SaleLine[];
+}
+
+const emptyLine: SaleLine = {
+  product_name: "",
+  quantity: 1,
+  posted_price: 0,
+  item_id: "",
+  variation_id: null,
+};
+
 const emptyForm: SaleForm = {
   order_date: new Date().toISOString().split("T")[0],
   order_number: "",
-  product_name: "",
-  quantity: 1,
   sales_channel: "shopee",
-  posted_price: 0,
   notes: "",
-  item_id: "",
-  variation_id: null,
+  lines: [{ ...emptyLine }],
 };
 
 const generateOrderNumber = async (channel: SalesChannel) => {
