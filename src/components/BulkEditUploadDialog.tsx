@@ -27,7 +27,7 @@ interface DiffRow {
   message?: string;
 }
 
-const FIELD_KEYS = ["name", "description", "quantity", "cost_price", "selling_price", "low_stock_threshold", "source"] as const;
+const FIELD_KEYS = ["name", "description", "warehouse_quantity", "store_quantity", "cost_price", "selling_price", "low_stock_threshold", "source"] as const;
 
 // Map common header names → canonical field key
 const HEADER_MAP: Record<string, typeof FIELD_KEYS[number]> = {
@@ -38,9 +38,17 @@ const HEADER_MAP: Record<string, typeof FIELD_KEYS[number]> = {
   "product name": "name",
   "description": "description",
   "desc": "description",
-  "quantity": "quantity",
-  "qty": "quantity",
-  "stock": "quantity",
+  "warehouse": "warehouse_quantity",
+  "warehouse qty": "warehouse_quantity",
+  "warehouse quantity": "warehouse_quantity",
+  "wh qty": "warehouse_quantity",
+  "wh": "warehouse_quantity",
+  "warehouse_quantity": "warehouse_quantity",
+  "store": "store_quantity",
+  "store qty": "store_quantity",
+  "store quantity": "store_quantity",
+  "shop qty": "store_quantity",
+  "store_quantity": "store_quantity",
   "cost": "cost_price",
   "cost price": "cost_price",
   "cost_price": "cost_price",
@@ -81,7 +89,8 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         SKU: i.sku,
         Name: i.name,
         Description: i.description || "",
-        Quantity: i.quantity,
+        "Warehouse Qty": (i as any).warehouse_quantity ?? 0,
+        "Store Qty": (i as any).store_quantity ?? 0,
         ...(showCost ? { "Cost Price": Number(i.cost_price) } : { "Cost Price": "" }),
         "Selling Price": Number(i.selling_price),
         ...(isAdmin ? { "Low Stock Threshold": i.low_stock_threshold } : {}),
@@ -89,7 +98,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
       };
     });
     const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
     XLSX.writeFile(wb, `inventory_edit_${new Date().toISOString().split("T")[0]}.xlsx`);
@@ -152,7 +161,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
             const raw = row[col];
             const oldVal = (existing as any)[field];
 
-            if (field === "quantity" || field === "cost_price" || field === "selling_price" || field === "low_stock_threshold") {
+            if (field === "warehouse_quantity" || field === "store_quantity" || field === "cost_price" || field === "selling_price" || field === "low_stock_threshold") {
               const newNum = numOrNull(raw);
               if (newNum === null) continue; // blank → skip
               if (Number(newNum) !== Number(oldVal)) {
