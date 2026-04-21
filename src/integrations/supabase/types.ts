@@ -309,8 +309,10 @@ export type Database = {
           selling_price: number
           sku: string
           source: string
+          store_quantity: number
           units_per_stock: number
           updated_at: string | null
+          warehouse_quantity: number
         }
         Insert: {
           base_unit?: string
@@ -325,8 +327,10 @@ export type Database = {
           selling_price?: number
           sku: string
           source?: string
+          store_quantity?: number
           units_per_stock?: number
           updated_at?: string | null
+          warehouse_quantity?: number
         }
         Update: {
           base_unit?: string
@@ -341,8 +345,10 @@ export type Database = {
           selling_price?: number
           sku?: string
           source?: string
+          store_quantity?: number
           units_per_stock?: number
           updated_at?: string | null
+          warehouse_quantity?: number
         }
         Relationships: []
       }
@@ -982,7 +988,12 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user"
       invoice_status: "draft" | "confirmed" | "paid" | "unpaid"
-      movement_type: "in_po" | "out_invoice" | "out_online_sale"
+      movement_type:
+        | "in_po"
+        | "out_invoice"
+        | "out_online_sale"
+        | "transfer_w2s"
+        | "transfer_s2w"
       online_sale_status: "completed" | "returned" | "cancelled"
       po_status: "draft" | "sent" | "partially_received" | "received"
       quotation_status: "draft" | "sent" | "accepted" | "rejected"
@@ -1117,7 +1128,13 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "user"],
       invoice_status: ["draft", "confirmed", "paid", "unpaid"],
-      movement_type: ["in_po", "out_invoice", "out_online_sale"],
+      movement_type: [
+        "in_po",
+        "out_invoice",
+        "out_online_sale",
+        "transfer_w2s",
+        "transfer_s2w",
+      ],
       online_sale_status: ["completed", "returned", "cancelled"],
       po_status: ["draft", "sent", "partially_received", "received"],
       quotation_status: ["draft", "sent", "accepted", "rejected"],

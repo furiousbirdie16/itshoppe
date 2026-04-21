@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight } from "lucide-react";
 import { VariationsManager } from "@/components/VariationsManager";
+import TransferStockDialog from "@/components/TransferStockDialog";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
@@ -37,6 +38,7 @@ export default function InventoryPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
+  const [transferItem, setTransferItem] = useState<Item | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -98,6 +100,8 @@ export default function InventoryPage() {
     sku: (r) => r.sku,
     source: (r: any) => (r.source as string) || "local",
     quantity: (r) => Number(r.quantity),
+    warehouse_quantity: (r: any) => Number(r.warehouse_quantity ?? 0),
+    store_quantity: (r: any) => Number(r.store_quantity ?? 0),
     cost_price: (r) => Number(r.cost_price),
     selling_price: (r) => Number(r.selling_price),
     low_stock_threshold: (r) => Number(r.low_stock_threshold ?? 0),
@@ -131,7 +135,7 @@ export default function InventoryPage() {
     },
   });
 
-  const colCount = 9; // includes threshold column
+  const colCount = 10; // checkbox + name + source + qty + warehouse + store + cost + sell + threshold + actions
 
   return (
     <div className="space-y-6">
@@ -183,6 +187,8 @@ export default function InventoryPage() {
               "Units Per Stock": (r: any) => r.units_per_stock || 1,
               "Open Roll Remaining": (r: any) => r.open_roll_remaining || 0,
               "Quantity": (r: any) => r.quantity,
+              "Warehouse Qty": (r: any) => r.warehouse_quantity ?? 0,
+              "Store Qty": (r: any) => r.store_quantity ?? 0,
               "Low Stock Threshold": (r: any) => r.low_stock_threshold ?? "",
               "Cost Price": (r: any) => r.cost_price,
               "Selling Price": (r: any) => r.selling_price,
@@ -319,13 +325,14 @@ export default function InventoryPage() {
                 />
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="source" label="Source" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="quantity" label="Total" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="warehouse_quantity" label="Warehouse" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="store_quantity" label="Store" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="cost_price" label="Cost" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="selling_price" label="Sell" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="low_stock_threshold" label="Threshold" sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-24">Actions</TableHead>
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -353,8 +360,12 @@ export default function InventoryPage() {
                     aria-label={`Select ${item.name}`}
                   />
                 </TableCell>
-                <TableCell className="font-medium text-sm">{item.name}</TableCell>
-                <TableCell className="text-muted-foreground font-mono text-xs">{item.sku}</TableCell>
+                <TableCell className="font-medium text-sm">
+                  <div className="flex flex-col">
+                    <span>{item.name}</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">{item.sku}</span>
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Badge variant={((item as any).source === 'import') ? 'secondary' : 'outline'} className="text-[10px] uppercase">
                     {((item as any).source as string) || 'local'}
@@ -368,6 +379,8 @@ export default function InventoryPage() {
                     </span>
                   )}
                 </TableCell>
+                <TableCell className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>
+                <TableCell className="text-right text-sm">{(item as any).store_quantity ?? 0}</TableCell>
                 <TableCell className="text-right text-sm text-muted-foreground">
                   {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
                 </TableCell>
@@ -398,6 +411,9 @@ export default function InventoryPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => setTransferItem(item)} className="h-7 w-7 rounded-md" title="Transfer stock">
+                      <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
                       <Layers className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -430,6 +446,12 @@ export default function InventoryPage() {
           onOpenChange={(o) => { if (!o) setVariationsItem(null); }}
         />
       )}
+
+      <TransferStockDialog
+        item={transferItem}
+        open={!!transferItem}
+        onOpenChange={(o) => { if (!o) setTransferItem(null); }}
+      />
     </div>
   );
 }
