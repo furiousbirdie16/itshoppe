@@ -154,17 +154,26 @@ export default function InventoryPage() {
                 selectedIds={Array.from(selectedIds)}
                 entityLabel="items"
                 fields={([
-                  { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  { key: "name", label: "Name", type: "text" },
+                  { key: "sku", label: "SKU", type: "text" },
+                  { key: "description", label: "Description", type: "textarea" },
                   ...(isAdmin ? [
                     { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                  ] : []),
+                  { key: "base_unit", label: "Base Unit (e.g. pcs, m, kg)", type: "text" },
+                  { key: "units_per_stock", label: "Units Per Stock", type: "number", transform: (v) => parseFloat(v) || 1 },
+                  { key: "open_roll_remaining", label: "Open Roll Remaining", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  ...(isAdmin ? [
+                    { key: "warehouse_quantity", label: "Warehouse Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
+                    { key: "store_quantity", label: "Store Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
                   ] : []),
                   ...(canBulkEditCost ? [
                     { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
                   ] : []),
+                  { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
                   ...(isAdmin ? [
                     { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
                   ] : []),
-                  { key: "description", label: "Description", type: "textarea" },
                 ]) as BulkField[]}
                 updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
                 onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
