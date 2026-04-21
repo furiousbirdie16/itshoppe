@@ -757,6 +757,49 @@ export default function OnlineSalesPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Payment</Label>
+            <Select value={filterPayment} onValueChange={setFilterPayment}>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Payments</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Qty Min</Label>
+            <Input type="number" value={filterQtyMin} onChange={e => setFilterQtyMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Qty Max</Label>
+            <Input type="number" value={filterQtyMax} onChange={e => setFilterQtyMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Price Min</Label>
+            <Input type="number" value={filterPriceMin} onChange={e => setFilterPriceMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Price Max</Label>
+            <Input type="number" value={filterPriceMax} onChange={e => setFilterPriceMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Paid Min</Label>
+            <Input type="number" value={filterPaidMin} onChange={e => setFilterPaidMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Paid Max</Label>
+            <Input type="number" value={filterPaidMax} onChange={e => setFilterPaidMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Fees Min</Label>
+            <Input type="number" value={filterFeesMin} onChange={e => setFilterFeesMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Fees Max</Label>
+            <Input type="number" value={filterFeesMax} onChange={e => setFilterFeesMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
         </div>
       )}
