@@ -218,7 +218,7 @@ export interface OnlineSale {
 export interface InventoryMovement {
   id: string;
   item_id: string;
-  type: 'in_po' | 'out_invoice' | 'out_online_sale';
+  type: 'in_po' | 'out_invoice' | 'out_online_sale' | 'transfer_w2s' | 'transfer_s2w';
   quantity: number;
   reference_id: string | null;
   reference_type: string | null;
