@@ -458,7 +458,7 @@ export default function QuotationsPage() {
                             const newLines = [...lines];
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
-                              newLines[idx].item_name = `${item.name} — ${variation.name}`;
+                              newLines[idx].item_name = variation.name;
                               newLines[idx].variation_id = variation.id;
                               newLines[idx].unit_price = String(Number(variation.selling_price));
                             } else if (itemId) {
