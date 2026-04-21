@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
@@ -26,28 +26,36 @@ type SalesChannel = "shopee" | "lazada" | "others";
 
 type BulkCell = string | number | Date | boolean | null | undefined;
 
-interface SaleForm {
-  order_date: string;
-  order_number: string;
+interface SaleLine {
   product_name: string;
   quantity: number;
-  sales_channel: SalesChannel;
   posted_price: number;
-  notes: string;
   item_id: string;
   variation_id: string | null;
 }
 
+interface SaleForm {
+  order_date: string;
+  order_number: string;
+  sales_channel: SalesChannel;
+  notes: string;
+  lines: SaleLine[];
+}
+
+const emptyLine: SaleLine = {
+  product_name: "",
+  quantity: 1,
+  posted_price: 0,
+  item_id: "",
+  variation_id: null,
+};
+
 const emptyForm: SaleForm = {
   order_date: new Date().toISOString().split("T")[0],
   order_number: "",
-  product_name: "",
-  quantity: 1,
   sales_channel: "shopee",
-  posted_price: 0,
   notes: "",
-  item_id: "",
-  variation_id: null,
+  lines: [{ ...emptyLine }],
 };
 
 const generateOrderNumber = async (channel: SalesChannel) => {
@@ -140,19 +148,21 @@ export default function OnlineSalesPage() {
   const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); toast.success("Deleted"); } });
   const returnMut = useMutation({ mutationFn: ({ id, status }: { id: string; status: 'returned' | 'cancelled' }) => returnOnlineSale(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); } });
 
-  const openNew = () => { setEditingSale(null); setForm(emptyForm); setDialogOpen(true); };
+  const openNew = () => { setEditingSale(null); setForm({ ...emptyForm, lines: [{ ...emptyLine }] }); setDialogOpen(true); };
   const openEdit = (s: OnlineSale) => {
     setEditingSale(s);
     setForm({
       order_date: s.order_date,
       order_number: s.order_number,
-      product_name: s.product_name,
-      quantity: s.quantity || 1,
       sales_channel: s.sales_channel,
-      posted_price: s.posted_price,
       notes: s.notes || "",
-      item_id: s.item_id || "",
-      variation_id: (s as any).variation_id || null,
+      lines: [{
+        product_name: s.product_name,
+        quantity: s.quantity || 1,
+        posted_price: s.posted_price,
+        item_id: s.item_id || "",
+        variation_id: (s as any).variation_id || null,
+      }],
     });
     setDialogOpen(true);
   };
@@ -167,27 +177,42 @@ export default function OnlineSalesPage() {
   };
 
   const handleSave = async () => {
-    if (!form.product_name.trim()) { toast.error("Product name is required"); return; }
+    const cleanLines = form.lines.filter(l => l.product_name.trim());
+    if (cleanLines.length === 0) { toast.error("Add at least one item with a product name"); return; }
     setSaving(true);
     try {
-      const payload: any = {
-        order_date: form.order_date,
-        product_name: form.product_name,
-        quantity: form.quantity,
-        sales_channel: form.sales_channel,
-        posted_price: form.posted_price,
-        deal_price: 0,
-        notes: form.notes,
-        item_id: form.item_id || null,
-        variation_id: form.variation_id || null,
-      };
       if (editingSale) {
-        await updateOnlineSale(editingSale.id, payload);
+        // Edit mode = single line only
+        const line = cleanLines[0];
+        await updateOnlineSale(editingSale.id, {
+          order_date: form.order_date,
+          product_name: line.product_name,
+          quantity: line.quantity,
+          sales_channel: form.sales_channel,
+          posted_price: line.posted_price,
+          deal_price: 0,
+          notes: form.notes,
+          item_id: line.item_id || null,
+          variation_id: line.variation_id || null,
+        } as any);
         toast.success("Updated");
       } else {
         const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
-        await createOnlineSale({ ...payload, order_number: orderNumber });
-        toast.success("Created");
+        for (const line of cleanLines) {
+          await createOnlineSale({
+            order_number: orderNumber,
+            order_date: form.order_date,
+            product_name: line.product_name,
+            quantity: line.quantity,
+            sales_channel: form.sales_channel,
+            posted_price: line.posted_price,
+            deal_price: 0,
+            notes: form.notes,
+            item_id: line.item_id || null,
+            variation_id: line.variation_id || null,
+          });
+        }
+        toast.success(cleanLines.length > 1 ? `Created order with ${cleanLines.length} items` : "Created");
       }
       qc.invalidateQueries({ queryKey: ["online_sales"] });
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -220,6 +245,25 @@ export default function OnlineSalesPage() {
     sales_channel: (r) => r.sales_channel,
     posted_price: (r) => Number(r.posted_price),
     status: (r) => r.status || "completed",
+  });
+
+  // Group by Order ID for display. Preserves sort order based on first occurrence.
+  const groupedFiltered = useMemo(() => {
+    const map = new Map<string, any[]>();
+    const order: string[] = [];
+    for (const s of sortedFiltered) {
+      const key = s.order_number || `__no_id_${s.id}`;
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key)!.push(s);
+    }
+    return order.map(key => ({ orderNumber: map.get(key)![0].order_number, items: map.get(key)! }));
+  }, [sortedFiltered]);
+
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const toggleExpand = (key: string) => setExpandedOrders(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
   });
 
   // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
@@ -557,29 +601,100 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : sortedFiltered.length === 0 ? (
+                ) : groupedFiltered.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
-                ) : sortedFiltered.map((s: any) => (
-                  <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
-                    <TableCell>
-                      <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
-                    </TableCell>
-                    <TableCell className="text-sm">{s.order_date}</TableCell>
-                    <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
-                    <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
-                    <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
-                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                    <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ) : groupedFiltered.flatMap((group) => {
+                  const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
+                  if (group.items.length === 1) {
+                    const s = group.items[0];
+                    return [(
+                      <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                        <TableCell>
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
+                        </TableCell>
+                        <TableCell className="text-sm">{s.order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                        <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
+                        <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )];
+                  }
+                  // Multi-item group
+                  const isOpen = expandedOrders.has(groupKey);
+                  const totalQty = group.items.reduce((sum, x) => sum + (Number(x.quantity) || 1), 0);
+                  const totalAmount = group.items.reduce((sum, x) => sum + (Number(x.posted_price) || 0) * (Number(x.quantity) || 1), 0);
+                  const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
+                  const groupSelected = group.items.every(x => selected.has(x.id));
+                  return [
+                    (
+                      <TableRow key={`g-${groupKey}`} className="cursor-pointer hover:bg-muted/40 bg-muted/20" onClick={() => toggleExpand(groupKey)}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={groupSelected}
+                            onCheckedChange={() => {
+                              setSelected(prev => {
+                                const next = new Set(prev);
+                                if (groupSelected) group.items.forEach(x => next.delete(x.id));
+                                else group.items.forEach(x => next.add(x.id));
+                                return next;
+                              });
+                            }}
+                            aria-label={`Select order ${group.orderNumber}`}
+                          />
+                        </TableCell>
+                        <TableCell className="text-sm">{group.items[0].order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          <div className="flex items-center gap-1">
+                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            {group.orderNumber}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">
+                          <span className="text-muted-foreground italic">{group.items.length} items</span>
+                        </TableCell>
+                        <TableCell className="text-sm text-center font-semibold">{totalQty}</TableCell>
+                        <TableCell>
+                          {allChannelsSame
+                            ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(group.items[0].sales_channel)}`}>{channelLabel(group.items[0].sales_channel)}</span>
+                            : <span className="text-xs text-muted-foreground">Mixed</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    ),
+                    ...(isOpen ? group.items.map((s: any) => (
+                      <TableRow key={s.id} className={`${selected.has(s.id) ? "bg-muted/50" : ""}`}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.product_name}`} />
+                        </TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="text-xs text-muted-foreground pl-8">↳</TableCell>
+                        <TableCell className="text-sm pl-4">{s.product_name}</TableCell>
+                        <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )) : []),
+                  ];
+                })}
               </TableBody>
             </Table>
           </div>
@@ -606,25 +721,95 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : sortedFiltered.length === 0 ? (
+                ) : groupedFiltered.length === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No returned / cancelled orders</TableCell></TableRow>
-                ) : sortedFiltered.map((s: any) => (
-                  <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
-                    <TableCell>
-                      <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
-                    </TableCell>
-                    <TableCell className="text-sm">{s.order_date}</TableCell>
-                    <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
-                    <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
-                    <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
-                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                    <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(s.status)}`}>{statusLabel(s.status)}</span></TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ) : groupedFiltered.flatMap((group) => {
+                  const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
+                  if (group.items.length === 1) {
+                    const s = group.items[0];
+                    return [(
+                      <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                        <TableCell>
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
+                        </TableCell>
+                        <TableCell className="text-sm">{s.order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                        <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
+                        <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(s.status)}`}>{statusLabel(s.status)}</span></TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    )];
+                  }
+                  const isOpen = expandedOrders.has(groupKey);
+                  const totalQty = group.items.reduce((sum, x) => sum + (Number(x.quantity) || 1), 0);
+                  const totalAmount = group.items.reduce((sum, x) => sum + (Number(x.posted_price) || 0) * (Number(x.quantity) || 1), 0);
+                  const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
+                  const allStatusSame = group.items.every(x => (x.status || 'completed') === (group.items[0].status || 'completed'));
+                  const groupSelected = group.items.every(x => selected.has(x.id));
+                  return [
+                    (
+                      <TableRow key={`g-${groupKey}`} className="cursor-pointer hover:bg-muted/40 bg-muted/20" onClick={() => toggleExpand(groupKey)}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={groupSelected}
+                            onCheckedChange={() => {
+                              setSelected(prev => {
+                                const next = new Set(prev);
+                                if (groupSelected) group.items.forEach(x => next.delete(x.id));
+                                else group.items.forEach(x => next.add(x.id));
+                                return next;
+                              });
+                            }}
+                            aria-label={`Select order ${group.orderNumber}`}
+                          />
+                        </TableCell>
+                        <TableCell className="text-sm">{group.items[0].order_date}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          <div className="flex items-center gap-1">
+                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            {group.orderNumber}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium"><span className="text-muted-foreground italic">{group.items.length} items</span></TableCell>
+                        <TableCell className="text-sm text-center font-semibold">{totalQty}</TableCell>
+                        <TableCell>
+                          {allChannelsSame
+                            ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(group.items[0].sales_channel)}`}>{channelLabel(group.items[0].sales_channel)}</span>
+                            : <span className="text-xs text-muted-foreground">Mixed</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
+                        <TableCell>
+                          {allStatusSame
+                            ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(group.items[0].status)}`}>{statusLabel(group.items[0].status)}</span>
+                            : <span className="text-xs text-muted-foreground">Mixed</span>}
+                        </TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    ),
+                    ...(isOpen ? group.items.map((s: any) => (
+                      <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.product_name}`} />
+                        </TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="text-xs text-muted-foreground pl-8">↳</TableCell>
+                        <TableCell className="text-sm pl-4">{s.product_name}</TableCell>
+                        <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
+                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(s.status)}`}>{statusLabel(s.status)}</span></TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    )) : []),
+                  ];
+                })}
               </TableBody>
             </Table>
           </div>
@@ -633,43 +818,19 @@ export default function OnlineSalesPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingSale ? "Edit Sale" : "New Online Sale"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Order ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated if blank" className="h-9" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Inventory Item / Variation (optional)</Label>
-              <ItemSearch
-                items={items}
-                value={form.item_id}
-                variationId={form.variation_id}
-                onChange={(itemId, item, _custom, variation) => {
-                  if (variation && item) {
-                    setForm(f => ({ ...f, item_id: item.id, variation_id: variation.id, product_name: `${item.name} — ${variation.name}`, posted_price: Number(variation.selling_price) }));
-                  } else if (item) {
-                    setForm(f => ({ ...f, item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) }));
-                  }
-                }}
-              />
-              <p className="text-[10px] text-muted-foreground">Pick item or a variation (e.g. "DC male 5pcs"). Auto-fills name & price.</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Date</Label>
-              <DateField value={form.order_date} onChange={v => setForm(f => ({ ...f, order_date: v }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Product Name</Label>
-              <Input value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="Product name" className="h-9" />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Quantity</Label>
-                <Input type="number" min={1} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} className="h-9" />
+                <Label className="text-xs font-medium">Order ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input value={form.order_number} onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))} placeholder="Auto-generated" className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Date</Label>
+                <DateField value={form.order_date} onChange={v => setForm(f => ({ ...f, order_date: v }))} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Channel</Label>
@@ -682,11 +843,64 @@ export default function OnlineSalesPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Selling Price</Label>
-                <Input type="number" min={0} step="0.01" value={form.posted_price} onChange={e => setForm(f => ({ ...f, posted_price: parseFloat(e.target.value) || 0 }))} className="h-9" />
-              </div>
             </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Items {!editingSale && form.lines.length > 1 && <span className="text-muted-foreground font-normal">({form.lines.length})</span>}</Label>
+                {!editingSale && (
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setForm(f => ({ ...f, lines: [...f.lines, { ...emptyLine }] }))}>
+                    <Plus className="h-3 w-3 mr-1" /> Add another item
+                  </Button>
+                )}
+              </div>
+              {form.lines.map((line, idx) => (
+                <div key={idx} className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
+                    {!editingSale && form.lines.length > 1 && (
+                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Inventory Item / Variation (optional)</Label>
+                    <ItemSearch
+                      items={items}
+                      value={line.item_id}
+                      variationId={line.variation_id}
+                      onChange={(_itemId, item, _custom, variation) => {
+                        setForm(f => {
+                          const lines = [...f.lines];
+                          if (variation && item) {
+                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: variation.id, product_name: `${item.name} — ${variation.name}`, posted_price: Number(variation.selling_price) };
+                          } else if (item) {
+                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) };
+                          }
+                          return { ...f, lines };
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Product Name</Label>
+                    <Input value={line.product_name} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], product_name: e.target.value }; return { ...f, lines }; })} placeholder="Product name" className="h-9" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Quantity</Label>
+                      <Input type="number" min={1} value={line.quantity} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 1 }; return { ...f, lines }; })} className="h-9" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Selling Price</Label>
+                      <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
               <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
