@@ -5,6 +5,8 @@ export interface Item {
   sku: string;
   description: string;
   quantity: number;
+  warehouse_quantity: number;
+  store_quantity: number;
   cost_price: number;
   selling_price: number;
   low_stock_threshold: number;
