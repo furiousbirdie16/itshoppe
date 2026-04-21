@@ -44,7 +44,7 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
 
   const displayValue = () => {
     if (open) return query;
-    if (selectedVariation && selectedItem) return `${selectedItem.sku} — ${selectedVariation.name}`;
+    if (selectedVariation && selectedItem) return `${selectedItem.name} — ${selectedVariation.name}`;
     if (selectedItem) return `${selectedItem.sku} - ${selectedItem.name}`;
     if (customName) return customName;
     return query;
