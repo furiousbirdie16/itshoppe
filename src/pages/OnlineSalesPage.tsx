@@ -148,19 +148,21 @@ export default function OnlineSalesPage() {
   const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); toast.success("Deleted"); } });
   const returnMut = useMutation({ mutationFn: ({ id, status }: { id: string; status: 'returned' | 'cancelled' }) => returnOnlineSale(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); } });
 
-  const openNew = () => { setEditingSale(null); setForm(emptyForm); setDialogOpen(true); };
+  const openNew = () => { setEditingSale(null); setForm({ ...emptyForm, lines: [{ ...emptyLine }] }); setDialogOpen(true); };
   const openEdit = (s: OnlineSale) => {
     setEditingSale(s);
     setForm({
       order_date: s.order_date,
       order_number: s.order_number,
-      product_name: s.product_name,
-      quantity: s.quantity || 1,
       sales_channel: s.sales_channel,
-      posted_price: s.posted_price,
       notes: s.notes || "",
-      item_id: s.item_id || "",
-      variation_id: (s as any).variation_id || null,
+      lines: [{
+        product_name: s.product_name,
+        quantity: s.quantity || 1,
+        posted_price: s.posted_price,
+        item_id: s.item_id || "",
+        variation_id: (s as any).variation_id || null,
+      }],
     });
     setDialogOpen(true);
   };
