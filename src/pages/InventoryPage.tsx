@@ -173,7 +173,33 @@ export default function InventoryPage() {
           )}
           <ExportButton
             data={items}
-            columns={{ "Name": (r: any) => r.name, "SKU": (r: any) => r.sku, "Source": (r: any) => r.source || "local", "Description": (r: any) => r.description, "Quantity": (r: any) => r.quantity, "Cost Price": (r: any) => r.cost_price, "Selling Price": (r: any) => r.selling_price }}
+            columns={{
+              "Name": (r: any) => r.name,
+              "SKU": (r: any) => r.sku,
+              "Source": (r: any) => r.source || "local",
+              "Description": (r: any) => r.description || "",
+              "Base Unit": (r: any) => r.base_unit || "",
+              "Units Per Stock": (r: any) => r.units_per_stock || 1,
+              "Open Roll Remaining": (r: any) => r.open_roll_remaining || 0,
+              "Quantity": (r: any) => r.quantity,
+              "Low Stock Threshold": (r: any) => r.low_stock_threshold ?? "",
+              "Cost Price": (r: any) => r.cost_price,
+              "Selling Price": (r: any) => r.selling_price,
+              "Created": (r: any) => r.created_at || "",
+              "Updated": (r: any) => r.updated_at || "",
+            }}
+            childItems={{
+              table: "item_variations",
+              foreignKey: "item_id",
+              select: "*",
+              columns: {
+                "Variation Name": (v: any) => v.name || "",
+                "Variation SKU": (v: any) => v.sku || "",
+                "Variation Type": (v: any) => v.type || "",
+                "Variation Factor": (v: any) => Number(v.factor || 1),
+                "Variation Selling Price": (v: any) => Number(v.selling_price || 0),
+              },
+            }}
             dateField={(r: any) => r.created_at?.split("T")[0] || ""}
             fileName="Inventory"
           />
