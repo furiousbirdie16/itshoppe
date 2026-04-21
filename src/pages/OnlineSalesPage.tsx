@@ -136,7 +136,21 @@ export default function OnlineSalesPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterChannel, setFilterChannel] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all"); setFilter(""); };
+  const [filterPayment, setFilterPayment] = useState<string>("all");
+  const [filterPriceMin, setFilterPriceMin] = useState("");
+  const [filterPriceMax, setFilterPriceMax] = useState("");
+  const [filterPaidMin, setFilterPaidMin] = useState("");
+  const [filterPaidMax, setFilterPaidMax] = useState("");
+  const [filterFeesMin, setFilterFeesMin] = useState("");
+  const [filterFeesMax, setFilterFeesMax] = useState("");
+  const [filterQtyMin, setFilterQtyMin] = useState("");
+  const [filterQtyMax, setFilterQtyMax] = useState("");
+  const clearFilters = () => {
+    setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all");
+    setFilterPayment("all"); setFilterPriceMin(""); setFilterPriceMax("");
+    setFilterPaidMin(""); setFilterPaidMax(""); setFilterFeesMin(""); setFilterFeesMax("");
+    setFilterQtyMin(""); setFilterQtyMax(""); setFilter("");
+  };
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -236,6 +250,7 @@ export default function OnlineSalesPage() {
   };
 
   // Filter by tab + search + advanced filters
+  const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
   const filtered = sales.filter((s: any) => {
     const status = s.status || 'completed';
     if (activeTab === 'completed' && status !== 'completed') return false;
@@ -244,6 +259,20 @@ export default function OnlineSalesPage() {
     if (filterDateTo && (s.order_date || "") > filterDateTo) return false;
     if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
     if (filterStatus !== "all" && status !== filterStatus) return false;
+    if (filterPayment !== "all" && (s.payment_status || 'unpaid') !== filterPayment) return false;
+    const price = Number(s.posted_price || 0);
+    const pMin = num(filterPriceMin); if (pMin !== null && price < pMin) return false;
+    const pMax = num(filterPriceMax); if (pMax !== null && price > pMax) return false;
+    const paid = Number(s.amount_paid || 0);
+    const apMin = num(filterPaidMin); if (apMin !== null && paid < apMin) return false;
+    const apMax = num(filterPaidMax); if (apMax !== null && paid > apMax) return false;
+    const expected = price * Number(s.quantity || 1);
+    const fees = (s.payment_status === 'paid') ? expected - paid : 0;
+    const fMin = num(filterFeesMin); if (fMin !== null && fees < fMin) return false;
+    const fMax = num(filterFeesMax); if (fMax !== null && fees > fMax) return false;
+    const qty = Number(s.quantity || 1);
+    const qMin = num(filterQtyMin); if (qMin !== null && qty < qMin) return false;
+    const qMax = num(filterQtyMax); if (qMax !== null && qty > qMax) return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
@@ -256,6 +285,9 @@ export default function OnlineSalesPage() {
     quantity: (r) => Number(r.quantity || 1),
     sales_channel: (r) => r.sales_channel,
     posted_price: (r) => Number(r.posted_price),
+    amount_paid: (r) => Number(r.amount_paid || 0),
+    fees: (r) => r.payment_status === 'paid' ? (Number(r.posted_price || 0) * Number(r.quantity || 1)) - Number(r.amount_paid || 0) : 0,
+    payment_status: (r) => r.payment_status || 'unpaid',
     status: (r) => r.status || "completed",
   });
 
@@ -725,6 +757,49 @@ export default function OnlineSalesPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Payment</Label>
+            <Select value={filterPayment} onValueChange={setFilterPayment}>
+              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Payments</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Qty Min</Label>
+            <Input type="number" value={filterQtyMin} onChange={e => setFilterQtyMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Qty Max</Label>
+            <Input type="number" value={filterQtyMax} onChange={e => setFilterQtyMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Price Min</Label>
+            <Input type="number" value={filterPriceMin} onChange={e => setFilterPriceMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Price Max</Label>
+            <Input type="number" value={filterPriceMax} onChange={e => setFilterPriceMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Paid Min</Label>
+            <Input type="number" value={filterPaidMin} onChange={e => setFilterPaidMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Paid Max</Label>
+            <Input type="number" value={filterPaidMax} onChange={e => setFilterPaidMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Fees Min</Label>
+            <Input type="number" value={filterFeesMin} onChange={e => setFilterFeesMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Fees Max</Label>
+            <Input type="number" value={filterFeesMax} onChange={e => setFilterFeesMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
+          </div>
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
         </div>
       )}
@@ -764,9 +839,9 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
                   <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
                   <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
-                  <TableHead className="text-right text-xs">Amount Paid</TableHead>
-                  <TableHead className="text-right text-xs">Fees</TableHead>
-                  <TableHead className="text-xs">Payment</TableHead>
+                  <SortableHeader sortKey="amount_paid" label="Amount Paid" sort={sort} onToggle={toggle} align="right" />
+                  <SortableHeader sortKey="fees" label="Fees" sort={sort} onToggle={toggle} align="right" />
+                  <SortableHeader sortKey="payment_status" label="Payment" sort={sort} onToggle={toggle} />
                   <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
