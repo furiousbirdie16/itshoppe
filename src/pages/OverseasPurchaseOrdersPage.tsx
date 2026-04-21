@@ -282,7 +282,32 @@ export default function OverseasPurchaseOrdersPage() {
           )}
           <ExportButton
             data={orders}
-            columns={{ "PO #": (r: any) => r.po_number, "Supplier": (r: any) => r.overseas_suppliers?.name || "", "Status": (r: any) => r.status, "Currency": (r: any) => r.currency, "Exchange Rate": (r: any) => r.exchange_rate, "Order Date": (r: any) => r.order_date, "Total": (r: any) => r.total_amount }}
+            columns={{
+              "PO #": (r: any) => r.po_number,
+              "Order Date": (r: any) => r.order_date,
+              "Supplier": (r: any) => r.overseas_suppliers?.name || "",
+              "Status": (r: any) => r.status,
+              "Currency": (r: any) => r.currency,
+              "Exchange Rate": (r: any) => r.exchange_rate,
+              "Expected Delivery": (r: any) => r.expected_delivery || "",
+              "PO Total": (r: any) => r.total_amount,
+              "Notes": (r: any) => r.notes || "",
+            }}
+            childItems={{
+              table: "overseas_purchase_order_items",
+              foreignKey: "po_id",
+              select: "*, items(name, sku)",
+              columns: {
+                "Item Name": (li: any) => li.item_name || li.items?.name || "",
+                "SKU": (li: any) => li.items?.sku || "",
+                "Description": (li: any) => li.description || "",
+                "Quantity": (li: any) => Number(li.quantity || 0),
+                "Received": (li: any) => Number(li.received_quantity || 0),
+                "Received Date": (li: any) => li.received_date || "",
+                "Unit Cost": (li: any) => Number(li.unit_cost || 0),
+                "Line Total": (li: any) => Number(li.quantity || 0) * Number(li.unit_cost || 0),
+              },
+            }}
             dateField={(r: any) => r.order_date || ""}
             fileName="Overseas_POs"
           />

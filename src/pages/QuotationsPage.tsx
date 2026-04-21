@@ -310,7 +310,31 @@ export default function QuotationsPage() {
           </Button>
           <ExportButton
             data={filtered}
-            columns={{ "Quotation #": (r: any) => r.quotation_number, "Customer": (r: any) => r.customers?.name || "", "Sales Agent": (r: any) => r.sales_agent || "", "Status": (r: any) => r.status, "Date": (r: any) => r.quotation_date, "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "", "Due Date": (r: any) => getDueDate(r) || "", "Valid Until": (r: any) => r.valid_until || "", "Total": (r: any) => r.total_amount }}
+            columns={{
+              "Quotation #": (r: any) => r.quotation_number,
+              "Date": (r: any) => r.quotation_date,
+              "Customer": (r: any) => r.customers?.name || "",
+              "Sales Agent": (r: any) => r.sales_agent || "",
+              "Status": (r: any) => r.status,
+              "Payment Terms": (r: any) => r.payment_terms ? `${r.payment_terms} days` : "",
+              "Due Date": (r: any) => getDueDate(r) || "",
+              "Valid Until": (r: any) => r.valid_until || "",
+              "Quotation Total": (r: any) => r.total_amount,
+              "Notes": (r: any) => r.notes || "",
+            }}
+            childItems={{
+              table: "quotation_items",
+              foreignKey: "quotation_id",
+              select: "*, items(name, sku), item_variations(name, sku)",
+              columns: {
+                "Item Name": (li: any) => li.item_name || li.items?.name || "",
+                "SKU": (li: any) => li.items?.sku || li.item_variations?.sku || "",
+                "Variation": (li: any) => li.item_variations?.name || "",
+                "Quantity": (li: any) => Number(li.quantity || 0),
+                "Unit Price": (li: any) => Number(li.unit_price || 0),
+                "Line Total": (li: any) => Number(li.quantity || 0) * Number(li.unit_price || 0),
+              },
+            }}
             dateField={(r: any) => r.quotation_date || ""}
             fileName="Quotations"
           />
