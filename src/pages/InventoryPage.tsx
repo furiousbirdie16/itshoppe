@@ -100,6 +100,8 @@ export default function InventoryPage() {
     sku: (r) => r.sku,
     source: (r: any) => (r.source as string) || "local",
     quantity: (r) => Number(r.quantity),
+    warehouse_quantity: (r: any) => Number(r.warehouse_quantity ?? 0),
+    store_quantity: (r: any) => Number(r.store_quantity ?? 0),
     cost_price: (r) => Number(r.cost_price),
     selling_price: (r) => Number(r.selling_price),
     low_stock_threshold: (r) => Number(r.low_stock_threshold ?? 0),
