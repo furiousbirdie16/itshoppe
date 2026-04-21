@@ -145,6 +145,18 @@ export default function OnlineSalesPage() {
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Payment marking state
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [payTarget, setPayTarget] = useState<{ ids: string[]; orderNumber: string; expected: number } | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+
+  // Bulk payment upload state
+  const [bulkPayOpen, setBulkPayOpen] = useState(false);
+  const [bulkPayRows, setBulkPayRows] = useState<{ order_id: string; amount_paid: number; matched_ids: string[]; expected: number; valid: boolean; error?: string }[]>([]);
+  const [bulkPayUploading, setBulkPayUploading] = useState(false);
+  const [bulkPayFileName, setBulkPayFileName] = useState("");
+  const payFileRef = useRef<HTMLInputElement>(null);
+
   const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); toast.success("Deleted"); } });
   const returnMut = useMutation({ mutationFn: ({ id, status }: { id: string; status: 'returned' | 'cancelled' }) => returnOnlineSale(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); } });
 
