@@ -177,27 +177,42 @@ export default function OnlineSalesPage() {
   };
 
   const handleSave = async () => {
-    if (!form.product_name.trim()) { toast.error("Product name is required"); return; }
+    const cleanLines = form.lines.filter(l => l.product_name.trim());
+    if (cleanLines.length === 0) { toast.error("Add at least one item with a product name"); return; }
     setSaving(true);
     try {
-      const payload: any = {
-        order_date: form.order_date,
-        product_name: form.product_name,
-        quantity: form.quantity,
-        sales_channel: form.sales_channel,
-        posted_price: form.posted_price,
-        deal_price: 0,
-        notes: form.notes,
-        item_id: form.item_id || null,
-        variation_id: form.variation_id || null,
-      };
       if (editingSale) {
-        await updateOnlineSale(editingSale.id, payload);
+        // Edit mode = single line only
+        const line = cleanLines[0];
+        await updateOnlineSale(editingSale.id, {
+          order_date: form.order_date,
+          product_name: line.product_name,
+          quantity: line.quantity,
+          sales_channel: form.sales_channel,
+          posted_price: line.posted_price,
+          deal_price: 0,
+          notes: form.notes,
+          item_id: line.item_id || null,
+          variation_id: line.variation_id || null,
+        } as any);
         toast.success("Updated");
       } else {
         const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
-        await createOnlineSale({ ...payload, order_number: orderNumber });
-        toast.success("Created");
+        for (const line of cleanLines) {
+          await createOnlineSale({
+            order_number: orderNumber,
+            order_date: form.order_date,
+            product_name: line.product_name,
+            quantity: line.quantity,
+            sales_channel: form.sales_channel,
+            posted_price: line.posted_price,
+            deal_price: 0,
+            notes: form.notes,
+            item_id: line.item_id || null,
+            variation_id: line.variation_id || null,
+          });
+        }
+        toast.success(cleanLines.length > 1 ? `Created order with ${cleanLines.length} items` : "Created");
       }
       qc.invalidateQueries({ queryKey: ["online_sales"] });
       qc.invalidateQueries({ queryKey: ["items"] });
