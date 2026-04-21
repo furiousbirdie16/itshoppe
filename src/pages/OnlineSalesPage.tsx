@@ -250,6 +250,7 @@ export default function OnlineSalesPage() {
   };
 
   // Filter by tab + search + advanced filters
+  const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
   const filtered = sales.filter((s: any) => {
     const status = s.status || 'completed';
     if (activeTab === 'completed' && status !== 'completed') return false;
@@ -258,6 +259,20 @@ export default function OnlineSalesPage() {
     if (filterDateTo && (s.order_date || "") > filterDateTo) return false;
     if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
     if (filterStatus !== "all" && status !== filterStatus) return false;
+    if (filterPayment !== "all" && (s.payment_status || 'unpaid') !== filterPayment) return false;
+    const price = Number(s.posted_price || 0);
+    const pMin = num(filterPriceMin); if (pMin !== null && price < pMin) return false;
+    const pMax = num(filterPriceMax); if (pMax !== null && price > pMax) return false;
+    const paid = Number(s.amount_paid || 0);
+    const apMin = num(filterPaidMin); if (apMin !== null && paid < apMin) return false;
+    const apMax = num(filterPaidMax); if (apMax !== null && paid > apMax) return false;
+    const expected = price * Number(s.quantity || 1);
+    const fees = (s.payment_status === 'paid') ? expected - paid : 0;
+    const fMin = num(filterFeesMin); if (fMin !== null && fees < fMin) return false;
+    const fMax = num(filterFeesMax); if (fMax !== null && fees > fMax) return false;
+    const qty = Number(s.quantity || 1);
+    const qMin = num(filterQtyMin); if (qMin !== null && qty < qMin) return false;
+    const qMax = num(filterQtyMax); if (qMax !== null && qty > qMax) return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
@@ -270,6 +285,9 @@ export default function OnlineSalesPage() {
     quantity: (r) => Number(r.quantity || 1),
     sales_channel: (r) => r.sales_channel,
     posted_price: (r) => Number(r.posted_price),
+    amount_paid: (r) => Number(r.amount_paid || 0),
+    fees: (r) => r.payment_status === 'paid' ? (Number(r.posted_price || 0) * Number(r.quantity || 1)) - Number(r.amount_paid || 0) : 0,
+    payment_status: (r) => r.payment_status || 'unpaid',
     status: (r) => r.status || "completed",
   });
 
