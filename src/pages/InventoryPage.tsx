@@ -325,13 +325,14 @@ export default function InventoryPage() {
                 />
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="source" label="Source" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="quantity" label="Total" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="warehouse_quantity" label="Warehouse" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="store_quantity" label="Store" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="cost_price" label="Cost" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="selling_price" label="Sell" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="low_stock_threshold" label="Threshold" sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-24">Actions</TableHead>
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
