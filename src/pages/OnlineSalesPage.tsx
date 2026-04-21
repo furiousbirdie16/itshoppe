@@ -682,6 +682,9 @@ export default function OnlineSalesPage() {
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Bulk Upload
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setBulkPayOpen(true)}>
+            <DollarSign className="h-4 w-4 mr-1" /> Bulk Upload Payments
+          </Button>
           <Button size="sm" onClick={openNew}>
             <Plus className="h-4 w-4 mr-1" /> Add Sale
           </Button>
