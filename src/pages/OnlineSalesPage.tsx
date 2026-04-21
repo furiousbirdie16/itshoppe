@@ -247,6 +247,25 @@ export default function OnlineSalesPage() {
     status: (r) => r.status || "completed",
   });
 
+  // Group by Order ID for display. Preserves sort order based on first occurrence.
+  const groupedFiltered = useMemo(() => {
+    const map = new Map<string, any[]>();
+    const order: string[] = [];
+    for (const s of sortedFiltered) {
+      const key = s.order_number || `__no_id_${s.id}`;
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key)!.push(s);
+    }
+    return order.map(key => ({ orderNumber: map.get(key)![0].order_number, items: map.get(key)! }));
+  }, [sortedFiltered]);
+
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const toggleExpand = (key: string) => setExpandedOrders(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
   const totalSales = useMemo(() => {
     return filtered
