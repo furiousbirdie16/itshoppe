@@ -39,7 +39,7 @@ export default function InventoryPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
   const [transferItem, setTransferItem] = useState<Item | null>(null);
-  const [form, setForm] = useState({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
+  const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
 
@@ -60,10 +60,10 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku, description: item.description, quantity: String(item.quantity), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
+    setForm({ name: item.name, sku: item.sku, description: item.description, warehouse_quantity: String((item as any).warehouse_quantity ?? 0), store_quantity: String((item as any).store_quantity ?? 0), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
     setOpen(true);
   };
 
@@ -71,8 +71,10 @@ export default function InventoryPage() {
   const canEditCost = isAdmin || form.source === "local";
 
   const handleSubmit = () => {
+    const wh = parseInt(form.warehouse_quantity) || 0;
+    const st = parseInt(form.store_quantity) || 0;
     if (!editing) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), quantity: parseInt(form.quantity) || 0 };
+      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), warehouse_quantity: wh, store_quantity: st };
       if (isAdmin) data.source = form.source;
       else data.source = "local"; // non-admin new items default to local
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
