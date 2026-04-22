@@ -3,6 +3,30 @@ import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOr
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 
+const applyLocationDelta = (
+  current: { warehouse_quantity: number; store_quantity: number },
+  unitsToDeduct: number,
+) => {
+  let warehouse = Number(current.warehouse_quantity || 0);
+  let store = Number(current.store_quantity || 0);
+
+  if (unitsToDeduct > 0) {
+    const deductFromStore = Math.min(store, unitsToDeduct);
+    store -= deductFromStore;
+
+    const remaining = unitsToDeduct - deductFromStore;
+    const deductFromWarehouse = Math.min(warehouse, remaining);
+    warehouse -= deductFromWarehouse;
+  } else if (unitsToDeduct < 0) {
+    store += Math.abs(unitsToDeduct);
+  }
+
+  return {
+    warehouse_quantity: Math.max(0, warehouse),
+    store_quantity: Math.max(0, store),
+  };
+};
+
 // ---------- Item Variations ----------
 export const getItemVariations = async (itemId?: string): Promise<ItemVariation[]> => {
   let q = from("item_variations").select("*, items(*)").order("name");
@@ -65,23 +89,79 @@ export const applyStockChange = async (params: {
     const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
     if (v) {
       const variation = v as any;
-      const variationResult = applyVariationDelta(
-        { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0, units_per_stock: cur.units_per_stock || 1 },
-        { type: variation.type, factor: Number(variation.factor) },
-        qty,
-      );
-      next = {
-        quantity: variationResult.quantity,
-        warehouse_quantity: Math.max(0, (cur.warehouse_quantity || 0) - Number(variation.factor) * qty),
-        store_quantity: cur.store_quantity || 0,
-        open_roll_remaining: variationResult.open_roll_remaining,
-      };
       baseUnitsMoved = Number(variation.factor) * qty;
+
+      if (variation.type === "cut") {
+        let effectiveUnitsPerStock = Number(cur.units_per_stock || 1);
+
+        if (effectiveUnitsPerStock <= 1) {
+          const { data: cutVariations } = await from("item_variations")
+            .select("factor")
+            .eq("item_id", itemId)
+            .eq("type", "cut");
+
+          const fallbackUnitsPerStock = Math.max(
+            1,
+            ...((cutVariations as any[]) || []).map((entry: any) => Number(entry.factor) || 1),
+          );
+          effectiveUnitsPerStock = fallbackUnitsPerStock;
+        }
+
+        const variationResult = applyVariationDelta(
+          {
+            quantity: cur.quantity || 0,
+            open_roll_remaining: cur.open_roll_remaining || 0,
+            units_per_stock: effectiveUnitsPerStock,
+          },
+          { type: variation.type, factor: Number(variation.factor) },
+          qty,
+        );
+
+        const stockUnitsConsumed = Math.max(0, Number(cur.quantity || 0) - Number(variationResult.quantity || 0));
+        const stockUnitsRestored = Math.max(0, Number(variationResult.quantity || 0) - Number(cur.quantity || 0));
+        const locationResult = applyLocationDelta(
+          {
+            warehouse_quantity: cur.warehouse_quantity || 0,
+            store_quantity: cur.store_quantity || 0,
+          },
+          qty > 0 ? stockUnitsConsumed : -stockUnitsRestored,
+        );
+
+        next = {
+          quantity: variationResult.quantity,
+          warehouse_quantity: locationResult.warehouse_quantity,
+          store_quantity: locationResult.store_quantity,
+          open_roll_remaining: variationResult.open_roll_remaining,
+        };
+      } else {
+        const locationResult = applyLocationDelta(
+          {
+            warehouse_quantity: cur.warehouse_quantity || 0,
+            store_quantity: cur.store_quantity || 0,
+          },
+          baseUnitsMoved,
+        );
+
+        next = {
+          quantity: Math.max(0, (cur.quantity || 0) - baseUnitsMoved),
+          warehouse_quantity: locationResult.warehouse_quantity,
+          store_quantity: locationResult.store_quantity,
+          open_roll_remaining: cur.open_roll_remaining || 0,
+        };
+      }
     }
   } else {
     // Plain whole-unit deduction (legacy behavior).
+    const locationResult = applyLocationDelta(
+      {
+        warehouse_quantity: cur.warehouse_quantity || 0,
+        store_quantity: cur.store_quantity || 0,
+      },
+      qty,
+    );
     next.quantity = Math.max(0, (cur.quantity || 0) - qty);
-    next.warehouse_quantity = Math.max(0, (cur.warehouse_quantity || 0) - qty);
+    next.warehouse_quantity = locationResult.warehouse_quantity;
+    next.store_quantity = locationResult.store_quantity;
   }
 
   await from("items").update({
