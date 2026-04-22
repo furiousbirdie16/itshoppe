@@ -47,13 +47,18 @@ export const applyStockChange = async (params: {
   if (qty === 0) return;
 
   const { data: item } = await from("items")
-    .select("quantity, open_roll_remaining, units_per_stock")
+    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock")
     .eq("id", itemId)
     .single();
   if (!item) return;
   const cur = item as any;
 
-  let next = { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0 };
+   let next = {
+    quantity: cur.quantity || 0,
+    warehouse_quantity: cur.warehouse_quantity || 0,
+    store_quantity: cur.store_quantity || 0,
+    open_roll_remaining: cur.open_roll_remaining || 0,
+   };
   let baseUnitsMoved = qty; // for movement log when no variation
 
   if (variationId) {
@@ -65,15 +70,23 @@ export const applyStockChange = async (params: {
         { type: variation.type, factor: Number(variation.factor) },
         qty,
       );
+      next = {
+        ...next,
+        warehouse_quantity: Math.max(0, (cur.warehouse_quantity || 0) - Number(variation.factor) * qty),
+        store_quantity: cur.store_quantity || 0,
+      };
       baseUnitsMoved = Number(variation.factor) * qty;
     }
   } else {
     // Plain whole-unit deduction (legacy behavior).
     next.quantity = Math.max(0, (cur.quantity || 0) - qty);
+    next.warehouse_quantity = Math.max(0, (cur.warehouse_quantity || 0) - qty);
   }
 
   await from("items").update({
     quantity: next.quantity,
+    warehouse_quantity: next.warehouse_quantity,
+    store_quantity: next.store_quantity,
     open_roll_remaining: next.open_roll_remaining,
     updated_at: new Date().toISOString(),
   }).eq("id", itemId);
