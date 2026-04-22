@@ -128,8 +128,8 @@ export default function InvoicesPage() {
         ...(inv.sales_agent ? [{ label: "Sales Agent", value: inv.sales_agent }] : []),
       ],
       items: lineItems.map((li: any) => ({
-        name: li.items?.name || li.item_name || "—",
-        sku: li.items?.sku,
+        name: li.item_variations?.name || li.item_name || li.items?.name || "—",
+        sku: li.item_variations?.sku || li.items?.sku,
         quantity: li.quantity,
         unitPrice: Number(li.unit_price),
         total: li.quantity * Number(li.unit_price),
@@ -286,8 +286,8 @@ export default function InvoicesPage() {
               foreignKey: "invoice_id",
               select: "*, items(name, sku), item_variations(name, sku)",
               columns: {
-                "Item Name": (li: any) => li.item_name || li.items?.name || "",
-                "SKU": (li: any) => li.items?.sku || li.item_variations?.sku || "",
+                "Item Name": (li: any) => li.item_variations?.name || li.item_name || li.items?.name || "",
+                "SKU": (li: any) => li.item_variations?.sku || li.items?.sku || "",
                 "Variation": (li: any) => li.item_variations?.name || "",
                 "Quantity": (li: any) => Number(li.quantity || 0),
                 "Unit Price": (li: any) => Number(li.unit_price || 0),
@@ -470,8 +470,8 @@ export default function InvoicesPage() {
               <TableBody>
                 {invItems.map(ii => (
                   <TableRow key={ii.id}>
-                     <TableCell className="font-mono text-xs text-primary font-medium">{ii.items?.sku || "—"}</TableCell>
-                     <TableCell className="text-sm font-medium">{ii.items?.name || (ii as any).item_name || "—"}</TableCell>
+                     <TableCell className="font-mono text-xs text-primary font-medium">{(ii as any).item_variations?.sku || ii.items?.sku || "—"}</TableCell>
+                     <TableCell className="text-sm font-medium">{(ii as any).item_variations?.name || (ii as any).item_name || ii.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{ii.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
                     <TableCell className="text-sm text-right font-medium">{peso(ii.quantity * Number(ii.unit_price))}</TableCell>
