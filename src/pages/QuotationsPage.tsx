@@ -155,8 +155,8 @@ export default function QuotationsPage() {
         ...(dueDate ? [{ label: "Payment Due", value: dueDate }] : []),
       ],
       items: lineItems.map((li: any) => ({
-        name: li.items?.name || li.item_name || "—",
-        sku: li.items?.sku,
+        name: li.item_variations?.name || li.item_name || li.items?.name || "—",
+        sku: li.item_variations?.sku || li.items?.sku,
         quantity: li.quantity,
         unitPrice: Number(li.unit_price),
         total: li.quantity * Number(li.unit_price),
@@ -510,8 +510,8 @@ export default function QuotationsPage() {
               <TableBody>
                 {qItems.map(qi => (
                   <TableRow key={qi.id}>
-                     <TableCell className="font-mono text-xs text-primary font-medium">{qi.items?.sku || "—"}</TableCell>
-                     <TableCell className="text-sm font-medium">{qi.items?.name || (qi as any).item_name || "—"}</TableCell>
+                     <TableCell className="font-mono text-xs text-primary font-medium">{(qi as any).item_variations?.sku || qi.items?.sku || "—"}</TableCell>
+                     <TableCell className="text-sm font-medium">{(qi as any).item_variations?.name || (qi as any).item_name || qi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>
                     <TableCell className="text-sm text-right font-medium">{peso(qi.quantity * Number(qi.unit_price))}</TableCell>

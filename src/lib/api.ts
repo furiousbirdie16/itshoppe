@@ -47,33 +47,47 @@ export const applyStockChange = async (params: {
   if (qty === 0) return;
 
   const { data: item } = await from("items")
-    .select("quantity, open_roll_remaining, units_per_stock")
+    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock")
     .eq("id", itemId)
     .single();
   if (!item) return;
   const cur = item as any;
 
-  let next = { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0 };
+   let next = {
+    quantity: cur.quantity || 0,
+    warehouse_quantity: cur.warehouse_quantity || 0,
+    store_quantity: cur.store_quantity || 0,
+    open_roll_remaining: cur.open_roll_remaining || 0,
+   };
   let baseUnitsMoved = qty; // for movement log when no variation
 
   if (variationId) {
     const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
     if (v) {
       const variation = v as any;
-      next = applyVariationDelta(
+      const variationResult = applyVariationDelta(
         { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0, units_per_stock: cur.units_per_stock || 1 },
         { type: variation.type, factor: Number(variation.factor) },
         qty,
       );
+      next = {
+        quantity: variationResult.quantity,
+        warehouse_quantity: Math.max(0, (cur.warehouse_quantity || 0) - Number(variation.factor) * qty),
+        store_quantity: cur.store_quantity || 0,
+        open_roll_remaining: variationResult.open_roll_remaining,
+      };
       baseUnitsMoved = Number(variation.factor) * qty;
     }
   } else {
     // Plain whole-unit deduction (legacy behavior).
     next.quantity = Math.max(0, (cur.quantity || 0) - qty);
+    next.warehouse_quantity = Math.max(0, (cur.warehouse_quantity || 0) - qty);
   }
 
   await from("items").update({
     quantity: next.quantity,
+    warehouse_quantity: next.warehouse_quantity,
+    store_quantity: next.store_quantity,
     open_roll_remaining: next.open_roll_remaining,
     updated_at: new Date().toISOString(),
   }).eq("id", itemId);
@@ -398,8 +412,10 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
       (qItems as any[]).map((qi: any) => ({
         invoice_id: (invoice as any).id,
         item_id: qi.item_id,
+        item_name: qi.item_name,
         quantity: qi.quantity,
         unit_price: qi.unit_price,
+        variation_id: qi.variation_id,
       }))
     );
   }
