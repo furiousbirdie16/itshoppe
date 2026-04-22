@@ -398,8 +398,10 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
       (qItems as any[]).map((qi: any) => ({
         invoice_id: (invoice as any).id,
         item_id: qi.item_id,
+        item_name: qi.item_name,
         quantity: qi.quantity,
         unit_price: qi.unit_price,
+        variation_id: qi.variation_id,
       }))
     );
   }
