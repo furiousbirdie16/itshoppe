@@ -65,15 +65,16 @@ export const applyStockChange = async (params: {
     const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
     if (v) {
       const variation = v as any;
-      next = applyVariationDelta(
+      const variationResult = applyVariationDelta(
         { quantity: cur.quantity || 0, open_roll_remaining: cur.open_roll_remaining || 0, units_per_stock: cur.units_per_stock || 1 },
         { type: variation.type, factor: Number(variation.factor) },
         qty,
       );
       next = {
-        ...next,
+        quantity: variationResult.quantity,
         warehouse_quantity: Math.max(0, (cur.warehouse_quantity || 0) - Number(variation.factor) * qty),
         store_quantity: cur.store_quantity || 0,
+        open_roll_remaining: variationResult.open_roll_remaining,
       };
       baseUnitsMoved = Number(variation.factor) * qty;
     }
