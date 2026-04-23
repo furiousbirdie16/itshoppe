@@ -863,7 +863,7 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="product_name" label="Product Name" sort={sort} onToggle={toggle} />
                   <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
                   <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
-                  <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
+                  <SortableHeader sortKey="posted_price" label="Total Sales" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="amount_paid" label="Amount Paid" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="fees" label="Fees" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="payment_status" label="Payment" sort={sort} onToggle={toggle} />
@@ -893,7 +893,7 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm">{peso(Number(s.posted_price || 0) * Number(s.quantity || 1))}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell>
