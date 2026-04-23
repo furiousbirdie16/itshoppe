@@ -23,13 +23,6 @@ export default function SuppliersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
-  const filtered = suppliers.filter((supplier) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [supplier.name, supplier.contact_person, supplier.email, supplier.phone, supplier.address]
-      .some((value) => (value || "").toLowerCase().includes(q));
-  });
-
   const toggleAll = () => {
     if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map(s => s.id)));
@@ -46,6 +39,12 @@ export default function SuppliersPage() {
   });
 
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
+  const filtered = suppliers.filter((supplier) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [supplier.name, supplier.contact_person, supplier.email, supplier.phone, supplier.address]
+      .some((value) => (value || "").toLowerCase().includes(q));
+  });
   const { sort, toggle, sorted: sortedSuppliers } = useSort<Supplier>(filtered, {
     name: (r) => r.name,
     contact_person: (r) => r.contact_person,

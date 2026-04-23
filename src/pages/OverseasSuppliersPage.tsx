@@ -27,21 +27,6 @@ export default function OverseasSuppliersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
-  const filtered = suppliers.filter((supplier) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [
-      supplier.name,
-      supplier.country,
-      supplier.contact_person,
-      supplier.currency,
-      String(supplier.exchange_rate ?? ""),
-      supplier.email,
-      supplier.phone,
-      supplier.notes,
-    ].some((value) => (value || "").toLowerCase().includes(q));
-  });
-
   const toggleAll = () => {
     if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map(s => s.id)));
@@ -63,6 +48,20 @@ export default function OverseasSuppliersPage() {
   const [convRate, setConvRate] = useState("");
 
   const { data: suppliers = [], isLoading } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
+  const filtered = suppliers.filter((supplier) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      supplier.name,
+      supplier.country,
+      supplier.contact_person,
+      supplier.currency,
+      String(supplier.exchange_rate ?? ""),
+      supplier.email,
+      supplier.phone,
+      supplier.notes,
+    ].some((value) => (value || "").toLowerCase().includes(q));
+  });
   const { sort, toggle, sorted: sortedSuppliers } = useSort<OverseasSupplier>(filtered, {
     name: (r) => r.name,
     country: (r) => r.country,

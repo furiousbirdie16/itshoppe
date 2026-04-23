@@ -23,13 +23,6 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
-  const filtered = customers.filter((customer) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [customer.name, customer.contact_person, customer.email, customer.phone, customer.address]
-      .some((value) => (value || "").toLowerCase().includes(q));
-  });
-
   const toggleAll = () => {
     if (filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map(c => c.id)));
@@ -46,6 +39,12 @@ export default function CustomersPage() {
   });
 
   const { data: customers = [], isLoading } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const filtered = customers.filter((customer) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [customer.name, customer.contact_person, customer.email, customer.phone, customer.address]
+      .some((value) => (value || "").toLowerCase().includes(q));
+  });
   const { sort, toggle, sorted: sortedCustomers } = useSort<Customer>(filtered, {
     name: (r) => r.name,
     contact_person: (r) => r.contact_person,
