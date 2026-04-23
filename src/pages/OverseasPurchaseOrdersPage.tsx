@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
@@ -33,6 +33,27 @@ interface LineItem {
   item_id: string;
 }
 
+interface IncomingStockRow {
+  id: string;
+  po_id: string;
+  po_number: string;
+  supplier_name: string;
+  status: string;
+  currency: "USD" | "RMB";
+  exchange_rate: number;
+  order_date: string;
+  expected_delivery: string | null;
+  item_name: string;
+  description: string;
+  sku: string;
+  ordered_quantity: number;
+  received_quantity: number;
+  remaining_quantity: number;
+  unit_cost: number;
+  line_total: number;
+  php_value: number;
+}
+
 const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "", unit_cost: "", item_id: "" });
 
 export default function OverseasPurchaseOrdersPage() {
@@ -50,6 +71,9 @@ export default function OverseasPurchaseOrdersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [incomingSearch, setIncomingSearch] = useState("");
+  const [incomingSupplierFilter, setIncomingSupplierFilter] = useState<string>("all");
+  const [incomingReceiptFilter, setIncomingReceiptFilter] = useState<string>("incoming");
 
   const toggleAll = () => {
     if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
@@ -241,6 +265,84 @@ export default function OverseasPurchaseOrdersPage() {
   const foreignTotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0);
   const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
   const currencySymbol = currency === "USD" ? "$" : "¥";
+
+  const incomingRows = useMemo<IncomingStockRow[]>(() => {
+    const ordersById = new Map(orders.map((order) => [order.id, order]));
+
+    return allPOItems.map((item) => {
+      const po = ordersById.get(item.po_id);
+      const orderedQuantity = Number(item.quantity || 0);
+      const receivedQuantity = Number(item.received_quantity || 0);
+      const remainingQuantity = Math.max(0, orderedQuantity - receivedQuantity);
+      const unitCost = Number(item.unit_cost || 0);
+      const lineTotal = orderedQuantity * unitCost;
+      const exchangeRate = Number(po?.exchange_rate || 1);
+
+      return {
+        id: item.id,
+        po_id: item.po_id,
+        po_number: po?.po_number || "—",
+        supplier_name: po?.overseas_suppliers?.name || "—",
+        status: po?.status || "draft",
+        currency: (po?.currency || "USD") as "USD" | "RMB",
+        exchange_rate: exchangeRate,
+        order_date: po?.order_date || "",
+        expected_delivery: po?.expected_delivery || null,
+        item_name: item.item_name,
+        description: item.description || "",
+        sku: item.items?.sku || "",
+        ordered_quantity: orderedQuantity,
+        received_quantity: receivedQuantity,
+        remaining_quantity: remainingQuantity,
+        unit_cost: unitCost,
+        line_total: lineTotal,
+        php_value: lineTotal * exchangeRate,
+      };
+    });
+  }, [allPOItems, orders]);
+
+  const filteredIncomingRows = incomingRows.filter((row) => {
+    const q = incomingSearch.trim().toLowerCase();
+    const matchesSearch = !q || [
+      row.po_number,
+      row.supplier_name,
+      row.item_name,
+      row.description,
+      row.sku,
+      row.status,
+      row.order_date,
+      row.expected_delivery,
+    ].some((value) => (value || "").toString().toLowerCase().includes(q));
+
+    const matchesSupplier = incomingSupplierFilter === "all" || row.supplier_name === incomingSupplierFilter;
+    const matchesReceipt =
+      incomingReceiptFilter === "all" ||
+      (incomingReceiptFilter === "incoming" && row.remaining_quantity > 0) ||
+      (incomingReceiptFilter === "received" && row.remaining_quantity === 0) ||
+      (incomingReceiptFilter === "partial" && row.received_quantity > 0 && row.remaining_quantity > 0) ||
+      (incomingReceiptFilter === "unreceived" && row.received_quantity === 0);
+
+    return matchesSearch && matchesSupplier && matchesReceipt;
+  });
+
+  const {
+    sort: incomingSort,
+    toggle: toggleIncomingSort,
+    sorted: sortedIncomingRows,
+  } = useSort<IncomingStockRow>(filteredIncomingRows, {
+    po_number: (row) => row.po_number,
+    supplier: (row) => row.supplier_name,
+    product: (row) => row.item_name,
+    sku: (row) => row.sku,
+    ordered: (row) => row.ordered_quantity,
+    received: (row) => row.received_quantity,
+    remaining: (row) => row.remaining_quantity,
+    unit_cost: (row) => row.unit_cost,
+    line_total: (row) => row.line_total,
+    php_value: (row) => row.php_value,
+    order_date: (row) => row.order_date,
+    expected_delivery: (row) => row.expected_delivery || "",
+  });
 
   // Total value of items not yet received across all open POs (in PHP)
   const notReceivedPhpTotal = (() => {
@@ -626,6 +728,136 @@ export default function OverseasPurchaseOrdersPage() {
         </div>
         <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
       </div>
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Incoming Stocks</h2>
+            <p className="text-sm text-muted-foreground">
+              {filteredIncomingRows.length} item{filteredIncomingRows.length !== 1 ? "s" : ""}
+              {filteredIncomingRows.length !== incomingRows.length ? ` (filtered from ${incomingRows.length})` : ""}
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_180px] xl:items-end">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search ordered products..."
+                value={incomingSearch}
+                onChange={(e) => setIncomingSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Supplier</Label>
+              <Select value={incomingSupplierFilter} onValueChange={setIncomingSupplierFilter}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All suppliers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All suppliers</SelectItem>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.name}>{supplier.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Receiving Status</Label>
+              <Select value={incomingReceiptFilter} onValueChange={setIncomingReceiptFilter}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="incoming">Still incoming</SelectItem>
+                  <SelectItem value="all">All ordered items</SelectItem>
+                  <SelectItem value="partial">Partially received</SelectItem>
+                  <SelectItem value="unreceived">Not yet received</SelectItem>
+                  <SelectItem value="received">Fully received</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Ordered Qty</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {filteredIncomingRows.reduce((sum, row) => sum + row.ordered_quantity, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Received Qty</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {filteredIncomingRows.reduce((sum, row) => sum + row.received_quantity, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Remaining Qty</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {filteredIncomingRows.reduce((sum, row) => sum + row.remaining_quantity, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
+            <p className="mt-1 text-2xl font-semibold text-primary">
+              {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
+            </p>
+          </div>
+        </div>
+
+        <div className="data-table-wrapper">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <SortableHeader sortKey="po_number" label="PO #" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="supplier" label="Supplier" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="product" label="Product" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="sku" label="SKU" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="ordered" label="Ordered" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="received" label="Received" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="remaining" label="Remaining" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="unit_cost" label="Unit Cost" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="php_value" label="PHP Value" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="expected_delivery" label="ETA" sort={incomingSort} onToggle={toggleIncomingSort} />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedIncomingRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10}>
+                    <div className="empty-state">
+                      <ShoppingCart className="empty-state-icon" />
+                      <p className="text-sm">No ordered products match your filters</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : sortedIncomingRows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="text-sm font-mono font-medium">{row.po_number}</TableCell>
+                  <TableCell className="text-sm">{row.supplier_name}</TableCell>
+                  <TableCell>
+                    <div className="min-w-[180px]">
+                      <p className="text-sm font-medium">{row.item_name}</p>
+                      <p className="text-xs text-muted-foreground">{row.description || "—"}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm font-mono">{row.sku || "—"}</TableCell>
+                  <TableCell className="text-sm text-right">{row.ordered_quantity}</TableCell>
+                  <TableCell className="text-sm text-right">{row.received_quantity}</TableCell>
+                  <TableCell className="text-sm text-right font-medium">{row.remaining_quantity}</TableCell>
+                  <TableCell className="text-sm text-right font-mono">
+                    {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>
+                  <TableCell className="text-sm">{row.expected_delivery ? new Date(row.expected_delivery).toLocaleDateString("en-US") : "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
 
       <div className="data-table-wrapper">
         <Table>
