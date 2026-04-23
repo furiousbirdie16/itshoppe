@@ -70,8 +70,8 @@ export default function ShipmentTrackingPage() {
   });
 
   const toggleAll = () => {
-    if (selectedIds.size === shipments.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(shipments.map(s => s.id)));
+    if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((s) => s.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);

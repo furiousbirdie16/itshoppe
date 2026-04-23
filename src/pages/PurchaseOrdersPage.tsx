@@ -54,8 +54,8 @@ export default function PurchaseOrdersPage() {
   const dueDate = form.payment_terms ? addDays(form.order_date, parseInt(form.payment_terms) || 0) : "";
 
   const toggleAll = () => {
-    if (selectedIds.size === pos.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(pos.map(p => p.id)));
+    if (filtered.length > 0 && filtered.every((p: any) => selectedIds.has(p.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((p: any) => p.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
