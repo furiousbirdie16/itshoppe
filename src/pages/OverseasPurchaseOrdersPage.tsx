@@ -729,6 +729,136 @@ export default function OverseasPurchaseOrdersPage() {
         <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
       </div>
 
+      <section className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Incoming Stocks</h2>
+            <p className="text-sm text-muted-foreground">
+              {filteredIncomingRows.length} item{filteredIncomingRows.length !== 1 ? "s" : ""}
+              {filteredIncomingRows.length !== incomingRows.length ? ` (filtered from ${incomingRows.length})` : ""}
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_180px] xl:items-end">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search ordered products..."
+                value={incomingSearch}
+                onChange={(e) => setIncomingSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Supplier</Label>
+              <Select value={incomingSupplierFilter} onValueChange={setIncomingSupplierFilter}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All suppliers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All suppliers</SelectItem>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.name}>{supplier.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Receiving Status</Label>
+              <Select value={incomingReceiptFilter} onValueChange={setIncomingReceiptFilter}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="incoming">Still incoming</SelectItem>
+                  <SelectItem value="all">All ordered items</SelectItem>
+                  <SelectItem value="partial">Partially received</SelectItem>
+                  <SelectItem value="unreceived">Not yet received</SelectItem>
+                  <SelectItem value="received">Fully received</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Ordered Qty</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {filteredIncomingRows.reduce((sum, row) => sum + row.ordered_quantity, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Received Qty</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {filteredIncomingRows.reduce((sum, row) => sum + row.received_quantity, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Remaining Qty</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {filteredIncomingRows.reduce((sum, row) => sum + row.remaining_quantity, 0)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
+            <p className="mt-1 text-2xl font-semibold text-primary">
+              {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
+            </p>
+          </div>
+        </div>
+
+        <div className="data-table-wrapper">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <SortableHeader sortKey="po_number" label="PO #" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="supplier" label="Supplier" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="product" label="Product" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="sku" label="SKU" sort={incomingSort} onToggle={toggleIncomingSort} />
+                <SortableHeader sortKey="ordered" label="Ordered" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="received" label="Received" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="remaining" label="Remaining" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="unit_cost" label="Unit Cost" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="php_value" label="PHP Value" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                <SortableHeader sortKey="expected_delivery" label="ETA" sort={incomingSort} onToggle={toggleIncomingSort} />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedIncomingRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10}>
+                    <div className="empty-state">
+                      <ShoppingCart className="empty-state-icon" />
+                      <p className="text-sm">No ordered products match your filters</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : sortedIncomingRows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="text-sm font-mono font-medium">{row.po_number}</TableCell>
+                  <TableCell className="text-sm">{row.supplier_name}</TableCell>
+                  <TableCell>
+                    <div className="min-w-[180px]">
+                      <p className="text-sm font-medium">{row.item_name}</p>
+                      <p className="text-xs text-muted-foreground">{row.description || "—"}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm font-mono">{row.sku || "—"}</TableCell>
+                  <TableCell className="text-sm text-right">{row.ordered_quantity}</TableCell>
+                  <TableCell className="text-sm text-right">{row.received_quantity}</TableCell>
+                  <TableCell className="text-sm text-right font-medium">{row.remaining_quantity}</TableCell>
+                  <TableCell className="text-sm text-right font-mono">
+                    {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>
+                  <TableCell className="text-sm">{row.expected_delivery ? new Date(row.expected_delivery).toLocaleDateString("en-US") : "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
