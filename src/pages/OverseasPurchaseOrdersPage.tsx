@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
@@ -33,6 +33,27 @@ interface LineItem {
   item_id: string;
 }
 
+interface IncomingStockRow {
+  id: string;
+  po_id: string;
+  po_number: string;
+  supplier_name: string;
+  status: string;
+  currency: "USD" | "RMB";
+  exchange_rate: number;
+  order_date: string;
+  expected_delivery: string | null;
+  item_name: string;
+  description: string;
+  sku: string;
+  ordered_quantity: number;
+  received_quantity: number;
+  remaining_quantity: number;
+  unit_cost: number;
+  line_total: number;
+  php_value: number;
+}
+
 const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "", unit_cost: "", item_id: "" });
 
 export default function OverseasPurchaseOrdersPage() {
@@ -50,6 +71,9 @@ export default function OverseasPurchaseOrdersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [incomingSearch, setIncomingSearch] = useState("");
+  const [incomingSupplierFilter, setIncomingSupplierFilter] = useState<string>("all");
+  const [incomingReceiptFilter, setIncomingReceiptFilter] = useState<string>("incoming");
 
   const toggleAll = () => {
     if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
@@ -241,6 +265,84 @@ export default function OverseasPurchaseOrdersPage() {
   const foreignTotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0);
   const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
   const currencySymbol = currency === "USD" ? "$" : "¥";
+
+  const incomingRows = useMemo<IncomingStockRow[]>(() => {
+    const ordersById = new Map(orders.map((order) => [order.id, order]));
+
+    return allPOItems.map((item) => {
+      const po = ordersById.get(item.po_id);
+      const orderedQuantity = Number(item.quantity || 0);
+      const receivedQuantity = Number(item.received_quantity || 0);
+      const remainingQuantity = Math.max(0, orderedQuantity - receivedQuantity);
+      const unitCost = Number(item.unit_cost || 0);
+      const lineTotal = orderedQuantity * unitCost;
+      const exchangeRate = Number(po?.exchange_rate || 1);
+
+      return {
+        id: item.id,
+        po_id: item.po_id,
+        po_number: po?.po_number || "—",
+        supplier_name: po?.overseas_suppliers?.name || "—",
+        status: po?.status || "draft",
+        currency: (po?.currency || "USD") as "USD" | "RMB",
+        exchange_rate: exchangeRate,
+        order_date: po?.order_date || "",
+        expected_delivery: po?.expected_delivery || null,
+        item_name: item.item_name,
+        description: item.description || "",
+        sku: item.items?.sku || "",
+        ordered_quantity: orderedQuantity,
+        received_quantity: receivedQuantity,
+        remaining_quantity: remainingQuantity,
+        unit_cost: unitCost,
+        line_total: lineTotal,
+        php_value: lineTotal * exchangeRate,
+      };
+    });
+  }, [allPOItems, orders]);
+
+  const filteredIncomingRows = incomingRows.filter((row) => {
+    const q = incomingSearch.trim().toLowerCase();
+    const matchesSearch = !q || [
+      row.po_number,
+      row.supplier_name,
+      row.item_name,
+      row.description,
+      row.sku,
+      row.status,
+      row.order_date,
+      row.expected_delivery,
+    ].some((value) => (value || "").toString().toLowerCase().includes(q));
+
+    const matchesSupplier = incomingSupplierFilter === "all" || row.supplier_name === incomingSupplierFilter;
+    const matchesReceipt =
+      incomingReceiptFilter === "all" ||
+      (incomingReceiptFilter === "incoming" && row.remaining_quantity > 0) ||
+      (incomingReceiptFilter === "received" && row.remaining_quantity === 0) ||
+      (incomingReceiptFilter === "partial" && row.received_quantity > 0 && row.remaining_quantity > 0) ||
+      (incomingReceiptFilter === "unreceived" && row.received_quantity === 0);
+
+    return matchesSearch && matchesSupplier && matchesReceipt;
+  });
+
+  const {
+    sort: incomingSort,
+    toggle: toggleIncomingSort,
+    sorted: sortedIncomingRows,
+  } = useSort<IncomingStockRow>(filteredIncomingRows, {
+    po_number: (row) => row.po_number,
+    supplier: (row) => row.supplier_name,
+    product: (row) => row.item_name,
+    sku: (row) => row.sku,
+    ordered: (row) => row.ordered_quantity,
+    received: (row) => row.received_quantity,
+    remaining: (row) => row.remaining_quantity,
+    unit_cost: (row) => row.unit_cost,
+    line_total: (row) => row.line_total,
+    php_value: (row) => row.php_value,
+    order_date: (row) => row.order_date,
+    expected_delivery: (row) => row.expected_delivery || "",
+  });
 
   // Total value of items not yet received across all open POs (in PHP)
   const notReceivedPhpTotal = (() => {
