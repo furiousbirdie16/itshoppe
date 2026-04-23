@@ -161,7 +161,13 @@ export default function OverseasPurchaseOrdersPage() {
         await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); toast.success("Overseas PO created"); },
+    onSuccess: (po) => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      setOpen(false);
+      toast.success("Overseas PO created");
+      openPreview(po as OverseasPurchaseOrder);
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -261,6 +267,39 @@ export default function OverseasPurchaseOrdersPage() {
 
   const updateLine = (idx: number, field: keyof LineItem, value: string | number) => {
     setLines(lines.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+  };
+
+  const openPreview = async (po: OverseasPurchaseOrder) => {
+    const poItems = await getOverseasPOItems(po.id);
+    setPreviewData({
+      type: "purchase_order",
+      number: po.po_number,
+      date: po.order_date || "",
+      status: po.status,
+      currencyCode: po.currency,
+      currencySymbol: po.currency === "USD" ? "$" : "¥",
+      notes: po.notes || "",
+      recipientLabel: "Supplier",
+      recipientName: po.overseas_suppliers?.name || "—",
+      recipientContact: po.overseas_suppliers?.contact_person || undefined,
+      recipientEmail: po.overseas_suppliers?.email || undefined,
+      recipientPhone: po.overseas_suppliers?.phone || undefined,
+      recipientAddress: po.overseas_suppliers?.address || undefined,
+      extraFields: [
+        { label: "Currency", value: po.currency },
+        { label: "Exchange Rate", value: String(po.exchange_rate || 1) },
+        ...(po.expected_delivery ? [{ label: "ETA", value: po.expected_delivery }] : []),
+      ],
+      items: poItems.map((item) => ({
+        name: item.item_name || item.items?.name || "—",
+        sku: item.items?.sku || undefined,
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.unit_cost || 0),
+        total: Number(item.quantity || 0) * Number(item.unit_cost || 0),
+      })),
+      totalAmount: Number(po.total_amount || 0),
+    });
+    setPreviewOpen(true);
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
