@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Truck } from "lucide-react";
+import { Plus, Pencil, Trash2, Truck, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Supplier } from "@/types/database";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
@@ -21,10 +21,18 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "", address: "" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+
+  const filtered = suppliers.filter((supplier) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [supplier.name, supplier.contact_person, supplier.email, supplier.phone, supplier.address]
+      .some((value) => (value || "").toLowerCase().includes(q));
+  });
 
   const toggleAll = () => {
-    if (selectedIds.size === suppliers.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(suppliers.map(s => s.id)));
+    if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(s => s.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -38,7 +46,7 @@ export default function SuppliersPage() {
   });
 
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
-  const { sort, toggle, sorted: sortedSuppliers } = useSort<Supplier>(suppliers, {
+  const { sort, toggle, sorted: sortedSuppliers } = useSort<Supplier>(filtered, {
     name: (r) => r.name,
     contact_person: (r) => r.contact_person,
     email: (r) => r.email,
@@ -74,7 +82,7 @@ export default function SuppliersPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Suppliers</h1>
-          <p className="page-description">{suppliers.length} suppliers</p>
+          <p className="page-description">{filtered.length} supplier{filtered.length !== 1 ? "s" : ""}{filtered.length !== suppliers.length ? ` (filtered from ${suppliers.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -100,6 +108,16 @@ export default function SuppliersPage() {
             <Plus className="h-4 w-4 mr-1.5" /> Add Supplier
           </Button>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search suppliers..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -137,7 +155,7 @@ export default function SuppliersPage() {
         <Table>
           <TableHeader>
            <TableRow>
-              <TableHead className="w-10"><Checkbox checked={suppliers.length > 0 && selectedIds.size === suppliers.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />

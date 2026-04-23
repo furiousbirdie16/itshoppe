@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Customer } from "@/types/database";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
@@ -21,10 +21,18 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "", address: "" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+
+  const filtered = customers.filter((customer) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [customer.name, customer.contact_person, customer.email, customer.phone, customer.address]
+      .some((value) => (value || "").toLowerCase().includes(q));
+  });
 
   const toggleAll = () => {
-    if (selectedIds.size === customers.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(customers.map(c => c.id)));
+    if (filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(c => c.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -38,7 +46,7 @@ export default function CustomersPage() {
   });
 
   const { data: customers = [], isLoading } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { sort, toggle, sorted: sortedCustomers } = useSort<Customer>(customers, {
+  const { sort, toggle, sorted: sortedCustomers } = useSort<Customer>(filtered, {
     name: (r) => r.name,
     contact_person: (r) => r.contact_person,
     email: (r) => r.email,
@@ -74,7 +82,7 @@ export default function CustomersPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Customers</h1>
-          <p className="page-description">{customers.length} customers</p>
+          <p className="page-description">{filtered.length} customer{filtered.length !== 1 ? "s" : ""}{filtered.length !== customers.length ? ` (filtered from ${customers.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -100,6 +108,16 @@ export default function CustomersPage() {
             <Plus className="h-4 w-4 mr-1.5" /> Add Customer
           </Button>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search customers..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -137,7 +155,7 @@ export default function CustomersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={customers.length > 0 && selectedIds.size === customers.length} onCheckedChange={toggleAll} /></TableHead>
+               <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />

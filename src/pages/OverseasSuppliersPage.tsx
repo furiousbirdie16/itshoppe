@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Globe, ArrowRightLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, Globe, ArrowRightLeft, Search } from "lucide-react";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import type { OverseasSupplier } from "@/types/database";
@@ -25,10 +25,26 @@ export default function OverseasSuppliersPage() {
   const [editing, setEditing] = useState<OverseasSupplier | null>(null);
   const [form, setForm] = useState(defaultForm);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+
+  const filtered = suppliers.filter((supplier) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      supplier.name,
+      supplier.country,
+      supplier.contact_person,
+      supplier.currency,
+      String(supplier.exchange_rate ?? ""),
+      supplier.email,
+      supplier.phone,
+      supplier.notes,
+    ].some((value) => (value || "").toLowerCase().includes(q));
+  });
 
   const toggleAll = () => {
-    if (selectedIds.size === suppliers.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(suppliers.map(s => s.id)));
+    if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(s => s.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -47,7 +63,7 @@ export default function OverseasSuppliersPage() {
   const [convRate, setConvRate] = useState("");
 
   const { data: suppliers = [], isLoading } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
-  const { sort, toggle, sorted: sortedSuppliers } = useSort<OverseasSupplier>(suppliers, {
+  const { sort, toggle, sorted: sortedSuppliers } = useSort<OverseasSupplier>(filtered, {
     name: (r) => r.name,
     country: (r) => r.country,
     contact_person: (r) => r.contact_person,
@@ -93,7 +109,7 @@ export default function OverseasSuppliersPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas Suppliers</h1>
-          <p className="page-description">{suppliers.length} overseas suppliers</p>
+          <p className="page-description">{filtered.length} overseas supplier{filtered.length !== 1 ? "s" : ""}{filtered.length !== suppliers.length ? ` (filtered from ${suppliers.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -122,6 +138,16 @@ export default function OverseasSuppliersPage() {
             <Plus className="h-4 w-4 mr-1.5" /> Add Supplier
           </Button>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search overseas suppliers..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Currency Converter Card */}
@@ -221,7 +247,7 @@ export default function OverseasSuppliersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={suppliers.length > 0 && selectedIds.size === suppliers.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="country" label="Country" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
