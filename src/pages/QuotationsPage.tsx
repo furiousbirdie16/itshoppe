@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -35,6 +35,7 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewQ, setViewQ] = useState<string | null>(null);
@@ -348,11 +349,23 @@ export default function QuotationsPage() {
         <div className="filter-bar">
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date From</Label>
-            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
+            <Input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => {
+                setFilterDateFrom(e.target.value);
+                if (!e.target.value) return;
+                requestAnimationFrame(() => {
+                  filterDateToRef.current?.focus();
+                  filterDateToRef.current?.showPicker?.();
+                });
+              }}
+              className="h-9 sm:h-8 sm:w-36 text-sm"
+            />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date To</Label>
-            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
+            <Input ref={filterDateToRef} type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
