@@ -474,42 +474,85 @@ export default function OverseasPurchaseOrdersPage() {
 
       {/* View Dialog */}
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">PO {viewPO?.po_number}</DialogTitle></DialogHeader>
           {viewPO && (
-            <div className="space-y-4 pt-2">
+            <div className="space-y-5 pt-2">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Supplier:</span> <span className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</span></div>
                 <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
                 <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>
                 <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">SKU</TableHead>
-                    <TableHead className="text-xs">Item</TableHead>
-                    <TableHead className="text-xs text-right">Qty</TableHead>
-                    <TableHead className="text-xs text-right">Received</TableHead>
-                    <TableHead className="text-xs">Date Received</TableHead>
-                    <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
-                    <TableHead className="text-xs text-right">PHP</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {viewItems.map(item => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-mono text-xs text-primary font-medium">{item.items?.sku || "—"}</TableCell>
-                      <TableCell className="text-sm">{item.item_name}</TableCell>
-                      <TableCell className="text-sm text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-sm text-right">{item.item_id ? (item.received_quantity || 0) : "—"}</TableCell>
-                      <TableCell className="text-sm">{item.received_date ? new Date(item.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
-                      <TableCell className="text-sm text-right">{item.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-sm text-right">{peso(item.quantity * item.unit_cost * viewPO.exchange_rate)}</TableCell>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Products</p>
+                  <p className="mt-1 text-2xl font-semibold">{viewItems.length}</p>
+                </div>
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Ordered Qty</p>
+                  <p className="mt-1 text-2xl font-semibold">{viewItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0)}</p>
+                </div>
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Received Qty</p>
+                  <p className="mt-1 text-2xl font-semibold">{viewItems.reduce((sum, item) => sum + Number(item.received_quantity || 0), 0)}</p>
+                </div>
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Remaining Qty</p>
+                  <p className="mt-1 text-2xl font-semibold">
+                    {viewItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0) - Number(item.received_quantity || 0)), 0)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-card">
+                <div className="border-b px-4 py-3">
+                  <h3 className="text-sm font-semibold">Ordered Products Breakdown</h3>
+                  <p className="text-xs text-muted-foreground">Per-product quantities, receiving progress, and value.</p>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">SKU</TableHead>
+                      <TableHead className="text-xs">Product</TableHead>
+                      <TableHead className="text-xs">Description</TableHead>
+                      <TableHead className="text-xs text-right">Ordered</TableHead>
+                      <TableHead className="text-xs text-right">Received</TableHead>
+                      <TableHead className="text-xs text-right">Remaining</TableHead>
+                      <TableHead className="text-xs">Date Received</TableHead>
+                      <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
+                      <TableHead className="text-xs text-right">Line Total</TableHead>
+                      <TableHead className="text-xs text-right">PHP Value</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {viewItems.map(item => {
+                      const orderedQty = Number(item.quantity || 0);
+                      const receivedQty = item.item_id ? Number(item.received_quantity || 0) : 0;
+                      const remainingQty = item.item_id ? Math.max(0, orderedQty - receivedQty) : orderedQty;
+                      const lineTotal = orderedQty * Number(item.unit_cost || 0);
+
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-mono text-xs font-medium text-primary">{item.items?.sku || "—"}</TableCell>
+                          <TableCell className="text-sm font-medium">{item.item_name}</TableCell>
+                          <TableCell className="max-w-[220px] text-sm text-muted-foreground">{item.description || "—"}</TableCell>
+                          <TableCell className="text-sm text-right">{orderedQty}</TableCell>
+                          <TableCell className="text-sm text-right">{item.item_id ? receivedQty : "—"}</TableCell>
+                          <TableCell className="text-sm text-right font-medium">{remainingQty}</TableCell>
+                          <TableCell className="text-sm">{item.received_date ? new Date(item.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
+                          <TableCell className="text-sm text-right">{Number(item.unit_cost || 0).toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell className="text-sm text-right font-medium">
+                            {viewPO.currency === "USD" ? "$" : "¥"}{lineTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-sm text-right">{peso(lineTotal * Number(viewPO.exchange_rate || 1))}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
               <div className="rounded-lg bg-muted/50 p-3 space-y-1">
                 <div className="flex justify-between text-sm">
                   <span>Total ({viewPO.currency})</span>
