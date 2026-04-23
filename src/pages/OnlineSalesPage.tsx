@@ -1046,7 +1046,7 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="product_name" label="Product Name" sort={sort} onToggle={toggle} />
                   <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
                   <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
-                  <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
+                  <SortableHeader sortKey="posted_price" label="Total Sales" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
                   <TableHead className="w-16"></TableHead>
                 </TableRow>
@@ -1070,7 +1070,7 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm">{peso(Number(s.posted_price || 0) * Number(s.quantity || 1))}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(s.status)}`}>{statusLabel(s.status)}</span></TableCell>
                         <TableCell>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
@@ -1141,7 +1141,7 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm pl-4">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
-                        <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
+                        <TableCell className="text-right text-sm">{peso(Number(s.posted_price || 0) * Number(s.quantity || 1))}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(s.status)}`}>{statusLabel(s.status)}</span></TableCell>
                         <TableCell>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
