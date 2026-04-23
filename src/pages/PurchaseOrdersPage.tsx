@@ -144,8 +144,9 @@ export default function PurchaseOrdersPage() {
         quantity: l.quantity,
         unit_cost: l.unit_cost,
       })) as any);
+      return po;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setCreateOpen(false); toast.success("PO created"); resetForm(); },
+    onSuccess: (po) => { queryClient.invalidateQueries({ queryKey: ["purchase_orders"] }); setCreateOpen(false); toast.success("PO created"); resetForm(); openPreview(po); },
     onError: (e: any) => toast.error(e.message),
   });
 

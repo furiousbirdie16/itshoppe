@@ -11,14 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
+import { DocumentPreview } from "@/components/DocumentPreview";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
+import type { DocumentData } from "@/lib/pdf";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
@@ -74,6 +76,8 @@ export default function OverseasPurchaseOrdersPage() {
   const [incomingSearch, setIncomingSearch] = useState("");
   const [incomingSupplierFilter, setIncomingSupplierFilter] = useState<string>("all");
   const [incomingReceiptFilter, setIncomingReceiptFilter] = useState<string>("incoming");
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const toggleAll = () => {
     if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
@@ -156,8 +160,15 @@ export default function OverseasPurchaseOrdersPage() {
       if (valid.length > 0) {
         await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
+      return po;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); toast.success("Overseas PO created"); },
+    onSuccess: (po) => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      setOpen(false);
+      toast.success("Overseas PO created");
+      openPreview(po as OverseasPurchaseOrder);
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -257,6 +268,39 @@ export default function OverseasPurchaseOrdersPage() {
 
   const updateLine = (idx: number, field: keyof LineItem, value: string | number) => {
     setLines(lines.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+  };
+
+  const openPreview = async (po: OverseasPurchaseOrder) => {
+    const poItems = await getOverseasPOItems(po.id);
+    setPreviewData({
+      type: "purchase_order",
+      number: po.po_number,
+      date: po.order_date || "",
+      status: po.status,
+      currencyCode: po.currency,
+      currencySymbol: po.currency === "USD" ? "$" : "¥",
+      notes: po.notes || "",
+      recipientLabel: "Supplier",
+      recipientName: po.overseas_suppliers?.name || "—",
+      recipientContact: po.overseas_suppliers?.contact_person || undefined,
+      recipientEmail: po.overseas_suppliers?.email || undefined,
+      recipientPhone: po.overseas_suppliers?.phone || undefined,
+      recipientAddress: po.overseas_suppliers?.address || undefined,
+      extraFields: [
+        { label: "Currency", value: po.currency },
+        { label: "Exchange Rate", value: String(po.exchange_rate || 1) },
+        ...(po.expected_delivery ? [{ label: "ETA", value: po.expected_delivery }] : []),
+      ],
+      items: poItems.map((item) => ({
+        name: item.item_name || item.items?.name || "—",
+        sku: item.items?.sku || undefined,
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.unit_cost || 0),
+        total: Number(item.quantity || 0) * Number(item.unit_cost || 0),
+      })),
+      totalAmount: Number(po.total_amount || 0),
+    });
+    setPreviewOpen(true);
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
@@ -767,6 +811,7 @@ export default function OverseasPurchaseOrdersPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {po.status !== "received" && (
                       <Button
@@ -918,6 +963,8 @@ export default function OverseasPurchaseOrdersPage() {
           </Table>
         </div>
       </section>
+
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
   );
 }
