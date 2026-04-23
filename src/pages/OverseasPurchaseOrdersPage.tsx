@@ -160,6 +160,7 @@ export default function OverseasPurchaseOrdersPage() {
       if (valid.length > 0) {
         await createOverseasPOItems(valid.map(l => ({ po_id: po.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
+      return po;
     },
     onSuccess: (po) => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -810,6 +811,7 @@ export default function OverseasPurchaseOrdersPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {po.status !== "received" && (
                       <Button
@@ -961,6 +963,8 @@ export default function OverseasPurchaseOrdersPage() {
           </Table>
         </div>
       </section>
+
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>
   );
 }
