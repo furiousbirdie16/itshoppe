@@ -117,6 +117,7 @@ export default function OnlineSalesPage() {
   const qc = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales"], queryFn: getOnlineSales });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
@@ -739,11 +740,23 @@ export default function OnlineSalesPage() {
         <div className="filter-bar">
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date From</Label>
-            <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
+            <Input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => {
+                setFilterDateFrom(e.target.value);
+                if (!e.target.value) return;
+                requestAnimationFrame(() => {
+                  filterDateToRef.current?.focus();
+                  filterDateToRef.current?.showPicker?.();
+                });
+              }}
+              className="h-9 sm:h-8 sm:w-36 text-sm"
+            />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Date To</Label>
-            <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
+            <Input ref={filterDateToRef} type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Channel</Label>
