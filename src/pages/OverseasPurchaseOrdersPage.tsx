@@ -729,6 +729,66 @@ export default function OverseasPurchaseOrdersPage() {
         <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
       </div>
 
+      <div className="data-table-wrapper">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>
+              <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+            ) : sortedOrders.length === 0 ? (
+              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+            ) : sortedOrders.map(po => (
+              <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
+                <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
+                <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
+                <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
+                <TableCell className="text-sm">
+                  <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
+                    {po.currency === "USD" ? "$ USD" : "¥ RMB"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-sm text-right font-mono">
+                  {po.currency === "USD" ? "$" : "¥"}{po.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}
+                </TableCell>
+                <TableCell className="text-sm text-right font-mono text-primary">
+                  {peso(po.total_amount * po.exchange_rate)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-0.5">
+                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {po.status !== "received" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }}
+                        className="h-7 w-7 rounded-md"
+                        title="Receive items"
+                      >
+                        <PackageCheck className="h-3.5 w-3.5 text-success" />
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
       <section className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -858,66 +918,6 @@ export default function OverseasPurchaseOrdersPage() {
           </Table>
         </div>
       </section>
-
-      <div className="data-table-wrapper">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>
-              <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-28">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
-            ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
-            ) : sortedOrders.map(po => (
-              <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
-                <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
-                <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
-                <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
-                <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
-                <TableCell className="text-sm">
-                  <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
-                    {po.currency === "USD" ? "$ USD" : "¥ RMB"}
-                  </span>
-                </TableCell>
-                <TableCell className="text-sm text-right font-mono">
-                  {po.currency === "USD" ? "$" : "¥"}{po.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}
-                </TableCell>
-                <TableCell className="text-sm text-right font-mono text-primary">
-                  {peso(po.total_amount * po.exchange_rate)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {po.status !== "received" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }}
-                        className="h-7 w-7 rounded-md"
-                        title="Receive items"
-                      >
-                        <PackageCheck className="h-3.5 w-3.5 text-success" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
     </div>
   );
 }
