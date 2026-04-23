@@ -863,7 +863,7 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="product_name" label="Product Name" sort={sort} onToggle={toggle} />
                   <SortableHeader sortKey="quantity" label="Qty" sort={sort} onToggle={toggle} align="center" />
                   <SortableHeader sortKey="sales_channel" label="Channel" sort={sort} onToggle={toggle} />
-                  <SortableHeader sortKey="posted_price" label="Selling Price" sort={sort} onToggle={toggle} align="right" />
+                  <SortableHeader sortKey="posted_price" label="Total Sales" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="amount_paid" label="Amount Paid" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="fees" label="Fees" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="payment_status" label="Payment" sort={sort} onToggle={toggle} />
