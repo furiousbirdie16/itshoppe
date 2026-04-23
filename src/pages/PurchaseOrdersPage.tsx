@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { SupplierSearch } from "@/components/SupplierSearch";
 import { ItemSearch } from "@/components/ItemSearch";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil } from "lucide-react";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -49,6 +49,7 @@ export default function PurchaseOrdersPage() {
   const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
 
   const dueDate = form.payment_terms ? addDays(form.order_date, parseInt(form.payment_terms) || 0) : "";
 
@@ -71,8 +72,14 @@ export default function PurchaseOrdersPage() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: poItems = [] } = useQuery({ queryKey: ["po_items", viewPO || receiveOpen], queryFn: () => getPOItems(viewPO || receiveOpen || ""), enabled: !!(viewPO || receiveOpen) });
+  const filtered = pos.filter((po: any) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [po.po_number, po.suppliers?.name, po.order_date, po.payment_due_date, po.status, po.notes]
+      .some((value) => (value || "").toString().toLowerCase().includes(q));
+  });
 
-  const { sort, toggle, sorted: sortedPOs } = useSort<any>(pos, {
+  const { sort, toggle, sorted: sortedPOs } = useSort<any>(filtered, {
     po_number: (r) => r.po_number,
     supplier: (r) => r.suppliers?.name || "",
     order_date: (r) => r.order_date,
@@ -290,7 +297,7 @@ export default function PurchaseOrdersPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Purchase Orders</h1>
-          <p className="page-description">{pos.length} orders</p>
+          <p className="page-description">{filtered.length} order{filtered.length !== 1 ? "s" : ""}{filtered.length !== pos.length ? ` (filtered from ${pos.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -352,6 +359,16 @@ export default function PurchaseOrdersPage() {
             <Plus className="h-4 w-4 mr-1.5" /> New PO
           </Button>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search purchase orders..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Create Dialog */}
@@ -492,7 +509,7 @@ export default function PurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={pos.length > 0 && selectedIds.size === pos.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && filtered.every((po: any) => selectedIds.has(po.id))} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="order_date" label="Order Date" sort={sort} onToggle={toggle} />

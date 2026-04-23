@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Shield, User, Trash2 } from "lucide-react";
+import { UserPlus, Shield, User, Trash2, Search } from "lucide-react";
 
 interface ManagedUser {
   id: string;
@@ -37,11 +37,18 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", password: "", display_name: "", role: "user" });
+  const [search, setSearch] = useState("");
 
   const { data: users = [], isLoading } = useQuery<ManagedUser[]>({
     queryKey: ["admin-users"],
     queryFn: () => callAdminUsers("list"),
     enabled: role === "admin",
+  });
+  const filteredUsers = users.filter((managedUser) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [managedUser.display_name, managedUser.email, managedUser.role]
+      .some((value) => (value || "").toLowerCase().includes(q));
   });
 
   const updateRoleMutation = useMutation({
@@ -87,7 +94,7 @@ export default function UsersPage() {
       <div className="page-toolbar">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">User Management</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Manage team members and their roles</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Manage team members and their roles · {filteredUsers.length}{filteredUsers.length !== users.length ? ` of ${users.length}` : ""}</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -159,6 +166,16 @@ export default function UsersPage() {
         </Dialog>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search users..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
           <TableHeader>
@@ -175,14 +192,14 @@ export default function UsersPage() {
                   Loading...
                 </TableCell>
               </TableRow>
-            ) : users.length === 0 ? (
+            ) : filteredUsers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-8">
                   No users found
                 </TableCell>
               </TableRow>
             ) : (
-              users.map((u) => (
+              filteredUsers.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell>
                     <div>
