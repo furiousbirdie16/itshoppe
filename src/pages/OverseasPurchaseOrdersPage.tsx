@@ -11,14 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
+import { DocumentPreview } from "@/components/DocumentPreview";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
+import type { DocumentData } from "@/lib/pdf";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
@@ -74,6 +76,8 @@ export default function OverseasPurchaseOrdersPage() {
   const [incomingSearch, setIncomingSearch] = useState("");
   const [incomingSupplierFilter, setIncomingSupplierFilter] = useState<string>("all");
   const [incomingReceiptFilter, setIncomingReceiptFilter] = useState<string>("incoming");
+  const [previewData, setPreviewData] = useState<DocumentData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const toggleAll = () => {
     if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
