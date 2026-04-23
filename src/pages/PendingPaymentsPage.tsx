@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Eye, Filter, AlertCircle, Clock, Receipt, Plus, Pencil, Trash2, CheckCircle2 } from "lucide-react";
+import { Eye, Filter, AlertCircle, Clock, Receipt, Plus, Pencil, Trash2, CheckCircle2, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -51,6 +51,7 @@ export default function PendingPaymentsPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
@@ -210,26 +211,36 @@ export default function PendingPaymentsPage() {
   const totalCount = filteredInvoices.length + filteredManual.length;
 
   // Merge invoices + manual into a single sortable list
-  const combinedRows = useMemo(() => [
-    ...filteredInvoices.map((inv: any) => ({
-      kind: "invoice" as const, raw: inv,
-      source: "Invoice", reference: inv.invoice_number,
-      customer: inv.customers?.name || "",
-      date: inv.invoice_date || "",
-      due_date: inv.due_date || "",
-      status: inv.status || "",
-      amount: Number(inv.total_amount),
-    })),
-    ...filteredManual.map((m: any) => ({
-      kind: "manual" as const, raw: m,
-      source: "Manual", reference: m.description || "",
-      customer: m.customers?.name || "",
-      date: (m.created_at || "").split("T")[0],
-      due_date: m.due_date || "",
-      status: m.status || "",
-      amount: Number(m.amount),
-    })),
-  ], [filteredInvoices, filteredManual]);
+  const combinedRows = useMemo(() => {
+    const rows = [
+      ...filteredInvoices.map((inv: any) => ({
+        kind: "invoice" as const, raw: inv,
+        source: "Invoice", reference: inv.invoice_number,
+        customer: inv.customers?.name || "",
+        date: inv.invoice_date || "",
+        due_date: inv.due_date || "",
+        status: inv.status || "",
+        amount: Number(inv.total_amount),
+      })),
+      ...filteredManual.map((m: any) => ({
+        kind: "manual" as const, raw: m,
+        source: "Manual", reference: m.description || "",
+        customer: m.customers?.name || "",
+        date: (m.created_at || "").split("T")[0],
+        due_date: m.due_date || "",
+        status: m.status || "",
+        amount: Number(m.amount),
+      })),
+    ];
+
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((row) =>
+      [row.source, row.reference, row.customer, row.date, row.due_date, row.status, String(row.amount)]
+        .some((value) => (value || "").toLowerCase().includes(q)),
+    );
+  }, [filteredInvoices, filteredManual, search]);
 
   const { sort, toggle, sorted: sortedRows } = useSort<typeof combinedRows[number]>(combinedRows, {
     source: (r) => r.source,
@@ -274,6 +285,16 @@ export default function PendingPaymentsPage() {
             fileName="Pending_Payments"
           />
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search pending payments..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Summary cards */}

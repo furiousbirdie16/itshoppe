@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Ship, CalendarIcon, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Ship, CalendarIcon, Package, Search } from "lucide-react";
 import { toast } from "sonner";
 import { format, differenceInDays } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -61,6 +61,7 @@ export default function ShipmentTrackingPage() {
   const [form, setForm] = useState<FormState>(defaultForm);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [itemsShipment, setItemsShipment] = useState<ShipmentTracking | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: poItems = [], isLoading: poItemsLoading } = useQuery<OverseasPurchaseOrderItem[]>({
     queryKey: ["overseas_po_items", itemsShipment?.po_id],
@@ -69,8 +70,8 @@ export default function ShipmentTrackingPage() {
   });
 
   const toggleAll = () => {
-    if (selectedIds.size === shipments.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(shipments.map(s => s.id)));
+    if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((s) => s.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -85,8 +86,22 @@ export default function ShipmentTrackingPage() {
 
   const { data: shipments = [], isLoading } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
   const { data: orders = [] } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
+  const filtered = shipments.filter((shipment: any) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      shipment.overseas_purchase_orders?.po_number,
+      shipment.overseas_purchase_orders?.overseas_suppliers?.name,
+      shipment.tracking_number,
+      shipment.shipping_method,
+      shipment.ship_date,
+      shipment.estimated_arrival,
+      shipment.status,
+      shipment.notes,
+    ].some((value) => (value || "").toString().toLowerCase().includes(q));
+  });
 
-  const { sort, toggle, sorted: sortedShipments } = useSort<ShipmentTracking>(shipments, {
+  const { sort, toggle, sorted: sortedShipments } = useSort<ShipmentTracking>(filtered, {
     po_number: (r: any) => r.overseas_purchase_orders?.po_number || "",
     supplier: (r: any) => r.overseas_purchase_orders?.overseas_suppliers?.name || "",
     tracking_number: (r) => r.tracking_number,
@@ -177,7 +192,7 @@ export default function ShipmentTrackingPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Shipment Tracking</h1>
-          <p className="page-description">{shipments.length} shipments logged</p>
+          <p className="page-description">{filtered.length} shipment{filtered.length !== 1 ? "s" : ""}{filtered.length !== shipments.length ? ` (filtered from ${shipments.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -209,6 +224,16 @@ export default function ShipmentTrackingPage() {
             <Plus className="h-4 w-4 mr-1.5" /> Log Shipment
           </Button>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search shipments..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Dialog */}
@@ -271,7 +296,7 @@ export default function ShipmentTrackingPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={shipments.length > 0 && selectedIds.size === shipments.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="tracking_number" label="Tracking #" sort={sort} onToggle={toggle} />

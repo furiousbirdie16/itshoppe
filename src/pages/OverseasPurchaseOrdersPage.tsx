@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
 import { toast } from "sonner";
@@ -49,10 +49,11 @@ export default function OverseasPurchaseOrdersPage() {
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const toggleAll = () => {
-    if (selectedIds.size === orders.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(orders.map(o => o.id)));
+    if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredOrders.map((o) => o.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -74,7 +75,20 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
-  const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(orders, {
+  const filteredOrders = orders.filter((order: any) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      order.po_number,
+      order.overseas_suppliers?.name,
+      order.status,
+      order.currency,
+      order.order_date,
+      order.expected_delivery,
+      order.notes,
+    ].some((value) => (value || "").toString().toLowerCase().includes(q));
+  });
+  const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(filteredOrders, {
     po_number: (r) => r.po_number,
     supplier: (r: any) => r.overseas_suppliers?.name || "",
     status: (r) => r.status,
@@ -251,7 +265,7 @@ export default function OverseasPurchaseOrdersPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas Purchase Orders</h1>
-          <p className="page-description">{orders.length} orders • Stock added when marked received</p>
+          <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -318,6 +332,16 @@ export default function OverseasPurchaseOrdersPage() {
             <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
           </Button>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search overseas POs..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <OverseasPOBulkUploadDialog
@@ -564,7 +588,7 @@ export default function OverseasPurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={orders.length > 0 && selectedIds.size === orders.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
