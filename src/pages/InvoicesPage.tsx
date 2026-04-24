@@ -278,6 +278,15 @@ export default function InvoicesPage() {
               </Button>
             </>
           )}
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search invoice #, customer, agent..."
+              className="h-9 pl-8 text-sm w-[260px]"
+            />
+          </div>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
