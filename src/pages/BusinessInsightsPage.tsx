@@ -81,7 +81,7 @@ export default function BusinessInsightsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("online_sales")
-        .select("id, quantity, posted_price, item_id, variation_id, product_name, items(name, sku), item_variations(name, sku)")
+        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, items(name, sku), item_variations(name, sku)")
         .eq("status", "completed")
         .gte("order_date", fromStr)
         .lte("order_date", toStr);
@@ -95,7 +95,7 @@ export default function BusinessInsightsPage() {
     queryFn: async () => {
       const { data: invs } = await supabase
         .from("invoices")
-        .select("id")
+        .select("id, invoice_number, invoice_date, customer_id, customers(name)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", fromStr)
         .lte("invoice_date", toStr);
@@ -105,7 +105,8 @@ export default function BusinessInsightsPage() {
         .from("invoice_items")
         .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
         .in("invoice_id", ids);
-      return data || [];
+      const invMap = new Map<string, any>((invs || []).map((i: any) => [i.id, i]));
+      return (data || []).map((row: any) => ({ ...row, _invoice: invMap.get(row.invoice_id) }));
     },
   });
 
