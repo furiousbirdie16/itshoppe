@@ -113,10 +113,10 @@ export default function BusinessInsightsPage() {
   // Aggregate per item/variation key
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
-    const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders">) => {
+    const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders" | "txns">) => {
       let row = map.get(key);
       if (!row) {
-        row = { ...init, qtyOnline: 0, qtyInvoice: 0, qtyTotal: 0, revenueOnline: 0, revenueInvoice: 0, revenueTotal: 0, orders: 0 };
+        row = { ...init, qtyOnline: 0, qtyInvoice: 0, qtyTotal: 0, revenueOnline: 0, revenueInvoice: 0, revenueTotal: 0, orders: 0, txns: [] };
         map.set(key, row);
       }
       return row;
@@ -131,10 +131,21 @@ export default function BusinessInsightsPage() {
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
         const row = get(key, { key, itemId, variationId, name, sku });
         const qty = Number(r.quantity || 0);
-        const rev = Number(r.posted_price || 0) * qty;
+        const unit = Number(r.posted_price || 0);
+        const rev = unit * qty;
         row.qtyOnline += qty;
         row.revenueOnline += rev;
         row.orders += 1;
+        const channel = String(r.sales_channel || "online");
+        row.txns.push({
+          date: r.order_date || "",
+          who: channel.charAt(0).toUpperCase() + channel.slice(1),
+          source: "online",
+          reference: r.order_number || "—",
+          quantity: qty,
+          unitPrice: unit,
+          amount: rev,
+        });
       }
     }
 
@@ -147,10 +158,21 @@ export default function BusinessInsightsPage() {
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
         const row = get(key, { key, itemId, variationId, name, sku });
         const qty = Number(r.quantity || 0);
-        const rev = Number(r.unit_price || 0) * qty;
+        const unit = Number(r.unit_price || 0);
+        const rev = unit * qty;
         row.qtyInvoice += qty;
         row.revenueInvoice += rev;
         row.orders += 1;
+        const inv = r._invoice || {};
+        row.txns.push({
+          date: inv.invoice_date || "",
+          who: inv.customers?.name || "Walk-in",
+          source: "invoice",
+          reference: inv.invoice_number || "—",
+          quantity: qty,
+          unitPrice: unit,
+          amount: rev,
+        });
       }
     }
 
