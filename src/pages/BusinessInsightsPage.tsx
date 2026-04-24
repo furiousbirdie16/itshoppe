@@ -340,9 +340,9 @@ export default function BusinessInsightsPage() {
               sorted.map((r) => {
                 const isOpen = expanded.has(r.key);
                 return (
-                  <>
+                  <Fragment key={r.key}>
                     <TableRow
-                      key={r.key}
+                      
                       className="hover:bg-muted/30 cursor-pointer"
                       onClick={() => toggleExpand(r.key)}
                     >
