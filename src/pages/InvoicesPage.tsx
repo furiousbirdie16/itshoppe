@@ -70,15 +70,25 @@ export default function InvoicesPage() {
   });
 
   const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return invoices.filter((inv: any) => {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
       if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
       if (filterStatus !== "all" && inv.status !== filterStatus) return false;
+      if (q) {
+        const hay = [
+          inv.invoice_number,
+          inv.customers?.name,
+          inv.sales_agent,
+          inv.notes,
+        ].map((x: any) => String(x || "").toLowerCase()).join(" ");
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus]);
+  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus, searchQuery]);
 
   const { sort, toggle, sorted: sortedInvoices } = useSort<any>(filtered, {
     invoice_number: (r) => r.invoice_number,
