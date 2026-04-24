@@ -415,7 +415,7 @@ export default function BusinessInsightsPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 );
               })
             )}
