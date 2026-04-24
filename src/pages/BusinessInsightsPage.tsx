@@ -394,8 +394,8 @@ export default function BusinessInsightsPage() {
                                           className={cn(
                                             "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
                                             t.source === "online"
-                                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                                              ? "bg-primary/10 text-primary"
+                                              : "bg-secondary text-secondary-foreground",
                                           )}
                                         >
                                           {t.source === "online" ? "Online" : "Invoice"}
