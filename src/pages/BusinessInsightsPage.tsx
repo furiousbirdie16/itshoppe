@@ -19,7 +19,8 @@ type SourceFilter = "all" | "online" | "invoice";
 
 interface SaleTxn {
   date: string;
-  who: string;
+  customer: string;
+  agent: string;
   source: "online" | "invoice";
   reference: string;
   quantity: number;
@@ -95,7 +96,7 @@ export default function BusinessInsightsPage() {
     queryFn: async () => {
       const { data: invs } = await supabase
         .from("invoices")
-        .select("id, invoice_number, invoice_date, customer_id, customers(name)")
+        .select("id, invoice_number, invoice_date, sales_agent, customer_id, customers(name)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", fromStr)
         .lte("invoice_date", toStr);
@@ -139,7 +140,8 @@ export default function BusinessInsightsPage() {
         const channel = String(r.sales_channel || "online");
         row.txns.push({
           date: r.order_date || "",
-          who: channel.charAt(0).toUpperCase() + channel.slice(1),
+          customer: channel.charAt(0).toUpperCase() + channel.slice(1),
+          agent: "—",
           source: "online",
           reference: r.order_number || "—",
           quantity: qty,
@@ -166,7 +168,8 @@ export default function BusinessInsightsPage() {
         const inv = r._invoice || {};
         row.txns.push({
           date: inv.invoice_date || "",
-          who: inv.customers?.name || "Walk-in",
+          customer: inv.customers?.name || "Walk-in",
+          agent: inv.sales_agent || "—",
           source: "invoice",
           reference: inv.invoice_number || "—",
           quantity: qty,
@@ -376,7 +379,8 @@ export default function BusinessInsightsPage() {
                                   <tr className="text-left">
                                     <th className="px-3 py-2 font-medium">Date</th>
                                     <th className="px-3 py-2 font-medium">Source</th>
-                                    <th className="px-3 py-2 font-medium">Who</th>
+                                    <th className="px-3 py-2 font-medium">Customer</th>
+                                    <th className="px-3 py-2 font-medium">Sales Agent</th>
                                     <th className="px-3 py-2 font-medium">Reference</th>
                                     <th className="px-3 py-2 font-medium text-right">Qty</th>
                                     <th className="px-3 py-2 font-medium text-right">Unit ₱</th>
@@ -401,7 +405,8 @@ export default function BusinessInsightsPage() {
                                           {t.source === "online" ? "Online" : "Invoice"}
                                         </span>
                                       </td>
-                                      <td className="px-3 py-1.5">{t.who}</td>
+                                      <td className="px-3 py-1.5">{t.customer}</td>
+                                      <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
                                       <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
                                       <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                       <td className="px-3 py-1.5 text-right">{peso(t.unitPrice)}</td>
