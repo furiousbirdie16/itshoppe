@@ -846,7 +846,7 @@ export const deleteOverseasPOItems = async (poId: string) => {
 // Custom (non-inventory) lines can also be marked received but won't touch stock.
 export const receiveOverseasPO = async (
   poId: string,
-  itemsToReceive: { poItemId: string; itemId: string | null; quantity: number }[],
+  itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
@@ -865,11 +865,20 @@ export const receiveOverseasPO = async (
       .eq("id", item.poItemId);
 
     if (item.itemId) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", item.itemId).single();
-      await from("items").update({
-        quantity: ((currentItem as any)?.quantity || 0) + item.quantity,
-        updated_at: new Date().toISOString(),
-      }).eq("id", item.itemId);
+      const location = item.location || "warehouse";
+      const { data: currentItem } = await from("items")
+        .select("warehouse_quantity, store_quantity")
+        .eq("id", item.itemId)
+        .single();
+      const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
+      const curSt = Number((currentItem as any)?.store_quantity || 0);
+      const updates: any = { updated_at: new Date().toISOString() };
+      if (location === "store") {
+        updates.store_quantity = curSt + item.quantity;
+      } else {
+        updates.warehouse_quantity = curWh + item.quantity;
+      }
+      await from("items").update(updates).eq("id", item.itemId);
 
       await from("inventory_movements").insert({
         item_id: item.itemId,
@@ -877,7 +886,7 @@ export const receiveOverseasPO = async (
         quantity: item.quantity,
         reference_id: poId,
         reference_type: "overseas_purchase_order",
-        notes: `Received from overseas PO on ${rcvDate}`,
+        notes: `Received from overseas PO on ${rcvDate} → ${location}`,
       });
     }
   }
