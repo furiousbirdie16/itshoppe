@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearch } from "@/components/CustomerSearch";
@@ -46,6 +46,7 @@ export default function InvoicesPage() {
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [filterAgent, setFilterAgent] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
@@ -69,15 +70,25 @@ export default function InvoicesPage() {
   });
 
   const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return invoices.filter((inv: any) => {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
       if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
       if (filterStatus !== "all" && inv.status !== filterStatus) return false;
+      if (q) {
+        const hay = [
+          inv.invoice_number,
+          inv.customers?.name,
+          inv.sales_agent,
+          inv.notes,
+        ].map((x: any) => String(x || "").toLowerCase()).join(" ");
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus]);
+  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus, searchQuery]);
 
   const { sort, toggle, sorted: sortedInvoices } = useSort<any>(filtered, {
     invoice_number: (r) => r.invoice_number,
@@ -267,6 +278,15 @@ export default function InvoicesPage() {
               </Button>
             </>
           )}
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search invoice #, customer, agent..."
+              className="h-9 pl-8 text-sm w-[260px]"
+            />
+          </div>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
