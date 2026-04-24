@@ -108,6 +108,7 @@ export default function ShipmentTrackingPage() {
     shipping_method: (r) => r.shipping_method,
     ship_date: (r) => r.ship_date,
     estimated_arrival: (r) => r.estimated_arrival,
+    actual_arrival: (r) => r.actual_arrival,
     status: (r) => r.status,
     days_left: (r) => {
       if (r.status === "delivered" || !r.estimated_arrival) return null;
@@ -149,6 +150,10 @@ export default function ShipmentTrackingPage() {
   };
 
   const handleSubmit = () => {
+    if (form.status === "delivered" && !form.actual_arrival) {
+      toast.error("Please set the Actual Arrival date when marking as delivered.");
+      return;
+    }
     const payload: Partial<ShipmentTracking> = {
       po_id: form.po_id || null,
       tracking_number: form.tracking_number,
@@ -272,7 +277,16 @@ export default function ShipmentTrackingPage() {
               <DatePicker label="Actual Arrival" value={form.actual_arrival} onChange={d => setForm({ ...form, actual_arrival: d })} />
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Status</Label>
-                <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) =>
+                    setForm({
+                      ...form,
+                      status: v,
+                      actual_arrival: v === "delivered" && !form.actual_arrival ? new Date() : form.actual_arrival,
+                    })
+                  }
+                >
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="in_transit">In Transit</SelectItem>
@@ -303,6 +317,7 @@ export default function ShipmentTrackingPage() {
               <SortableHeader sortKey="shipping_method" label="Method" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="ship_date" label="Shipped" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="estimated_arrival" label="ETA" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="actual_arrival" label="Delivered On" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="days_left" label="Days Left" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
@@ -310,9 +325,9 @@ export default function ShipmentTrackingPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedShipments.length === 0 ? (
-              <TableRow><TableCell colSpan={10}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
             ) : sortedShipments.map(s => {
               const po = s.overseas_purchase_orders as any;
               const daysLeft = getDaysRemaining(s);
@@ -325,6 +340,7 @@ export default function ShipmentTrackingPage() {
                   <TableCell className="text-sm text-muted-foreground">{s.shipping_method || "—"}</TableCell>
                   <TableCell className="text-sm">{s.ship_date ? format(new Date(s.ship_date), "MMM d, yyyy") : "—"}</TableCell>
                   <TableCell className="text-sm">{s.estimated_arrival ? format(new Date(s.estimated_arrival), "MMM d, yyyy") : "—"}</TableCell>
+                  <TableCell className="text-sm">{s.actual_arrival ? format(new Date(s.actual_arrival), "MMM d, yyyy") : "—"}</TableCell>
                   <TableCell>
                     <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", statusColors[s.status])}>
                       {statusLabels[s.status]}
