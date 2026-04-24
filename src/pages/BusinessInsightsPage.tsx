@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
@@ -7,15 +7,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/StatCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown } from "lucide-react";
 
 type RangePreset = "today" | "7d" | "30d" | "month" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
+
+interface SaleTxn {
+  date: string;
+  who: string;
+  source: "online" | "invoice";
+  reference: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
 
 interface ItemAgg {
   key: string;
@@ -30,6 +40,7 @@ interface ItemAgg {
   revenueInvoice: number;
   revenueTotal: number;
   orders: number;
+  txns: SaleTxn[];
 }
 
 export default function BusinessInsightsPage() {
@@ -38,6 +49,16 @@ export default function BusinessInsightsPage() {
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [source, setSource] = useState<SourceFilter>("all");
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const { dateFrom, dateTo } = useMemo(() => {
     const now = new Date();
@@ -60,7 +81,7 @@ export default function BusinessInsightsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("online_sales")
-        .select("id, quantity, posted_price, item_id, variation_id, product_name, items(name, sku), item_variations(name, sku)")
+        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, items(name, sku), item_variations(name, sku)")
         .eq("status", "completed")
         .gte("order_date", fromStr)
         .lte("order_date", toStr);
@@ -74,7 +95,7 @@ export default function BusinessInsightsPage() {
     queryFn: async () => {
       const { data: invs } = await supabase
         .from("invoices")
-        .select("id")
+        .select("id, invoice_number, invoice_date, customer_id, customers(name)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", fromStr)
         .lte("invoice_date", toStr);
@@ -84,17 +105,18 @@ export default function BusinessInsightsPage() {
         .from("invoice_items")
         .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
         .in("invoice_id", ids);
-      return data || [];
+      const invMap = new Map<string, any>((invs || []).map((i: any) => [i.id, i]));
+      return (data || []).map((row: any) => ({ ...row, _invoice: invMap.get(row.invoice_id) }));
     },
   });
 
   // Aggregate per item/variation key
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
-    const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders">) => {
+    const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders" | "txns">) => {
       let row = map.get(key);
       if (!row) {
-        row = { ...init, qtyOnline: 0, qtyInvoice: 0, qtyTotal: 0, revenueOnline: 0, revenueInvoice: 0, revenueTotal: 0, orders: 0 };
+        row = { ...init, qtyOnline: 0, qtyInvoice: 0, qtyTotal: 0, revenueOnline: 0, revenueInvoice: 0, revenueTotal: 0, orders: 0, txns: [] };
         map.set(key, row);
       }
       return row;
@@ -109,10 +131,21 @@ export default function BusinessInsightsPage() {
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
         const row = get(key, { key, itemId, variationId, name, sku });
         const qty = Number(r.quantity || 0);
-        const rev = Number(r.posted_price || 0) * qty;
+        const unit = Number(r.posted_price || 0);
+        const rev = unit * qty;
         row.qtyOnline += qty;
         row.revenueOnline += rev;
         row.orders += 1;
+        const channel = String(r.sales_channel || "online");
+        row.txns.push({
+          date: r.order_date || "",
+          who: channel.charAt(0).toUpperCase() + channel.slice(1),
+          source: "online",
+          reference: r.order_number || "—",
+          quantity: qty,
+          unitPrice: unit,
+          amount: rev,
+        });
       }
     }
 
@@ -125,10 +158,21 @@ export default function BusinessInsightsPage() {
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
         const row = get(key, { key, itemId, variationId, name, sku });
         const qty = Number(r.quantity || 0);
-        const rev = Number(r.unit_price || 0) * qty;
+        const unit = Number(r.unit_price || 0);
+        const rev = unit * qty;
         row.qtyInvoice += qty;
         row.revenueInvoice += rev;
         row.orders += 1;
+        const inv = r._invoice || {};
+        row.txns.push({
+          date: inv.invoice_date || "",
+          who: inv.customers?.name || "Walk-in",
+          source: "invoice",
+          reference: inv.invoice_number || "—",
+          quantity: qty,
+          unitPrice: unit,
+          amount: rev,
+        });
       }
     }
 
@@ -136,6 +180,7 @@ export default function BusinessInsightsPage() {
       ...r,
       qtyTotal: r.qtyOnline + r.qtyInvoice,
       revenueTotal: r.revenueOnline + r.revenueInvoice,
+      txns: [...r.txns].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
     }));
 
     const q = search.trim().toLowerCase();
@@ -179,7 +224,7 @@ export default function BusinessInsightsPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Business Insights</h1>
-        <p className="page-description">All sales (online + invoices) and quantity sold per item, in one place.</p>
+        <p className="page-description">All sales (online + invoices) per item. Click a row to see when, who, and how many.</p>
       </div>
 
       {/* Filters */}
@@ -272,6 +317,7 @@ export default function BusinessInsightsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8" />
               <SortableHeader sortKey="name" label="Item" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="qtyOnline" label="Qty Online" sort={sort} onToggle={toggle} align="right" />
@@ -286,24 +332,92 @@ export default function BusinessInsightsPage() {
           <TableBody>
             {sorted.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-10">
+                <TableCell colSpan={10} className="text-center text-xs text-muted-foreground py-10">
                   No sales in this range.
                 </TableCell>
               </TableRow>
             ) : (
-              sorted.map((r) => (
-                <TableRow key={r.key} className="hover:bg-muted/30">
-                  <TableCell className="font-medium text-sm">{r.name}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
-                  <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
-                  <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
-                  <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
-                  <TableCell className="text-sm text-right">{r.revenueOnline ? peso(r.revenueOnline) : "—"}</TableCell>
-                  <TableCell className="text-sm text-right">{r.revenueInvoice ? peso(r.revenueInvoice) : "—"}</TableCell>
-                  <TableCell className="text-sm text-right font-semibold">{peso(r.revenueTotal)}</TableCell>
-                  <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
-                </TableRow>
-              ))
+              sorted.map((r) => {
+                const isOpen = expanded.has(r.key);
+                return (
+                  <Fragment key={r.key}>
+                    <TableRow
+                      
+                      className="hover:bg-muted/30 cursor-pointer"
+                      onClick={() => toggleExpand(r.key)}
+                    >
+                      <TableCell className="w-8 p-2 align-middle">
+                        {isOpen ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium text-sm">{r.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
+                      <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
+                      <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
+                      <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
+                      <TableCell className="text-sm text-right">{r.revenueOnline ? peso(r.revenueOnline) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right">{r.revenueInvoice ? peso(r.revenueInvoice) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right font-semibold">{peso(r.revenueTotal)}</TableCell>
+                      <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
+                    </TableRow>
+                    {isOpen && (
+                      <TableRow key={`${r.key}-detail`} className="bg-muted/20 hover:bg-muted/20">
+                        <TableCell colSpan={10} className="p-0">
+                          <div className="px-4 py-3">
+                            <div className="text-xs font-semibold text-muted-foreground mb-2">
+                              Sales history ({r.txns.length})
+                            </div>
+                            <div className="rounded-md border bg-background overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-muted/40">
+                                  <tr className="text-left">
+                                    <th className="px-3 py-2 font-medium">Date</th>
+                                    <th className="px-3 py-2 font-medium">Source</th>
+                                    <th className="px-3 py-2 font-medium">Who</th>
+                                    <th className="px-3 py-2 font-medium">Reference</th>
+                                    <th className="px-3 py-2 font-medium text-right">Qty</th>
+                                    <th className="px-3 py-2 font-medium text-right">Unit ₱</th>
+                                    <th className="px-3 py-2 font-medium text-right">Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {r.txns.map((t, i) => (
+                                    <tr key={i} className="border-t">
+                                      <td className="px-3 py-1.5 whitespace-nowrap">
+                                        {t.date ? format(new Date(t.date), "MMM d, yyyy") : "—"}
+                                      </td>
+                                      <td className="px-3 py-1.5">
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
+                                            t.source === "online"
+                                              ? "bg-primary/10 text-primary"
+                                              : "bg-secondary text-secondary-foreground",
+                                          )}
+                                        >
+                                          {t.source === "online" ? "Online" : "Invoice"}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-1.5">{t.who}</td>
+                                      <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                      <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
+                                      <td className="px-3 py-1.5 text-right">{peso(t.unitPrice)}</td>
+                                      <td className="px-3 py-1.5 text-right">{peso(t.amount)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })
             )}
           </TableBody>
         </Table>
