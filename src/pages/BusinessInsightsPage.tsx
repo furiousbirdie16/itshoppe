@@ -168,7 +168,8 @@ export default function BusinessInsightsPage() {
         const inv = r._invoice || {};
         row.txns.push({
           date: inv.invoice_date || "",
-          who: inv.customers?.name || "Walk-in",
+          customer: inv.customers?.name || "Walk-in",
+          agent: inv.sales_agent || "—",
           source: "invoice",
           reference: inv.invoice_number || "—",
           quantity: qty,
