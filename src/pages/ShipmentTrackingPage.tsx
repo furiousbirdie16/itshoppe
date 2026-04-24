@@ -276,7 +276,16 @@ export default function ShipmentTrackingPage() {
               <DatePicker label="Actual Arrival" value={form.actual_arrival} onChange={d => setForm({ ...form, actual_arrival: d })} />
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Status</Label>
-                <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) =>
+                    setForm({
+                      ...form,
+                      status: v,
+                      actual_arrival: v === "delivered" && !form.actual_arrival ? new Date() : form.actual_arrival,
+                    })
+                  }
+                >
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="in_transit">In Transit</SelectItem>
