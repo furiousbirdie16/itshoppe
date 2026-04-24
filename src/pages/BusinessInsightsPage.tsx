@@ -17,6 +17,16 @@ import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, Chevr
 type RangePreset = "today" | "7d" | "30d" | "month" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
 
+interface SaleTxn {
+  date: string;
+  who: string;
+  source: "online" | "invoice";
+  reference: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
 interface ItemAgg {
   key: string;
   itemId: string | null;
@@ -30,6 +40,7 @@ interface ItemAgg {
   revenueInvoice: number;
   revenueTotal: number;
   orders: number;
+  txns: SaleTxn[];
 }
 
 export default function BusinessInsightsPage() {
