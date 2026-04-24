@@ -232,7 +232,12 @@ export default function PurchaseOrdersPage() {
         .filter(([, qty]) => qty > 0)
         .map(([poItemId, qty]) => {
           const poItem = poItems.find(pi => pi.id === poItemId);
-          return { poItemId, itemId: poItem!.item_id, quantity: qty };
+          return {
+            poItemId,
+            itemId: poItem!.item_id,
+            quantity: qty,
+            location: receiveLocations[poItemId] || "warehouse",
+          };
         })
         .filter(i => !!i.itemId); // can't deduct stock for custom (non-inventory) items
       if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate);
@@ -241,7 +246,7 @@ export default function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
+      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and inventory updated");
     },
     onError: (e: any) => toast.error(e.message),
