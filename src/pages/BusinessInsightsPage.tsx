@@ -19,7 +19,8 @@ type SourceFilter = "all" | "online" | "invoice";
 
 interface SaleTxn {
   date: string;
-  who: string;
+  customer: string;
+  agent: string;
   source: "online" | "invoice";
   reference: string;
   quantity: number;
