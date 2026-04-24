@@ -96,7 +96,7 @@ export default function BusinessInsightsPage() {
     queryFn: async () => {
       const { data: invs } = await supabase
         .from("invoices")
-        .select("id, invoice_number, invoice_date, customer_id, customers(name)")
+        .select("id, invoice_number, invoice_date, sales_agent, customer_id, customers(name)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", fromStr)
         .lte("invoice_date", toStr);
