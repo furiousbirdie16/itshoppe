@@ -140,7 +140,8 @@ export default function BusinessInsightsPage() {
         const channel = String(r.sales_channel || "online");
         row.txns.push({
           date: r.order_date || "",
-          who: channel.charAt(0).toUpperCase() + channel.slice(1),
+          customer: channel.charAt(0).toUpperCase() + channel.slice(1),
+          agent: "—",
           source: "online",
           reference: r.order_number || "—",
           quantity: qty,
