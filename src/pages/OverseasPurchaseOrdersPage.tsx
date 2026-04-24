@@ -100,6 +100,7 @@ export default function OverseasPurchaseOrdersPage() {
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
@@ -208,7 +209,12 @@ export default function OverseasPurchaseOrdersPage() {
         .filter(([, qty]) => qty > 0)
         .map(([poItemId, qty]) => {
           const pi = receiveItems.find((i) => i.id === poItemId);
-          return { poItemId, itemId: pi?.item_id || null, quantity: qty };
+          return {
+            poItemId,
+            itemId: pi?.item_id || null,
+            quantity: qty,
+            location: receiveLocations[poItemId] || "warehouse",
+          };
         });
       if (itemsToReceive.length === 0) {
         toast.info("Enter a quantity for at least one item");
@@ -224,6 +230,7 @@ export default function OverseasPurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
       setReceiveQtys({});
+      setReceiveLocations({});
       setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and added to stock");
     },
@@ -715,14 +722,14 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+        <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
             <Label className="text-xs">Date Received</Label>
             <DateField value={receiveDate} onChange={setReceiveDate} />
           </div>
-          <p className="text-sm text-muted-foreground">Enter the quantity that just arrived for each item. You can do this multiple times as more shipments come in.</p>
+          <p className="text-sm text-muted-foreground">Enter the quantity that just arrived and choose where to store it. You can do this multiple times as more shipments come in.</p>
           <div className="space-y-3 pt-2 max-h-[60vh] overflow-y-auto">
             {receiveItems.length === 0 && (
               <p className="text-xs text-muted-foreground italic">No line items on this PO.</p>
@@ -731,6 +738,7 @@ export default function OverseasPurchaseOrdersPage() {
               const remaining = pi.quantity - (pi.received_quantity || 0);
               const isCustom = !pi.item_id;
               const isFull = remaining <= 0;
+              const location = receiveLocations[pi.id] || "warehouse";
               return (
                 <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
                   <div className="flex-1 min-w-0">
@@ -741,6 +749,19 @@ export default function OverseasPurchaseOrdersPage() {
                         : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0} · Remaining: ${remaining}`}
                     </p>
                   </div>
+                  <Select
+                    value={location}
+                    onValueChange={(v) => setReceiveLocations({ ...receiveLocations, [pi.id]: v as "warehouse" | "store" })}
+                    disabled={isCustom || isFull}
+                  >
+                    <SelectTrigger className="w-32 h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="warehouse">Warehouse</SelectItem>
+                      <SelectItem value="store">Store</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Input
                     type="number"
                     min={0}
