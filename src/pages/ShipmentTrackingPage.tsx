@@ -108,6 +108,7 @@ export default function ShipmentTrackingPage() {
     shipping_method: (r) => r.shipping_method,
     ship_date: (r) => r.ship_date,
     estimated_arrival: (r) => r.estimated_arrival,
+    actual_arrival: (r) => r.actual_arrival,
     status: (r) => r.status,
     days_left: (r) => {
       if (r.status === "delivered" || !r.estimated_arrival) return null;
