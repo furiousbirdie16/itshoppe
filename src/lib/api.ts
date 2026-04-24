@@ -7,23 +7,15 @@ const applyLocationDelta = (
   current: { warehouse_quantity: number; store_quantity: number },
   unitsToDeduct: number,
 ) => {
-  let warehouse = Number(current.warehouse_quantity || 0);
-  let store = Number(current.store_quantity || 0);
-
-  if (unitsToDeduct > 0) {
-    const deductFromStore = Math.min(store, unitsToDeduct);
-    store -= deductFromStore;
-
-    const remaining = unitsToDeduct - deductFromStore;
-    const deductFromWarehouse = Math.min(warehouse, remaining);
-    warehouse -= deductFromWarehouse;
-  } else if (unitsToDeduct < 0) {
-    store += Math.abs(unitsToDeduct);
-  }
+  // Sales (invoices, online sales, etc.) ALWAYS deduct from store stock,
+  // never from warehouse. Store may go negative if oversold; warehouse is
+  // preserved so that transferring stock W→S is the only path to restock.
+  const warehouse = Number(current.warehouse_quantity || 0);
+  const store = Number(current.store_quantity || 0) - unitsToDeduct;
 
   return {
     warehouse_quantity: Math.max(0, warehouse),
-    store_quantity: Math.max(0, store),
+    store_quantity: store,
   };
 };
 
