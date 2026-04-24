@@ -379,7 +379,8 @@ export default function BusinessInsightsPage() {
                                   <tr className="text-left">
                                     <th className="px-3 py-2 font-medium">Date</th>
                                     <th className="px-3 py-2 font-medium">Source</th>
-                                    <th className="px-3 py-2 font-medium">Who</th>
+                                    <th className="px-3 py-2 font-medium">Customer</th>
+                                    <th className="px-3 py-2 font-medium">Sales Agent</th>
                                     <th className="px-3 py-2 font-medium">Reference</th>
                                     <th className="px-3 py-2 font-medium text-right">Qty</th>
                                     <th className="px-3 py-2 font-medium text-right">Unit ₱</th>
