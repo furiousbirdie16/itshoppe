@@ -339,6 +339,7 @@ export default function ShipmentTrackingPage() {
                   <TableCell className="text-sm text-muted-foreground">{s.shipping_method || "—"}</TableCell>
                   <TableCell className="text-sm">{s.ship_date ? format(new Date(s.ship_date), "MMM d, yyyy") : "—"}</TableCell>
                   <TableCell className="text-sm">{s.estimated_arrival ? format(new Date(s.estimated_arrival), "MMM d, yyyy") : "—"}</TableCell>
+                  <TableCell className="text-sm">{s.actual_arrival ? format(new Date(s.actual_arrival), "MMM d, yyyy") : "—"}</TableCell>
                   <TableCell>
                     <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", statusColors[s.status])}>
                       {statusLabels[s.status]}
