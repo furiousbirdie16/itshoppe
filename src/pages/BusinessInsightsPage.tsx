@@ -12,7 +12,7 @@ import { StatCard } from "@/components/StatCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown } from "lucide-react";
 
 type RangePreset = "today" | "7d" | "30d" | "month" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
