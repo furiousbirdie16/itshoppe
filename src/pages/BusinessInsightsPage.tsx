@@ -180,6 +180,7 @@ export default function BusinessInsightsPage() {
       ...r,
       qtyTotal: r.qtyOnline + r.qtyInvoice,
       revenueTotal: r.revenueOnline + r.revenueInvoice,
+      txns: [...r.txns].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
     }));
 
     const q = search.trim().toLowerCase();
