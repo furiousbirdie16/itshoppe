@@ -224,7 +224,7 @@ export default function BusinessInsightsPage() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Business Insights</h1>
-        <p className="page-description">All sales (online + invoices) and quantity sold per item, in one place.</p>
+        <p className="page-description">All sales (online + invoices) per item. Click a row to see when, who, and how many.</p>
       </div>
 
       {/* Filters */}
