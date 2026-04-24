@@ -316,6 +316,7 @@ export default function ShipmentTrackingPage() {
               <SortableHeader sortKey="shipping_method" label="Method" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="ship_date" label="Shipped" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="estimated_arrival" label="ETA" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="actual_arrival" label="Delivered On" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="days_left" label="Days Left" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
@@ -323,9 +324,9 @@ export default function ShipmentTrackingPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedShipments.length === 0 ? (
-              <TableRow><TableCell colSpan={10}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11}><div className="empty-state"><Ship className="empty-state-icon" /><p className="text-sm">No shipments logged yet</p></div></TableCell></TableRow>
             ) : sortedShipments.map(s => {
               const po = s.overseas_purchase_orders as any;
               const daysLeft = getDaysRemaining(s);
