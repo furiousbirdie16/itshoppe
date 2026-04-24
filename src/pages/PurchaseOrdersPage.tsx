@@ -473,16 +473,17 @@ export default function PurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
-        <DialogContent className="max-w-xl">
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
             <Label className="text-xs">Date Received</Label>
             <DateField value={receiveDate} onChange={setReceiveDate} />
           </div>
-          <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory, or in <span className="font-medium text-foreground">Undo</span> to deduct from inventory and reverse a prior receipt.</p>
-          <div className="grid grid-cols-[1fr_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
+          <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory at the chosen location, or in <span className="font-medium text-foreground">Undo</span> to deduct from inventory and reverse a prior receipt.</p>
+          <div className="grid grid-cols-[1fr_120px_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
             <span>Item</span>
+            <span className="text-center">Location</span>
             <span className="text-center">Receive</span>
             <span className="text-center">Undo</span>
           </div>
@@ -490,14 +491,26 @@ export default function PurchaseOrdersPage() {
             {poItems.map((pi: any) => {
               const remaining = pi.quantity - pi.received_quantity;
               const isCustom = !pi.item_id;
+              const location = receiveLocations[pi.id] || "warehouse";
               return (
-                <div key={pi.id} className="grid grid-cols-[1fr_80px_80px] items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                <div key={pi.id} className="grid grid-cols-[1fr_120px_80px_80px] items-center gap-2 p-3 rounded-lg border bg-muted/30">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {isCustom ? "Custom item — not tracked in inventory" : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`}
                     </p>
                   </div>
+                  <Select
+                    value={location}
+                    onValueChange={(v) => setReceiveLocations({ ...receiveLocations, [pi.id]: v as "warehouse" | "store" })}
+                    disabled={isCustom || remaining <= 0}
+                  >
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="warehouse">Warehouse</SelectItem>
+                      <SelectItem value="store">Store</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom || remaining <= 0} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="h-9 text-sm text-center" />
                   <Input type="number" min={0} max={pi.received_quantity} value={undoQtys[pi.id] || 0} disabled={isCustom || pi.received_quantity <= 0} onChange={e => setUndoQtys({ ...undoQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, pi.received_quantity) })} className="h-9 text-sm text-center" />
                 </div>
