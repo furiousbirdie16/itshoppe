@@ -46,6 +46,7 @@ export default function InvoicesPage() {
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [filterAgent, setFilterAgent] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
