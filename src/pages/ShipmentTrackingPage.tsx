@@ -149,6 +149,10 @@ export default function ShipmentTrackingPage() {
   };
 
   const handleSubmit = () => {
+    if (form.status === "delivered" && !form.actual_arrival) {
+      toast.error("Please set the Actual Arrival date when marking as delivered.");
+      return;
+    }
     const payload: Partial<ShipmentTracking> = {
       po_id: form.po_id || null,
       tracking_number: form.tracking_number,
