@@ -405,7 +405,8 @@ export default function BusinessInsightsPage() {
                                           {t.source === "online" ? "Online" : "Invoice"}
                                         </span>
                                       </td>
-                                      <td className="px-3 py-1.5">{t.who}</td>
+                                      <td className="px-3 py-1.5">{t.customer}</td>
+                                      <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
                                       <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
                                       <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                       <td className="px-3 py-1.5 text-right">{peso(t.unitPrice)}</td>
