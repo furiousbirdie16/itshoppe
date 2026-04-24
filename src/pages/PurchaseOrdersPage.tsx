@@ -118,6 +118,7 @@ export default function PurchaseOrdersPage() {
   };
 
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
