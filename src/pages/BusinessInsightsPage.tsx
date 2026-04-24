@@ -317,6 +317,7 @@ export default function BusinessInsightsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8" />
               <SortableHeader sortKey="name" label="Item" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="qtyOnline" label="Qty Online" sort={sort} onToggle={toggle} align="right" />
@@ -331,24 +332,92 @@ export default function BusinessInsightsPage() {
           <TableBody>
             {sorted.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-10">
+                <TableCell colSpan={10} className="text-center text-xs text-muted-foreground py-10">
                   No sales in this range.
                 </TableCell>
               </TableRow>
             ) : (
-              sorted.map((r) => (
-                <TableRow key={r.key} className="hover:bg-muted/30">
-                  <TableCell className="font-medium text-sm">{r.name}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
-                  <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
-                  <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
-                  <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
-                  <TableCell className="text-sm text-right">{r.revenueOnline ? peso(r.revenueOnline) : "—"}</TableCell>
-                  <TableCell className="text-sm text-right">{r.revenueInvoice ? peso(r.revenueInvoice) : "—"}</TableCell>
-                  <TableCell className="text-sm text-right font-semibold">{peso(r.revenueTotal)}</TableCell>
-                  <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
-                </TableRow>
-              ))
+              sorted.map((r) => {
+                const isOpen = expanded.has(r.key);
+                return (
+                  <>
+                    <TableRow
+                      key={r.key}
+                      className="hover:bg-muted/30 cursor-pointer"
+                      onClick={() => toggleExpand(r.key)}
+                    >
+                      <TableCell className="w-8 p-2 align-middle">
+                        {isOpen ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium text-sm">{r.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
+                      <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
+                      <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
+                      <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
+                      <TableCell className="text-sm text-right">{r.revenueOnline ? peso(r.revenueOnline) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right">{r.revenueInvoice ? peso(r.revenueInvoice) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right font-semibold">{peso(r.revenueTotal)}</TableCell>
+                      <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
+                    </TableRow>
+                    {isOpen && (
+                      <TableRow key={`${r.key}-detail`} className="bg-muted/20 hover:bg-muted/20">
+                        <TableCell colSpan={10} className="p-0">
+                          <div className="px-4 py-3">
+                            <div className="text-xs font-semibold text-muted-foreground mb-2">
+                              Sales history ({r.txns.length})
+                            </div>
+                            <div className="rounded-md border bg-background overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-muted/40">
+                                  <tr className="text-left">
+                                    <th className="px-3 py-2 font-medium">Date</th>
+                                    <th className="px-3 py-2 font-medium">Source</th>
+                                    <th className="px-3 py-2 font-medium">Who</th>
+                                    <th className="px-3 py-2 font-medium">Reference</th>
+                                    <th className="px-3 py-2 font-medium text-right">Qty</th>
+                                    <th className="px-3 py-2 font-medium text-right">Unit ₱</th>
+                                    <th className="px-3 py-2 font-medium text-right">Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {r.txns.map((t, i) => (
+                                    <tr key={i} className="border-t">
+                                      <td className="px-3 py-1.5 whitespace-nowrap">
+                                        {t.date ? format(new Date(t.date), "MMM d, yyyy") : "—"}
+                                      </td>
+                                      <td className="px-3 py-1.5">
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
+                                            t.source === "online"
+                                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                                          )}
+                                        >
+                                          {t.source === "online" ? "Online" : "Invoice"}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-1.5">{t.who}</td>
+                                      <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                      <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
+                                      <td className="px-3 py-1.5 text-right">{peso(t.unitPrice)}</td>
+                                      <td className="px-3 py-1.5 text-right">{peso(t.amount)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                );
+              })
             )}
           </TableBody>
         </Table>
