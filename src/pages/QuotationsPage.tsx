@@ -211,14 +211,28 @@ export default function QuotationsPage() {
     } as any;
   };
 
+  const validateLines = () => {
+    const saved = lines.filter(l => l.item_id || l.item_name);
+    if (saved.length === 0) throw new Error("Add at least one item");
+    for (const l of saved) {
+      const name = l.item_name || "Item";
+      const q = parseQty(l.quantity);
+      const p = parsePrice(l.unit_price);
+      if (!q || q <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
+      if (!p || p <= 0) throw new Error(`"${name}" must have a price greater than 0`);
+    }
+    return saved;
+  };
+
   const createMut = useMutation({
     mutationFn: async () => {
+      const saved = validateLines();
       const total = lines.reduce((s, l) => s + lineTotal(l), 0);
       const payload = buildPayload();
       payload.quotation_number = await generateQuotationNumber();
       payload.total_amount = total;
       const q = await createQuotation(payload);
-      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
+      await createQuotationItems(saved.map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); toast.success("Quotation created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -227,11 +241,12 @@ export default function QuotationsPage() {
   const editMut = useMutation({
     mutationFn: async () => {
       if (!editId) return;
+      const saved = validateLines();
       const payload = buildPayload();
       payload.total_amount = lines.reduce((s, l) => s + lineTotal(l), 0);
       await updateQuotation(editId, payload);
       await deleteQuotationItems(editId);
-      await createQuotationItems(lines.filter(l => l.item_id || l.item_name).map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
+      await createQuotationItems(saved.map(l => ({ quotation_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setCreateOpen(false); setEditId(null); toast.success("Quotation updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),

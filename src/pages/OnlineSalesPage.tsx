@@ -206,6 +206,10 @@ export default function OnlineSalesPage() {
   const handleSave = async () => {
     const cleanLines = form.lines.filter(l => l.product_name.trim());
     if (cleanLines.length === 0) { toast.error("Add at least one item with a product name"); return; }
+    for (const l of cleanLines) {
+      if (!l.quantity || Number(l.quantity) <= 0) { toast.error(`"${l.product_name}" must have a quantity greater than 0`); return; }
+      if (!l.posted_price || Number(l.posted_price) <= 0) { toast.error(`"${l.product_name}" must have a price greater than 0`); return; }
+    }
     setSaving(true);
     try {
       if (editingSale) {
