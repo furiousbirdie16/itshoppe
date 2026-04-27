@@ -644,7 +644,8 @@ export default function OnlineSalesPage() {
   };
 
   const bulkPayValidCount = bulkPayRows.filter(r => r.valid).length;
-  const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid).length;
+  const bulkPayDuplicateCount = bulkPayRows.filter(r => r.duplicate).length;
+  const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid && !r.duplicate).length;
 
   const downloadTemplate = () => {
     const template = [
