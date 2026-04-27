@@ -1394,6 +1394,7 @@ export default function OnlineSalesPage() {
                 <span className="text-muted-foreground">{bulkPayFileName} — {bulkPayRows.length} rows</span>
                 <div className="flex gap-3">
                   {bulkPayValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkPayValidCount} valid</span>}
+                  {bulkPayDuplicateCount > 0 && <span className="flex items-center gap-1 text-muted-foreground">{bulkPayDuplicateCount} already paid</span>}
                   {bulkPayInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkPayInvalidCount} invalid</span>}
                 </div>
               </div>
