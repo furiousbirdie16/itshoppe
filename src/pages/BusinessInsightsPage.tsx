@@ -223,6 +223,63 @@ export default function BusinessInsightsPage() {
     [aggregated],
   );
 
+  // Customer analytics: separate online vs invoice
+  const customerStats = useMemo(() => {
+    // Online: group by sales_channel as "customer proxy" (no real customer on online)
+    const onlineChannels = new Map<string, { revenue: number; orders: Set<string> }>();
+    for (const r of onlineRows as any[]) {
+      const channel = String(r.sales_channel || "others");
+      const orderNum = String(r.order_number || r.id);
+      const rev = Number(r.posted_price || 0) * Number(r.quantity || 0);
+      const e = onlineChannels.get(channel) || { revenue: 0, orders: new Set() };
+      e.revenue += rev;
+      e.orders.add(orderNum);
+      onlineChannels.set(channel, e);
+    }
+    const onlineUniqueOrders = new Set<string>();
+    let onlineRevenue = 0;
+    for (const r of onlineRows as any[]) {
+      onlineUniqueOrders.add(String(r.order_number || r.id));
+      onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+    }
+
+    // Invoice: group by customer
+    const invoiceCustomers = new Map<string, { name: string; revenue: number; orders: Set<string> }>();
+    let invoiceRevenue = 0;
+    for (const r of invoiceRows as any[]) {
+      const inv = r._invoice || {};
+      const custId = inv.customer_id || `walkin:${inv.id}`;
+      const name = inv.customers?.name || "Walk-in";
+      const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
+      invoiceRevenue += rev;
+      const e = invoiceCustomers.get(custId) || { name, revenue: 0, orders: new Set() };
+      e.revenue += rev;
+      e.orders.add(inv.id);
+      invoiceCustomers.set(custId, e);
+    }
+
+    const onlineCustomerCount = onlineChannels.size;
+    const invoiceCustomerCount = invoiceCustomers.size;
+    const onlineAvg = onlineCustomerCount ? onlineRevenue / onlineCustomerCount : 0;
+    const invoiceAvg = invoiceCustomerCount ? invoiceRevenue / invoiceCustomerCount : 0;
+
+    const onlineList = Array.from(onlineChannels.entries())
+      .map(([channel, v]) => ({ name: channel, revenue: v.revenue, orders: v.orders.size, avg: v.orders.size ? v.revenue / v.orders.size : 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const invoiceList = Array.from(invoiceCustomers.values())
+      .map((v) => ({ name: v.name, revenue: v.revenue, orders: v.orders.size, avg: v.orders.size ? v.revenue / v.orders.size : 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      onlineCustomerCount,
+      invoiceCustomerCount,
+      onlineAvg,
+      invoiceAvg,
+      onlineList,
+      invoiceList,
+    };
+  }, [onlineRows, invoiceRows]);
+
   return (
     <div className="space-y-6">
       <div className="page-header">
