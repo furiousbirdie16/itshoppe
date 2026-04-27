@@ -618,9 +618,12 @@ export default function OnlineSalesPage() {
       } catch (e) { failed++; console.error(e); }
     }
     setBulkPayUploading(false);
-    if (success > 0) toast.success(`Marked ${success} orders as paid${failed ? ` (${failed} failed)` : ""}`);
-    if (success === 0 && failed > 0) toast.error(`All ${failed} payments failed`);
-    if (success > 0) {
+    const skipped = bulkPayRows.filter(r => r.duplicate).length;
+    const skippedSuffix = skipped > 0 ? `, ${skipped} skipped (already paid)` : "";
+    if (success > 0) toast.success(`Marked ${success} orders as paid${failed ? ` (${failed} failed)` : ""}${skippedSuffix}`);
+    else if (failed > 0) toast.error(`All ${failed} payments failed${skippedSuffix}`);
+    else if (skipped > 0) toast.info(`No new payments — ${skipped} order${skipped > 1 ? 's' : ''} already paid`);
+    if (success > 0 || skipped > 0) {
       setBulkPayRows([]);
       setBulkPayFileName("");
       setBulkPayOpen(false);
