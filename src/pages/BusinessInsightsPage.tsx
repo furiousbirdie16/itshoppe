@@ -372,6 +372,99 @@ export default function BusinessInsightsPage() {
         {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {sorted.length} item{sorted.length === 1 ? "" : "s"}
       </div>
 
+      {/* Customer Analytics */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Online */}
+        <div className="rounded-xl border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold">Online Customers</h2>
+              <p className="text-xs text-muted-foreground">Grouped by sales channel</p>
+            </div>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channels Ordered</div>
+              <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
+              <div className="text-xl font-semibold mt-0.5">{peso(customerStats.onlineAvg)}</div>
+            </div>
+          </div>
+          <div className="rounded-md border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40">
+                <tr className="text-left">
+                  <th className="px-3 py-2 font-medium">Channel</th>
+                  <th className="px-3 py-2 font-medium text-right">Orders</th>
+                  <th className="px-3 py-2 font-medium text-right">Revenue</th>
+                  <th className="px-3 py-2 font-medium text-right">Avg/Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerStats.onlineList.length === 0 ? (
+                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
+                ) : customerStats.onlineList.map((c) => (
+                  <tr key={c.name} className="border-t">
+                    <td className="px-3 py-1.5 capitalize">{c.name}</td>
+                    <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{peso(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{peso(c.avg)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Invoice */}
+        <div className="rounded-xl border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold">Invoice Customers</h2>
+              <p className="text-xs text-muted-foreground">Unique customers with confirmed/paid invoices</p>
+            </div>
+            <Receipt className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customers Ordered</div>
+              <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
+              <div className="text-xl font-semibold mt-0.5">{peso(customerStats.invoiceAvg)}</div>
+            </div>
+          </div>
+          <div className="rounded-md border overflow-hidden max-h-72 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40 sticky top-0">
+                <tr className="text-left">
+                  <th className="px-3 py-2 font-medium">Customer</th>
+                  <th className="px-3 py-2 font-medium text-right">Orders</th>
+                  <th className="px-3 py-2 font-medium text-right">Revenue</th>
+                  <th className="px-3 py-2 font-medium text-right">Avg/Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerStats.invoiceList.length === 0 ? (
+                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
+                ) : customerStats.invoiceList.map((c, i) => (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-1.5">{c.name}</td>
+                    <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{peso(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{peso(c.avg)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {/* Table */}
       <div className="data-table-wrapper">
         <Table>
