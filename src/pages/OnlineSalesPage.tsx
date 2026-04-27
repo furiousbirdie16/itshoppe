@@ -561,6 +561,7 @@ export default function OnlineSalesPage() {
           const order_id = normalizeBulkCell(row[orderIdx]);
           const amount_paid = parseBulkNumber(row[amountIdx], 0);
           let error: string | undefined;
+          let duplicate = false;
           let matched_ids: string[] = [];
           let expected = 0;
           if (!order_id) {
@@ -571,10 +572,15 @@ export default function OnlineSalesPage() {
             else {
               matched_ids = matches.map((s: any) => s.id);
               expected = expectedForGroup(matches);
+              // Skip if all matched line items are already paid
+              if (matches.every((s: any) => s.payment_status === 'paid')) {
+                duplicate = true;
+                error = "Already paid — skipped";
+              }
             }
           }
           if (!error && amount_paid < 0) error = "Negative amount";
-          return { order_id, amount_paid, matched_ids, expected, valid: !error, error };
+          return { order_id, amount_paid, matched_ids, expected, valid: !error, duplicate, error };
         });
         setBulkPayRows(parsed);
       } catch (err) {
