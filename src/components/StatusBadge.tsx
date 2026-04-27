@@ -34,7 +34,12 @@ export function StatusBadge({ status, className, context = "default" }: StatusBa
       : context === "overseas_po" && overseasPoLabels[status]
         ? overseasPoLabels[status]
         : status.replace(/_/g, " ");
-  const styleKey = context === "overseas_po" && status === "draft" ? "unpaid" : status;
+  const styleKey =
+    context === "overseas_po" && status === "draft"
+      ? "unpaid"
+      : context === "invoice" && status === "confirmed"
+        ? "rejected" // shipped but not paid → red
+        : status;
   return (
     <span
       className={cn(
