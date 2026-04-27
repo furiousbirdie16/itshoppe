@@ -557,31 +557,45 @@ export default function OnlineSalesPage() {
         if (amountIdx < 0) { toast.error("Could not find an Amount Paid column"); return; }
 
         const dataRows = sheetRows.slice(1);
-        const parsed = dataRows.map((row) => {
+        // Aggregate by Order ID — sum all amounts (including negative fees) into a single row
+        const aggregated = new Map<string, { order_id: string; amount_paid: number }>();
+        const missingOrderRows: { order_id: string; amount_paid: number }[] = [];
+        for (const row of dataRows) {
           const order_id = normalizeBulkCell(row[orderIdx]);
-          const amount_paid = parseBulkNumber(row[amountIdx], 0);
-          let error: string | undefined;
-          let duplicate = false;
-          let matched_ids: string[] = [];
-          let expected = 0;
+          const amt = parseBulkNumber(row[amountIdx], 0);
           if (!order_id) {
-            error = "Missing Order ID — row rejected";
-          } else {
+            missingOrderRows.push({ order_id: "", amount_paid: amt });
+            continue;
+          }
+          const existing = aggregated.get(order_id);
+          if (existing) existing.amount_paid = Math.round((existing.amount_paid + amt) * 100) / 100;
+          else aggregated.set(order_id, { order_id, amount_paid: Math.round(amt * 100) / 100 });
+        }
+
+        const parsed = [
+          ...Array.from(aggregated.values()).map(({ order_id, amount_paid }) => {
+            let error: string | undefined;
+            let duplicate = false;
+            let matched_ids: string[] = [];
+            let expected = 0;
             const matches = sales.filter((s: any) => s.order_number === order_id);
             if (matches.length === 0) error = `Order "${order_id}" not found`;
             else {
               matched_ids = matches.map((s: any) => s.id);
               expected = expectedForGroup(matches);
-              // Skip if all matched line items are already paid
               if (matches.every((s: any) => s.payment_status === 'paid')) {
                 duplicate = true;
                 error = "Already paid — skipped";
               }
             }
-          }
-          if (!error && amount_paid < 0) error = "Negative amount";
-          return { order_id, amount_paid, matched_ids, expected, valid: !error, duplicate, error };
-        });
+            if (!error && amount_paid < 0) error = "Net amount is negative";
+            return { order_id, amount_paid, matched_ids, expected, valid: !error, duplicate, error };
+          }),
+          ...missingOrderRows.map(({ order_id, amount_paid }) => ({
+            order_id, amount_paid, matched_ids: [], expected: 0, valid: false, duplicate: false,
+            error: "Missing Order ID — row rejected",
+          })),
+        ];
         setBulkPayRows(parsed);
       } catch (err) {
         console.error("Bulk payment parse error", err);
