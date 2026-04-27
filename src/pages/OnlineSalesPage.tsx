@@ -1414,13 +1414,13 @@ export default function OnlineSalesPage() {
                     {bulkPayRows.map((row, i) => {
                       const fees = row.valid ? row.expected - row.amount_paid : 0;
                       return (
-                        <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
+                        <TableRow key={i} className={row.valid ? "" : row.duplicate ? "bg-muted/40 text-muted-foreground" : "bg-destructive/5"}>
                           <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                           <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
-                          <TableCell className="text-sm text-right tabular-nums">{row.valid ? peso(row.expected) : "—"}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{row.matched_ids.length ? peso(row.expected) : "—"}</TableCell>
                           <TableCell className="text-sm text-right tabular-nums">{peso(row.amount_paid)}</TableCell>
-                          <TableCell className="text-sm text-right tabular-nums"><span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{row.valid ? peso(fees) : "—"}</span></TableCell>
-                          <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums"><span className={!row.valid ? "text-muted-foreground" : fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{row.valid ? peso(fees) : "—"}</span></TableCell>
+                          <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : row.duplicate ? <span className="text-muted-foreground">{row.error}</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
                         </TableRow>
                       );
                     })}
