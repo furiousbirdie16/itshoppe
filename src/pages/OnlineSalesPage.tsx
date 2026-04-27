@@ -167,7 +167,7 @@ export default function OnlineSalesPage() {
 
   // Bulk payment upload state
   const [bulkPayOpen, setBulkPayOpen] = useState(false);
-  const [bulkPayRows, setBulkPayRows] = useState<{ order_id: string; amount_paid: number; matched_ids: string[]; expected: number; valid: boolean; error?: string }[]>([]);
+  const [bulkPayRows, setBulkPayRows] = useState<{ order_id: string; amount_paid: number; matched_ids: string[]; expected: number; valid: boolean; duplicate?: boolean; error?: string }[]>([]);
   const [bulkPayUploading, setBulkPayUploading] = useState(false);
   const [bulkPayFileName, setBulkPayFileName] = useState("");
   const payFileRef = useRef<HTMLInputElement>(null);
