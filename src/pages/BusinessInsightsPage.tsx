@@ -223,6 +223,63 @@ export default function BusinessInsightsPage() {
     [aggregated],
   );
 
+  // Customer analytics: separate online vs invoice
+  const customerStats = useMemo(() => {
+    // Online: group by sales_channel as "customer proxy" (no real customer on online)
+    const onlineChannels = new Map<string, { revenue: number; orders: Set<string> }>();
+    for (const r of onlineRows as any[]) {
+      const channel = String(r.sales_channel || "others");
+      const orderNum = String(r.order_number || r.id);
+      const rev = Number(r.posted_price || 0) * Number(r.quantity || 0);
+      const e = onlineChannels.get(channel) || { revenue: 0, orders: new Set() };
+      e.revenue += rev;
+      e.orders.add(orderNum);
+      onlineChannels.set(channel, e);
+    }
+    const onlineUniqueOrders = new Set<string>();
+    let onlineRevenue = 0;
+    for (const r of onlineRows as any[]) {
+      onlineUniqueOrders.add(String(r.order_number || r.id));
+      onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+    }
+
+    // Invoice: group by customer
+    const invoiceCustomers = new Map<string, { name: string; revenue: number; orders: Set<string> }>();
+    let invoiceRevenue = 0;
+    for (const r of invoiceRows as any[]) {
+      const inv = r._invoice || {};
+      const custId = inv.customer_id || `walkin:${inv.id}`;
+      const name = inv.customers?.name || "Walk-in";
+      const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
+      invoiceRevenue += rev;
+      const e = invoiceCustomers.get(custId) || { name, revenue: 0, orders: new Set() };
+      e.revenue += rev;
+      e.orders.add(inv.id);
+      invoiceCustomers.set(custId, e);
+    }
+
+    const onlineCustomerCount = onlineChannels.size;
+    const invoiceCustomerCount = invoiceCustomers.size;
+    const onlineAvg = onlineCustomerCount ? onlineRevenue / onlineCustomerCount : 0;
+    const invoiceAvg = invoiceCustomerCount ? invoiceRevenue / invoiceCustomerCount : 0;
+
+    const onlineList = Array.from(onlineChannels.entries())
+      .map(([channel, v]) => ({ name: channel, revenue: v.revenue, orders: v.orders.size, avg: v.orders.size ? v.revenue / v.orders.size : 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const invoiceList = Array.from(invoiceCustomers.values())
+      .map((v) => ({ name: v.name, revenue: v.revenue, orders: v.orders.size, avg: v.orders.size ? v.revenue / v.orders.size : 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      onlineCustomerCount,
+      invoiceCustomerCount,
+      onlineAvg,
+      invoiceAvg,
+      onlineList,
+      invoiceList,
+    };
+  }, [onlineRows, invoiceRows]);
+
   return (
     <div className="space-y-6">
       <div className="page-header">
@@ -313,6 +370,99 @@ export default function BusinessInsightsPage() {
 
       <div className="text-xs text-muted-foreground">
         {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {sorted.length} item{sorted.length === 1 ? "" : "s"}
+      </div>
+
+      {/* Customer Analytics */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Online */}
+        <div className="rounded-xl border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold">Online Customers</h2>
+              <p className="text-xs text-muted-foreground">Grouped by sales channel</p>
+            </div>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channels Ordered</div>
+              <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
+              <div className="text-xl font-semibold mt-0.5">{peso(customerStats.onlineAvg)}</div>
+            </div>
+          </div>
+          <div className="rounded-md border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40">
+                <tr className="text-left">
+                  <th className="px-3 py-2 font-medium">Channel</th>
+                  <th className="px-3 py-2 font-medium text-right">Orders</th>
+                  <th className="px-3 py-2 font-medium text-right">Revenue</th>
+                  <th className="px-3 py-2 font-medium text-right">Avg/Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerStats.onlineList.length === 0 ? (
+                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
+                ) : customerStats.onlineList.map((c) => (
+                  <tr key={c.name} className="border-t">
+                    <td className="px-3 py-1.5 capitalize">{c.name}</td>
+                    <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{peso(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{peso(c.avg)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Invoice */}
+        <div className="rounded-xl border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold">Invoice Customers</h2>
+              <p className="text-xs text-muted-foreground">Unique customers with confirmed/paid invoices</p>
+            </div>
+            <Receipt className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customers Ordered</div>
+              <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
+              <div className="text-xl font-semibold mt-0.5">{peso(customerStats.invoiceAvg)}</div>
+            </div>
+          </div>
+          <div className="rounded-md border overflow-hidden max-h-72 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40 sticky top-0">
+                <tr className="text-left">
+                  <th className="px-3 py-2 font-medium">Customer</th>
+                  <th className="px-3 py-2 font-medium text-right">Orders</th>
+                  <th className="px-3 py-2 font-medium text-right">Revenue</th>
+                  <th className="px-3 py-2 font-medium text-right">Avg/Order</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerStats.invoiceList.length === 0 ? (
+                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
+                ) : customerStats.invoiceList.map((c, i) => (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-1.5">{c.name}</td>
+                    <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{peso(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{peso(c.avg)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {/* Table */}
