@@ -215,6 +215,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
                     <TableHead className="text-xs text-right">Warehouse</TableHead>
                     <TableHead className="text-xs text-right">Store</TableHead>
                     <TableHead className="text-xs text-right">Cost</TableHead>
+                    {isAdmin && <TableHead className="text-xs text-right">Cost RMB</TableHead>}
                     <TableHead className="text-xs text-right">Price</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                   </TableRow>
