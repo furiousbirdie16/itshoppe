@@ -283,7 +283,7 @@ export default function InventoryPage() {
                 <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" />
               </div>
             </div>
-            <div className={`grid ${isAdmin ? 'grid-cols-3' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
+            <div className={`grid ${isAdmin ? 'grid-cols-4' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
               {canEditCost && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Cost Price</Label>
