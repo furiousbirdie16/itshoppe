@@ -157,6 +157,32 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
           >
             Transfer
           </Button>
+
+          <div className="space-y-1.5 pt-2 border-t">
+            <Label className="text-xs font-medium">Transfer History</Label>
+            {history.length === 0 ? (
+              <div className="text-xs text-muted-foreground py-2">No transfers yet.</div>
+            ) : (
+              <div className="max-h-48 overflow-y-auto rounded-md border divide-y">
+                {history.map((h: any) => {
+                  const dir = h.type === "transfer_w2s" ? "Warehouse → Store" : "Store → Warehouse";
+                  const dt = new Date(h.created_at);
+                  return (
+                    <div key={h.id} className="px-2.5 py-1.5 text-xs flex flex-col gap-0.5">
+                      <div className="flex justify-between gap-2">
+                        <span className="font-medium">{dir}</span>
+                        <span className="text-muted-foreground">Qty: {h.quantity}</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {dt.toLocaleString()}
+                      </div>
+                      {h.notes && <div className="text-[11px] text-muted-foreground italic truncate">{h.notes}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
