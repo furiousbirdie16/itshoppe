@@ -77,6 +77,22 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const { data: history = [] } = useQuery({
+    queryKey: ["transfer-history", item?.id],
+    enabled: !!item && open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("inventory_movements")
+        .select("id, type, quantity, notes, created_at")
+        .eq("item_id", item!.id)
+        .in("type", ["transfer_w2s", "transfer_s2w"])
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   if (!item) return null;
   const wh = Number(item.warehouse_quantity ?? 0);
   const st = Number(item.store_quantity ?? 0);
