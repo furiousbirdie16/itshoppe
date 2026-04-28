@@ -176,7 +176,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
             <div className="text-center space-y-1">
               <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls)</p>
               <p className="text-xs text-muted-foreground">
-                Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Warehouse Qty</strong>, <strong>Store Qty</strong>, <strong>Cost</strong>, <strong>Price</strong>
+                Columns: <strong>Item/Name</strong>, <strong>SKU</strong>, <strong>Description</strong>, <strong>Warehouse Qty</strong>, <strong>Store Qty</strong>, <strong>Cost</strong>{isAdmin ? <>, <strong>Cost RMB</strong></> : null}, <strong>Price</strong>
               </p>
               <p className="text-[11px] text-muted-foreground">A single <strong>Qty</strong> column is also accepted (loaded into Warehouse).</p>
             </div>
