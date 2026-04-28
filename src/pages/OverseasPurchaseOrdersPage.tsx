@@ -578,9 +578,11 @@ export default function OverseasPurchaseOrdersPage() {
                          <ItemSearch
                            items={inventoryItems}
                            value={line.item_id}
-                           onChange={(itemId, item) => {
-                             setLines(lines.map((l, i) => i === idx ? { ...l, item_id: itemId, item_name: item.name } : l));
-                           }}
+                            onChange={(itemId, item) => {
+                              const rmb = Number((item as any)?.cost_price_rmb || 0);
+                              const autoCost = currency === "RMB" && rmb > 0 ? rmb : undefined;
+                              setLines(lines.map((l, i) => i === idx ? { ...l, item_id: itemId, item_name: item.name, ...(autoCost !== undefined && (!l.unit_cost || Number(l.unit_cost) === 0) ? { unit_cost: autoCost } : {}) } : l));
+                            }}
                            placeholder="Search SKU or name..."
                          />
                        </div>
