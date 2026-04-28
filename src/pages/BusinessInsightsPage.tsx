@@ -365,10 +365,10 @@ export default function BusinessInsightsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />
-        <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />
-        <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />
+      <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
+        {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />}
+        {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />}
+        {isAdmin && <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />}
         <StatCard title="Units Sold" value={totals.qty} icon={Package} />
       </div>
 
