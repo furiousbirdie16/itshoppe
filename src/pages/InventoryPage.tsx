@@ -296,6 +296,12 @@ export default function InventoryPage() {
               </div>
               {isAdmin && (
                 <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Cost Price (RMB ¥)</Label>
+                  <Input type="number" value={form.cost_price_rmb} onChange={e => setForm({ ...form, cost_price_rmb: e.target.value })} className="h-9" placeholder="0.00" />
+                </div>
+              )}
+              {isAdmin && (
+                <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Low Stock Alert</Label>
                   <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
                 </div>
