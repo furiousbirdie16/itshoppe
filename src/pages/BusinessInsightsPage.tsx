@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 type RangePreset = "today" | "7d" | "30d" | "month" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
+type PaymentFilter = "all" | "paid" | "unpaid";
 
 interface SaleTxn {
   date: string;
@@ -55,6 +56,7 @@ export default function BusinessInsightsPage() {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [source, setSource] = useState<SourceFilter>("all");
+  const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -84,26 +86,30 @@ export default function BusinessInsightsPage() {
 
   // Online sales (qty from quantity column, price posted_price)
   const { data: onlineRows = [] } = useQuery({
-    queryKey: ["bi_online", fromStr, toStr],
+    queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from("online_sales")
-        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, items(name, sku), item_variations(name, sku)")
+        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
         .eq("status", "completed")
         .gte("order_date", fromStr)
         .lte("order_date", toStr);
+      if (payment !== "all") q = q.eq("payment_status", payment);
+      const { data } = await q;
       return data || [];
     },
   });
 
   // Invoice items (only for confirmed/paid invoices in date range)
   const { data: invoiceRows = [] } = useQuery({
-    queryKey: ["bi_invoice", fromStr, toStr],
+    queryKey: ["bi_invoice", fromStr, toStr, payment],
     queryFn: async () => {
+      const statuses =
+        payment === "paid" ? ["paid"] : payment === "unpaid" ? ["confirmed", "unpaid"] : ["confirmed", "paid", "unpaid"];
       const { data: invs } = await supabase
         .from("invoices")
-        .select("id, invoice_number, invoice_date, sales_agent, customer_id, customers(name)")
-        .in("status", ["confirmed", "paid"])
+        .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
+        .in("status", statuses as any)
         .gte("invoice_date", fromStr)
         .lte("invoice_date", toStr);
       const ids = (invs || []).map((i: any) => i.id);
@@ -400,6 +406,20 @@ export default function BusinessInsightsPage() {
               onClick={() => setSource(s)}
             >
               {s === "all" ? "All sources" : s === "online" ? "Online only" : "Invoice only"}
+            </Button>
+          ))}
+        </div>
+        <div className="h-5 w-px bg-border mx-1" />
+        <div className="flex items-center gap-1 flex-wrap">
+          {(["all", "paid", "unpaid"] as PaymentFilter[]).map((p) => (
+            <Button
+              key={p}
+              variant={payment === p ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs capitalize"
+              onClick={() => setPayment(p)}
+            >
+              {p === "all" ? "All payments" : p === "paid" ? "Paid only" : "Unpaid only"}
             </Button>
           ))}
         </div>
