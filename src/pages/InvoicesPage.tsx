@@ -616,8 +616,8 @@ export default function InvoicesPage() {
                     {(inv.status === "paid" || inv.status === "unpaid") && (
                       <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
-                    {(inv.status === "draft" || isAdmin) && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    {isAdmin && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
                   </div>
                 </TableCell>
