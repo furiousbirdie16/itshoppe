@@ -159,6 +159,7 @@ export default function InvoicesPage() {
       notes: inv.notes || "",
       due_date: inv.due_date || "",
       sales_agent: inv.sales_agent || "",
+      payment_terms: "",
     });
     setLines(
       lineItems.length > 0
