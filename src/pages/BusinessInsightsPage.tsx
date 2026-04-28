@@ -86,14 +86,16 @@ export default function BusinessInsightsPage() {
 
   // Online sales (qty from quantity column, price posted_price)
   const { data: onlineRows = [] } = useQuery({
-    queryKey: ["bi_online", fromStr, toStr],
+    queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from("online_sales")
-        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, items(name, sku), item_variations(name, sku)")
+        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
         .eq("status", "completed")
         .gte("order_date", fromStr)
         .lte("order_date", toStr);
+      if (payment !== "all") q = q.eq("payment_status", payment);
+      const { data } = await q;
       return data || [];
     },
   });
