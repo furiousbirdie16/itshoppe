@@ -249,6 +249,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
   const fmtVal = (field: string, v: unknown) => {
     if (v === null || v === undefined || v === "") return "—";
     if (field === "cost_price" || field === "selling_price") return peso(Number(v));
+    if (field === "cost_price_rmb") return `¥${Number(v)}`;
     return String(v);
   };
 
