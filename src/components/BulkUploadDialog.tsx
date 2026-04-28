@@ -15,6 +15,7 @@ interface ParsedRow {
   warehouse_qty: number;
   store_qty: number;
   cost: number;
+  cost_rmb: number;
   price: number;
   valid: boolean;
   error?: string;
@@ -24,9 +25,10 @@ interface BulkUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  isAdmin?: boolean;
 }
 
-export default function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDialogProps) {
+export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmin = false }: BulkUploadDialogProps) {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState("");
