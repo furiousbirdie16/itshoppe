@@ -409,6 +409,20 @@ export default function BusinessInsightsPage() {
             </Button>
           ))}
         </div>
+        <div className="h-5 w-px bg-border mx-1" />
+        <div className="flex items-center gap-1 flex-wrap">
+          {(["all", "paid", "unpaid"] as PaymentFilter[]).map((p) => (
+            <Button
+              key={p}
+              variant={payment === p ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs capitalize"
+              onClick={() => setPayment(p)}
+            >
+              {p === "all" ? "All payments" : p === "paid" ? "Paid only" : "Unpaid only"}
+            </Button>
+          ))}
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="relative">
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
