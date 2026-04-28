@@ -438,9 +438,25 @@ export default function InvoicesPage() {
                 )}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Due Date</Label>
-              <DateField value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Terms (days)</Label>
+                <Input type="number" min={0} value={form.payment_terms} onChange={e => {
+                  const v = e.target.value;
+                  const days = parseInt(v);
+                  let due = form.due_date;
+                  if (!isNaN(days) && days >= 0) {
+                    const baseStr = editId ? (invoices.find((i: any) => i.id === editId)?.invoice_date) : null;
+                    const base = baseStr ? parseISO(baseStr) : new Date();
+                    due = format(addDays(base, days), "yyyy-MM-dd");
+                  }
+                  setForm({ ...form, payment_terms: v, due_date: due });
+                }} className="h-9" placeholder="e.g. 30" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Due Date</Label>
+                <DateField value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
