@@ -39,7 +39,7 @@ export default function InventoryPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
   const [transferItem, setTransferItem] = useState<Item | null>(null);
-  const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
+  const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
 
@@ -60,10 +60,10 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku, description: item.description, warehouse_quantity: String((item as any).warehouse_quantity ?? 0), store_quantity: String((item as any).store_quantity ?? 0), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
+    setForm({ name: item.name, sku: item.sku, description: item.description, warehouse_quantity: String((item as any).warehouse_quantity ?? 0), store_quantity: String((item as any).store_quantity ?? 0), cost_price: String(item.cost_price), cost_price_rmb: String((item as any).cost_price_rmb ?? 0), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
     setOpen(true);
   };
 
@@ -78,6 +78,7 @@ export default function InventoryPage() {
       if (isAdmin) data.source = form.source;
       else data.source = "local"; // non-admin new items default to local
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
+      if (isAdmin) data.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
       createMut.mutate(data);
     } else {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), warehouse_quantity: wh, store_quantity: st };
@@ -85,6 +86,7 @@ export default function InventoryPage() {
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
+        data.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
       }
       updateMut.mutate({ id: editing.id, data });
     }
@@ -281,7 +283,7 @@ export default function InventoryPage() {
                 <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" />
               </div>
             </div>
-            <div className={`grid ${isAdmin ? 'grid-cols-3' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
+            <div className={`grid ${isAdmin ? 'grid-cols-4' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
               {canEditCost && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Cost Price</Label>
@@ -292,6 +294,12 @@ export default function InventoryPage() {
                 <Label className="text-xs font-medium">Selling Price</Label>
                 <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
               </div>
+              {isAdmin && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Cost Price (RMB ¥)</Label>
+                  <Input type="number" value={form.cost_price_rmb} onChange={e => setForm({ ...form, cost_price_rmb: e.target.value })} className="h-9" placeholder="0.00" />
+                </div>
+              )}
               {isAdmin && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Low Stock Alert</Label>

@@ -299,6 +299,7 @@ export type Database = {
         Row: {
           base_unit: string
           cost_price: number
+          cost_price_rmb: number
           created_at: string | null
           description: string | null
           id: string
@@ -317,6 +318,7 @@ export type Database = {
         Insert: {
           base_unit?: string
           cost_price?: number
+          cost_price_rmb?: number
           created_at?: string | null
           description?: string | null
           id?: string
@@ -335,6 +337,7 @@ export type Database = {
         Update: {
           base_unit?: string
           cost_price?: number
+          cost_price_rmb?: number
           created_at?: string | null
           description?: string | null
           id?: string
