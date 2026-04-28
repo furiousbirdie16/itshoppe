@@ -142,12 +142,15 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
   };
 
   const downloadTemplate = () => {
-    const template = [
+    const template = isAdmin ? [
+      { "Item": "Sample Product A", "SKU": "SKU-001", "Description": "Brief description", "Warehouse Qty": 8, "Store Qty": 2, "Cost": 50, "Cost RMB": 12.5, "Price": 100 },
+      { "Item": "Sample Product B", "SKU": "SKU-002", "Description": "", "Warehouse Qty": 20, "Store Qty": 5, "Cost": 120, "Cost RMB": 30, "Price": 250 },
+    ] : [
       { "Item": "Sample Product A", "SKU": "SKU-001", "Description": "Brief description", "Warehouse Qty": 8, "Store Qty": 2, "Cost": 50, "Price": 100 },
       { "Item": "Sample Product B", "SKU": "SKU-002", "Description": "", "Warehouse Qty": 20, "Store Qty": 5, "Cost": 120, "Price": 250 },
     ];
     const ws = XLSX.utils.json_to_sheet(template);
-    ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
     XLSX.writeFile(wb, "inventory_template.xlsx");
