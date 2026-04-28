@@ -60,10 +60,10 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku, description: item.description, warehouse_quantity: String((item as any).warehouse_quantity ?? 0), store_quantity: String((item as any).store_quantity ?? 0), cost_price: String(item.cost_price), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
+    setForm({ name: item.name, sku: item.sku, description: item.description, warehouse_quantity: String((item as any).warehouse_quantity ?? 0), store_quantity: String((item as any).store_quantity ?? 0), cost_price: String(item.cost_price), cost_price_rmb: String((item as any).cost_price_rmb ?? 0), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
     setOpen(true);
   };
 
@@ -78,6 +78,7 @@ export default function InventoryPage() {
       if (isAdmin) data.source = form.source;
       else data.source = "local"; // non-admin new items default to local
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
+      if (isAdmin) data.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
       createMut.mutate(data);
     } else {
       const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), warehouse_quantity: wh, store_quantity: st };
@@ -85,6 +86,7 @@ export default function InventoryPage() {
       if (canEditCost) data.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
         data.low_stock_threshold = parseInt(form.low_stock_threshold);
+        data.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
       }
       updateMut.mutate({ id: editing.id, data });
     }
