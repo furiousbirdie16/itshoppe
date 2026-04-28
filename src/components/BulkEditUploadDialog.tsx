@@ -97,13 +97,14 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         "Warehouse Qty": (i as any).warehouse_quantity ?? 0,
         "Store Qty": (i as any).store_quantity ?? 0,
         ...(showCost ? { "Cost Price": Number(i.cost_price) } : { "Cost Price": "" }),
+        ...(isAdmin ? { "Cost RMB": Number((i as any).cost_price_rmb ?? 0) } : {}),
         "Selling Price": Number(i.selling_price),
         ...(isAdmin ? { "Low Stock Threshold": i.low_stock_threshold } : {}),
         Source: (i as any).source || "local",
       };
     });
     const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
     XLSX.writeFile(wb, `inventory_edit_${new Date().toISOString().split("T")[0]}.xlsx`);
