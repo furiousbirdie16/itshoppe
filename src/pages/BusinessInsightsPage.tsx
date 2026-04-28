@@ -102,12 +102,14 @@ export default function BusinessInsightsPage() {
 
   // Invoice items (only for confirmed/paid invoices in date range)
   const { data: invoiceRows = [] } = useQuery({
-    queryKey: ["bi_invoice", fromStr, toStr],
+    queryKey: ["bi_invoice", fromStr, toStr, payment],
     queryFn: async () => {
+      const statuses =
+        payment === "paid" ? ["paid"] : payment === "unpaid" ? ["confirmed", "unpaid"] : ["confirmed", "paid", "unpaid"];
       const { data: invs } = await supabase
         .from("invoices")
-        .select("id, invoice_number, invoice_date, sales_agent, customer_id, customers(name)")
-        .in("status", ["confirmed", "paid"])
+        .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
+        .in("status", statuses as any)
         .gte("invoice_date", fromStr)
         .lte("invoice_date", toStr);
       const ids = (invs || []).map((i: any) => i.id);
