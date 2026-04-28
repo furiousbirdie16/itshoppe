@@ -18,6 +18,7 @@ import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
+import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
