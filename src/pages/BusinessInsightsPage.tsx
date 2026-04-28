@@ -46,6 +46,9 @@ interface ItemAgg {
 }
 
 export default function BusinessInsightsPage() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
+  const money = (n: number) => (isAdmin ? peso(n) : "—");
   const [preset, setPreset] = useState<RangePreset>("30d");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
