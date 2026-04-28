@@ -1,0 +1,1 @@
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS cost_price_rmb numeric NOT NULL DEFAULT 0;
