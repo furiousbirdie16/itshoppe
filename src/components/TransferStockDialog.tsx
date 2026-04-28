@@ -71,6 +71,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["transfer-history", item?.id] });
       toast.success("Stock transferred");
       onOpenChange(false);
     },
