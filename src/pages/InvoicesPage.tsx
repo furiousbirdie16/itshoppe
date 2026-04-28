@@ -311,9 +311,11 @@ export default function InvoicesPage() {
                 updateOne={async (id, patch) => { await updateInvoice(id, patch as any); }}
                 onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); }}
               />
-              <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
-                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-              </Button>
+              {isAdmin && (
+                <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                  <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+                </Button>
+              )}
             </>
           )}
           <div className="relative">
