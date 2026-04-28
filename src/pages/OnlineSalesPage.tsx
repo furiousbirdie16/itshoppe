@@ -211,6 +211,22 @@ export default function OnlineSalesPage() {
       if (!l.quantity || Number(l.quantity) <= 0) { toast.error(`"${l.product_name}" must have a quantity greater than 0`); return; }
       if (!l.posted_price || Number(l.posted_price) <= 0) { toast.error(`"${l.product_name}" must have a price greater than 0`); return; }
     }
+    // Warn (but allow) if store stock is insufficient — only when creating new sales.
+    if (!editingSale) {
+      const shortages = await checkStoreStock(
+        cleanLines.map((l: any) => ({
+          item_id: l.item_id || null,
+          variation_id: l.variation_id || null,
+          quantity: Number(l.quantity || 0),
+        })),
+      );
+      if (shortages.length > 0) {
+        const ok = window.confirm(
+          `Store inventory is not enough for this online sale:\n\n${formatShortageMessage(shortages)}\n\nProceeding will let store stock go negative. Continue?`,
+        );
+        if (!ok) return;
+      }
+    }
     setSaving(true);
     try {
       if (editingSale) {
