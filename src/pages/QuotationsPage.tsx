@@ -22,6 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
+import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
