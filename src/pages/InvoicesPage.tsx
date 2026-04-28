@@ -24,6 +24,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
+import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; variation_id: string | null; }
 
@@ -260,6 +261,28 @@ export default function InvoicesPage() {
   };
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
+
+  // Warn (but allow) if shipping/paying an invoice would oversell store stock.
+  const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay"): Promise<boolean> => {
+    try {
+      const lineItems = await getInvoiceItems(invoiceId);
+      const shortages = await checkStoreStock(
+        lineItems.map((li: any) => ({
+          item_id: li.item_id,
+          variation_id: li.variation_id || null,
+          quantity: li.quantity,
+        })),
+      );
+      if (shortages.length === 0) return true;
+      const verb = action === "ship" ? "ship" : "mark this invoice as paid";
+      return window.confirm(
+        `Store inventory is not enough to ${verb}:\n\n${formatShortageMessage(shortages)}\n\nProceeding will let store stock go negative. Continue?`,
+      );
+    } catch {
+      return true; // don't block on check failure
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -582,8 +605,8 @@ export default function InvoicesPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => confirmMut.mutate(inv.id)} title="Confirm & Deduct Stock (Mark Shipped)" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(inv.id)} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) confirmMut.mutate(inv.id); }} title="Confirm & Deduct Stock (Mark Shipped)" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) markPaidMut.mutate(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
