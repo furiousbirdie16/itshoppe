@@ -27,7 +27,7 @@ interface DiffRow {
   message?: string;
 }
 
-const FIELD_KEYS = ["name", "description", "warehouse_quantity", "store_quantity", "cost_price", "selling_price", "low_stock_threshold", "source"] as const;
+const FIELD_KEYS = ["name", "description", "warehouse_quantity", "store_quantity", "cost_price", "cost_price_rmb", "selling_price", "low_stock_threshold", "source"] as const;
 
 // Map common header names → canonical field key
 const HEADER_MAP: Record<string, typeof FIELD_KEYS[number]> = {
@@ -53,6 +53,11 @@ const HEADER_MAP: Record<string, typeof FIELD_KEYS[number]> = {
   "cost price": "cost_price",
   "cost_price": "cost_price",
   "buying": "cost_price",
+  "cost rmb": "cost_price_rmb",
+  "cost price rmb": "cost_price_rmb",
+  "cost_price_rmb": "cost_price_rmb",
+  "rmb cost": "cost_price_rmb",
+  "rmb": "cost_price_rmb",
   "selling price": "selling_price",
   "selling_price": "selling_price",
   "price": "selling_price",
