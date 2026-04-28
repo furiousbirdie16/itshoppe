@@ -56,6 +56,7 @@ export default function BusinessInsightsPage() {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [source, setSource] = useState<SourceFilter>("all");
+  const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
