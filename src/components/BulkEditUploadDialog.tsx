@@ -27,7 +27,7 @@ interface DiffRow {
   message?: string;
 }
 
-const FIELD_KEYS = ["name", "description", "warehouse_quantity", "store_quantity", "cost_price", "selling_price", "low_stock_threshold", "source"] as const;
+const FIELD_KEYS = ["name", "description", "warehouse_quantity", "store_quantity", "cost_price", "cost_price_rmb", "selling_price", "low_stock_threshold", "source"] as const;
 
 // Map common header names → canonical field key
 const HEADER_MAP: Record<string, typeof FIELD_KEYS[number]> = {
@@ -53,6 +53,11 @@ const HEADER_MAP: Record<string, typeof FIELD_KEYS[number]> = {
   "cost price": "cost_price",
   "cost_price": "cost_price",
   "buying": "cost_price",
+  "cost rmb": "cost_price_rmb",
+  "cost price rmb": "cost_price_rmb",
+  "cost_price_rmb": "cost_price_rmb",
+  "rmb cost": "cost_price_rmb",
+  "rmb": "cost_price_rmb",
   "selling price": "selling_price",
   "selling_price": "selling_price",
   "price": "selling_price",
@@ -92,13 +97,14 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         "Warehouse Qty": (i as any).warehouse_quantity ?? 0,
         "Store Qty": (i as any).store_quantity ?? 0,
         ...(showCost ? { "Cost Price": Number(i.cost_price) } : { "Cost Price": "" }),
+        ...(isAdmin ? { "Cost RMB": Number((i as any).cost_price_rmb ?? 0) } : {}),
         "Selling Price": Number(i.selling_price),
         ...(isAdmin ? { "Low Stock Threshold": i.low_stock_threshold } : {}),
         Source: (i as any).source || "local",
       };
     });
     const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
     XLSX.writeFile(wb, `inventory_edit_${new Date().toISOString().split("T")[0]}.xlsx`);
@@ -155,13 +161,14 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
             if (!isAdmin) {
               if (field === "low_stock_threshold") continue;
               if (field === "source") continue;
+              if (field === "cost_price_rmb") continue;
               if (field === "cost_price" && !existingIsLocal) continue;
             }
 
             const raw = row[col];
             const oldVal = (existing as any)[field];
 
-            if (field === "warehouse_quantity" || field === "store_quantity" || field === "cost_price" || field === "selling_price" || field === "low_stock_threshold") {
+            if (field === "warehouse_quantity" || field === "store_quantity" || field === "cost_price" || field === "cost_price_rmb" || field === "selling_price" || field === "low_stock_threshold") {
               const newNum = numOrNull(raw);
               if (newNum === null) continue; // blank → skip
               if (Number(newNum) !== Number(oldVal)) {
@@ -242,6 +249,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
   const fmtVal = (field: string, v: unknown) => {
     if (v === null || v === undefined || v === "") return "—";
     if (field === "cost_price" || field === "selling_price") return peso(Number(v));
+    if (field === "cost_price_rmb") return `¥${Number(v)}`;
     return String(v);
   };
 

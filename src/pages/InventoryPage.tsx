@@ -314,7 +314,7 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
+      <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
       <BulkVariationsUploadDialog open={bulkVarOpen} onOpenChange={setBulkVarOpen} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["item_variations"] })} />
       <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
 
