@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -71,10 +71,27 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["transfer-history", item?.id] });
       toast.success("Stock transferred");
       onOpenChange(false);
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const { data: history = [] } = useQuery({
+    queryKey: ["transfer-history", item?.id],
+    enabled: !!item && open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("inventory_movements")
+        .select("id, type, quantity, notes, created_at")
+        .eq("item_id", item!.id)
+        .in("type", ["transfer_w2s", "transfer_s2w"])
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data || [];
+    },
   });
 
   if (!item) return null;
@@ -141,6 +158,32 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
           >
             Transfer
           </Button>
+
+          <div className="space-y-1.5 pt-2 border-t">
+            <Label className="text-xs font-medium">Transfer History</Label>
+            {history.length === 0 ? (
+              <div className="text-xs text-muted-foreground py-2">No transfers yet.</div>
+            ) : (
+              <div className="max-h-48 overflow-y-auto rounded-md border divide-y">
+                {history.map((h: any) => {
+                  const dir = h.type === "transfer_w2s" ? "Warehouse → Store" : "Store → Warehouse";
+                  const dt = new Date(h.created_at);
+                  return (
+                    <div key={h.id} className="px-2.5 py-1.5 text-xs flex flex-col gap-0.5">
+                      <div className="flex justify-between gap-2">
+                        <span className="font-medium">{dir}</span>
+                        <span className="text-muted-foreground">Qty: {h.quantity}</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {dt.toLocaleString()}
+                      </div>
+                      {h.notes && <div className="text-[11px] text-muted-foreground italic truncate">{h.notes}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
