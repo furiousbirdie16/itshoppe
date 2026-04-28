@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 type RangePreset = "today" | "7d" | "30d" | "month" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
+type PaymentFilter = "all" | "paid" | "unpaid";
 
 interface SaleTxn {
   date: string;
