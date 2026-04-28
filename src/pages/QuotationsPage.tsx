@@ -454,7 +454,17 @@ export default function QuotationsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Terms (days)</Label>
-                <Input type="number" min={0} value={form.payment_terms} onChange={e => setForm({ ...form, payment_terms: e.target.value })} className="h-9" placeholder="e.g. 30" />
+                <Input type="number" min={0} value={form.payment_terms} onChange={e => {
+                  const v = e.target.value;
+                  const days = parseInt(v);
+                  let due = form.payment_due_date;
+                  if (!isNaN(days) && days >= 0) {
+                    const baseStr = editId ? (quotations.find((q: any) => q.id === editId)?.quotation_date) : null;
+                    const base = baseStr ? parseISO(baseStr) : new Date();
+                    due = format(addDays(base, days), "yyyy-MM-dd");
+                  }
+                  setForm({ ...form, payment_terms: v, payment_due_date: due });
+                }} className="h-9" placeholder="e.g. 30" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Due Date</Label>

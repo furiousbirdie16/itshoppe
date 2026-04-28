@@ -23,6 +23,7 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { format, addDays, parseISO } from "date-fns";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; variation_id: string | null; }
 
@@ -36,7 +37,7 @@ export default function InvoicesPage() {
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -158,6 +159,7 @@ export default function InvoicesPage() {
       notes: inv.notes || "",
       due_date: inv.due_date || "",
       sales_agent: inv.sales_agent || "",
+      payment_terms: "",
     });
     setLines(
       lineItems.length > 0
@@ -241,7 +243,7 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]); setEditId(null); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
@@ -436,9 +438,25 @@ export default function InvoicesPage() {
                 )}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Due Date</Label>
-              <DateField value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Payment Terms (days)</Label>
+                <Input type="number" min={0} value={form.payment_terms} onChange={e => {
+                  const v = e.target.value;
+                  const days = parseInt(v);
+                  let due = form.due_date;
+                  if (!isNaN(days) && days >= 0) {
+                    const baseStr = editId ? (invoices.find((i: any) => i.id === editId)?.invoice_date) : null;
+                    const base = baseStr ? parseISO(baseStr) : new Date();
+                    due = format(addDays(base, days), "yyyy-MM-dd");
+                  }
+                  setForm({ ...form, payment_terms: v, due_date: due });
+                }} className="h-9" placeholder="e.g. 30" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Due Date</Label>
+                <DateField value={form.due_date} onChange={v => setForm({ ...form, due_date: v })} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
