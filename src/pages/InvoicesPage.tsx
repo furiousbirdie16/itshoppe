@@ -262,6 +262,28 @@ export default function InvoicesPage() {
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
 
+  // Warn (but allow) if shipping/paying an invoice would oversell store stock.
+  const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay"): Promise<boolean> => {
+    try {
+      const lineItems = await getInvoiceItems(invoiceId);
+      const shortages = await checkStoreStock(
+        lineItems.map((li: any) => ({
+          item_id: li.item_id,
+          variation_id: li.variation_id || null,
+          quantity: li.quantity,
+        })),
+      );
+      if (shortages.length === 0) return true;
+      const verb = action === "ship" ? "ship" : "mark this invoice as paid";
+      return window.confirm(
+        `Store inventory is not enough to ${verb}:\n\n${formatShortageMessage(shortages)}\n\nProceeding will let store stock go negative. Continue?`,
+      );
+    } catch {
+      return true; // don't block on check failure
+    }
+  };
+
+
   return (
     <div className="space-y-6">
       <div className="page-toolbar">
