@@ -529,7 +529,23 @@ export default function QuotationsPage() {
               </div>
             </div>
             <Button
-              onClick={() => editId ? editMut.mutate() : createMut.mutate()}
+              onClick={async () => {
+                // Advisory store-stock warning — quotation always allowed to push through.
+                const shortages = await checkStoreStock(
+                  lines.map((l: any) => ({
+                    item_id: l.item_id || null,
+                    variation_id: l.variation_id || null,
+                    quantity: Number(l.quantity || 0),
+                  })),
+                );
+                if (shortages.length > 0) {
+                  const ok = window.confirm(
+                    `Store inventory is not enough for one or more items in this quotation:\n\n${formatShortageMessage(shortages)}\n\nThis is just a warning — the quotation will still be created. Continue?`,
+                  );
+                  if (!ok) return;
+                }
+                editId ? editMut.mutate() : createMut.mutate();
+              }}
               disabled={createMut.isPending || editMut.isPending}
               className="rounded-lg h-9"
             >
