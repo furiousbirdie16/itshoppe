@@ -366,9 +366,9 @@ export default function BusinessInsightsPage() {
 
       {/* Summary cards */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Online Revenue" value={peso(totals.revOnline)} icon={ShoppingCart} variant="success" />
-        <StatCard title="Invoice Revenue" value={peso(totals.revInvoice)} icon={Receipt} variant="success" />
-        <StatCard title="Total Revenue" value={peso(totals.revTotal)} icon={DollarSign} variant="success" />
+        <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />
+        <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />
+        <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />
         <StatCard title="Units Sold" value={totals.qty} icon={Package} />
       </div>
 
@@ -394,7 +394,7 @@ export default function BusinessInsightsPage() {
             </div>
             <div className="rounded-lg border bg-background p-3">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
-              <div className="text-xl font-semibold mt-0.5">{peso(customerStats.onlineAvg)}</div>
+              <div className="text-xl font-semibold mt-0.5">{money(customerStats.onlineAvg)}</div>
             </div>
           </div>
           <div className="rounded-md border overflow-hidden">
@@ -414,8 +414,8 @@ export default function BusinessInsightsPage() {
                   <tr key={c.name} className="border-t">
                     <td className="px-3 py-1.5 capitalize">{c.name}</td>
                     <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold">{peso(c.revenue)}</td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground">{peso(c.avg)}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -439,7 +439,7 @@ export default function BusinessInsightsPage() {
             </div>
             <div className="rounded-lg border bg-background p-3">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
-              <div className="text-xl font-semibold mt-0.5">{peso(customerStats.invoiceAvg)}</div>
+              <div className="text-xl font-semibold mt-0.5">{money(customerStats.invoiceAvg)}</div>
             </div>
           </div>
           <div className="rounded-md border overflow-hidden max-h-72 overflow-y-auto">
@@ -459,8 +459,8 @@ export default function BusinessInsightsPage() {
                   <tr key={i} className="border-t">
                     <td className="px-3 py-1.5">{c.name}</td>
                     <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold">{peso(c.revenue)}</td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground">{peso(c.avg)}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -515,9 +515,9 @@ export default function BusinessInsightsPage() {
                       <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
                       <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
                       <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
-                      <TableCell className="text-sm text-right">{r.revenueOnline ? peso(r.revenueOnline) : "—"}</TableCell>
-                      <TableCell className="text-sm text-right">{r.revenueInvoice ? peso(r.revenueInvoice) : "—"}</TableCell>
-                      <TableCell className="text-sm text-right font-semibold">{peso(r.revenueTotal)}</TableCell>
+                      <TableCell className="text-sm text-right">{r.revenueOnline ? money(r.revenueOnline) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right">{r.revenueInvoice ? money(r.revenueInvoice) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right font-semibold">{money(r.revenueTotal)}</TableCell>
                       <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
                     </TableRow>
                     {isOpen && (
@@ -563,8 +563,8 @@ export default function BusinessInsightsPage() {
                                       <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
                                       <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
                                       <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
-                                      <td className="px-3 py-1.5 text-right">{peso(t.unitPrice)}</td>
-                                      <td className="px-3 py-1.5 text-right">{peso(t.amount)}</td>
+                                      <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>
+                                      <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
