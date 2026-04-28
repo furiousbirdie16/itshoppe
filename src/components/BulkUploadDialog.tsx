@@ -124,6 +124,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
           warehouse_quantity: row.warehouse_qty,
           store_quantity: row.store_qty,
           cost_price: row.cost,
+          ...(isAdmin ? { cost_price_rmb: row.cost_rmb } : {}),
           selling_price: row.price,
           low_stock_threshold: 10,
         } as any);
