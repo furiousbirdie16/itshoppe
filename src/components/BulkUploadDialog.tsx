@@ -66,8 +66,9 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
         const storeCol = findCol(["store", "shop"]);
         // Generic qty (used as fallback when warehouse/store not split)
         const qtyCol = findCol(["qty", "quantity", "stock"], ["warehouse", "wh", "store", "shop"]);
-        const costCol = findCol(["cost", "buying"]);
-        const priceCol = findCol(["price", "selling", "amount"]);
+        const costCol = findCol(["cost", "buying"], ["rmb", "¥"]);
+        const costRmbCol = findCol(["rmb", "cost rmb", "cost_rmb", "¥"]);
+        const priceCol = findCol(["price", "selling", "amount"], ["cost"]);
 
         if (!itemCol) { toast.error("Could not find an 'Item' or 'Name' column"); return; }
         if (!skuCol) { toast.error("Could not find a 'SKU' column"); return; }
@@ -79,10 +80,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
           const warehouse_qty_raw = warehouseCol ? Number(row[warehouseCol]) || 0 : NaN;
           const store_qty_raw = storeCol ? Number(row[storeCol]) || 0 : NaN;
           const fallback_qty = qtyCol ? Number(row[qtyCol]) || 0 : 0;
-          // If neither warehouse nor store provided, put total in warehouse
           const warehouse_qty = !isNaN(warehouse_qty_raw) ? warehouse_qty_raw : (isNaN(store_qty_raw) ? fallback_qty : 0);
           const store_qty = !isNaN(store_qty_raw) ? store_qty_raw : 0;
           const cost = Number(costCol ? row[costCol] : 0) || 0;
+          const cost_rmb = isAdmin ? (Number(costRmbCol ? row[costRmbCol] : 0) || 0) : 0;
           const price = Number(priceCol ? row[priceCol] : 0) || 0;
 
           let error: string | undefined;
@@ -91,9 +92,10 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
           else if (warehouse_qty < 0) error = "Negative warehouse qty";
           else if (store_qty < 0) error = "Negative store qty";
           else if (cost < 0) error = "Negative cost";
+          else if (cost_rmb < 0) error = "Negative RMB cost";
           else if (price < 0) error = "Negative price";
 
-          return { item, description, sku, warehouse_qty, store_qty, cost, price, valid: !error, error };
+          return { item, description, sku, warehouse_qty, store_qty, cost, cost_rmb, price, valid: !error, error };
         });
 
         setRows(parsed);
