@@ -403,14 +403,20 @@ export default function BusinessInsightsPage() {
             </Button>
           ))}
         </div>
-        <div className="ml-auto relative">
-          <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search item or SKU..."
-            className="h-7 text-xs pl-7 w-[220px]"
-          />
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search item or SKU..."
+              className="h-7 text-xs pl-7 w-[220px]"
+            />
+          </div>
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExport}>
+            <Download className="h-3.5 w-3.5 mr-1" />
+            Export
+          </Button>
         </div>
       </div>
 
