@@ -37,7 +37,7 @@ export default function InvoicesPage() {
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
