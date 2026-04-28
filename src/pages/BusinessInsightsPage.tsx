@@ -286,6 +286,54 @@ export default function BusinessInsightsPage() {
     };
   }, [onlineRows, invoiceRows]);
 
+  const handleExport = () => {
+    if (sorted.length === 0) {
+      toast.error("Nothing to export for the current filter");
+      return;
+    }
+    const summaryRows = sorted.map((r) => {
+      const base: Record<string, unknown> = {
+        Item: r.name,
+        SKU: r.sku,
+        "Qty Online": r.qtyOnline,
+        "Qty Invoice": r.qtyInvoice,
+        "Qty Total": r.qtyTotal,
+        Orders: r.orders,
+      };
+      if (isAdmin) {
+        base["Online ₱"] = r.revenueOnline;
+        base["Invoice ₱"] = r.revenueInvoice;
+        base["Total ₱"] = r.revenueTotal;
+      }
+      return base;
+    });
+    const txnRows = sorted.flatMap((r) =>
+      r.txns.map((t) => {
+        const base: Record<string, unknown> = {
+          Item: r.name,
+          SKU: r.sku,
+          Date: t.date,
+          Source: t.source,
+          Customer: t.customer,
+          "Sales Agent": t.agent,
+          Reference: t.reference,
+          Quantity: t.quantity,
+        };
+        if (isAdmin) {
+          base["Unit ₱"] = t.unitPrice;
+          base["Amount ₱"] = t.amount;
+        }
+        return base;
+      }),
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Items");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txnRows), "Transactions");
+    const range = `${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}`;
+    XLSX.writeFile(wb, `business-insights_${source}_${range}.xlsx`);
+    toast.success(`Exported ${summaryRows.length} item${summaryRows.length === 1 ? "" : "s"}`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="page-header">
