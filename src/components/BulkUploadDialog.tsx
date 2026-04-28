@@ -230,6 +230,7 @@ export default function BulkUploadDialog({ open, onOpenChange, onSuccess, isAdmi
                       <TableCell className="text-sm text-right">{row.warehouse_qty}</TableCell>
                       <TableCell className="text-sm text-right">{row.store_qty}</TableCell>
                       <TableCell className="text-sm text-right">{peso(row.cost)}</TableCell>
+                      {isAdmin && <TableCell className="text-sm text-right">¥{row.cost_rmb}</TableCell>}
                       <TableCell className="text-sm text-right">{peso(row.price)}</TableCell>
                       <TableCell className="text-xs">
                         {row.valid ? (
