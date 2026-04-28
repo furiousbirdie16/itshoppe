@@ -63,7 +63,7 @@ function ProtectedRoutes() {
         <Route path="/pending-payments" element={<PendingPaymentsPage />} />
         <Route path="/online-sales" element={<OnlineSalesPage />} />
         <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
-        <Route path="/business-insights" element={<AdminRoute><BusinessInsightsPage /></AdminRoute>} />
+        <Route path="/business-insights" element={<BusinessInsightsPage />} />
         <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
         <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
         <Route path="*" element={<NotFound />} />
