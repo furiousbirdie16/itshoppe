@@ -161,13 +161,14 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
             if (!isAdmin) {
               if (field === "low_stock_threshold") continue;
               if (field === "source") continue;
+              if (field === "cost_price_rmb") continue;
               if (field === "cost_price" && !existingIsLocal) continue;
             }
 
             const raw = row[col];
             const oldVal = (existing as any)[field];
 
-            if (field === "warehouse_quantity" || field === "store_quantity" || field === "cost_price" || field === "selling_price" || field === "low_stock_threshold") {
+            if (field === "warehouse_quantity" || field === "store_quantity" || field === "cost_price" || field === "cost_price_rmb" || field === "selling_price" || field === "low_stock_threshold") {
               const newNum = numOrNull(raw);
               if (newNum === null) continue; // blank → skip
               if (Number(newNum) !== Number(oldVal)) {
