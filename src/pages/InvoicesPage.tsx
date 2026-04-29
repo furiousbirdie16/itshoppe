@@ -634,6 +634,30 @@ export default function InvoicesPage() {
       </div>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+
+      <Dialog open={!!payDialog} onOpenChange={(o) => !o && setPayDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Mark Invoice as Paid</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Label>Payment Method</Label>
+            <Select value={payMethod} onValueChange={setPayMethod}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Cash">Cash</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="GCash">GCash</SelectItem>
+                <SelectItem value="Check">Check</SelectItem>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setPayDialog(null)}>Cancel</Button>
+              <Button onClick={() => { if (payDialog) { markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod }); setPayDialog(null); } }}>Confirm Payment</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
