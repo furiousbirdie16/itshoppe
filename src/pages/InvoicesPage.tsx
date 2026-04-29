@@ -229,9 +229,13 @@ export default function InvoicesPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: (id: string) => updateInvoice(id, { status: "paid" }),
+    mutationFn: ({ id, payment_method }: { id: string; payment_method: string }) =>
+      updateInvoice(id, { status: "paid", payment_method } as any),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Marked as paid"); },
   });
+
+  const [payDialog, setPayDialog] = useState<{ id: string; afterShip?: boolean } | null>(null);
+  const [payMethod, setPayMethod] = useState("Cash");
 
   const revertMut = useMutation({
     mutationFn: revertInvoice,
