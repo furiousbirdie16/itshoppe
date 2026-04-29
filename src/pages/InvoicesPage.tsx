@@ -229,9 +229,13 @@ export default function InvoicesPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: (id: string) => updateInvoice(id, { status: "paid" }),
+    mutationFn: ({ id, payment_method }: { id: string; payment_method: string }) =>
+      updateInvoice(id, { status: "paid", payment_method } as any),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Marked as paid"); },
   });
+
+  const [payDialog, setPayDialog] = useState<{ id: string; afterShip?: boolean } | null>(null);
+  const [payMethod, setPayMethod] = useState("Cash");
 
   const revertMut = useMutation({
     mutationFn: revertInvoice,
@@ -553,6 +557,12 @@ export default function InvoicesPage() {
       <Dialog open={!!viewInv} onOpenChange={() => setViewInv(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
+          {(() => {
+            const inv: any = invoices.find((i: any) => i.id === viewInv);
+            return inv?.payment_method ? (
+              <div className="text-sm text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
+            ) : null;
+          })()}
           <div className="data-table-wrapper mt-2">
             <Table>
               <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
@@ -606,12 +616,12 @@ export default function InvoicesPage() {
                     {inv.status === "draft" && (
                       <>
                         <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) confirmMut.mutate(inv.id); }} title="Confirm & Deduct Stock (Mark Shipped)" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) markPaidMut.mutate(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) { setPayMethod("Cash"); setPayDialog({ id: inv.id }); } }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => { setPayMethod("Cash"); setPayDialog({ id: inv.id }); }} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
@@ -630,6 +640,30 @@ export default function InvoicesPage() {
       </div>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+
+      <Dialog open={!!payDialog} onOpenChange={(o) => !o && setPayDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Mark Invoice as Paid</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Label>Payment Method</Label>
+            <Select value={payMethod} onValueChange={setPayMethod}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Cash">Cash</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="GCash">GCash</SelectItem>
+                <SelectItem value="Check">Check</SelectItem>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setPayDialog(null)}>Cancel</Button>
+              <Button onClick={() => { if (payDialog) { markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod }); setPayDialog(null); } }}>Confirm Payment</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
