@@ -19,7 +19,6 @@ import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
 import BulkEditUploadDialog from "@/components/BulkEditUploadDialog";
-import BulkVariationsUploadDialog from "@/components/BulkVariationsUploadDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
@@ -34,7 +33,7 @@ export default function InventoryPage() {
   const [filter, setFilter] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [bulkVarOpen, setBulkVarOpen] = useState(false);
+  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
@@ -229,9 +228,6 @@ export default function InventoryPage() {
           <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit (Excel)
           </Button>
-          <Button variant="outline" onClick={() => setBulkVarOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Layers className="h-4 w-4 mr-1.5" /> Bulk Variations
-          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
           </Button>
@@ -314,8 +310,7 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
-      <BulkVariationsUploadDialog open={bulkVarOpen} onOpenChange={setBulkVarOpen} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["item_variations"] })} />
+      <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_variations"] }); }} />
       <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
 
       <div className="flex items-center gap-2 flex-wrap">
