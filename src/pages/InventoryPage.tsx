@@ -33,7 +33,7 @@ export default function InventoryPage() {
   const [filter, setFilter] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [bulkVarOpen, setBulkVarOpen] = useState(false);
+  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
