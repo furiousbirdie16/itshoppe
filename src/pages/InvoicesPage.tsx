@@ -557,6 +557,12 @@ export default function InvoicesPage() {
       <Dialog open={!!viewInv} onOpenChange={() => setViewInv(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
+          {(() => {
+            const inv: any = invoices.find((i: any) => i.id === viewInv);
+            return inv?.payment_method ? (
+              <div className="text-sm text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
+            ) : null;
+          })()}
           <div className="data-table-wrapper mt-2">
             <Table>
               <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
