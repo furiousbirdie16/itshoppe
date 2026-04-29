@@ -200,6 +200,7 @@ export type Database = {
           invoice_date: string | null
           invoice_number: string
           notes: string | null
+          payment_method: string | null
           quotation_id: string | null
           sales_agent: string | null
           status: Database["public"]["Enums"]["invoice_status"]
@@ -214,6 +215,7 @@ export type Database = {
           invoice_date?: string | null
           invoice_number: string
           notes?: string | null
+          payment_method?: string | null
           quotation_id?: string | null
           sales_agent?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
@@ -228,6 +230,7 @@ export type Database = {
           invoice_date?: string | null
           invoice_number?: string
           notes?: string | null
+          payment_method?: string | null
           quotation_id?: string | null
           sales_agent?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
