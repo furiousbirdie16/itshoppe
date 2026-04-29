@@ -229,9 +229,6 @@ export default function InventoryPage() {
           <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit (Excel)
           </Button>
-          <Button variant="outline" onClick={() => setBulkVarOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Layers className="h-4 w-4 mr-1.5" /> Bulk Variations
-          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
           </Button>
