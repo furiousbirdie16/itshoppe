@@ -181,9 +181,9 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
       fillColor: ALTROW,
     },
     columnStyles: {
-      0: { cellWidth: 18, halign: "center" },
+      0: { cellWidth: 24, halign: "center" },
       1: { cellWidth: "auto" },
-      2: { cellWidth: 32, halign: "right" },
+      2: { cellWidth: 30, halign: "right" },
       3: { cellWidth: 32, halign: "right", fontStyle: "bold" },
     },
     theme: "plain",
