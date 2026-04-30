@@ -234,12 +234,11 @@ export default function PurchaseOrdersPage() {
           const poItem = poItems.find(pi => pi.id === poItemId);
           return {
             poItemId,
-            itemId: poItem!.item_id,
+            itemId: poItem?.item_id ?? null,
             quantity: qty,
             location: receiveLocations[poItemId] || "warehouse",
           };
-        })
-        .filter(i => !!i.itemId); // can't deduct stock for custom (non-inventory) items
+        });
       if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
