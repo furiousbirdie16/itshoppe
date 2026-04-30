@@ -331,7 +331,7 @@ export const deletePOItems = async (poId: string) => {
 // Receive PO
 export const receivePO = async (
   poId: string,
-  itemsToReceive: { poItemId: string; itemId: string; quantity: number; location?: "warehouse" | "store" }[],
+  itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
@@ -339,6 +339,9 @@ export const receivePO = async (
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
     const newReceived = ((poItem as any)?.received_quantity || 0) + item.quantity;
     await from("purchase_order_items").update({ received_quantity: newReceived, received_date: rcvDate }).eq("id", item.poItemId);
+
+    // Custom (non-inventory) items: just record the receipt against the PO line, do not touch inventory.
+    if (!item.itemId) continue;
 
     const location = item.location || "warehouse";
     const { data: currentItem } = await from("items")
