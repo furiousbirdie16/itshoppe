@@ -496,7 +496,9 @@ export default function PurchaseOrdersPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {isCustom ? "Custom item — not tracked in inventory" : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`}
+                      {isCustom
+                        ? `Custom item — not tracked in inventory · Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`
+                        : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity} · Remaining: ${remaining}`}
                     </p>
                   </div>
                   <Select
@@ -504,14 +506,14 @@ export default function PurchaseOrdersPage() {
                     onValueChange={(v) => setReceiveLocations({ ...receiveLocations, [pi.id]: v as "warehouse" | "store" })}
                     disabled={isCustom || remaining <= 0}
                   >
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={isCustom ? "—" : undefined} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="warehouse">Warehouse</SelectItem>
                       <SelectItem value="store">Store</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={isCustom || remaining <= 0} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="h-9 text-sm text-center" />
-                  <Input type="number" min={0} max={pi.received_quantity} value={undoQtys[pi.id] || 0} disabled={isCustom || pi.received_quantity <= 0} onChange={e => setUndoQtys({ ...undoQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, pi.received_quantity) })} className="h-9 text-sm text-center" />
+                  <Input type="number" min={0} max={remaining} value={receiveQtys[pi.id] || 0} disabled={remaining <= 0} onChange={e => setReceiveQtys({ ...receiveQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, remaining) })} className="h-9 text-sm text-center" />
+                  <Input type="number" min={0} max={pi.received_quantity} value={undoQtys[pi.id] || 0} disabled={pi.received_quantity <= 0} onChange={e => setUndoQtys({ ...undoQtys, [pi.id]: Math.min(parseInt(e.target.value) || 0, pi.received_quantity) })} className="h-9 text-sm text-center" />
                 </div>
               );
             })}
