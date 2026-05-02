@@ -528,8 +528,10 @@ export default function OverseasPurchaseOrdersPage() {
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Unpaid</SelectItem>
-                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="paid_not_shipped">Paid, Not Shipped</SelectItem>
+                    <SelectItem value="shipped_not_paid">Shipped, Not Paid (Terms)</SelectItem>
+                    <SelectItem value="shipped">Shipped</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
                   </SelectContent>
