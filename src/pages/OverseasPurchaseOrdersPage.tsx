@@ -240,7 +240,7 @@ export default function OverseasPurchaseOrdersPage() {
   const openCreate = () => {
     setEditing(null);
     setSupplierId("");
-    setStatus("draft");
+    setStatus("unpaid");
     setOrderDate(new Date().toISOString().slice(0, 10));
     setExpectedDelivery("");
     setNotes("");
