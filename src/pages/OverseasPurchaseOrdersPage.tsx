@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, getAllOverseasPOItems,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, getAllOverseasPOItems, getShipments,
 } from "@/lib/api";
+import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -148,10 +149,36 @@ export default function OverseasPurchaseOrdersPage() {
     php_total: (r) => Number(r.total_amount) * Number(r.exchange_rate || 1),
     order_date: (r) => r.order_date,
     expected_delivery: (r) => r.expected_delivery,
+    eta: (r) => shipmentByPo.get(r.id)?.estimated_arrival || r.expected_delivery || "",
   });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
+  const { data: shipments = [] } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
+  const shipmentByPo = useMemo(() => {
+    const map = new Map<string, ShipmentTracking>();
+    for (const s of shipments) {
+      if (!s.po_id) continue;
+      const existing = map.get(s.po_id);
+      // prefer most recent (by ship_date or estimated_arrival)
+      if (!existing) map.set(s.po_id, s);
+      else {
+        const a = new Date(s.ship_date || s.estimated_arrival || s.created_at || 0).getTime();
+        const b = new Date(existing.ship_date || existing.estimated_arrival || existing.created_at || 0).getTime();
+        if (a > b) map.set(s.po_id, s);
+      }
+    }
+    return map;
+  }, [shipments]);
+  const itemsByPo = useMemo(() => {
+    const map = new Map<string, OverseasPurchaseOrderItem[]>();
+    for (const it of allPOItems) {
+      const arr = map.get(it.po_id) || [];
+      arr.push(it);
+      map.set(it.po_id, arr);
+    }
+    return map;
+  }, [allPOItems]);
   const { data: viewItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
@@ -859,6 +886,8 @@ export default function OverseasPurchaseOrdersPage() {
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="eta" label="ETA" sort={sort} onToggle={toggle} />
+              <TableHead className="text-xs">Items</TableHead>
               <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
@@ -867,15 +896,49 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
-            ) : sortedOrders.map(po => (
+              <TableRow><TableCell colSpan={10}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+            ) : sortedOrders.map(po => {
+              const shipment = shipmentByPo.get(po.id);
+              const eta = shipment?.estimated_arrival || po.expected_delivery;
+              const actualArrival = shipment?.actual_arrival;
+              const poItems = itemsByPo.get(po.id) || [];
+              const totalItems = poItems.length;
+              const fullyReceived = poItems.filter((i) => (i.received_quantity || 0) >= i.quantity).length;
+              const partialItems = poItems.filter((i) => (i.received_quantity || 0) > 0 && (i.received_quantity || 0) < i.quantity).length;
+              const totalOrderedQty = poItems.reduce((s, i) => s + (i.quantity || 0), 0);
+              const totalReceivedQty = poItems.reduce((s, i) => s + (i.received_quantity || 0), 0);
+              return (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
+                <TableCell className="text-sm whitespace-nowrap">
+                  {actualArrival ? (
+                    <span className="text-success font-medium">✓ {new Date(actualArrival).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  ) : eta ? (
+                    <span>{new Date(eta).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm whitespace-nowrap">
+                  {totalItems === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium">
+                        {fullyReceived}/{totalItems} items
+                        {partialItems > 0 && <span className="text-warning"> · {partialItems} partial</span>}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {totalReceivedQty}/{totalOrderedQty} qty
+                      </span>
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm">
                   <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
                     {po.currency === "USD" ? "$ USD" : "¥ RMB"}
@@ -907,7 +970,8 @@ export default function OverseasPurchaseOrdersPage() {
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>
