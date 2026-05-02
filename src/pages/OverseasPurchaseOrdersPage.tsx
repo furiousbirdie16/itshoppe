@@ -149,6 +149,7 @@ export default function OverseasPurchaseOrdersPage() {
     php_total: (r) => Number(r.total_amount) * Number(r.exchange_rate || 1),
     order_date: (r) => r.order_date,
     expected_delivery: (r) => r.expected_delivery,
+    eta: (r) => shipmentByPo.get(r.id)?.estimated_arrival || r.expected_delivery || "",
   });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
