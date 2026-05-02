@@ -806,9 +806,10 @@ export const createOverseasPurchaseOrder = async (po: Partial<OverseasPurchaseOr
 };
 
 export const updateOverseasPurchaseOrder = async (id: string, po: Partial<OverseasPurchaseOrder>) => {
-  // Detect a status transition into "sent" so we can auto-create a shipment.
+  // Detect a status transition into a "shipped" state so we can auto-create a shipment.
+  const shippedStatuses = new Set(["shipped", "shipped_not_paid", "sent"]);
   let prevStatus: string | null = null;
-  if (po.status === "sent") {
+  if (po.status && shippedStatuses.has(po.status as string)) {
     const { data: prev } = await from("overseas_purchase_orders").select("status").eq("id", id).single();
     prevStatus = (prev as any)?.status ?? null;
   }
@@ -818,8 +819,9 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
 
   const updatedPo = data as OverseasPurchaseOrder;
 
-  // When a PO is moved into "sent" (and wasn't already sent), make sure it has a shipment row.
-  if (po.status === "sent" && prevStatus !== "sent") {
+  // When a PO transitions into a shipped state for the first time, ensure a shipment row exists.
+  const becameShipped = po.status && shippedStatuses.has(po.status as string) && !shippedStatuses.has(prevStatus || "");
+  if (becameShipped) {
     const { data: existing } = await from("shipment_tracking").select("id").eq("po_id", id).limit(1);
     if (!existing || (existing as any[]).length === 0) {
       await from("shipment_tracking").insert({
@@ -827,7 +829,7 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
         status: "in_transit",
         ship_date: new Date().toISOString().slice(0, 10),
         estimated_arrival: (updatedPo as any).expected_delivery || null,
-        notes: "Auto-created when PO marked as sent",
+        notes: "Auto-created when PO marked as shipped",
       });
       await logActivity("created_shipment_tracking", "shipment_tracking", id, { auto: true, po_id: id });
     }
