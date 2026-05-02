@@ -437,6 +437,12 @@ export default function OverseasPurchaseOrdersPage() {
 
   return (
     <div className="space-y-6">
+      <Tabs defaultValue="orders" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
+          <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>
+        </TabsList>
+        <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas Purchase Orders</h1>
