@@ -509,14 +509,37 @@ export default function OverseasPurchaseOrdersPage() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search overseas POs..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative max-w-sm flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search overseas POs..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="inline-flex rounded-lg border bg-card p-0.5">
+          {([
+            { key: "all", label: `All (${orders.length})` },
+            { key: "not_shipped", label: `Not Shipped (${bucketCounts.not_shipped})` },
+            { key: "incoming", label: `Incoming (${bucketCounts.incoming})` },
+            { key: "received", label: `Received (${bucketCounts.received})` },
+          ] as const).map((b) => (
+            <button
+              key={b.key}
+              type="button"
+              onClick={() => setStatusFilter(b.key as any)}
+              className={`px-3 h-8 text-xs font-medium rounded-md transition-colors ${
+                statusFilter === b.key
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <OverseasPOBulkUploadDialog
