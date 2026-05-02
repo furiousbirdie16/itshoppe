@@ -11,7 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
+import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -435,9 +437,15 @@ export default function OverseasPurchaseOrdersPage() {
 
   return (
     <div className="space-y-6">
+      <Tabs defaultValue="orders" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
+          <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>
+        </TabsList>
+        <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
         <div className="page-header mb-0">
-          <h1 className="page-title">Overseas Purchase Orders</h1>
+          <h1 className="page-title">Overseas PO</h1>
           <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
         </div>
         <div className="toolbar-actions">
@@ -1035,6 +1043,11 @@ export default function OverseasPurchaseOrdersPage() {
       </section>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+        </TabsContent>
+        <TabsContent value="shipments" className="mt-0">
+          <ShipmentTrackingPage />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
