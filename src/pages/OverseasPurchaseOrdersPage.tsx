@@ -334,7 +334,7 @@ export default function OverseasPurchaseOrdersPage() {
         po_id: item.po_id,
         po_number: po?.po_number || "—",
         supplier_name: po?.overseas_suppliers?.name || "—",
-        status: po?.status || "draft",
+        status: po?.status || "unpaid",
         currency: (po?.currency || "USD") as "USD" | "RMB",
         exchange_rate: exchangeRate,
         order_date: po?.order_date || "",
