@@ -105,7 +105,18 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
+  const statusBuckets: Record<string, "not_shipped" | "incoming" | "received"> = {
+    unpaid: "not_shipped",
+    paid_not_shipped: "not_shipped",
+    draft: "not_shipped",
+    shipped_not_paid: "incoming",
+    shipped: "incoming",
+    sent: "incoming",
+    partially_received: "incoming",
+    received: "received",
+  };
   const filteredOrders = orders.filter((order: any) => {
+    if (statusFilter !== "all" && statusBuckets[order.status] !== statusFilter) return false;
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return [
@@ -118,6 +129,14 @@ export default function OverseasPurchaseOrdersPage() {
       order.notes,
     ].some((value) => (value || "").toString().toLowerCase().includes(q));
   });
+  const bucketCounts = orders.reduce(
+    (acc, o: any) => {
+      const b = statusBuckets[o.status];
+      if (b) acc[b]++;
+      return acc;
+    },
+    { not_shipped: 0, incoming: 0, received: 0 } as Record<string, number>,
+  );
   const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(filteredOrders, {
     po_number: (r) => r.po_number,
     supplier: (r: any) => r.overseas_suppliers?.name || "",
