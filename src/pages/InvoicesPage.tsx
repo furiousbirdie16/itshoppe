@@ -14,7 +14,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
-import { CustomerSearch } from "@/components/CustomerSearch";
+import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -444,7 +444,7 @@ export default function InvoicesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
-                <CustomerSearch customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
+                <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
