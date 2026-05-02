@@ -970,7 +970,8 @@ export default function OverseasPurchaseOrdersPage() {
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>
