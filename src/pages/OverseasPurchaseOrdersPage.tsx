@@ -428,8 +428,10 @@ export default function OverseasPurchaseOrdersPage() {
                 entityLabel="overseas POs"
                 fields={[
                   { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Unpaid" },
-                    { value: "sent", label: "Sent" },
+                    { value: "unpaid", label: "Unpaid" },
+                    { value: "paid_not_shipped", label: "Paid, Not Shipped" },
+                    { value: "shipped_not_paid", label: "Shipped, Not Paid (Terms)" },
+                    { value: "shipped", label: "Shipped" },
                     { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
                   ]},
