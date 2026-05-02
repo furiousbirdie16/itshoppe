@@ -155,7 +155,7 @@ export default function OverseasPOBulkUploadDialog({ open, onOpenChange, onSucce
         const po = await createOverseasPurchaseOrder({
           po_number: poNumber,
           supplier_id: sup?.id || null,
-          status: "draft",
+          status: "unpaid",
           order_date: first.orderDate || new Date().toISOString().slice(0, 10),
           expected_delivery: first.estimatedArrival || null,
           notes: first.notes,
