@@ -153,6 +153,31 @@ export default function OverseasPurchaseOrdersPage() {
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
+  const { data: shipments = [] } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
+  const shipmentByPo = useMemo(() => {
+    const map = new Map<string, ShipmentTracking>();
+    for (const s of shipments) {
+      if (!s.po_id) continue;
+      const existing = map.get(s.po_id);
+      // prefer most recent (by ship_date or estimated_arrival)
+      if (!existing) map.set(s.po_id, s);
+      else {
+        const a = new Date(s.ship_date || s.estimated_arrival || s.created_at || 0).getTime();
+        const b = new Date(existing.ship_date || existing.estimated_arrival || existing.created_at || 0).getTime();
+        if (a > b) map.set(s.po_id, s);
+      }
+    }
+    return map;
+  }, [shipments]);
+  const itemsByPo = useMemo(() => {
+    const map = new Map<string, OverseasPurchaseOrderItem[]>();
+    for (const it of allPOItems) {
+      const arr = map.get(it.po_id) || [];
+      arr.push(it);
+      map.set(it.po_id, arr);
+    }
+    return map;
+  }, [allPOItems]);
   const { data: viewItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
     queryKey: ["overseas_po_items", viewPO?.id],
     queryFn: () => getOverseasPOItems(viewPO!.id),
