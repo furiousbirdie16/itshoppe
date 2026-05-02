@@ -9,6 +9,9 @@ interface StatusBadgeProps {
 const statusStyles: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   sent: "bg-primary/10 text-primary",
+  shipped: "bg-primary/10 text-primary",
+  paid_not_shipped: "bg-blue-500/10 text-blue-600",
+  shipped_not_paid: "bg-destructive/10 text-destructive",
   partially_received: "bg-warning/10 text-warning",
   received: "bg-success/10 text-success",
   accepted: "bg-success/10 text-success",
@@ -25,6 +28,9 @@ const invoiceLabels: Record<string, string> = {
 
 const overseasPoLabels: Record<string, string> = {
   draft: "unpaid",
+  sent: "shipped",
+  paid_not_shipped: "paid, not shipped",
+  shipped_not_paid: "shipped, not paid",
 };
 
 export function StatusBadge({ status, className, context = "default" }: StatusBadgeProps) {
@@ -37,9 +43,11 @@ export function StatusBadge({ status, className, context = "default" }: StatusBa
   const styleKey =
     context === "overseas_po" && status === "draft"
       ? "unpaid"
-      : context === "invoice" && status === "confirmed"
-        ? "rejected" // shipped but not paid → red
-        : status;
+      : context === "overseas_po" && status === "sent"
+        ? "shipped"
+        : context === "invoice" && status === "confirmed"
+          ? "rejected" // shipped but not paid → red
+          : status;
   return (
     <span
       className={cn(
