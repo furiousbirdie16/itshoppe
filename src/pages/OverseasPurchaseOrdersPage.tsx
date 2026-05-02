@@ -445,7 +445,7 @@ export default function OverseasPurchaseOrdersPage() {
         <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
         <div className="page-header mb-0">
-          <h1 className="page-title">Overseas Purchase Orders</h1>
+          <h1 className="page-title">Overseas PO</h1>
           <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
         </div>
         <div className="toolbar-actions">
