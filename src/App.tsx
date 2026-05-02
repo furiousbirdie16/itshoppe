@@ -55,7 +55,7 @@ function ProtectedRoutes() {
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/overseas-suppliers" element={<AdminRoute><OverseasSuppliersPage /></AdminRoute>} />
         <Route path="/overseas-purchase-orders" element={<AdminRoute><OverseasPurchaseOrdersPage /></AdminRoute>} />
-        <Route path="/shipment-tracking" element={<AdminRoute><ShipmentTrackingPage /></AdminRoute>} />
+        <Route path="/shipment-tracking" element={<Navigate to="/overseas-purchase-orders" replace />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="/quotations" element={<QuotationsPage />} />
