@@ -73,6 +73,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "not_shipped" | "incoming" | "received">("all");
   const [incomingSearch, setIncomingSearch] = useState("");
   const [incomingSupplierFilter, setIncomingSupplierFilter] = useState<string>("all");
   const [incomingReceiptFilter, setIncomingReceiptFilter] = useState<string>("incoming");
