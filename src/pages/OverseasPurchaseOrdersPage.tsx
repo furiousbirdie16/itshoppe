@@ -1043,6 +1043,11 @@ export default function OverseasPurchaseOrdersPage() {
       </section>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+        </TabsContent>
+        <TabsContent value="shipments" className="mt-0">
+          <ShipmentTrackingPage />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
