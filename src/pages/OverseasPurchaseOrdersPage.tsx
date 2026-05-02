@@ -896,15 +896,49 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
-            ) : sortedOrders.map(po => (
+              <TableRow><TableCell colSpan={10}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+            ) : sortedOrders.map(po => {
+              const shipment = shipmentByPo.get(po.id);
+              const eta = shipment?.estimated_arrival || po.expected_delivery;
+              const actualArrival = shipment?.actual_arrival;
+              const poItems = itemsByPo.get(po.id) || [];
+              const totalItems = poItems.length;
+              const fullyReceived = poItems.filter((i) => (i.received_quantity || 0) >= i.quantity).length;
+              const partialItems = poItems.filter((i) => (i.received_quantity || 0) > 0 && (i.received_quantity || 0) < i.quantity).length;
+              const totalOrderedQty = poItems.reduce((s, i) => s + (i.quantity || 0), 0);
+              const totalReceivedQty = poItems.reduce((s, i) => s + (i.received_quantity || 0), 0);
+              return (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
+                <TableCell className="text-sm whitespace-nowrap">
+                  {actualArrival ? (
+                    <span className="text-success font-medium">✓ {new Date(actualArrival).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  ) : eta ? (
+                    <span>{new Date(eta).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm whitespace-nowrap">
+                  {totalItems === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium">
+                        {fullyReceived}/{totalItems} items
+                        {partialItems > 0 && <span className="text-warning"> · {partialItems} partial</span>}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {totalReceivedQty}/{totalOrderedQty} qty
+                      </span>
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm">
                   <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
                     {po.currency === "USD" ? "$ USD" : "¥ RMB"}
