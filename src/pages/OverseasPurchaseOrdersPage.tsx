@@ -886,6 +886,8 @@ export default function OverseasPurchaseOrdersPage() {
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="eta" label="ETA" sort={sort} onToggle={toggle} />
+              <TableHead className="text-xs">Items</TableHead>
               <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
