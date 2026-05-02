@@ -152,7 +152,7 @@ export interface OverseasPurchaseOrder {
   id: string;
   po_number: string;
   supplier_id: string | null;
-  status: 'draft' | 'sent' | 'received';
+  status: 'unpaid' | 'paid_not_shipped' | 'shipped_not_paid' | 'shipped' | 'partially_received' | 'received' | 'draft' | 'sent';
   order_date: string;
   expected_delivery: string | null;
   notes: string;

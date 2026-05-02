@@ -63,7 +63,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
-  const [status, setStatus] = useState<string>("draft");
+  const [status, setStatus] = useState<string>("unpaid");
   const [orderDate, setOrderDate] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [notes, setNotes] = useState("");
@@ -240,7 +240,7 @@ export default function OverseasPurchaseOrdersPage() {
   const openCreate = () => {
     setEditing(null);
     setSupplierId("");
-    setStatus("draft");
+    setStatus("unpaid");
     setOrderDate(new Date().toISOString().slice(0, 10));
     setExpectedDelivery("");
     setNotes("");
@@ -334,7 +334,7 @@ export default function OverseasPurchaseOrdersPage() {
         po_id: item.po_id,
         po_number: po?.po_number || "—",
         supplier_name: po?.overseas_suppliers?.name || "—",
-        status: po?.status || "draft",
+        status: po?.status || "unpaid",
         currency: (po?.currency || "USD") as "USD" | "RMB",
         exchange_rate: exchangeRate,
         order_date: po?.order_date || "",
@@ -428,8 +428,10 @@ export default function OverseasPurchaseOrdersPage() {
                 entityLabel="overseas POs"
                 fields={[
                   { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Unpaid" },
-                    { value: "sent", label: "Sent" },
+                    { value: "unpaid", label: "Unpaid" },
+                    { value: "paid_not_shipped", label: "Paid, Not Shipped" },
+                    { value: "shipped_not_paid", label: "Shipped, Not Paid (Terms)" },
+                    { value: "shipped", label: "Shipped" },
                     { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
                   ]},
@@ -528,8 +530,10 @@ export default function OverseasPurchaseOrdersPage() {
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Unpaid</SelectItem>
-                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="paid_not_shipped">Paid, Not Shipped</SelectItem>
+                    <SelectItem value="shipped_not_paid">Shipped, Not Paid (Terms)</SelectItem>
+                    <SelectItem value="shipped">Shipped</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
                   </SelectContent>
