@@ -112,7 +112,7 @@ export default function InvoicesPage() {
     return c;
   }, [filtered]);
 
-  const { sort, toggle, sorted: sortedInvoices } = useSort<any>(filtered, {
+  const { sort, toggle, sorted: sortedInvoices } = useSort<any>(quickFiltered, {
     invoice_number: (r) => r.invoice_number,
     customer: (r) => r.customers?.name || "",
     sales_agent: (r) => r.sales_agent || "",
