@@ -628,7 +628,7 @@ export default function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={quickFiltered.length > 0 && selectedIds.size === quickFiltered.length} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="invoice_number" label="Invoice #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="sales_agent" label="Sales Agent" sort={sort} onToggle={toggle} />
