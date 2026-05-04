@@ -92,6 +92,26 @@ export default function InvoicesPage() {
     });
   }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus, searchQuery]);
 
+  const [quickFilter, setQuickFilter] = useState<"all" | "not_shipped" | "unpaid" | "shipped">("all");
+  const statusBuckets: Record<string, "not_shipped" | "unpaid" | "shipped"> = {
+    draft: "not_shipped",
+    confirmed: "unpaid",
+    unpaid: "unpaid",
+    paid: "shipped",
+  };
+  const quickFiltered = useMemo(
+    () => quickFilter === "all" ? filtered : filtered.filter((inv: any) => statusBuckets[inv.status] === quickFilter),
+    [filtered, quickFilter]
+  );
+  const bucketCounts = useMemo(() => {
+    const c = { not_shipped: 0, unpaid: 0, shipped: 0 } as Record<string, number>;
+    for (const inv of filtered as any[]) {
+      const b = statusBuckets[inv.status];
+      if (b) c[b]++;
+    }
+    return c;
+  }, [filtered]);
+
   const { sort, toggle, sorted: sortedInvoices } = useSort<any>(filtered, {
     invoice_number: (r) => r.invoice_number,
     customer: (r) => r.customers?.name || "",
