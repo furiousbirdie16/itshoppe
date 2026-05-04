@@ -92,7 +92,27 @@ export default function InvoicesPage() {
     });
   }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus, searchQuery]);
 
-  const { sort, toggle, sorted: sortedInvoices } = useSort<any>(filtered, {
+  const [quickFilter, setQuickFilter] = useState<"all" | "not_shipped" | "unpaid" | "shipped">("all");
+  const statusBuckets: Record<string, "not_shipped" | "unpaid" | "shipped"> = {
+    draft: "not_shipped",
+    confirmed: "unpaid",
+    unpaid: "unpaid",
+    paid: "shipped",
+  };
+  const quickFiltered = useMemo(
+    () => quickFilter === "all" ? filtered : filtered.filter((inv: any) => statusBuckets[inv.status] === quickFilter),
+    [filtered, quickFilter]
+  );
+  const bucketCounts = useMemo(() => {
+    const c = { not_shipped: 0, unpaid: 0, shipped: 0 } as Record<string, number>;
+    for (const inv of filtered as any[]) {
+      const b = statusBuckets[inv.status];
+      if (b) c[b]++;
+    }
+    return c;
+  }, [filtered]);
+
+  const { sort, toggle, sorted: sortedInvoices } = useSort<any>(quickFiltered, {
     invoice_number: (r) => r.invoice_number,
     customer: (r) => r.customers?.name || "",
     sales_agent: (r) => r.sales_agent || "",
@@ -109,8 +129,8 @@ export default function InvoicesPage() {
   }, [filtered]);
 
   const toggleAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((i: any) => i.id)));
+    if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(quickFiltered.map((i: any) => i.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -368,6 +388,28 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      <div className="inline-flex rounded-lg border bg-card p-0.5">
+        {([
+          { key: "all", label: `All (${filtered.length})` },
+          { key: "not_shipped", label: `Not Shipped (${bucketCounts.not_shipped})` },
+          { key: "unpaid", label: `Unpaid (${bucketCounts.unpaid})` },
+          { key: "shipped", label: `Shipped (${bucketCounts.shipped})` },
+        ] as const).map((b) => (
+          <button
+            key={b.key}
+            type="button"
+            onClick={() => setQuickFilter(b.key as any)}
+            className={`px-3 h-8 text-xs font-medium rounded-md transition-colors ${
+              quickFilter === b.key
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+
       {showFilters && (
         <div className="filter-bar">
           <div className="space-y-1">
@@ -586,7 +628,7 @@ export default function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-10"><Checkbox checked={quickFiltered.length > 0 && selectedIds.size === quickFiltered.length} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="invoice_number" label="Invoice #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="sales_agent" label="Sales Agent" sort={sort} onToggle={toggle} />
