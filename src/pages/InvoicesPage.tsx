@@ -388,6 +388,28 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      <div className="inline-flex rounded-lg border bg-card p-0.5">
+        {([
+          { key: "all", label: `All (${filtered.length})` },
+          { key: "not_shipped", label: `Not Shipped (${bucketCounts.not_shipped})` },
+          { key: "unpaid", label: `Unpaid (${bucketCounts.unpaid})` },
+          { key: "shipped", label: `Shipped (${bucketCounts.shipped})` },
+        ] as const).map((b) => (
+          <button
+            key={b.key}
+            type="button"
+            onClick={() => setQuickFilter(b.key as any)}
+            className={`px-3 h-8 text-xs font-medium rounded-md transition-colors ${
+              quickFilter === b.key
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+
       {showFilters && (
         <div className="filter-bar">
           <div className="space-y-1">
