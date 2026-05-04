@@ -129,8 +129,8 @@ export default function InvoicesPage() {
   }, [filtered]);
 
   const toggleAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((i: any) => i.id)));
+    if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(quickFiltered.map((i: any) => i.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
