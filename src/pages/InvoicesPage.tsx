@@ -75,26 +75,35 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const filtered = useMemo(() => {
+  // Compute filtered ignoring customer filter, used to derive the customer dropdown options
+  const filteredWithoutCustomer = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return invoices.filter((inv: any) => {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
-      if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
       if (filterStatus !== "all" && inv.status !== filterStatus) return false;
       if (q) {
-        const hay = [
-          inv.invoice_number,
-          inv.customers?.name,
-          inv.sales_agent,
-          inv.notes,
-        ].map((x: any) => String(x || "").toLowerCase()).join(" ");
+        const hay = [inv.invoice_number, inv.customers?.name, inv.sales_agent, inv.notes]
+          .map((x: any) => String(x || "").toLowerCase()).join(" ");
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus, searchQuery]);
+  }, [invoices, filterDateFrom, filterDateTo, filterAgent, filterStatus, searchQuery]);
+
+  const availableCustomers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const inv of filteredWithoutCustomer) if (inv.customer_id) ids.add(inv.customer_id);
+    return customers.filter(c => ids.has(c.id));
+  }, [filteredWithoutCustomer, customers]);
+
+  const filtered = useMemo(() => {
+    if (filterCustomer === "all") return filteredWithoutCustomer;
+    return filteredWithoutCustomer.filter((inv: any) => inv.customer_id === filterCustomer);
+  }, [filteredWithoutCustomer, filterCustomer]);
+
+  const [customerFilterOpen, setCustomerFilterOpen] = useState(false);
 
   const [quickFilter, setQuickFilter] = useState<"all" | "not_shipped" | "unpaid" | "shipped">("all");
   const statusBuckets: Record<string, "not_shipped" | "unpaid" | "shipped"> = {
