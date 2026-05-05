@@ -8,10 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -72,26 +75,35 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const filtered = useMemo(() => {
+  // Compute filtered ignoring customer filter, used to derive the customer dropdown options
+  const filteredWithoutCustomer = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return invoices.filter((inv: any) => {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
-      if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
       if (filterStatus !== "all" && inv.status !== filterStatus) return false;
       if (q) {
-        const hay = [
-          inv.invoice_number,
-          inv.customers?.name,
-          inv.sales_agent,
-          inv.notes,
-        ].map((x: any) => String(x || "").toLowerCase()).join(" ");
+        const hay = [inv.invoice_number, inv.customers?.name, inv.sales_agent, inv.notes]
+          .map((x: any) => String(x || "").toLowerCase()).join(" ");
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [invoices, filterDateFrom, filterDateTo, filterCustomer, filterAgent, filterStatus, searchQuery]);
+  }, [invoices, filterDateFrom, filterDateTo, filterAgent, filterStatus, searchQuery]);
+
+  const availableCustomers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const inv of filteredWithoutCustomer) if (inv.customer_id) ids.add(inv.customer_id);
+    return customers.filter(c => ids.has(c.id));
+  }, [filteredWithoutCustomer, customers]);
+
+  const filtered = useMemo(() => {
+    if (filterCustomer === "all") return filteredWithoutCustomer;
+    return filteredWithoutCustomer.filter((inv: any) => inv.customer_id === filterCustomer);
+  }, [filteredWithoutCustomer, filterCustomer]);
+
+  const [customerFilterOpen, setCustomerFilterOpen] = useState(false);
 
   const [quickFilter, setQuickFilter] = useState<"all" | "not_shipped" | "unpaid" | "shipped">("all");
   const statusBuckets: Record<string, "not_shipped" | "unpaid" | "shipped"> = {
@@ -479,13 +491,38 @@ export default function InvoicesPage() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
-            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Popover open={customerFilterOpen} onOpenChange={setCustomerFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="h-9 sm:h-8 sm:w-44 text-sm justify-between font-normal">
+                  <span className="truncate">
+                    {filterCustomer === "all"
+                      ? `All Customers (${availableCustomers.length})`
+                      : (customers.find(c => c.id === filterCustomer)?.name || "Select")}
+                  </span>
+                  <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search customer..." className="h-9" />
+                  <CommandList>
+                    <CommandEmpty>No customers found</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem value="all" onSelect={() => { setFilterCustomer("all"); setCustomerFilterOpen(false); }}>
+                        <Check className={cn("mr-2 h-4 w-4", filterCustomer === "all" ? "opacity-100" : "opacity-0")} />
+                        All Customers ({availableCustomers.length})
+                      </CommandItem>
+                      {availableCustomers.map(c => (
+                        <CommandItem key={c.id} value={c.name} onSelect={() => { setFilterCustomer(c.id); setCustomerFilterOpen(false); }}>
+                          <Check className={cn("mr-2 h-4 w-4", filterCustomer === c.id ? "opacity-100" : "opacity-0")} />
+                          {c.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Sales Agent</Label>
