@@ -491,13 +491,38 @@ export default function InvoicesPage() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
-            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Popover open={customerFilterOpen} onOpenChange={setCustomerFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="h-9 sm:h-8 sm:w-44 text-sm justify-between font-normal">
+                  <span className="truncate">
+                    {filterCustomer === "all"
+                      ? `All Customers (${availableCustomers.length})`
+                      : (customers.find(c => c.id === filterCustomer)?.name || "Select")}
+                  </span>
+                  <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search customer..." className="h-9" />
+                  <CommandList>
+                    <CommandEmpty>No customers found</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem value="all" onSelect={() => { setFilterCustomer("all"); setCustomerFilterOpen(false); }}>
+                        <Check className={cn("mr-2 h-4 w-4", filterCustomer === "all" ? "opacity-100" : "opacity-0")} />
+                        All Customers ({availableCustomers.length})
+                      </CommandItem>
+                      {availableCustomers.map(c => (
+                        <CommandItem key={c.id} value={c.name} onSelect={() => { setFilterCustomer(c.id); setCustomerFilterOpen(false); }}>
+                          <Check className={cn("mr-2 h-4 w-4", filterCustomer === c.id ? "opacity-100" : "opacity-0")} />
+                          {c.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Sales Agent</Label>
