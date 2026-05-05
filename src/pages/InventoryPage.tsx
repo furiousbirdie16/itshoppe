@@ -477,6 +477,12 @@ export default function InventoryPage() {
         open={!!transferItem}
         onOpenChange={(o) => { if (!o) setTransferItem(null); }}
       />
+
+      <AdjustStockDialog
+        item={adjustItem}
+        open={!!adjustItem}
+        onOpenChange={(o) => { if (!o) setAdjustItem(null); }}
+      />
     </div>
   );
 }
