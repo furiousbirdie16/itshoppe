@@ -531,16 +531,15 @@ export const updateInvoice = async (id: string, inv: Partial<Invoice>) => {
 };
 
 export const deleteInvoice = async (id: string) => {
-  // If this invoice previously deducted stock (i.e. it was shipped/confirmed
-  // or marked paid after shipping), restore the inventory before deleting.
-  const { data: deductions } = await from("inventory_movements")
-    .select("id")
-    .eq("reference_id", id)
-    .eq("reference_type", "invoice")
-    .eq("type", "out_invoice")
-    .limit(1);
+  // If this invoice currently has stock deducted (i.e. confirmed/paid/unpaid,
+  // not draft), restore the inventory before deleting. If it was already
+  // reverted to draft, stock has already been restored — skip to avoid
+  // double-restocking.
+  const { data: invRow } = await from("invoices").select("status").eq("id", id).maybeSingle();
+  const currentStatus = (invRow as any)?.status;
+  const stockCurrentlyDeducted = currentStatus && currentStatus !== "draft";
 
-  if (deductions && (deductions as any[]).length > 0) {
+  if (stockCurrentlyDeducted) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", id);
     for (const invItem of (invItems as any[]) || []) {
       if (!invItem.item_id) continue;
