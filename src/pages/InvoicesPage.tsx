@@ -249,13 +249,57 @@ export default function InvoicesPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: ({ id, payment_method }: { id: string; payment_method: string }) =>
-      updateInvoice(id, { status: "paid", payment_method } as any),
+    mutationFn: ({ id, payment_method, payment_reference, payment_reference_url }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string }) =>
+      updateInvoice(id, { status: "paid", payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null } as any),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Marked as paid"); },
   });
 
   const [payDialog, setPayDialog] = useState<{ id: string; afterShip?: boolean } | null>(null);
   const [payMethod, setPayMethod] = useState("Cash");
+  const [payReference, setPayReference] = useState("");
+  const [payRefFile, setPayRefFile] = useState<File | null>(null);
+  const [payUploading, setPayUploading] = useState(false);
+
+  const openPayDialog = (id: string) => {
+    setPayMethod("Cash");
+    setPayReference("");
+    setPayRefFile(null);
+    setPayDialog({ id });
+  };
+
+  const handlePayPaste = (e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+    if (item) {
+      const file = item.getAsFile();
+      if (file) setPayRefFile(file);
+    }
+  };
+
+  const submitPayment = async () => {
+    if (!payDialog) return;
+    if (payMethod !== "Cash" && !payReference.trim() && !payRefFile) {
+      toast.error("Please provide a reference number or image");
+      return;
+    }
+    let url = "";
+    if (payRefFile) {
+      try {
+        setPayUploading(true);
+        const ext = payRefFile.name.split(".").pop() || "png";
+        const path = `${payDialog.id}/${Date.now()}.${ext}`;
+        const { error } = await supabase.storage.from("payment-references").upload(path, payRefFile, { upsert: true });
+        if (error) throw error;
+        url = supabase.storage.from("payment-references").getPublicUrl(path).data.publicUrl;
+      } catch (e: any) {
+        toast.error("Image upload failed: " + e.message);
+        setPayUploading(false);
+        return;
+      }
+      setPayUploading(false);
+    }
+    markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod, payment_reference: payReference, payment_reference_url: url });
+    setPayDialog(null);
+  };
 
   const revertMut = useMutation({
     mutationFn: revertInvoice,
