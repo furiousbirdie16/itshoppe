@@ -646,9 +646,24 @@ export default function InvoicesPage() {
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
           {(() => {
             const inv: any = invoices.find((i: any) => i.id === viewInv);
-            return inv?.payment_method ? (
-              <div className="text-sm text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
-            ) : null;
+            if (!inv) return null;
+            return (
+              <div className="space-y-1 text-sm">
+                {inv.payment_method && (
+                  <div className="text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
+                )}
+                {inv.payment_reference && (
+                  <div className="text-muted-foreground">Reference #: <span className="font-medium text-foreground">{inv.payment_reference}</span></div>
+                )}
+                {inv.payment_reference_url && (
+                  <div className="pt-2">
+                    <a href={inv.payment_reference_url} target="_blank" rel="noreferrer">
+                      <img src={inv.payment_reference_url} alt="Payment reference" className="max-h-48 rounded border" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
           })()}
           <div className="data-table-wrapper mt-2">
             <Table>
