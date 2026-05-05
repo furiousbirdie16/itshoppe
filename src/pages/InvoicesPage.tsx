@@ -744,9 +744,26 @@ export default function InvoicesPage() {
                 <SelectItem value="Other">Other</SelectItem>
               </SelectContent>
             </Select>
+            {payMethod !== "Cash" && (
+              <>
+                <Label>Reference Number</Label>
+                <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="e.g. transaction ID" />
+                <Label>Reference Image (paste or upload)</Label>
+                <div onPaste={handlePayPaste} className="border border-dashed rounded-md p-3 text-xs text-muted-foreground" tabIndex={0}>
+                  <Input type="file" accept="image/*" onChange={(e) => setPayRefFile(e.target.files?.[0] || null)} />
+                  <div className="mt-2">Or click here and paste (Ctrl/Cmd+V) an image.</div>
+                  {payRefFile && (
+                    <div className="mt-2">
+                      <img src={URL.createObjectURL(payRefFile)} alt="preview" className="max-h-32 rounded border" />
+                      <Button variant="ghost" size="sm" onClick={() => setPayRefFile(null)} className="mt-1 h-6 text-xs">Remove</Button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setPayDialog(null)}>Cancel</Button>
-              <Button onClick={() => { if (payDialog) { markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod }); setPayDialog(null); } }}>Confirm Payment</Button>
+              <Button onClick={submitPayment} disabled={payUploading || markPaidMut.isPending}>{payUploading ? "Uploading..." : "Confirm Payment"}</Button>
             </div>
           </div>
         </DialogContent>
