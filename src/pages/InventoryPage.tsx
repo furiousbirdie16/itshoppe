@@ -11,9 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit } from "lucide-react";
 import { VariationsManager } from "@/components/VariationsManager";
 import TransferStockDialog from "@/components/TransferStockDialog";
+import AdjustStockDialog from "@/components/AdjustStockDialog";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
@@ -38,6 +39,7 @@ export default function InventoryPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
   const [transferItem, setTransferItem] = useState<Item | null>(null);
+  const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -434,6 +436,9 @@ export default function InventoryPage() {
                     <Button variant="ghost" size="icon" onClick={() => setTransferItem(item)} className="h-7 w-7 rounded-md" title="Transfer stock">
                       <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setAdjustItem(item)} className="h-7 w-7 rounded-md" title="Adjust stock (missing/surplus)">
+                      <ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
                       <Layers className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -471,6 +476,12 @@ export default function InventoryPage() {
         item={transferItem}
         open={!!transferItem}
         onOpenChange={(o) => { if (!o) setTransferItem(null); }}
+      />
+
+      <AdjustStockDialog
+        item={adjustItem}
+        open={!!adjustItem}
+        onOpenChange={(o) => { if (!o) setAdjustItem(null); }}
       />
     </div>
   );

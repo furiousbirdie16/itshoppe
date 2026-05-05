@@ -1006,6 +1006,8 @@ export type Database = {
         | "out_online_sale"
         | "transfer_w2s"
         | "transfer_s2w"
+        | "adjust_missing"
+        | "adjust_surplus"
       online_sale_status: "completed" | "returned" | "cancelled"
       po_status: "draft" | "sent" | "partially_received" | "received"
       quotation_status: "draft" | "sent" | "accepted" | "rejected"
@@ -1146,6 +1148,8 @@ export const Constants = {
         "out_online_sale",
         "transfer_w2s",
         "transfer_s2w",
+        "adjust_missing",
+        "adjust_surplus",
       ],
       online_sale_status: ["completed", "returned", "cancelled"],
       po_status: ["draft", "sent", "partially_received", "received"],
