@@ -18,6 +18,7 @@ import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate"
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
@@ -249,13 +250,57 @@ export default function InvoicesPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: ({ id, payment_method }: { id: string; payment_method: string }) =>
-      updateInvoice(id, { status: "paid", payment_method } as any),
+    mutationFn: ({ id, payment_method, payment_reference, payment_reference_url }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string }) =>
+      updateInvoice(id, { status: "paid", payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null } as any),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Marked as paid"); },
   });
 
   const [payDialog, setPayDialog] = useState<{ id: string; afterShip?: boolean } | null>(null);
   const [payMethod, setPayMethod] = useState("Cash");
+  const [payReference, setPayReference] = useState("");
+  const [payRefFile, setPayRefFile] = useState<File | null>(null);
+  const [payUploading, setPayUploading] = useState(false);
+
+  const openPayDialog = (id: string) => {
+    setPayMethod("Cash");
+    setPayReference("");
+    setPayRefFile(null);
+    setPayDialog({ id });
+  };
+
+  const handlePayPaste = (e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+    if (item) {
+      const file = item.getAsFile();
+      if (file) setPayRefFile(file);
+    }
+  };
+
+  const submitPayment = async () => {
+    if (!payDialog) return;
+    if (payMethod !== "Cash" && !payReference.trim() && !payRefFile) {
+      toast.error("Please provide a reference number or image");
+      return;
+    }
+    let url = "";
+    if (payRefFile) {
+      try {
+        setPayUploading(true);
+        const ext = payRefFile.name.split(".").pop() || "png";
+        const path = `${payDialog.id}/${Date.now()}.${ext}`;
+        const { error } = await supabase.storage.from("payment-references").upload(path, payRefFile, { upsert: true });
+        if (error) throw error;
+        url = supabase.storage.from("payment-references").getPublicUrl(path).data.publicUrl;
+      } catch (e: any) {
+        toast.error("Image upload failed: " + e.message);
+        setPayUploading(false);
+        return;
+      }
+      setPayUploading(false);
+    }
+    markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod, payment_reference: payReference, payment_reference_url: url });
+    setPayDialog(null);
+  };
 
   const revertMut = useMutation({
     mutationFn: revertInvoice,
@@ -601,9 +646,24 @@ export default function InvoicesPage() {
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
           {(() => {
             const inv: any = invoices.find((i: any) => i.id === viewInv);
-            return inv?.payment_method ? (
-              <div className="text-sm text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
-            ) : null;
+            if (!inv) return null;
+            return (
+              <div className="space-y-1 text-sm">
+                {inv.payment_method && (
+                  <div className="text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
+                )}
+                {inv.payment_reference && (
+                  <div className="text-muted-foreground">Reference #: <span className="font-medium text-foreground">{inv.payment_reference}</span></div>
+                )}
+                {inv.payment_reference_url && (
+                  <div className="pt-2">
+                    <a href={inv.payment_reference_url} target="_blank" rel="noreferrer">
+                      <img src={inv.payment_reference_url} alt="Payment reference" className="max-h-48 rounded border" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
           })()}
           <div className="data-table-wrapper mt-2">
             <Table>
@@ -658,12 +718,12 @@ export default function InvoicesPage() {
                     {inv.status === "draft" && (
                       <>
                         <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) confirmMut.mutate(inv.id); }} title="Confirm & Deduct Stock (Mark Shipped)" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) { setPayMethod("Cash"); setPayDialog({ id: inv.id }); } }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => { setPayMethod("Cash"); setPayDialog({ id: inv.id }); }} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
@@ -699,9 +759,26 @@ export default function InvoicesPage() {
                 <SelectItem value="Other">Other</SelectItem>
               </SelectContent>
             </Select>
+            {payMethod !== "Cash" && (
+              <>
+                <Label>Reference Number</Label>
+                <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="e.g. transaction ID" />
+                <Label>Reference Image (paste or upload)</Label>
+                <div onPaste={handlePayPaste} className="border border-dashed rounded-md p-3 text-xs text-muted-foreground" tabIndex={0}>
+                  <Input type="file" accept="image/*" onChange={(e) => setPayRefFile(e.target.files?.[0] || null)} />
+                  <div className="mt-2">Or click here and paste (Ctrl/Cmd+V) an image.</div>
+                  {payRefFile && (
+                    <div className="mt-2">
+                      <img src={URL.createObjectURL(payRefFile)} alt="preview" className="max-h-32 rounded border" />
+                      <Button variant="ghost" size="sm" onClick={() => setPayRefFile(null)} className="mt-1 h-6 text-xs">Remove</Button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setPayDialog(null)}>Cancel</Button>
-              <Button onClick={() => { if (payDialog) { markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod }); setPayDialog(null); } }}>Confirm Payment</Button>
+              <Button onClick={submitPayment} disabled={payUploading || markPaidMut.isPending}>{payUploading ? "Uploading..." : "Confirm Payment"}</Button>
             </div>
           </div>
         </DialogContent>
