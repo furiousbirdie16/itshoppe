@@ -625,8 +625,8 @@ export default function InvoicesPage() {
                 {lines.map((line, idx) => {
                   const selectedItem = items.find(i => i.id === line.item_id);
                   return (
-                    <div key={idx}>
-                      <div className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                    <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0">
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_70px_90px_32px] gap-2">
                         <ItemSearch
                           items={items}
                           value={line.item_id}
@@ -654,9 +654,11 @@ export default function InvoicesPage() {
                           placeholder="Search item or variation..."
                           allowCustom
                         />
-                        <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                        <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
-                        <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                        <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
+                          <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                          <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                        </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
                     </div>
@@ -679,7 +681,7 @@ export default function InvoicesPage() {
       </Dialog>
 
       <Dialog open={!!viewInv} onOpenChange={() => setViewInv(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
           {(() => {
             const inv: any = invoices.find((i: any) => i.id === viewInv);
