@@ -679,7 +679,7 @@ export default function InvoicesPage() {
       </Dialog>
 
       <Dialog open={!!viewInv} onOpenChange={() => setViewInv(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">Invoice Details</DialogTitle></DialogHeader>
           {(() => {
             const inv: any = invoices.find((i: any) => i.id === viewInv);
