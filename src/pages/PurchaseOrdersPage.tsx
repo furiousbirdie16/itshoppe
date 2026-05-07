@@ -418,7 +418,7 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-2">
                 {lines.map((line, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_70px_90px_32px] gap-2">
+                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 grid grid-cols-1 sm:grid-cols-[1fr_70px_90px_32px] gap-2">
                     <ItemSearch
                       items={items}
                       value={line.item_id}
@@ -428,11 +428,13 @@ export default function PurchaseOrdersPage() {
                       sourceFilter={isAdmin ? undefined : 'local'}
                       placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
                     />
-                    <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                    <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
-                    <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
-                    </Button>
+                    <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
+                      <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                      <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
+                      <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8">
+                        <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
