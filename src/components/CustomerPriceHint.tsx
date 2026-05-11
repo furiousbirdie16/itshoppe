@@ -53,7 +53,7 @@ export function CustomerPriceHint({
 
   if (!customerId || !itemId) return null;
 
-  const belowCost = costPrice != null && currentPrice != null && currentPrice > 0 && currentPrice < costPrice;
+  const belowCost = isAdmin && costPrice != null && currentPrice != null && currentPrice > 0 && currentPrice < costPrice;
   const lastSoldPrice = info?.lastSold?.price;
   const muchLower =
     !belowCost &&
