@@ -441,6 +441,9 @@ export default function InventoryPage() {
                     <Button variant="ghost" size="icon" onClick={() => setAdjustItem(item)} className="h-7 w-7 rounded-md" title="Adjust stock (missing/surplus)">
                       <ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setHistoryItem(item)} className="h-7 w-7 rounded-md" title="Stock history">
+                      <History className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
                       <Layers className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
