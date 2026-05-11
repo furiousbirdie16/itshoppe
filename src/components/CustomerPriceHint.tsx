@@ -3,6 +3,7 @@ import { getCustomerPrice, type CustomerPriceInfo } from "@/lib/customerPricing"
 import { peso } from "@/lib/currency";
 import { format } from "date-fns";
 import { AlertTriangle, Star } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   customerId: string | null | undefined;
@@ -29,6 +30,8 @@ export function CustomerPriceHint({
   onSuggested,
 }: Props) {
   const [info, setInfo] = useState<CustomerPriceInfo | null>(null);
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const key = `${customerId || ""}|${itemId || ""}|${variationId || ""}|${standardPrice}`;
 
   useEffect(() => {
@@ -50,7 +53,7 @@ export function CustomerPriceHint({
 
   if (!customerId || !itemId) return null;
 
-  const belowCost = costPrice != null && currentPrice != null && currentPrice > 0 && currentPrice < costPrice;
+  const belowCost = isAdmin && costPrice != null && currentPrice != null && currentPrice > 0 && currentPrice < costPrice;
   const lastSoldPrice = info?.lastSold?.price;
   const muchLower =
     !belowCost &&
