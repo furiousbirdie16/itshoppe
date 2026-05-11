@@ -29,8 +29,9 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
+import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 
-interface LineItem { item_id: string; item_name: string; quantity: number; unit_price: number; variation_id: string | null; }
+interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number; variation_id: string | null; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -43,7 +44,7 @@ export default function InvoicesPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters
@@ -230,7 +231,7 @@ export default function InvoicesPage() {
             unit_price: Number(li.unit_price),
             variation_id: li.variation_id || null,
           }))
-        : [{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]
+        : [{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]
     );
     setEditId(inv.id);
     setCreateOpen(true);
@@ -250,9 +251,9 @@ export default function InvoicesPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
-      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -262,10 +263,10 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       if (!editId) return;
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
       await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -351,9 +352,9 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]); setEditId(null); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
-  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
@@ -685,18 +686,29 @@ export default function InvoicesPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" min={1} value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Qty" />
+                          <Input type="number" value={line.unit_price || ""} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {selectedItem && form.customer_id && (
+                        <CustomerPriceHint
+                          customerId={form.customer_id}
+                          itemId={line.item_id}
+                          variationId={line.variation_id}
+                          standardPrice={Number(selectedItem.selling_price)}
+                          costPrice={Number(selectedItem.cost_price)}
+                          currentPrice={Number(line.unit_price)}
+                          onSuggested={(suggested) => updateLine(idx, "unit_price", suggested)}
+                        />
+                      )}
                     </div>
                   );
                 })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + Number(l.quantity || 0) * l.unit_price, 0))}</span>
               </div>
             </div>
             <Button

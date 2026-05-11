@@ -45,7 +45,7 @@ interface SaleForm {
 
 const emptyLine: SaleLine = {
   product_name: "",
-  quantity: 1,
+  quantity: 0,
   posted_price: 0,
   item_id: "",
   variation_id: null,
@@ -1331,7 +1331,7 @@ export default function OnlineSalesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-[11px] text-muted-foreground">Quantity</Label>
-                      <Input type="number" min={1} value={line.quantity} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 1 }; return { ...f, lines }; })} className="h-9" />
+                      <Input type="number" min={1} value={line.quantity || ""} placeholder="Qty" onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-[11px] text-muted-foreground">Selling Price</Label>

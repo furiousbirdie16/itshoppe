@@ -47,7 +47,7 @@ export default function PurchaseOrdersPage() {
   const [editForm, setEditForm] = useState({ supplier_id: "", notes: "", order_date: "", payment_terms: "", status: "draft" as string });
   const [editLines, setEditLines] = useState<LineItem[]>([]);
   const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
@@ -126,6 +126,9 @@ export default function PurchaseOrdersPage() {
     mutationFn: async () => {
       const validLines = lines.filter(l => l.item_id || l.item_name.trim());
       if (validLines.length === 0) throw new Error("Add at least one line item");
+      for (const l of validLines) {
+        if (!l.quantity || l.quantity <= 0) throw new Error(`"${l.item_name || "Item"}" must have a quantity greater than 0`);
+      }
       const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const terms = form.payment_terms ? parseInt(form.payment_terms) : null;
       const due = terms ? addDays(form.order_date, terms) : null;
@@ -181,6 +184,9 @@ export default function PurchaseOrdersPage() {
       if (!editPO) return;
       const validLines = editLines.filter(l => l.item_id || l.item_name.trim());
       if (validLines.length === 0) throw new Error("Add at least one line item");
+      for (const l of validLines) {
+        if (!l.quantity || l.quantity <= 0) throw new Error(`"${l.item_name || "Item"}" must have a quantity greater than 0`);
+      }
       const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const terms = editForm.payment_terms ? parseInt(editForm.payment_terms) : null;
       const due = terms ? addDays(editForm.order_date, terms) : null;
@@ -206,7 +212,7 @@ export default function PurchaseOrdersPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const addEditLine = () => setEditLines([...editLines, { item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  const addEditLine = () => setEditLines([...editLines, { item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   const updateEditLine = (idx: number, field: keyof LineItem, value: any) => {
     const newLines = [...editLines];
     (newLines[idx] as any)[field] = value;
@@ -275,10 +281,10 @@ export default function PurchaseOrdersPage() {
 
   const resetForm = () => {
     setForm({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
-    setLines([{ item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+    setLines([{ item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   };
 
-  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_cost: 0 }]);
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   const updateLine = (idx: number, field: keyof LineItem, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
@@ -429,7 +435,7 @@ export default function PurchaseOrdersPage() {
                       placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
                     />
                     <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                      <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                      <Input type="number" min={1} value={line.quantity || ""} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-9 text-sm" placeholder="Qty" />
                       <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
                       <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8">
                         <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
@@ -628,7 +634,7 @@ export default function PurchaseOrdersPage() {
                       placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
                     />
                     <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                      <Input type="number" min={1} value={line.quantity} onChange={e => updateEditLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
+                      <Input type="number" min={1} value={line.quantity || ""} onChange={e => updateEditLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-9 text-sm" placeholder="Qty" />
                       <Input type="number" value={line.unit_cost} onChange={e => updateEditLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Cost" />
                       <Button variant="ghost" size="icon" onClick={() => removeEditLine(idx)} className="h-9 w-8">
                         <Trash2 className="h-3.5 w-3.5 text-destructive/70" />

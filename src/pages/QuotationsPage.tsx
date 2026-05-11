@@ -23,6 +23,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
+import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
@@ -550,6 +551,17 @@ export default function QuotationsPage() {
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {selectedItem && form.customer_id && (
+                        <CustomerPriceHint
+                          customerId={form.customer_id}
+                          itemId={line.item_id}
+                          variationId={line.variation_id}
+                          standardPrice={Number(selectedItem.selling_price)}
+                          costPrice={Number(selectedItem.cost_price)}
+                          currentPrice={parsePrice(line.unit_price)}
+                          onSuggested={(suggested) => updateLine(idx, "unit_price", String(suggested))}
+                        />
+                      )}
                     </div>
                   );
                 })}

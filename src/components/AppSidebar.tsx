@@ -1,4 +1,4 @@
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ const navItems = [
   { title: "Overseas Suppliers", url: "/overseas-suppliers", icon: Globe, adminOnly: true },
   { title: "Overseas PO", url: "/overseas-purchase-orders", icon: ShoppingCart, adminOnly: true },
   { title: "Customers", url: "/customers", icon: Users, adminOnly: false },
+  { title: "Customer Pricing", url: "/customer-pricing", icon: Tag, adminOnly: false },
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },
   { title: "Quotations", url: "/quotations", icon: FileText, adminOnly: false },
   { title: "Invoices", url: "/invoices", icon: Receipt, adminOnly: false },

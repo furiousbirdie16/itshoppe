@@ -19,6 +19,7 @@ import QuotationsPage from "@/pages/QuotationsPage";
 import InvoicesPage from "@/pages/InvoicesPage";
 import PendingPaymentsPage from "@/pages/PendingPaymentsPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
+import CustomerPricingPage from "@/pages/CustomerPricingPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
@@ -64,6 +65,7 @@ function ProtectedRoutes() {
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/pending-payments" element={<PendingPaymentsPage />} />
         <Route path="/online-sales" element={<OnlineSalesPage />} />
+        <Route path="/customer-pricing" element={<CustomerPricingPage />} />
         <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
         <Route path="/business-insights" element={<BusinessInsightsPage />} />
         <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
