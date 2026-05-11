@@ -62,14 +62,14 @@ export function SetCustomerPriceDialog({
       const { data: { user } } = await supabase.auth.getUser();
 
       if (editingId) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("customer_prices")
           .update({ fixed_price: p, notes })
           .eq("id", editingId);
         if (error) throw error;
       } else {
         // Upsert by (customer, item, variation)
-        let q = supabase
+        let q = (supabase as any)
           .from("customer_prices")
           .select("id")
           .eq("customer_id", cust)
@@ -77,13 +77,13 @@ export function SetCustomerPriceDialog({
         q = variation ? q.eq("variation_id", variation) : q.is("variation_id", null);
         const { data: existing } = await q.maybeSingle();
         if (existing) {
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from("customer_prices")
             .update({ fixed_price: p, notes, created_by_email: user?.email ?? null })
             .eq("id", existing.id);
           if (error) throw error;
         } else {
-          const { error } = await supabase.from("customer_prices").insert({
+          const { error } = await (supabase as any).from("customer_prices").insert({
             customer_id: cust,
             item_id: item,
             variation_id: variation,

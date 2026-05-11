@@ -28,7 +28,7 @@ export default function CustomerPricingPage() {
   const { data: prices = [] } = useQuery({
     queryKey: ["customer_prices"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("customer_prices")
         .select("*")
         .order("updated_at", { ascending: false });
@@ -40,7 +40,7 @@ export default function CustomerPricingPage() {
   const { data: history = [] } = useQuery({
     queryKey: ["customer_price_history"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("customer_price_history")
         .select("*")
         .order("sold_at", { ascending: false })
@@ -153,7 +153,7 @@ export default function CustomerPricingPage() {
 
   const deleteMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("customer_prices").delete().eq("id", id);
+      const { error } = await (supabase as any).from("customer_prices").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
