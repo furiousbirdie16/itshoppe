@@ -45,7 +45,7 @@ interface SaleForm {
 
 const emptyLine: SaleLine = {
   product_name: "",
-  quantity: 1,
+  quantity: 0,
   posted_price: 0,
   item_id: "",
   variation_id: null,
