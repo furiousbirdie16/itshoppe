@@ -685,18 +685,29 @@ export default function InvoicesPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" min={1} value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Qty" />
+                          <Input type="number" value={line.unit_price || ""} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {selectedItem && form.customer_id && (
+                        <CustomerPriceHint
+                          customerId={form.customer_id}
+                          itemId={line.item_id}
+                          variationId={line.variation_id}
+                          standardPrice={Number(selectedItem.selling_price)}
+                          costPrice={Number(selectedItem.cost_price)}
+                          currentPrice={Number(line.unit_price)}
+                          onSuggested={(suggested) => updateLine(idx, "unit_price", suggested)}
+                        />
+                      )}
                     </div>
                   );
                 })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + Number(l.quantity || 0) * l.unit_price, 0))}</span>
               </div>
             </div>
             <Button
