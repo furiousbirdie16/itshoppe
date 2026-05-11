@@ -504,27 +504,55 @@ export default function PurchaseOrdersPage() {
 
       {/* View Dialog */}
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">PO Details</DialogTitle></DialogHeader>
-          <div className="data-table-wrapper mt-2">
-            <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs">Date Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {poItems.map((pi: any) => (
-                  <TableRow key={pi.id}>
-                    <TableCell className="text-sm font-medium">
-                      {pi.items?.name || pi.item_name || "—"}
-                      {!pi.items && pi.item_name && <span className="ml-2 text-xs text-muted-foreground">(custom)</span>}
-                    </TableCell>
-                    <TableCell className="text-sm">{pi.quantity}</TableCell>
-                    <TableCell className="text-sm">{pi.item_id ? pi.received_quantity : "—"}</TableCell>
-                    <TableCell className="text-sm">{pi.received_date ? new Date(pi.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
-                    <TableCell className="text-sm text-right">{peso(Number(pi.unit_cost))}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {(() => {
+            const po = pos.find((p: any) => p.id === viewPO);
+            const adjusted = po?.status === "cargo_adjusted" || Number(po?.total_additional_charges || 0) > 0;
+            return (
+              <>
+                {po && (
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-muted/30 rounded-md p-3">
+                    <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={po.status} /></div>
+                    <div><span className="text-muted-foreground">Total additional charges:</span> <span className="font-medium">{peso(Number(po.total_additional_charges || 0))}</span></div>
+                    {adjusted && po.cargo_adjusted_at && (
+                      <div className="col-span-2 text-muted-foreground">Cargo adjusted on {new Date(po.cargo_adjusted_at).toLocaleString()}{po.cargo_adjusted_by_email ? ` by ${po.cargo_adjusted_by_email}` : ""}</div>
+                    )}
+                  </div>
+                )}
+                <div className="data-table-wrapper mt-2">
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead className="text-xs">Item</TableHead>
+                      <TableHead className="text-xs">Qty</TableHead>
+                      <TableHead className="text-xs">Received</TableHead>
+                      <TableHead className="text-xs text-right">Supplier Cost</TableHead>
+                      {adjusted && <TableHead className="text-xs text-right">Cargo/unit</TableHead>}
+                      {adjusted && <TableHead className="text-xs text-right">Landed Cost</TableHead>}
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {poItems.map((pi: any) => {
+                        const supCost = Number(pi.original_supplier_cost ?? pi.unit_cost);
+                        return (
+                          <TableRow key={pi.id}>
+                            <TableCell className="text-sm font-medium">
+                              {pi.items?.name || pi.item_name || "—"}
+                              {!pi.items && pi.item_name && <span className="ml-2 text-xs text-muted-foreground">(custom)</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">{pi.quantity}</TableCell>
+                            <TableCell className="text-sm">{pi.item_id ? pi.received_quantity : "—"}</TableCell>
+                            <TableCell className="text-sm text-right">{peso(supCost)}{!adjusted && <span className="block text-[10px] text-muted-foreground">(temporary)</span>}</TableCell>
+                            {adjusted && <TableCell className="text-sm text-right">{peso(Number(pi.allocated_cargo_per_unit || 0))}</TableCell>}
+                            {adjusted && <TableCell className="text-sm text-right font-semibold">{pi.final_landed_cost != null ? peso(Number(pi.final_landed_cost)) : "—"}</TableCell>}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
