@@ -321,7 +321,7 @@ export default function LowStockAlertsPage() {
       return da - db;
     });
     return sorted;
-  }, [lowStock, search, statusFilter, supplierFilter, sortKey]);
+  }, [lowStock, search, statusFilter, sourceFilter, supplierFilter, sortKey]);
 
   const summary = useMemo(() => {
     const total = lowStock.length;
