@@ -333,8 +333,8 @@ export default function InventoryPage() {
           <SelectTrigger className="h-9 w-[140px] rounded-lg text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Sources</SelectItem>
-            <SelectItem value="local">Local Only</SelectItem>
-            <SelectItem value="import">Import Only</SelectItem>
+            {availableSources.has("local") && <SelectItem value="local">Local Only</SelectItem>}
+            {availableSources.has("import") && <SelectItem value="import">Import Only</SelectItem>}
           </SelectContent>
         </Select>
       </div>
