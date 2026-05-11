@@ -17,7 +17,6 @@ import CostHistoryDialog from "@/components/CostHistoryDialog";
 import { VariationsManager } from "@/components/VariationsManager";
 import TransferStockDialog from "@/components/TransferStockDialog";
 import AdjustStockDialog from "@/components/AdjustStockDialog";
-import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
