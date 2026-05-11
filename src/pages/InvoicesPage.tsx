@@ -75,14 +75,14 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Compute filtered ignoring customer filter, used to derive the customer dropdown options
-  const filteredWithoutCustomer = useMemo(() => {
+  // Base set with date + search applied; per-filter "available options" further
+  // restrict by the OTHER active filters so each dropdown only lists values
+  // that would actually return results.
+  const dateSearchFiltered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return invoices.filter((inv: any) => {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
-      if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
-      if (filterStatus !== "all" && inv.status !== filterStatus) return false;
       if (q) {
         const hay = [inv.invoice_number, inv.customers?.name, inv.sales_agent, inv.notes]
           .map((x: any) => String(x || "").toLowerCase()).join(" ");
@@ -90,13 +90,39 @@ export default function InvoicesPage() {
       }
       return true;
     });
-  }, [invoices, filterDateFrom, filterDateTo, filterAgent, filterStatus, searchQuery]);
+  }, [invoices, filterDateFrom, filterDateTo, searchQuery]);
+
+  const filteredWithoutCustomer = useMemo(() => dateSearchFiltered.filter((inv: any) => {
+    if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
+    if (filterStatus !== "all" && inv.status !== filterStatus) return false;
+    return true;
+  }), [dateSearchFiltered, filterAgent, filterStatus]);
 
   const availableCustomers = useMemo(() => {
     const ids = new Set<string>();
     for (const inv of filteredWithoutCustomer) if (inv.customer_id) ids.add(inv.customer_id);
     return customers.filter(c => ids.has(c.id));
   }, [filteredWithoutCustomer, customers]);
+
+  const availableAgents = useMemo(() => {
+    const names = new Set<string>();
+    for (const inv of dateSearchFiltered) {
+      if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) continue;
+      if (filterStatus !== "all" && inv.status !== filterStatus) continue;
+      if (inv.sales_agent) names.add(inv.sales_agent);
+    }
+    return salesAgents.filter((a: any) => names.has(a.name));
+  }, [dateSearchFiltered, salesAgents, filterCustomer, filterStatus]);
+
+  const availableStatuses = useMemo(() => {
+    const set = new Set<string>();
+    for (const inv of dateSearchFiltered) {
+      if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) continue;
+      if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) continue;
+      if (inv.status) set.add(inv.status);
+    }
+    return set;
+  }, [dateSearchFiltered, filterCustomer, filterAgent]);
 
   const filtered = useMemo(() => {
     if (filterCustomer === "all") return filteredWithoutCustomer;
@@ -529,8 +555,8 @@ export default function InvoicesPage() {
             <Select value={filterAgent} onValueChange={setFilterAgent}>
               <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Agents</SelectItem>
-                {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+                <SelectItem value="all">All Agents ({availableAgents.length})</SelectItem>
+                {availableAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -540,10 +566,14 @@ export default function InvoicesPage() {
               <SelectTrigger className="h-9 sm:h-8 sm:w-40 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="draft">Not Shipped</SelectItem>
-                <SelectItem value="confirmed">Shipped</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="unpaid">Unpaid</SelectItem>
+                {([
+                  { v: "draft", l: "Not Shipped" },
+                  { v: "confirmed", l: "Shipped" },
+                  { v: "paid", l: "Paid" },
+                  { v: "unpaid", l: "Unpaid" },
+                ] as const).filter(s => availableStatuses.has(s.v)).map(s => (
+                  <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
