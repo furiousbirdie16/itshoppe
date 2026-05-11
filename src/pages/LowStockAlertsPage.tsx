@@ -298,6 +298,7 @@ export default function LowStockAlertsPage() {
       const q = search.toLowerCase();
       rows = rows.filter((r) => r.item.name.toLowerCase().includes(q) || r.item.sku.toLowerCase().includes(q));
     }
+    if (sourceFilter !== "all") rows = rows.filter((r) => r.item.source === sourceFilter);
     if (statusFilter === "critical") rows = rows.filter((r) => r.severity === "critical");
     else if (statusFilter === "ordered") rows = rows.filter((r) => r.ordered);
     else if (statusFilter === "not_ordered") rows = rows.filter((r) => !r.ordered);
