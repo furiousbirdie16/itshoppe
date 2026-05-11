@@ -500,6 +500,11 @@ export default function InventoryPage() {
         open={!!historyItem}
         onOpenChange={(o) => { if (!o) setHistoryItem(null); }}
       />
+      <CostHistoryDialog
+        item={costHistoryItem}
+        open={!!costHistoryItem}
+        onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }}
+      />
     </div>
   );
 }
