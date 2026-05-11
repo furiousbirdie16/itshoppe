@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder, applyPOCargoAdjustment } from "@/lib/api";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { SupplierSearch } from "@/components/SupplierSearch";
 import { ItemSearch } from "@/components/ItemSearch";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search } from "lucide-react";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search, Truck } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -121,6 +121,52 @@ export default function PurchaseOrdersPage() {
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [cargoPO, setCargoPO] = useState<any | null>(null);
+  const [cargoForm, setCargoForm] = useState({ cargo_cost: "", shipping_fee: "", customs_fee: "", delivery_fee: "", misc_charges: "", notes: "" });
+  const { data: cargoPOItems = [] } = useQuery({
+    queryKey: ["po_items_cargo", cargoPO?.id],
+    queryFn: () => getPOItems(cargoPO!.id),
+    enabled: !!cargoPO,
+  });
+  const cargoTotalCharges = ["cargo_cost","shipping_fee","customs_fee","delivery_fee","misc_charges"]
+    .reduce((s, k) => s + (parseFloat((cargoForm as any)[k]) || 0), 0);
+  const cargoTotalQty = cargoPOItems.reduce((s: number, li: any) => s + Number(li.received_quantity || 0), 0);
+  const cargoPerUnit = cargoTotalQty > 0 ? cargoTotalCharges / cargoTotalQty : 0;
+
+  const openCargo = (po: any) => {
+    setCargoForm({
+      cargo_cost: po.cargo_cost ? String(po.cargo_cost) : "",
+      shipping_fee: po.shipping_fee ? String(po.shipping_fee) : "",
+      customs_fee: po.customs_fee ? String(po.customs_fee) : "",
+      delivery_fee: po.delivery_fee ? String(po.delivery_fee) : "",
+      misc_charges: po.misc_charges ? String(po.misc_charges) : "",
+      notes: po.cargo_notes || "",
+    });
+    setCargoPO(po);
+  };
+
+  const cargoMut = useMutation({
+    mutationFn: async () => {
+      if (!cargoPO) return;
+      if (cargoTotalQty <= 0) throw new Error("No received quantity to allocate cargo against");
+      await applyPOCargoAdjustment(cargoPO.id, {
+        cargo_cost: parseFloat(cargoForm.cargo_cost) || 0,
+        shipping_fee: parseFloat(cargoForm.shipping_fee) || 0,
+        customs_fee: parseFloat(cargoForm.customs_fee) || 0,
+        delivery_fee: parseFloat(cargoForm.delivery_fee) || 0,
+        misc_charges: parseFloat(cargoForm.misc_charges) || 0,
+        notes: cargoForm.notes,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["po_items_cargo"] });
+      setCargoPO(null);
+      toast.success("Cargo adjustment applied — landed costs updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -323,6 +369,9 @@ export default function PurchaseOrdersPage() {
                     { value: "sent", label: "Sent" },
                     { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
+                    { value: "pending_cargo_adjustment", label: "Pending Cargo Adjustment" },
+                    { value: "cargo_adjusted", label: "Cargo Adjusted" },
+                    { value: "closed", label: "Closed" },
                   ]},
                   { key: "order_date", label: "Order Date", type: "date" },
                   { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
@@ -455,27 +504,55 @@ export default function PurchaseOrdersPage() {
 
       {/* View Dialog */}
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">PO Details</DialogTitle></DialogHeader>
-          <div className="data-table-wrapper mt-2">
-            <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs">Received</TableHead><TableHead className="text-xs">Date Received</TableHead><TableHead className="text-xs text-right">Cost</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {poItems.map((pi: any) => (
-                  <TableRow key={pi.id}>
-                    <TableCell className="text-sm font-medium">
-                      {pi.items?.name || pi.item_name || "—"}
-                      {!pi.items && pi.item_name && <span className="ml-2 text-xs text-muted-foreground">(custom)</span>}
-                    </TableCell>
-                    <TableCell className="text-sm">{pi.quantity}</TableCell>
-                    <TableCell className="text-sm">{pi.item_id ? pi.received_quantity : "—"}</TableCell>
-                    <TableCell className="text-sm">{pi.received_date ? new Date(pi.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
-                    <TableCell className="text-sm text-right">{peso(Number(pi.unit_cost))}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {(() => {
+            const po: any = pos.find((p: any) => p.id === viewPO);
+            const adjusted = po?.status === "cargo_adjusted" || Number(po?.total_additional_charges || 0) > 0;
+            return (
+              <>
+                {po && (
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-muted/30 rounded-md p-3">
+                    <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={po.status} /></div>
+                    <div><span className="text-muted-foreground">Total additional charges:</span> <span className="font-medium">{peso(Number(po.total_additional_charges || 0))}</span></div>
+                    {adjusted && po.cargo_adjusted_at && (
+                      <div className="col-span-2 text-muted-foreground">Cargo adjusted on {new Date(po.cargo_adjusted_at).toLocaleString()}{po.cargo_adjusted_by_email ? ` by ${po.cargo_adjusted_by_email}` : ""}</div>
+                    )}
+                  </div>
+                )}
+                <div className="data-table-wrapper mt-2">
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead className="text-xs">Item</TableHead>
+                      <TableHead className="text-xs">Qty</TableHead>
+                      <TableHead className="text-xs">Received</TableHead>
+                      <TableHead className="text-xs text-right">Supplier Cost</TableHead>
+                      {adjusted && <TableHead className="text-xs text-right">Cargo/unit</TableHead>}
+                      {adjusted && <TableHead className="text-xs text-right">Landed Cost</TableHead>}
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {poItems.map((pi: any) => {
+                        const supCost = Number(pi.original_supplier_cost ?? pi.unit_cost);
+                        return (
+                          <TableRow key={pi.id}>
+                            <TableCell className="text-sm font-medium">
+                              {pi.items?.name || pi.item_name || "—"}
+                              {!pi.items && pi.item_name && <span className="ml-2 text-xs text-muted-foreground">(custom)</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">{pi.quantity}</TableCell>
+                            <TableCell className="text-sm">{pi.item_id ? pi.received_quantity : "—"}</TableCell>
+                            <TableCell className="text-sm text-right">{peso(supCost)}{!adjusted && <span className="block text-[10px] text-muted-foreground">(temporary)</span>}</TableCell>
+                            {adjusted && <TableCell className="text-sm text-right">{peso(Number(pi.allocated_cargo_per_unit || 0))}</TableCell>}
+                            {adjusted && <TableCell className="text-sm text-right font-semibold">{pi.final_landed_cost != null ? peso(Number(pi.final_landed_cost)) : "—"}</TableCell>}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -566,6 +643,9 @@ export default function PurchaseOrdersPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); }} title={po.status === "received" ? "Undo Receipt" : "Receive / Undo"} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
+                    {isAdmin && (po.status === "pending_cargo_adjustment" || po.status === "cargo_adjusted") && (
+                      <Button variant="ghost" size="icon" onClick={() => openCargo(po)} title={po.status === "cargo_adjusted" ? "Re-adjust Cargo Costs" : "Add Cargo Costs"} className="h-7 w-7 rounded-md"><Truck className={`h-3.5 w-3.5 ${po.status === "cargo_adjusted" ? "text-success" : "text-warning"}`} /></Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                   </div>
                 </TableCell>
@@ -606,6 +686,9 @@ export default function PurchaseOrdersPage() {
                     <SelectItem value="sent">Sent</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
+                    <SelectItem value="pending_cargo_adjustment">Pending Cargo Adjustment</SelectItem>
+                    <SelectItem value="cargo_adjusted">Cargo Adjusted</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -648,6 +731,70 @@ export default function PurchaseOrdersPage() {
               </div>
             </div>
             <Button onClick={() => editMut.mutate()} disabled={editMut.isPending} className="rounded-lg h-9">Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cargo Adjustment Dialog */}
+      <Dialog open={!!cargoPO} onOpenChange={(o) => { if (!o) setCargoPO(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2"><Truck className="h-4 w-4" /> Cargo Cost Adjustment — {cargoPO?.po_number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-xs text-muted-foreground">Enter actual cargo / shipping charges paid after the shipment arrived. Charges are allocated across received items by quantity. Inventory landed cost will be updated; stock quantities and past sales are untouched.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { k: "cargo_cost", l: "Cargo Cost" },
+                { k: "shipping_fee", l: "Shipping Fee" },
+                { k: "customs_fee", l: "Customs Fee" },
+                { k: "delivery_fee", l: "Delivery Fee" },
+                { k: "misc_charges", l: "Misc Charges" },
+              ].map(f => (
+                <div key={f.k} className="space-y-1.5">
+                  <Label className="text-xs font-medium">{f.l}</Label>
+                  <Input type="number" step="0.01" value={(cargoForm as any)[f.k]} onChange={e => setCargoForm({ ...cargoForm, [f.k]: e.target.value })} className="h-9" placeholder="0.00" />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={cargoForm.notes} onChange={e => setCargoForm({ ...cargoForm, notes: e.target.value })} rows={2} className="resize-none" />
+            </div>
+            <div className="grid grid-cols-3 gap-3 bg-muted/40 rounded-md p-3 text-sm">
+              <div><div className="text-[11px] text-muted-foreground">Total Charges</div><div className="font-semibold">{peso(cargoTotalCharges)}</div></div>
+              <div><div className="text-[11px] text-muted-foreground">Total Qty Received</div><div className="font-semibold">{cargoTotalQty}</div></div>
+              <div><div className="text-[11px] text-muted-foreground">Cost Per Unit</div><div className="font-semibold">{peso(cargoPerUnit)}</div></div>
+            </div>
+            <div className="data-table-wrapper">
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="text-xs">Item</TableHead>
+                  <TableHead className="text-xs text-right">Received Qty</TableHead>
+                  <TableHead className="text-xs text-right">Supplier Cost</TableHead>
+                  <TableHead className="text-xs text-right">+ Cargo/unit</TableHead>
+                  <TableHead className="text-xs text-right">Final Landed</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {cargoPOItems.map((pi: any) => {
+                    const supCost = Number(pi.original_supplier_cost ?? pi.unit_cost);
+                    const landed = supCost + cargoPerUnit;
+                    return (
+                      <TableRow key={pi.id}>
+                        <TableCell className="text-sm">{pi.items?.name || pi.item_name || "—"}</TableCell>
+                        <TableCell className="text-sm text-right">{pi.received_quantity}</TableCell>
+                        <TableCell className="text-sm text-right">{peso(supCost)}</TableCell>
+                        <TableCell className="text-sm text-right text-warning">{peso(cargoPerUnit)}</TableCell>
+                        <TableCell className="text-sm text-right font-semibold">{peso(landed)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <Button onClick={() => cargoMut.mutate()} disabled={cargoMut.isPending || cargoTotalCharges <= 0} className="w-full rounded-lg h-9">
+              Apply Cargo Adjustment & Update Landed Costs
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
