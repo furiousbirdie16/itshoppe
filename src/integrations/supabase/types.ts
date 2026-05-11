@@ -1171,6 +1171,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_po_cargo_adjustment: {
+        Args: {
+          _cargo_cost: number
+          _customs_fee: number
+          _delivery_fee: number
+          _misc_charges: number
+          _notes: string
+          _po_id: string
+          _shipping_fee: number
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
