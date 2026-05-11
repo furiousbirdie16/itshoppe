@@ -23,6 +23,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
+import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
