@@ -250,9 +250,9 @@ export default function InvoicesPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
-      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: l.quantity, unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
