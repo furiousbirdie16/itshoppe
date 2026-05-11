@@ -43,7 +43,7 @@ export default function InvoicesPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" });
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters
@@ -230,7 +230,7 @@ export default function InvoicesPage() {
             unit_price: Number(li.unit_price),
             variation_id: li.variation_id || null,
           }))
-        : [{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]
+        : [{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]
     );
     setEditId(inv.id);
     setCreateOpen(true);
@@ -351,9 +351,9 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]); setEditId(null); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
-  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: 1, unit_price: 0, variation_id: null }]);
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
