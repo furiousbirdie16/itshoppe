@@ -19,8 +19,9 @@ export async function getCustomerPrice(
   variationId: string | null,
   standardPrice: number,
 ): Promise<CustomerPriceInfo> {
+  const sb = supabase as any;
   // Fixed price lookup
-  let fixedQuery = supabase
+  let fixedQuery = sb
     .from("customer_prices")
     .select("fixed_price, notes")
     .eq("customer_id", customerId)
@@ -31,7 +32,7 @@ export async function getCustomerPrice(
   const { data: fixedRow } = await fixedQuery.maybeSingle();
 
   // Last sold lookup
-  let lastQuery = supabase
+  let lastQuery = sb
     .from("customer_price_history")
     .select("unit_price, sold_at, reference_number")
     .eq("customer_id", customerId)
