@@ -47,6 +47,87 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_price_history: {
+        Row: {
+          created_at: string
+          created_by_email: string | null
+          customer_id: string
+          id: string
+          item_id: string
+          quantity: number
+          reference_id: string | null
+          reference_number: string | null
+          sold_at: string
+          source: string
+          unit_price: number
+          variation_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_email?: string | null
+          customer_id: string
+          id?: string
+          item_id: string
+          quantity?: number
+          reference_id?: string | null
+          reference_number?: string | null
+          sold_at?: string
+          source: string
+          unit_price?: number
+          variation_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_email?: string | null
+          customer_id?: string
+          id?: string
+          item_id?: string
+          quantity?: number
+          reference_id?: string | null
+          reference_number?: string | null
+          sold_at?: string
+          source?: string
+          unit_price?: number
+          variation_id?: string | null
+        }
+        Relationships: []
+      }
+      customer_prices: {
+        Row: {
+          created_at: string
+          created_by_email: string | null
+          customer_id: string
+          fixed_price: number
+          id: string
+          item_id: string
+          notes: string
+          updated_at: string
+          variation_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_email?: string | null
+          customer_id: string
+          fixed_price?: number
+          id?: string
+          item_id: string
+          notes?: string
+          updated_at?: string
+          variation_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_email?: string | null
+          customer_id?: string
+          fixed_price?: number
+          id?: string
+          item_id?: string
+          notes?: string
+          updated_at?: string
+          variation_id?: string | null
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           address: string | null
