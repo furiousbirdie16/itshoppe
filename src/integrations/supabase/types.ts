@@ -260,6 +260,71 @@ export type Database = {
           },
         ]
       }
+      item_cost_history: {
+        Row: {
+          changed_by: string | null
+          changed_by_email: string | null
+          created_at: string
+          currency: string | null
+          difference: number
+          exchange_rate: number | null
+          id: string
+          item_id: string
+          new_cost: number
+          percentage_change: number
+          po_id: string | null
+          po_number: string | null
+          previous_cost: number
+          reason: string
+          source: string
+          supplier_name: string | null
+        }
+        Insert: {
+          changed_by?: string | null
+          changed_by_email?: string | null
+          created_at?: string
+          currency?: string | null
+          difference?: number
+          exchange_rate?: number | null
+          id?: string
+          item_id: string
+          new_cost?: number
+          percentage_change?: number
+          po_id?: string | null
+          po_number?: string | null
+          previous_cost?: number
+          reason?: string
+          source?: string
+          supplier_name?: string | null
+        }
+        Update: {
+          changed_by?: string | null
+          changed_by_email?: string | null
+          created_at?: string
+          currency?: string | null
+          difference?: number
+          exchange_rate?: number | null
+          id?: string
+          item_id?: string
+          new_cost?: number
+          percentage_change?: number
+          po_id?: string | null
+          po_number?: string | null
+          previous_cost?: number
+          reason?: string
+          source?: string
+          supplier_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_cost_history_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       item_variations: {
         Row: {
           created_at: string
@@ -995,6 +1060,26 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      record_item_cost_change: {
+        Args: {
+          _changed_by: string
+          _changed_by_email: string
+          _currency: string
+          _exchange_rate: number
+          _item_id: string
+          _new_cost: number
+          _po_id: string
+          _po_number: string
+          _reason: string
+          _source: string
+          _supplier_name: string
+        }
+        Returns: string
+      }
+      set_item_cost_manual: {
+        Args: { _item_id: string; _new_cost: number; _reason: string }
+        Returns: string
       }
     }
     Enums: {

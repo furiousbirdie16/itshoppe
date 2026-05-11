@@ -11,11 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign } from "lucide-react";
+import ItemHistoryDialog from "@/components/ItemHistoryDialog";
+import CostHistoryDialog from "@/components/CostHistoryDialog";
 import { VariationsManager } from "@/components/VariationsManager";
 import TransferStockDialog from "@/components/TransferStockDialog";
 import AdjustStockDialog from "@/components/AdjustStockDialog";
-import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
@@ -42,6 +43,7 @@ export default function InventoryPage() {
   const [transferItem, setTransferItem] = useState<Item | null>(null);
   const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
+  const [costHistoryItem, setCostHistoryItem] = useState<Item | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
@@ -446,6 +448,9 @@ export default function InventoryPage() {
                     <Button variant="ghost" size="icon" onClick={() => setHistoryItem(item)} className="h-7 w-7 rounded-md" title="Stock history">
                       <History className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setCostHistoryItem(item)} className="h-7 w-7 rounded-md" title="Cost history">
+                      <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
                       <Layers className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -494,6 +499,11 @@ export default function InventoryPage() {
         item={historyItem}
         open={!!historyItem}
         onOpenChange={(o) => { if (!o) setHistoryItem(null); }}
+      />
+      <CostHistoryDialog
+        item={costHistoryItem}
+        open={!!costHistoryItem}
+        onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }}
       />
     </div>
   );
