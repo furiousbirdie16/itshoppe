@@ -383,6 +383,22 @@ export default function LowStockAlertsPage() {
               </Button>
             ))}
           </div>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { k: "all", label: "All Sources", count: lowStock.length },
+              { k: "local", label: "Local", count: lowStock.filter((r) => r.item.source === "local").length },
+              { k: "import", label: "Import", count: lowStock.filter((r) => r.item.source === "import").length },
+            ] as { k: "all" | "local" | "import"; label: string; count: number }[]).map((f) => (
+              <Button
+                key={f.k}
+                size="sm"
+                variant={sourceFilter === f.k ? "default" : "outline"}
+                onClick={() => setSourceFilter(f.k)}
+              >
+                {f.label} ({f.count})
+              </Button>
+            ))}
+          </div>
           <div className="flex flex-wrap gap-2 items-center">
             <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
