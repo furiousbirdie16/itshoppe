@@ -273,15 +273,14 @@ export default function OnlineSalesPage() {
 
   // Filter by tab + search + advanced filters
   const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
-  const filtered = sales.filter((s: any) => {
+
+  // Predicates split out so we can derive "available options" per filter.
+  const matchTabSearchDateQtyPrice = (s: any) => {
     const status = s.status || 'completed';
     if (activeTab === 'completed' && status !== 'completed') return false;
     if (activeTab === 'returns' && status !== 'returned' && status !== 'cancelled') return false;
     if (filterDateFrom && (s.order_date || "") < filterDateFrom) return false;
     if (filterDateTo && (s.order_date || "") > filterDateTo) return false;
-    if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
-    if (filterStatus !== "all" && status !== filterStatus) return false;
-    if (filterPayment !== "all" && (s.payment_status || 'unpaid') !== filterPayment) return false;
     const price = Number(s.posted_price || 0);
     const pMin = num(filterPriceMin); if (pMin !== null && price < pMin) return false;
     const pMax = num(filterPriceMax); if (pMax !== null && price > pMax) return false;
@@ -295,9 +294,54 @@ export default function OnlineSalesPage() {
     const qty = Number(s.quantity || 1);
     const qMin = num(filterQtyMin); if (qMin !== null && qty < qMin) return false;
     const qMax = num(filterQtyMax); if (qMax !== null && qty > qMax) return false;
-    if (!filter) return true;
-    const q = filter.toLowerCase();
-    return s.product_name?.toLowerCase().includes(q) || s.order_number?.toLowerCase().includes(q);
+    if (filter) {
+      const q = filter.toLowerCase();
+      if (!s.product_name?.toLowerCase().includes(q) && !s.order_number?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  };
+
+  const baseFiltered = sales.filter(matchTabSearchDateQtyPrice);
+
+  // Available options exclude only their own filter to keep the others authoritative.
+  const availableChannels = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of baseFiltered) {
+      const status = s.status || 'completed';
+      if (filterStatus !== 'all' && status !== filterStatus) continue;
+      if (filterPayment !== 'all' && (s.payment_status || 'unpaid') !== filterPayment) continue;
+      if (s.sales_channel) set.add(s.sales_channel);
+    }
+    return set;
+  }, [baseFiltered, filterStatus, filterPayment]);
+
+  const availableStatuses = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of baseFiltered) {
+      if (filterChannel !== 'all' && s.sales_channel !== filterChannel) continue;
+      if (filterPayment !== 'all' && (s.payment_status || 'unpaid') !== filterPayment) continue;
+      set.add(s.status || 'completed');
+    }
+    return set;
+  }, [baseFiltered, filterChannel, filterPayment]);
+
+  const availablePayments = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of baseFiltered) {
+      const status = s.status || 'completed';
+      if (filterChannel !== 'all' && s.sales_channel !== filterChannel) continue;
+      if (filterStatus !== 'all' && status !== filterStatus) continue;
+      set.add(s.payment_status || 'unpaid');
+    }
+    return set;
+  }, [baseFiltered, filterChannel, filterStatus]);
+
+  const filtered = baseFiltered.filter((s: any) => {
+    const status = s.status || 'completed';
+    if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
+    if (filterStatus !== "all" && status !== filterStatus) return false;
+    if (filterPayment !== "all" && (s.payment_status || 'unpaid') !== filterPayment) return false;
+    return true;
   });
 
   const { sort, toggle, sorted: sortedFiltered } = useSort<any>(filtered, {
