@@ -28,6 +28,7 @@ import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { FilterCombobox } from "@/components/FilterCombobox";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
 
