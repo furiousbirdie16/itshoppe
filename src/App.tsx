@@ -8,6 +8,7 @@ import { AppLayout } from "@/components/AppLayout";
 import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
+import LowStockAlertsPage from "@/pages/LowStockAlertsPage";
 import SuppliersPage from "@/pages/SuppliersPage";
 import OverseasSuppliersPage from "@/pages/OverseasSuppliersPage";
 import OverseasPurchaseOrdersPage from "@/pages/OverseasPurchaseOrdersPage";
@@ -52,6 +53,7 @@ function ProtectedRoutes() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/overseas-suppliers" element={<AdminRoute><OverseasSuppliersPage /></AdminRoute>} />
         <Route path="/overseas-purchase-orders" element={<AdminRoute><OverseasPurchaseOrdersPage /></AdminRoute>} />
