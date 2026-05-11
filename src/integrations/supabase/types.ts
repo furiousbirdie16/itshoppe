@@ -810,9 +810,12 @@ export type Database = {
       }
       purchase_order_items: {
         Row: {
+          allocated_cargo_per_unit: number
+          final_landed_cost: number | null
           id: string
           item_id: string | null
           item_name: string | null
+          original_supplier_cost: number | null
           po_id: string
           quantity: number
           received_date: string | null
@@ -820,9 +823,12 @@ export type Database = {
           unit_cost: number
         }
         Insert: {
+          allocated_cargo_per_unit?: number
+          final_landed_cost?: number | null
           id?: string
           item_id?: string | null
           item_name?: string | null
+          original_supplier_cost?: number | null
           po_id: string
           quantity?: number
           received_date?: string | null
@@ -830,9 +836,12 @@ export type Database = {
           unit_cost?: number
         }
         Update: {
+          allocated_cargo_per_unit?: number
+          final_landed_cost?: number | null
           id?: string
           item_id?: string | null
           item_name?: string | null
+          original_supplier_cost?: number | null
           po_id?: string
           quantity?: number
           received_date?: string | null
@@ -858,44 +867,71 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          cargo_adjusted_at: string | null
+          cargo_adjusted_by_email: string | null
+          cargo_cost: number
+          cargo_notes: string
           created_at: string | null
+          customs_fee: number
+          delivery_fee: number
           expected_delivery: string | null
           id: string
+          misc_charges: number
           notes: string | null
           order_date: string | null
           payment_due_date: string | null
           payment_terms: number | null
           po_number: string
+          shipping_fee: number
           status: Database["public"]["Enums"]["po_status"]
           supplier_id: string | null
+          total_additional_charges: number
           total_amount: number | null
           updated_at: string | null
         }
         Insert: {
+          cargo_adjusted_at?: string | null
+          cargo_adjusted_by_email?: string | null
+          cargo_cost?: number
+          cargo_notes?: string
           created_at?: string | null
+          customs_fee?: number
+          delivery_fee?: number
           expected_delivery?: string | null
           id?: string
+          misc_charges?: number
           notes?: string | null
           order_date?: string | null
           payment_due_date?: string | null
           payment_terms?: number | null
           po_number: string
+          shipping_fee?: number
           status?: Database["public"]["Enums"]["po_status"]
           supplier_id?: string | null
+          total_additional_charges?: number
           total_amount?: number | null
           updated_at?: string | null
         }
         Update: {
+          cargo_adjusted_at?: string | null
+          cargo_adjusted_by_email?: string | null
+          cargo_cost?: number
+          cargo_notes?: string
           created_at?: string | null
+          customs_fee?: number
+          delivery_fee?: number
           expected_delivery?: string | null
           id?: string
+          misc_charges?: number
           notes?: string | null
           order_date?: string | null
           payment_due_date?: string | null
           payment_terms?: number | null
           po_number?: string
+          shipping_fee?: number
           status?: Database["public"]["Enums"]["po_status"]
           supplier_id?: string | null
+          total_additional_charges?: number
           total_amount?: number | null
           updated_at?: string | null
         }
@@ -1175,7 +1211,14 @@ export type Database = {
         | "adjust_missing"
         | "adjust_surplus"
       online_sale_status: "completed" | "returned" | "cancelled"
-      po_status: "draft" | "sent" | "partially_received" | "received"
+      po_status:
+        | "draft"
+        | "sent"
+        | "partially_received"
+        | "received"
+        | "pending_cargo_adjustment"
+        | "cargo_adjusted"
+        | "closed"
       quotation_status: "draft" | "sent" | "accepted" | "rejected"
       sales_channel: "shopee" | "lazada" | "others"
       variation_type: "pack" | "cut"
@@ -1318,7 +1361,15 @@ export const Constants = {
         "adjust_surplus",
       ],
       online_sale_status: ["completed", "returned", "cancelled"],
-      po_status: ["draft", "sent", "partially_received", "received"],
+      po_status: [
+        "draft",
+        "sent",
+        "partially_received",
+        "received",
+        "pending_cargo_adjustment",
+        "cargo_adjusted",
+        "closed",
+      ],
       quotation_status: ["draft", "sent", "accepted", "rejected"],
       sales_channel: ["shopee", "lazada", "others"],
       variation_type: ["pack", "cut"],
