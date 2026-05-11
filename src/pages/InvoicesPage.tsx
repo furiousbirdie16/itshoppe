@@ -555,8 +555,8 @@ export default function InvoicesPage() {
             <Select value={filterAgent} onValueChange={setFilterAgent}>
               <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Agents</SelectItem>
-                {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+                <SelectItem value="all">All Agents ({availableAgents.length})</SelectItem>
+                {availableAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -566,10 +566,14 @@ export default function InvoicesPage() {
               <SelectTrigger className="h-9 sm:h-8 sm:w-40 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="draft">Not Shipped</SelectItem>
-                <SelectItem value="confirmed">Shipped</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="unpaid">Unpaid</SelectItem>
+                {([
+                  { v: "draft", l: "Not Shipped" },
+                  { v: "confirmed", l: "Shipped" },
+                  { v: "paid", l: "Paid" },
+                  { v: "unpaid", l: "Unpaid" },
+                ] as const).filter(s => availableStatuses.has(s.v)).map(s => (
+                  <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
