@@ -121,6 +121,52 @@ export default function PurchaseOrdersPage() {
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [cargoPO, setCargoPO] = useState<any | null>(null);
+  const [cargoForm, setCargoForm] = useState({ cargo_cost: "", shipping_fee: "", customs_fee: "", delivery_fee: "", misc_charges: "", notes: "" });
+  const { data: cargoPOItems = [] } = useQuery({
+    queryKey: ["po_items_cargo", cargoPO?.id],
+    queryFn: () => getPOItems(cargoPO!.id),
+    enabled: !!cargoPO,
+  });
+  const cargoTotalCharges = ["cargo_cost","shipping_fee","customs_fee","delivery_fee","misc_charges"]
+    .reduce((s, k) => s + (parseFloat((cargoForm as any)[k]) || 0), 0);
+  const cargoTotalQty = cargoPOItems.reduce((s: number, li: any) => s + Number(li.received_quantity || 0), 0);
+  const cargoPerUnit = cargoTotalQty > 0 ? cargoTotalCharges / cargoTotalQty : 0;
+
+  const openCargo = (po: any) => {
+    setCargoForm({
+      cargo_cost: po.cargo_cost ? String(po.cargo_cost) : "",
+      shipping_fee: po.shipping_fee ? String(po.shipping_fee) : "",
+      customs_fee: po.customs_fee ? String(po.customs_fee) : "",
+      delivery_fee: po.delivery_fee ? String(po.delivery_fee) : "",
+      misc_charges: po.misc_charges ? String(po.misc_charges) : "",
+      notes: po.cargo_notes || "",
+    });
+    setCargoPO(po);
+  };
+
+  const cargoMut = useMutation({
+    mutationFn: async () => {
+      if (!cargoPO) return;
+      if (cargoTotalQty <= 0) throw new Error("No received quantity to allocate cargo against");
+      await applyPOCargoAdjustment(cargoPO.id, {
+        cargo_cost: parseFloat(cargoForm.cargo_cost) || 0,
+        shipping_fee: parseFloat(cargoForm.shipping_fee) || 0,
+        customs_fee: parseFloat(cargoForm.customs_fee) || 0,
+        delivery_fee: parseFloat(cargoForm.delivery_fee) || 0,
+        misc_charges: parseFloat(cargoForm.misc_charges) || 0,
+        notes: cargoForm.notes,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["po_items_cargo"] });
+      setCargoPO(null);
+      toast.success("Cargo adjustment applied — landed costs updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const createMut = useMutation({
     mutationFn: async () => {
