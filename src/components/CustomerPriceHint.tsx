@@ -30,6 +30,8 @@ export function CustomerPriceHint({
   onSuggested,
 }: Props) {
   const [info, setInfo] = useState<CustomerPriceInfo | null>(null);
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const key = `${customerId || ""}|${itemId || ""}|${variationId || ""}|${standardPrice}`;
 
   useEffect(() => {
