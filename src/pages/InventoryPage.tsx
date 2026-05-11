@@ -95,11 +95,13 @@ export default function InventoryPage() {
     }
   };
 
-  const filtered = items.filter(i => {
-    const matchesText = i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase());
+  const textMatched = items.filter(i =>
+    i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase())
+  );
+  const availableSources = new Set<string>(textMatched.map(i => ((i as any).source as string) || "local"));
+  const filtered = textMatched.filter(i => {
     const itemSource = ((i as any).source as string) || "local";
-    const matchesSource = sourceFilter === "all" || itemSource === sourceFilter;
-    return matchesText && matchesSource;
+    return sourceFilter === "all" || itemSource === sourceFilter;
   });
 
   const { sort, toggle, sorted: sortedFiltered } = useSort<typeof filtered[number]>(filtered, {
