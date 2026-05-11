@@ -717,20 +717,20 @@ function BulkPODialog({
   const [submitting, setSubmitting] = useState(false);
 
   // Initialize edits whenever rows change / dialog opens
-  useMemo(() => {
+  useEffect(() => {
     if (!open) return;
-    const next: typeof edits = {};
-    for (const r of rows) {
-      const existing = edits[r.item.id];
-      next[r.item.id] = existing ?? {
-        qty: Math.max(1, r.suggestedQty || 1),
-        cost: r.lastCost?.cost ?? r.item.cost_price ?? 0,
-        supplier_id: r.latestSupplier?.id ?? "",
-        supplier_name: r.latestSupplier?.name ?? "Unknown supplier",
-      };
-    }
-    setEdits(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setEdits((prev) => {
+      const next: typeof prev = {};
+      for (const r of rows) {
+        next[r.item.id] = prev[r.item.id] ?? {
+          qty: Math.max(1, r.suggestedQty || 1),
+          cost: r.lastCost?.cost ?? r.item.cost_price ?? 0,
+          supplier_id: r.latestSupplier?.id ?? "",
+          supplier_name: r.latestSupplier?.name ?? "Unknown supplier",
+        };
+      }
+      return next;
+    });
   }, [open, rows]);
 
   // Group by supplier_id (or "unknown")
