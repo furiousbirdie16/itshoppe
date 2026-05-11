@@ -410,23 +410,25 @@ export default function QuotationsPage() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
-            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <FilterCombobox
+              value={filterCustomer}
+              onChange={setFilterCustomer}
+              options={availableCustomers.map((c: any) => ({ value: c.id, label: c.name }))}
+              allLabel="All Customers"
+              placeholder="Search customer..."
+              className="h-9 sm:h-8 sm:w-44 text-sm"
+            />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Sales Agent</Label>
-            <Select value={filterAgent} onValueChange={setFilterAgent}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Agents</SelectItem>
-                {uniqueAgents.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <FilterCombobox
+              value={filterAgent}
+              onChange={setFilterAgent}
+              options={availableAgents.map((a) => ({ value: a, label: a }))}
+              allLabel="All Agents"
+              placeholder="Search agent..."
+              className="h-9 sm:h-8 sm:w-44 text-sm"
+            />
           </div>
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
         </div>
