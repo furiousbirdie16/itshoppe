@@ -43,6 +43,7 @@ export default function InventoryPage() {
   const [transferItem, setTransferItem] = useState<Item | null>(null);
   const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
+  const [costHistoryItem, setCostHistoryItem] = useState<Item | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
