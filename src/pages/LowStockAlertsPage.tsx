@@ -76,6 +76,7 @@ export default function LowStockAlertsPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("soonest_out");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -297,6 +298,7 @@ export default function LowStockAlertsPage() {
       const q = search.toLowerCase();
       rows = rows.filter((r) => r.item.name.toLowerCase().includes(q) || r.item.sku.toLowerCase().includes(q));
     }
+    if (sourceFilter !== "all") rows = rows.filter((r) => r.item.source === sourceFilter);
     if (statusFilter === "critical") rows = rows.filter((r) => r.severity === "critical");
     else if (statusFilter === "ordered") rows = rows.filter((r) => r.ordered);
     else if (statusFilter === "not_ordered") rows = rows.filter((r) => !r.ordered);
@@ -319,7 +321,7 @@ export default function LowStockAlertsPage() {
       return da - db;
     });
     return sorted;
-  }, [lowStock, search, statusFilter, supplierFilter, sortKey]);
+  }, [lowStock, search, statusFilter, sourceFilter, supplierFilter, sortKey]);
 
   const summary = useMemo(() => {
     const total = lowStock.length;
@@ -378,6 +380,22 @@ export default function LowStockAlertsPage() {
                 onClick={() => setStatusFilter(f.k)}
               >
                 {f.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { k: "all", label: "All Sources", count: lowStock.length },
+              { k: "local", label: "Local", count: lowStock.filter((r) => r.item.source === "local").length },
+              { k: "import", label: "Import", count: lowStock.filter((r) => r.item.source === "import").length },
+            ] as { k: "all" | "local" | "import"; label: string; count: number }[]).map((f) => (
+              <Button
+                key={f.k}
+                size="sm"
+                variant={sourceFilter === f.k ? "default" : "outline"}
+                onClick={() => setSourceFilter(f.k)}
+              >
+                {f.label} ({f.count})
               </Button>
             ))}
           </div>
