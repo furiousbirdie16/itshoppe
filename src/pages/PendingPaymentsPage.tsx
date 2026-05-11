@@ -81,26 +81,37 @@ export default function PendingPaymentsPage() {
     return isBefore(dueDate, new Date()) || isToday(dueDate);
   };
 
-  // Apply filters to invoices
-  const filteredInvoices = useMemo(() => {
-    return pendingInvoices.filter((inv: any) => {
-      if (filterDateFrom && inv.invoice_date < filterDateFrom) return false;
-      if (filterDateTo && inv.invoice_date > filterDateTo) return false;
-      if (filterCustomer !== "all" && inv.customer_id !== filterCustomer) return false;
-      return true;
-    });
-  }, [pendingInvoices, filterDateFrom, filterDateTo, filterCustomer]);
+  // Apply date filters first (without customer) so we can derive available customers
+  const dateFilteredInvoices = useMemo(() => pendingInvoices.filter((inv: any) => {
+    if (filterDateFrom && inv.invoice_date < filterDateFrom) return false;
+    if (filterDateTo && inv.invoice_date > filterDateTo) return false;
+    return true;
+  }), [pendingInvoices, filterDateFrom, filterDateTo]);
 
-  // Apply filters to manual receivables (use created_at as the date)
+  const dateFilteredManual = useMemo(() => manualReceivables.filter((m: any) => {
+    const dateStr = (m.created_at || "").split("T")[0];
+    if (filterDateFrom && dateStr < filterDateFrom) return false;
+    if (filterDateTo && dateStr > filterDateTo) return false;
+    return true;
+  }), [manualReceivables, filterDateFrom, filterDateTo]);
+
+  // Customers that actually appear in the current (date-filtered) pending records
+  const availableCustomers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const inv of dateFilteredInvoices) if (inv.customer_id) ids.add(inv.customer_id);
+    for (const m of dateFilteredManual) if (m.customer_id) ids.add(m.customer_id);
+    return customers.filter((c: any) => ids.has(c.id));
+  }, [dateFilteredInvoices, dateFilteredManual, customers]);
+
+  const filteredInvoices = useMemo(() => {
+    if (filterCustomer === "all") return dateFilteredInvoices;
+    return dateFilteredInvoices.filter((inv: any) => inv.customer_id === filterCustomer);
+  }, [dateFilteredInvoices, filterCustomer]);
+
   const filteredManual = useMemo(() => {
-    return manualReceivables.filter((m: any) => {
-      const dateStr = (m.created_at || "").split("T")[0];
-      if (filterDateFrom && dateStr < filterDateFrom) return false;
-      if (filterDateTo && dateStr > filterDateTo) return false;
-      if (filterCustomer !== "all" && m.customer_id !== filterCustomer) return false;
-      return true;
-    });
-  }, [manualReceivables, filterDateFrom, filterDateTo, filterCustomer]);
+    if (filterCustomer === "all") return dateFilteredManual;
+    return dateFilteredManual.filter((m: any) => m.customer_id === filterCustomer);
+  }, [dateFilteredManual, filterCustomer]);
 
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); };
 
