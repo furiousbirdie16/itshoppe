@@ -371,9 +371,38 @@ export const receivePO = async (
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
   const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
   const someReceived = (allItems as any[])?.some((i: any) => i.received_quantity > 0);
-  const newStatus = allReceived ? "received" : someReceived ? "partially_received" : "draft";
+  // Check current status — don't downgrade cargo_adjusted/closed
+  const { data: curPO } = await from("purchase_orders").select("status").eq("id", poId).single();
+  const cur = (curPO as any)?.status;
+  let newStatus: string;
+  if (cur === "cargo_adjusted" || cur === "closed") {
+    newStatus = cur;
+  } else if (allReceived) {
+    newStatus = "pending_cargo_adjustment";
+  } else if (someReceived) {
+    newStatus = "partially_received";
+  } else {
+    newStatus = "draft";
+  }
   await from("purchase_orders").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", poId);
   await logActivity("received_purchase_order", "purchase_order", poId, { status: newStatus });
+};
+
+export const applyPOCargoAdjustment = async (
+  poId: string,
+  charges: { cargo_cost: number; shipping_fee: number; customs_fee: number; delivery_fee: number; misc_charges: number; notes?: string },
+) => {
+  const { error } = await (supabase as any).rpc("apply_po_cargo_adjustment", {
+    _po_id: poId,
+    _cargo_cost: charges.cargo_cost || 0,
+    _shipping_fee: charges.shipping_fee || 0,
+    _customs_fee: charges.customs_fee || 0,
+    _delivery_fee: charges.delivery_fee || 0,
+    _misc_charges: charges.misc_charges || 0,
+    _notes: charges.notes || "",
+  });
+  if (error) throw error;
+  await logActivity("po_cargo_adjusted", "purchase_order", poId, charges);
 };
 
 // Undo Receive — reverses received quantities for selected PO line items and deducts inventory
