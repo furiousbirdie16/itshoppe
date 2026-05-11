@@ -76,6 +76,7 @@ export default function LowStockAlertsPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("soonest_out");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
