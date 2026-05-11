@@ -184,6 +184,9 @@ export default function PurchaseOrdersPage() {
       if (!editPO) return;
       const validLines = editLines.filter(l => l.item_id || l.item_name.trim());
       if (validLines.length === 0) throw new Error("Add at least one line item");
+      for (const l of validLines) {
+        if (!l.quantity || l.quantity <= 0) throw new Error(`"${l.item_name || "Item"}" must have a quantity greater than 0`);
+      }
       const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const terms = editForm.payment_terms ? parseInt(editForm.payment_terms) : null;
       const due = terms ? addDays(editForm.order_date, terms) : null;
