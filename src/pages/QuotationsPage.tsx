@@ -89,16 +89,41 @@ export default function QuotationsPage() {
     return null; // no terms = due immediately
   };
 
+  // Date-filter base, used to derive available customer/agent options
+  const dateFiltered = useMemo(() => quotations.filter((q: any) => {
+    if (filterDateFrom && q.quotation_date < filterDateFrom) return false;
+    if (filterDateTo && q.quotation_date > filterDateTo) return false;
+    return true;
+  }), [quotations, filterDateFrom, filterDateTo]);
+
+  // Available customers: those that exist in records matching every other active filter
+  const availableCustomers = useMemo(() => {
+    const ids = new Set<string>();
+    for (const q of dateFiltered) {
+      if (filterAgent !== "all" && (q.sales_agent || "") !== filterAgent) continue;
+      if (q.customer_id) ids.add(q.customer_id);
+    }
+    return customers.filter((c: any) => ids.has(c.id));
+  }, [dateFiltered, customers, filterAgent]);
+
+  // Available agents: those that exist in records matching every other active filter
+  const availableAgents = useMemo(() => {
+    const names = new Set<string>();
+    for (const q of dateFiltered) {
+      if (filterCustomer !== "all" && q.customer_id !== filterCustomer) continue;
+      if (q.sales_agent) names.add(q.sales_agent);
+    }
+    return Array.from(names).sort();
+  }, [dateFiltered, filterCustomer]);
+
   // Apply filters
   const filtered = useMemo(() => {
-    return quotations.filter((q: any) => {
-      if (filterDateFrom && q.quotation_date < filterDateFrom) return false;
-      if (filterDateTo && q.quotation_date > filterDateTo) return false;
+    return dateFiltered.filter((q: any) => {
       if (filterCustomer !== "all" && q.customer_id !== filterCustomer) return false;
       if (filterAgent !== "all" && (q.sales_agent || "") !== filterAgent) return false;
       return true;
     });
-  }, [quotations, filterDateFrom, filterDateTo, filterCustomer, filterAgent]);
+  }, [dateFiltered, filterCustomer, filterAgent]);
 
   const { sort, toggle, sorted: sortedQuotations } = useSort<any>(filtered, {
     quotation_number: (r) => r.quotation_number,
