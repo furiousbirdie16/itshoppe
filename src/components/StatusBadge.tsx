@@ -19,6 +19,9 @@ const statusStyles: Record<string, string> = {
   confirmed: "bg-success/10 text-success",
   paid: "bg-success/10 text-success",
   unpaid: "bg-warning/10 text-warning",
+  pending_cargo_adjustment: "bg-warning/10 text-warning",
+  cargo_adjusted: "bg-success/10 text-success",
+  closed: "bg-muted text-muted-foreground",
 };
 
 const invoiceLabels: Record<string, string> = {
