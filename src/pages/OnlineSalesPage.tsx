@@ -853,9 +853,13 @@ export default function OnlineSalesPage() {
               <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Channels</SelectItem>
-                <SelectItem value="shopee">Shopee</SelectItem>
-                <SelectItem value="lazada">Lazada</SelectItem>
-                <SelectItem value="others">Others</SelectItem>
+                {([
+                  { v: "shopee", l: "Shopee" },
+                  { v: "lazada", l: "Lazada" },
+                  { v: "others", l: "Others" },
+                ] as const).filter(o => availableChannels.has(o.v)).map(o => (
+                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -865,9 +869,13 @@ export default function OnlineSalesPage() {
               <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="returned">Returned</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
+                {([
+                  { v: "completed", l: "Completed" },
+                  { v: "returned", l: "Returned" },
+                  { v: "cancelled", l: "Cancelled" },
+                ] as const).filter(o => availableStatuses.has(o.v)).map(o => (
+                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -877,8 +885,12 @@ export default function OnlineSalesPage() {
               <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Payments</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="unpaid">Unpaid</SelectItem>
+                {([
+                  { v: "paid", l: "Paid" },
+                  { v: "unpaid", l: "Unpaid" },
+                ] as const).filter(o => availablePayments.has(o.v)).map(o => (
+                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
