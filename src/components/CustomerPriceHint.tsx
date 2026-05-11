@@ -3,6 +3,7 @@ import { getCustomerPrice, type CustomerPriceInfo } from "@/lib/customerPricing"
 import { peso } from "@/lib/currency";
 import { format } from "date-fns";
 import { AlertTriangle, Star } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   customerId: string | null | undefined;
