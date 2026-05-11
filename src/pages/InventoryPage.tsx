@@ -488,6 +488,11 @@ export default function InventoryPage() {
         open={!!adjustItem}
         onOpenChange={(o) => { if (!o) setAdjustItem(null); }}
       />
+      <ItemHistoryDialog
+        item={historyItem}
+        open={!!historyItem}
+        onOpenChange={(o) => { if (!o) setHistoryItem(null); }}
+      />
     </div>
   );
 }
