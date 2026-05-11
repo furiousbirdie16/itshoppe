@@ -351,13 +351,15 @@ export default function PendingPaymentsPage() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
-            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                {customers.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <FilterCombobox
+              value={filterCustomer}
+              onChange={setFilterCustomer}
+              options={availableCustomers.map((c: any) => ({ value: c.id, label: c.name }))}
+              allLabel="All Customers"
+              placeholder="Search customer..."
+              className="h-9 sm:h-8 sm:w-44 text-sm"
+              emptyText="No customers with pending payments"
+            />
           </div>
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
         </div>
