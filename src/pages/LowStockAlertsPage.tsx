@@ -798,12 +798,13 @@ function BulkPODialog({
       return !e?.supplier_id;
     });
     if (valid.length === 0) {
-      toast.error("No items have a known supplier — cannot create POs");
+      toast.error("No items have a supplier assigned — pick one inline before creating");
       return;
     }
     setSubmitting(true);
     const createdItemIds: string[] = [];
     let createdCount = 0;
+    let savedDefaults = 0;
     try {
       for (const g of valid) {
         const po_number = await generatePONumber();
@@ -832,10 +833,29 @@ function BulkPODialog({
         });
         await createPOItems(lineItems);
         createdCount += 1;
-        for (const r of g.rows) createdItemIds.push(r.item.id);
+        for (const r of g.rows) {
+          createdItemIds.push(r.item.id);
+          const e = edits[r.item.id];
+          // Save supplier-to-product when user opted in and product had no record
+          if (e?.saveDefault && e?.supplier_id && !r.itemSupplier) {
+            try {
+              await upsertItemSupplier({
+                item_id: r.item.id,
+                supplier_id: e.supplier_id,
+                currency: "PHP",
+                latest_cost: e.cost || 0,
+                is_primary: true,
+              });
+              savedDefaults += 1;
+            } catch (err) {
+              console.warn("Failed to save default supplier", err);
+            }
+          }
+        }
       }
       toast.success(
         `Created ${createdCount} PO${createdCount === 1 ? "" : "s"} across ${valid.length} supplier${valid.length === 1 ? "" : "s"}` +
+          (savedDefaults ? ` · saved ${savedDefaults} default supplier${savedDefaults === 1 ? "" : "s"}` : "") +
           (skipped.length ? ` (${skipped.length} skipped — no supplier)` : "")
       );
       onCreated(createdItemIds);
@@ -847,7 +867,7 @@ function BulkPODialog({
     }
   };
 
-  const updateEdit = (itemId: string, patch: Partial<{ qty: number; cost: number }>) => {
+  const updateEdit = (itemId: string, patch: Partial<{ qty: number; cost: number; supplier_id: string; supplier_name: string; saveDefault: boolean }>) => {
     setEdits((prev) => ({
       ...prev,
       [itemId]: { ...prev[itemId], ...patch },
