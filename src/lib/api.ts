@@ -302,6 +302,25 @@ export const createPurchaseOrder = async (po: Partial<PurchaseOrder>) => {
 };
 
 export const updatePurchaseOrder = async (id: string, po: Partial<PurchaseOrder>) => {
+  // If the user is moving the PO into "received" status directly (e.g. via the edit form),
+  // auto-receive any outstanding quantities so inventory stock is added. Idempotent —
+  // already-received quantities are skipped.
+  const wantsReceived = (po as any)?.status === "received";
+  if (wantsReceived) {
+    const { data: lines } = await from("purchase_order_items").select("id, item_id, quantity, received_quantity").eq("po_id", id);
+    const toReceive = ((lines as any[]) || [])
+      .map((li: any) => ({
+        poItemId: li.id,
+        itemId: li.item_id ?? null,
+        quantity: Math.max(0, Number(li.quantity || 0) - Number(li.received_quantity || 0)),
+        location: "warehouse" as const,
+      }))
+      .filter((li) => li.quantity > 0);
+    if (toReceive.length > 0) {
+      await receivePO(id, toReceive);
+    }
+  }
+
   const { data, error } = await from("purchase_orders").update({ ...po, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
   return data as PurchaseOrder;
@@ -560,13 +579,9 @@ export const updateInvoice = async (id: string, inv: Partial<Invoice>) => {
 };
 
 export const deleteInvoice = async (id: string) => {
-  // If this invoice currently has stock deducted (i.e. confirmed/paid/unpaid,
-  // not draft), restore the inventory before deleting. If it was already
-  // reverted to draft, stock has already been restored — skip to avoid
-  // double-restocking.
-  const { data: invRow } = await from("invoices").select("status").eq("id", id).maybeSingle();
-  const currentStatus = (invRow as any)?.status;
-  const stockCurrentlyDeducted = currentStatus && currentStatus !== "draft";
+  // If this invoice currently has stock deducted, restore inventory before deleting.
+  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", id).maybeSingle();
+  const stockCurrentlyDeducted = !!(invRow as any)?.inventory_deducted;
 
   if (stockCurrentlyDeducted) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", id);
@@ -604,10 +619,12 @@ export const deleteInvoiceItems = async (invId: string) => {
   if (error) throw error;
 };
 
-// Confirm Invoice - deduct stock (variation-aware)
-export const confirmInvoice = async (invoiceId: string) => {
-  const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
+// Internal: deduct stock for an invoice exactly once (idempotent via inventory_deducted flag)
+const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
+  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  if ((invRow as any)?.inventory_deducted) return false;
 
+  const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
   if (invItems) {
     for (const invItem of invItems as any[]) {
       if (!invItem.item_id) continue;
@@ -618,35 +635,61 @@ export const confirmInvoice = async (invoiceId: string) => {
         referenceId: invoiceId,
         referenceType: "invoice",
         movementType: "out_invoice",
-        notes: "Deducted from invoice",
+        notes,
       });
     }
   }
+  await from("invoices").update({ inventory_deducted: true, updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  return true;
+};
 
+// Confirm Invoice (mark shipped) - deduct stock once
+export const confirmInvoice = async (invoiceId: string) => {
+  await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (shipped)");
   await from("invoices").update({ status: "confirmed", updated_at: new Date().toISOString() }).eq("id", invoiceId);
   await logActivity("confirmed_invoice", "invoice", invoiceId);
 };
 
-// Revert confirmed invoice - restore stock (variation-aware)
-export const revertInvoice = async (invoiceId: string) => {
-  const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
+// Mark invoice as paid - also deducts stock if not yet deducted (handles draft → paid path)
+export const markInvoicePaid = async (
+  invoiceId: string,
+  payment: { payment_method: string; payment_reference?: string | null; payment_reference_url?: string | null },
+) => {
+  await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (paid)");
+  await from("invoices").update({
+    status: "paid",
+    payment_method: payment.payment_method,
+    payment_reference: payment.payment_reference || null,
+    payment_reference_url: payment.payment_reference_url || null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", invoiceId);
+  await logActivity("marked_invoice_paid", "invoice", invoiceId);
+};
 
-  if (invItems) {
-    for (const invItem of invItems as any[]) {
-      if (!invItem.item_id) continue;
-      await applyStockChange({
-        itemId: invItem.item_id,
-        variationId: invItem.variation_id || null,
-        qty: -invItem.quantity, // negative = restore
-        referenceId: invoiceId,
-        referenceType: "invoice_revert",
-        movementType: "in_po",
-        notes: "Reverted from confirmed invoice",
-      });
+// Revert invoice to draft - restore stock only if it was previously deducted
+export const revertInvoice = async (invoiceId: string) => {
+  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const wasDeducted = !!(invRow as any)?.inventory_deducted;
+
+  if (wasDeducted) {
+    const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
+    if (invItems) {
+      for (const invItem of invItems as any[]) {
+        if (!invItem.item_id) continue;
+        await applyStockChange({
+          itemId: invItem.item_id,
+          variationId: invItem.variation_id || null,
+          qty: -invItem.quantity,
+          referenceId: invoiceId,
+          referenceType: "invoice_revert",
+          movementType: "in_po",
+          notes: "Reverted from invoice — stock restored",
+        });
+      }
     }
   }
 
-  await from("invoices").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  await from("invoices").update({ status: "draft", inventory_deducted: false, updated_at: new Date().toISOString() }).eq("id", invoiceId);
   await logActivity("reverted_invoice", "invoice", invoiceId);
 };
 
