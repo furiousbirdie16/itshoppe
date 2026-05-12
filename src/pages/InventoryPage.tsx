@@ -510,6 +510,11 @@ export default function InventoryPage() {
         open={!!costHistoryItem}
         onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }}
       />
+      <ItemSuppliersDialog
+        item={suppliersItem}
+        open={!!suppliersItem}
+        onOpenChange={(o) => { if (!o) setSuppliersItem(null); }}
+      />
     </div>
   );
 }
