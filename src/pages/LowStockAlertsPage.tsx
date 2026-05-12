@@ -338,6 +338,13 @@ export default function LowStockAlertsPage() {
         recommendationText = `Enough stock for ~${Math.floor(daysToOut)} day(s)`;
       }
 
+      const itemSupplier = itemSupplierMap.get(it.id);
+      // Preferred supplier priority: item_suppliers (primary/recent) > PO history latest
+      const preferredSupplier =
+        itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
+          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier" }
+          : latestSupplierMap[it.id];
+
       return {
         item: it,
         threshold,
@@ -356,10 +363,12 @@ export default function LowStockAlertsPage() {
         recommendation,
         recommendationText,
         profit: (it.selling_price - it.cost_price) * q90,
-        latestSupplier: latestSupplierMap[it.id],
+        latestSupplier: preferredSupplier,
+        itemSupplier, // full row incl. currency, MOQ, lead time
       };
     });
-  }, [items, salesRows, openPoLines, lastCostMap, latestSupplierMap]);
+  }, [items, salesRows, openPoLines, lastCostMap, latestSupplierMap, itemSupplierMap]);
+
 
   // Hide items with threshold <= 0 OR healthy stock
   const lowStock = useMemo(
