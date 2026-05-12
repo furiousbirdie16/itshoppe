@@ -267,6 +267,15 @@ export default function LowStockAlertsPage() {
     },
   });
 
+  // 6b. Preferred item-supplier per item (from new item_suppliers table)
+  const itemIds = useMemo(() => items.map((i) => i.id), [items]);
+  const { data: itemSupplierMap = new Map() } = useQuery<Map<string, ItemSupplierRow>>({
+    queryKey: ["lowstock-item-suppliers", itemIds.length],
+    queryFn: () => listItemSuppliersForItems(itemIds),
+    enabled: itemIds.length > 0,
+  });
+
+
   // Build per-item enriched rows
   const enriched = useMemo(() => {
     const salesByItem = new Map<string, SaleRow[]>();
