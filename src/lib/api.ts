@@ -302,6 +302,25 @@ export const createPurchaseOrder = async (po: Partial<PurchaseOrder>) => {
 };
 
 export const updatePurchaseOrder = async (id: string, po: Partial<PurchaseOrder>) => {
+  // If the user is moving the PO into "received" status directly (e.g. via the edit form),
+  // auto-receive any outstanding quantities so inventory stock is added. Idempotent —
+  // already-received quantities are skipped.
+  const wantsReceived = (po as any)?.status === "received";
+  if (wantsReceived) {
+    const { data: lines } = await from("purchase_order_items").select("id, item_id, quantity, received_quantity").eq("po_id", id);
+    const toReceive = ((lines as any[]) || [])
+      .map((li: any) => ({
+        poItemId: li.id,
+        itemId: li.item_id ?? null,
+        quantity: Math.max(0, Number(li.quantity || 0) - Number(li.received_quantity || 0)),
+        location: "warehouse" as const,
+      }))
+      .filter((li) => li.quantity > 0);
+    if (toReceive.length > 0) {
+      await receivePO(id, toReceive);
+    }
+  }
+
   const { data, error } = await from("purchase_orders").update({ ...po, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
   return data as PurchaseOrder;
