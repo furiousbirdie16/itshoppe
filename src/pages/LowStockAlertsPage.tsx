@@ -905,6 +905,7 @@ function BulkPODialog({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
+                      {g.supplier_id === "__unknown__" && <TableHead className="w-56">Assign supplier</TableHead>}
                       <TableHead className="w-24 text-right">Qty</TableHead>
                       <TableHead className="w-32 text-right">Unit Cost</TableHead>
                       <TableHead className="w-28 text-right">Subtotal</TableHead>
@@ -914,35 +915,76 @@ function BulkPODialog({
                     {g.rows.map((r) => {
                       const e = edits[r.item.id];
                       const subtotal = (e?.qty || 0) * (e?.cost || 0);
+                      const isUnknown = g.supplier_id === "__unknown__";
+                      const supplierMeta = r.itemSupplier;
                       return (
-                        <TableRow key={r.item.id}>
-                          <TableCell className="text-sm">
-                            <div className="font-medium">{r.item.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {r.item.sku} · stock {r.item.quantity} {r.item.base_unit || "pcs"}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={e?.qty ?? ""}
-                              onChange={(ev) => updateEdit(r.item.id, { qty: Number(ev.target.value) || 0 })}
-                              className="h-8 text-right"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={e?.cost ?? ""}
-                              onChange={(ev) => updateEdit(r.item.id, { cost: Number(ev.target.value) || 0 })}
-                              className="h-8 text-right"
-                            />
-                          </TableCell>
-                          <TableCell className="text-right text-sm font-medium">{money(subtotal)}</TableCell>
-                        </TableRow>
+                        <Fragment key={r.item.id}>
+                          <TableRow>
+                            <TableCell className="text-sm">
+                              <div className="font-medium">{r.item.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {r.item.sku} · stock {r.item.quantity} {r.item.base_unit || "pcs"}
+                              </div>
+                              {supplierMeta && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  {supplierMeta.is_overseas ? "Overseas" : "Local"} · {supplierMeta.currency} {Number(supplierMeta.latest_cost).toFixed(2)}
+                                  {supplierMeta.moq ? ` · MOQ ${supplierMeta.moq}` : ""}
+                                  {supplierMeta.lead_time_days != null ? ` · lead ${supplierMeta.lead_time_days}d` : ""}
+                                </div>
+                              )}
+                            </TableCell>
+                            {isUnknown && (
+                              <TableCell>
+                                <Select
+                                  value={e?.supplier_id || ""}
+                                  onValueChange={(v) => {
+                                    const sup = allSuppliers.find(s => s.id === v);
+                                    updateEdit(r.item.id, { supplier_id: v, supplier_name: sup?.name || "Supplier", saveDefault: true });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pick supplier…" /></SelectTrigger>
+                                  <SelectContent>
+                                    {allSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={e?.qty ?? ""}
+                                onChange={(ev) => updateEdit(r.item.id, { qty: Number(ev.target.value) || 0 })}
+                                className="h-8 text-right"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={e?.cost ?? ""}
+                                onChange={(ev) => updateEdit(r.item.id, { cost: Number(ev.target.value) || 0 })}
+                                className="h-8 text-right"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right text-sm font-medium">{money(subtotal)}</TableCell>
+                          </TableRow>
+                          {!supplierMeta && e?.supplier_id && (
+                            <TableRow>
+                              <TableCell colSpan={isUnknown ? 5 : 4} className="py-1.5">
+                                <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!e?.saveDefault}
+                                    onChange={(ev) => updateEdit(r.item.id, { saveDefault: ev.target.checked })}
+                                  />
+                                  Save <span className="font-medium text-foreground">{e.supplier_name}</span> as the default supplier for this product
+                                </label>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </TableBody>
