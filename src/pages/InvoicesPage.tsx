@@ -290,8 +290,14 @@ export default function InvoicesPage() {
 
   const markPaidMut = useMutation({
     mutationFn: ({ id, payment_method, payment_reference, payment_reference_url }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string }) =>
-      updateInvoice(id, { status: "paid", payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null } as any),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Marked as paid"); },
+      markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Marked as paid — stock deducted if not already");
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const [payDialog, setPayDialog] = useState<{ id: string; afterShip?: boolean } | null>(null);
