@@ -1080,6 +1080,23 @@ function ExpandedDetails({
           )}
         </div>
         <div className="rounded-lg border bg-background p-3">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Default Supplier</div>
+          {row.itemSupplier ? (
+            <div className="text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span className="font-medium">{row.itemSupplier.supplier_name || "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span>{row.itemSupplier.is_overseas ? "Overseas" : "Local"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Latest cost</span><span className="font-medium">{currencySymbolForDisplay(row.itemSupplier.currency)}{Number(row.itemSupplier.latest_cost).toFixed(2)} <span className="text-[10px] text-muted-foreground">{row.itemSupplier.currency}</span></span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">MOQ</span><span>{row.itemSupplier.moq || 1}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Lead time</span><span>{row.itemSupplier.lead_time_days != null ? `${row.itemSupplier.lead_time_days}d` : "—"}</span></div>
+              {row.itemSupplier.last_purchased_at && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Last ordered</span><span>{format(parseISO(row.itemSupplier.last_purchased_at), "MMM d, yyyy")}</span></div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No supplier assigned to this product. Add one from Inventory → Suppliers.</p>
+          )}
+        </div>
+        <div className="rounded-lg border bg-background p-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Last Supplier Cost</div>
           {row.lastCost ? (
             <div className="text-sm space-y-1">
