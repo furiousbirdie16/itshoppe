@@ -340,10 +340,15 @@ export default function LowStockAlertsPage() {
 
       const itemSupplier = itemSupplierMap.get(it.id);
       // Preferred supplier priority: item_suppliers (primary/recent) > PO history latest
+      // For import products, prefer overseas item_supplier; for local, prefer local item_supplier.
       const preferredSupplier =
-        itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
-          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier" }
-          : latestSupplierMap[it.id];
+        itemSupplier && itemSupplier.is_overseas && itemSupplier.overseas_supplier_id
+          ? { id: itemSupplier.overseas_supplier_id, name: itemSupplier.supplier_name || "Supplier", overseas: true as const }
+          : itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
+          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier", overseas: false as const }
+          : latestSupplierMap[it.id]
+          ? { ...latestSupplierMap[it.id], overseas: false as const }
+          : undefined;
 
       return {
         item: it,
