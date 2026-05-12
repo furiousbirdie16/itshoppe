@@ -812,6 +812,8 @@ function BulkPODialog({
 
         const seedCost = r.itemSupplier && (r.itemSupplier.is_overseas === isImport)
           ? Number(r.itemSupplier.latest_cost)
+          : isImport
+          ? (Number(r.item.cost_price_rmb) || 0)
           : (r.lastCost?.cost ?? r.item.cost_price ?? 0);
         const seedQty = Math.max(r.itemSupplier?.moq || 1, r.suggestedQty || 1);
 
