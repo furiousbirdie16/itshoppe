@@ -278,6 +278,7 @@ export type Database = {
           customer_id: string | null
           due_date: string | null
           id: string
+          inventory_deducted: boolean
           invoice_date: string | null
           invoice_number: string
           notes: string | null
@@ -295,6 +296,7 @@ export type Database = {
           customer_id?: string | null
           due_date?: string | null
           id?: string
+          inventory_deducted?: boolean
           invoice_date?: string | null
           invoice_number: string
           notes?: string | null
@@ -312,6 +314,7 @@ export type Database = {
           customer_id?: string | null
           due_date?: string | null
           id?: string
+          inventory_deducted?: boolean
           invoice_date?: string | null
           invoice_number?: string
           notes?: string | null
