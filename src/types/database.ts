@@ -8,6 +8,7 @@ export interface Item {
   warehouse_quantity: number;
   store_quantity: number;
   cost_price: number;
+  cost_price_rmb?: number;
   selling_price: number;
   low_stock_threshold: number;
   source: 'local' | 'import';
