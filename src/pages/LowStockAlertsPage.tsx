@@ -1141,3 +1141,9 @@ function MetricCard({ label, value, sub, icon: Icon }: { label: string; value: a
     </div>
   );
 }
+
+function currencySymbolForDisplay(c: string) {
+  if (c === "RMB") return "¥";
+  if (c === "USD") return "$";
+  return "₱";
+}
