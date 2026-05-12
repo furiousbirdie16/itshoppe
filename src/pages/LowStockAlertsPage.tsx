@@ -16,9 +16,9 @@ import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
-import { createPurchaseOrder, createPOItems, generatePONumber } from "@/lib/api";
+import { createPurchaseOrder, createPOItems, generatePONumber, createOverseasPurchaseOrder, createOverseasPOItems, generateOverseasPONumber } from "@/lib/api";
 import { listItemSuppliersForItems, upsertItemSupplier, type ItemSupplierRow } from "@/lib/itemSuppliers";
-import type { Supplier } from "@/types/database";
+import type { Supplier, OverseasSupplier } from "@/types/database";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -340,10 +340,15 @@ export default function LowStockAlertsPage() {
 
       const itemSupplier = itemSupplierMap.get(it.id);
       // Preferred supplier priority: item_suppliers (primary/recent) > PO history latest
+      // For import products, prefer overseas item_supplier; for local, prefer local item_supplier.
       const preferredSupplier =
-        itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
-          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier" }
-          : latestSupplierMap[it.id];
+        itemSupplier && itemSupplier.is_overseas && itemSupplier.overseas_supplier_id
+          ? { id: itemSupplier.overseas_supplier_id, name: itemSupplier.supplier_name || "Supplier", overseas: true as const }
+          : itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
+          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier", overseas: false as const }
+          : latestSupplierMap[it.id]
+          ? { ...latestSupplierMap[it.id], overseas: false as const }
+          : undefined;
 
       return {
         item: it,
@@ -716,8 +721,26 @@ interface BulkPORow {
   item: Item;
   suggestedQty: number;
   lastCost?: { cost: number };
-  latestSupplier?: { id: string; name: string };
+  latestSupplier?: { id: string; name: string; overseas?: boolean };
   itemSupplier?: ItemSupplierRow;
+}
+
+type RowKind = "local" | "overseas";
+
+interface RowEdit {
+  qty: number;
+  cost: number;
+  supplier_id: string;
+  supplier_name: string;
+  kind: RowKind;
+  currency: string;
+  exchange_rate: number;
+  saveDefault: boolean;
+}
+
+function fmtMoney(n: number, currency: string) {
+  const sym = currency === "RMB" ? "¥" : currency === "USD" ? "$" : "₱";
+  return `${sym}${n.toFixed(2)} ${currency}`;
 }
 
 function BulkPODialog({
@@ -733,16 +756,23 @@ function BulkPODialog({
   money: (n: number) => string;
   onCreated: (itemIds: string[]) => void;
 }) {
-  // Per-row editable state, keyed by item id
-  const [edits, setEdits] = useState<Record<string, { qty: number; cost: number; supplier_id: string; supplier_name: string; saveDefault: boolean }>>({});
+  const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // All local suppliers for inline assignment of "Unassigned" rows
   const { data: allSuppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["bulkpo-suppliers"],
     queryFn: async () => {
       const { data } = await supabase.from("suppliers").select("*").order("name");
       return (data as Supplier[]) || [];
+    },
+    enabled: open,
+  });
+
+  const { data: allOverseas = [] } = useQuery<OverseasSupplier[]>({
+    queryKey: ["bulkpo-overseas-suppliers"],
+    queryFn: async () => {
+      const { data } = await supabase.from("overseas_suppliers").select("*").order("name");
+      return (data as OverseasSupplier[]) || [];
     },
     enabled: open,
   });
@@ -753,96 +783,149 @@ function BulkPODialog({
     setEdits((prev) => {
       const next: typeof prev = {};
       for (const r of rows) {
-        // Prefer item_suppliers cost (in supplier currency) when available + local
-        const isLocal = r.itemSupplier && !r.itemSupplier.is_overseas;
-        const seedCost = isLocal && r.itemSupplier
+        // Routing: import → overseas, otherwise local
+        const isImport = r.item.source === "import" || !!r.itemSupplier?.is_overseas;
+        const kind: RowKind = isImport ? "overseas" : "local";
+
+        let supplier_id = "";
+        let supplier_name = "";
+        let currency = isImport ? "USD" : "PHP";
+        let exchange_rate = 1;
+
+        if (kind === "overseas") {
+          if (r.itemSupplier?.is_overseas && r.itemSupplier.overseas_supplier_id) {
+            supplier_id = r.itemSupplier.overseas_supplier_id;
+            supplier_name = r.itemSupplier.supplier_name || "Supplier";
+            currency = r.itemSupplier.currency || "USD";
+            const sup = allOverseas.find((s) => s.id === supplier_id);
+            exchange_rate = Number(sup?.exchange_rate || 1);
+          }
+        } else {
+          if (r.itemSupplier && !r.itemSupplier.is_overseas && r.itemSupplier.supplier_id) {
+            supplier_id = r.itemSupplier.supplier_id;
+            supplier_name = r.itemSupplier.supplier_name || "Supplier";
+          } else if (r.latestSupplier && !r.latestSupplier.overseas) {
+            supplier_id = r.latestSupplier.id;
+            supplier_name = r.latestSupplier.name;
+          }
+        }
+
+        const seedCost = r.itemSupplier && (r.itemSupplier.is_overseas === isImport)
           ? Number(r.itemSupplier.latest_cost)
           : (r.lastCost?.cost ?? r.item.cost_price ?? 0);
         const seedQty = Math.max(r.itemSupplier?.moq || 1, r.suggestedQty || 1);
+
         next[r.item.id] = prev[r.item.id] ?? {
           qty: seedQty,
           cost: seedCost,
-          supplier_id: r.latestSupplier?.id ?? "",
-          supplier_name: r.latestSupplier?.name ?? "Unknown supplier",
-          saveDefault: !r.itemSupplier && !!r.latestSupplier?.id, // offer to save when assigning fresh
+          supplier_id,
+          supplier_name: supplier_name || (kind === "overseas" ? "Unassigned overseas supplier" : "Unknown supplier"),
+          kind,
+          currency,
+          exchange_rate,
+          saveDefault: !r.itemSupplier && !!supplier_id,
         };
       }
       return next;
     });
-  }, [open, rows]);
+  }, [open, rows, allOverseas]);
 
-  // Group by supplier_id (or "unknown")
+  // Group by kind + supplier_id (or "unknown")
   const groups = useMemo(() => {
-    const m = new Map<string, { supplier_id: string; supplier_name: string; rows: BulkPORow[] }>();
+    const m = new Map<string, { key: string; kind: RowKind; supplier_id: string; supplier_name: string; currency: string; rows: BulkPORow[] }>();
     for (const r of rows) {
       const e = edits[r.item.id];
-      const sid = e?.supplier_id || "__unknown__";
-      const sname = e?.supplier_name || "Unknown supplier";
-      if (!m.has(sid)) m.set(sid, { supplier_id: sid, supplier_name: sname, rows: [] });
-      m.get(sid)!.rows.push(r);
+      if (!e) continue;
+      const sid = e.supplier_id || "__unknown__";
+      const key = `${e.kind}::${sid}`;
+      if (!m.has(key)) m.set(key, { key, kind: e.kind, supplier_id: sid, supplier_name: e.supplier_name, currency: e.currency, rows: [] });
+      m.get(key)!.rows.push(r);
     }
     return Array.from(m.values());
   }, [rows, edits]);
 
-  const totalCost = useMemo(() => {
-    return rows.reduce((s, r) => {
-      const e = edits[r.item.id];
-      return s + (e?.qty || 0) * (e?.cost || 0);
-    }, 0);
-  }, [rows, edits]);
-
   const handleSubmit = async () => {
     const valid = groups.filter((g) => g.supplier_id !== "__unknown__");
-    const skipped = rows.filter((r) => {
-      const e = edits[r.item.id];
-      return !e?.supplier_id;
-    });
+    const skipped = rows.filter((r) => !edits[r.item.id]?.supplier_id);
     if (valid.length === 0) {
       toast.error("No items have a supplier assigned — pick one inline before creating");
       return;
     }
     setSubmitting(true);
     const createdItemIds: string[] = [];
-    let createdCount = 0;
+    let createdLocal = 0;
+    let createdOverseas = 0;
     let savedDefaults = 0;
     try {
       for (const g of valid) {
-        const po_number = await generatePONumber();
         const total = g.rows.reduce((s, r) => {
           const e = edits[r.item.id];
           return s + (e?.qty || 0) * (e?.cost || 0);
         }, 0);
-        const po = await createPurchaseOrder({
-          po_number,
-          supplier_id: g.supplier_id,
-          status: "draft",
-          order_date: new Date().toISOString().split("T")[0],
-          notes: "Auto-created from Low Stock Alerts",
-          total_amount: total,
-        } as any);
-        const lineItems = g.rows.map((r) => {
-          const e = edits[r.item.id];
-          return {
-            po_id: po.id,
-            item_id: r.item.id,
-            item_name: r.item.name,
-            quantity: e?.qty || 1,
-            unit_cost: e?.cost || 0,
-            received_quantity: 0,
-          };
-        });
-        await createPOItems(lineItems);
-        createdCount += 1;
+
+        if (g.kind === "overseas") {
+          const po_number = await generateOverseasPONumber();
+          const sup = allOverseas.find((s) => s.id === g.supplier_id);
+          const exchange_rate = Number(sup?.exchange_rate || 1);
+          const po = await createOverseasPurchaseOrder({
+            po_number,
+            supplier_id: g.supplier_id,
+            status: "draft",
+            order_date: new Date().toISOString().split("T")[0],
+            notes: "Auto-created from Low Stock Alerts",
+            total_amount: total,
+            currency: g.currency as any,
+            exchange_rate,
+          } as any);
+          const lineItems = g.rows.map((r) => {
+            const e = edits[r.item.id];
+            return {
+              po_id: po.id,
+              item_id: r.item.id,
+              item_name: r.item.name,
+              description: "",
+              quantity: e?.qty || 1,
+              unit_cost: e?.cost || 0,
+              received_quantity: 0,
+            };
+          });
+          await createOverseasPOItems(lineItems);
+          createdOverseas += 1;
+        } else {
+          const po_number = await generatePONumber();
+          const po = await createPurchaseOrder({
+            po_number,
+            supplier_id: g.supplier_id,
+            status: "draft",
+            order_date: new Date().toISOString().split("T")[0],
+            notes: "Auto-created from Low Stock Alerts",
+            total_amount: total,
+          } as any);
+          const lineItems = g.rows.map((r) => {
+            const e = edits[r.item.id];
+            return {
+              po_id: po.id,
+              item_id: r.item.id,
+              item_name: r.item.name,
+              quantity: e?.qty || 1,
+              unit_cost: e?.cost || 0,
+              received_quantity: 0,
+            };
+          });
+          await createPOItems(lineItems);
+          createdLocal += 1;
+        }
+
         for (const r of g.rows) {
           createdItemIds.push(r.item.id);
           const e = edits[r.item.id];
-          // Save supplier-to-product when user opted in and product had no record
           if (e?.saveDefault && e?.supplier_id && !r.itemSupplier) {
             try {
               await upsertItemSupplier({
                 item_id: r.item.id,
-                supplier_id: e.supplier_id,
-                currency: "PHP",
+                supplier_id: g.kind === "local" ? e.supplier_id : null,
+                overseas_supplier_id: g.kind === "overseas" ? e.supplier_id : null,
+                currency: e.currency,
                 latest_cost: e.cost || 0,
                 is_primary: true,
               });
@@ -853,8 +936,11 @@ function BulkPODialog({
           }
         }
       }
+      const parts: string[] = [];
+      if (createdLocal) parts.push(`${createdLocal} local PO${createdLocal === 1 ? "" : "s"}`);
+      if (createdOverseas) parts.push(`${createdOverseas} overseas PO${createdOverseas === 1 ? "" : "s"}`);
       toast.success(
-        `Created ${createdCount} PO${createdCount === 1 ? "" : "s"} across ${valid.length} supplier${valid.length === 1 ? "" : "s"}` +
+        `Created ${parts.join(" + ")}` +
           (savedDefaults ? ` · saved ${savedDefaults} default supplier${savedDefaults === 1 ? "" : "s"}` : "") +
           (skipped.length ? ` (${skipped.length} skipped — no supplier)` : "")
       );
@@ -867,7 +953,7 @@ function BulkPODialog({
     }
   };
 
-  const updateEdit = (itemId: string, patch: Partial<{ qty: number; cost: number; supplier_id: string; supplier_name: string; saveDefault: boolean }>) => {
+  const updateEdit = (itemId: string, patch: Partial<RowEdit>) => {
     setEdits((prev) => ({
       ...prev,
       [itemId]: { ...prev[itemId], ...patch },
@@ -886,115 +972,142 @@ function BulkPODialog({
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Items are grouped by their latest supplier. One PO will be created per supplier.
-              Edit quantities or unit costs before finalizing.
+              Local products are routed to local Purchase Orders; import products are routed to Overseas POs.
+              One PO is created per supplier.
             </p>
-            {groups.map((g) => (
-              <div key={g.supplier_id} className="rounded-lg border bg-card">
-                <div className="flex items-center justify-between p-3 border-b bg-muted/40">
-                  <div className="font-medium text-sm">
-                    {g.supplier_id === "__unknown__" ? (
-                      <span className="text-destructive">No supplier on file — will be skipped</span>
-                    ) : (
-                      <>Supplier: {g.supplier_name}</>
-                    )}
+            {groups.map((g) => {
+              const isUnknown = g.supplier_id === "__unknown__";
+              return (
+                <div key={g.key} className="rounded-lg border bg-card">
+                  <div className="flex items-center justify-between p-3 border-b bg-muted/40">
+                    <div className="font-medium text-sm flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">
+                        {g.kind === "overseas" ? "Overseas PO" : "Local PO"}
+                      </Badge>
+                      {isUnknown ? (
+                        <span className="text-destructive">No supplier on file — assign below or it will be skipped</span>
+                      ) : (
+                        <>Supplier: {g.supplier_name} {g.kind === "overseas" && <span className="text-xs text-muted-foreground">({g.currency})</span>}</>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-xs">{g.rows.length} item(s)</Badge>
                   </div>
-                  <Badge variant="outline" className="text-xs">{g.rows.length} item(s)</Badge>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      {g.supplier_id === "__unknown__" && <TableHead className="w-56">Assign supplier</TableHead>}
-                      <TableHead className="w-24 text-right">Qty</TableHead>
-                      <TableHead className="w-32 text-right">Unit Cost</TableHead>
-                      <TableHead className="w-28 text-right">Subtotal</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {g.rows.map((r) => {
-                      const e = edits[r.item.id];
-                      const subtotal = (e?.qty || 0) * (e?.cost || 0);
-                      const isUnknown = g.supplier_id === "__unknown__";
-                      const supplierMeta = r.itemSupplier;
-                      return (
-                        <Fragment key={r.item.id}>
-                          <TableRow>
-                            <TableCell className="text-sm">
-                              <div className="font-medium">{r.item.name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {r.item.sku} · stock {r.item.quantity} {r.item.base_unit || "pcs"}
-                              </div>
-                              {supplierMeta && (
-                                <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  {supplierMeta.is_overseas ? "Overseas" : "Local"} · {supplierMeta.currency} {Number(supplierMeta.latest_cost).toFixed(2)}
-                                  {supplierMeta.moq ? ` · MOQ ${supplierMeta.moq}` : ""}
-                                  {supplierMeta.lead_time_days != null ? ` · lead ${supplierMeta.lead_time_days}d` : ""}
-                                </div>
-                              )}
-                            </TableCell>
-                            {isUnknown && (
-                              <TableCell>
-                                <Select
-                                  value={e?.supplier_id || ""}
-                                  onValueChange={(v) => {
-                                    const sup = allSuppliers.find(s => s.id === v);
-                                    updateEdit(r.item.id, { supplier_id: v, supplier_name: sup?.name || "Supplier", saveDefault: true });
-                                  }}
-                                >
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pick supplier…" /></SelectTrigger>
-                                  <SelectContent>
-                                    {allSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
-                              </TableCell>
-                            )}
-                            <TableCell>
-                              <Input
-                                type="number"
-                                min="1"
-                                value={e?.qty ?? ""}
-                                onChange={(ev) => updateEdit(r.item.id, { qty: Number(ev.target.value) || 0 })}
-                                className="h-8 text-right"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={e?.cost ?? ""}
-                                onChange={(ev) => updateEdit(r.item.id, { cost: Number(ev.target.value) || 0 })}
-                                className="h-8 text-right"
-                              />
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-medium">{money(subtotal)}</TableCell>
-                          </TableRow>
-                          {!supplierMeta && e?.supplier_id && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        {isUnknown && <TableHead className="w-56">Assign supplier</TableHead>}
+                        <TableHead className="w-24 text-right">Qty</TableHead>
+                        <TableHead className="w-32 text-right">Unit Cost</TableHead>
+                        <TableHead className="w-28 text-right">Subtotal</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {g.rows.map((r) => {
+                        const e = edits[r.item.id];
+                        const subtotal = (e?.qty || 0) * (e?.cost || 0);
+                        const supplierMeta = r.itemSupplier;
+                        const supplierOptions = g.kind === "overseas" ? allOverseas : allSuppliers;
+                        return (
+                          <Fragment key={r.item.id}>
                             <TableRow>
-                              <TableCell colSpan={isUnknown ? 5 : 4} className="py-1.5">
-                                <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!e?.saveDefault}
-                                    onChange={(ev) => updateEdit(r.item.id, { saveDefault: ev.target.checked })}
-                                  />
-                                  Save <span className="font-medium text-foreground">{e.supplier_name}</span> as the default supplier for this product
-                                </label>
+                              <TableCell className="text-sm">
+                                <div className="font-medium flex items-center gap-1.5">
+                                  {r.item.name}
+                                  <Badge variant="outline" className="text-[9px] h-4">{r.item.source === "import" ? "Import" : "Local"}</Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {r.item.sku} · stock {r.item.quantity} {r.item.base_unit || "pcs"}
+                                </div>
+                                {supplierMeta && (
+                                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                                    {supplierMeta.is_overseas ? "Overseas" : "Local"} · {supplierMeta.currency} {Number(supplierMeta.latest_cost).toFixed(2)}
+                                    {supplierMeta.moq ? ` · MOQ ${supplierMeta.moq}` : ""}
+                                    {supplierMeta.lead_time_days != null ? ` · lead ${supplierMeta.lead_time_days}d` : ""}
+                                  </div>
+                                )}
+                              </TableCell>
+                              {isUnknown && (
+                                <TableCell>
+                                  <Select
+                                    value={e?.supplier_id || ""}
+                                    onValueChange={(v) => {
+                                      if (g.kind === "overseas") {
+                                        const sup = allOverseas.find(s => s.id === v);
+                                        updateEdit(r.item.id, {
+                                          supplier_id: v,
+                                          supplier_name: sup?.name || "Supplier",
+                                          currency: sup?.currency || "USD",
+                                          exchange_rate: Number(sup?.exchange_rate || 1),
+                                          saveDefault: true,
+                                        });
+                                      } else {
+                                        const sup = allSuppliers.find(s => s.id === v);
+                                        updateEdit(r.item.id, {
+                                          supplier_id: v,
+                                          supplier_name: sup?.name || "Supplier",
+                                          currency: "PHP",
+                                          saveDefault: true,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={g.kind === "overseas" ? "Pick overseas supplier…" : "Pick supplier…"} /></SelectTrigger>
+                                    <SelectContent>
+                                      {supplierOptions.map((s: any) => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                          {s.name}{g.kind === "overseas" ? ` (${s.currency})` : ""}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={e?.qty ?? ""}
+                                  onChange={(ev) => updateEdit(r.item.id, { qty: Number(ev.target.value) || 0 })}
+                                  className="h-8 text-right"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={e?.cost ?? ""}
+                                  onChange={(ev) => updateEdit(r.item.id, { cost: Number(ev.target.value) || 0 })}
+                                  className="h-8 text-right"
+                                />
+                              </TableCell>
+                              <TableCell className="text-right text-sm font-medium">
+                                {g.kind === "overseas" ? fmtMoney(subtotal, e?.currency || "USD") : money(subtotal)}
                               </TableCell>
                             </TableRow>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            ))}
-            <div className="flex justify-between items-center pt-2 border-t">
-              <span className="text-sm text-muted-foreground">Total estimate</span>
-              <span className="text-lg font-semibold">{money(totalCost)}</span>
-            </div>
+                            {!supplierMeta && e?.supplier_id && (
+                              <TableRow>
+                                <TableCell colSpan={isUnknown ? 5 : 4} className="py-1.5">
+                                  <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!e?.saveDefault}
+                                      onChange={(ev) => updateEdit(r.item.id, { saveDefault: ev.target.checked })}
+                                    />
+                                    Save <span className="font-medium text-foreground">{e.supplier_name}</span> as the default supplier for this product
+                                  </label>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })}
           </div>
         )}
 
