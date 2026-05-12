@@ -717,6 +717,7 @@ interface BulkPORow {
   suggestedQty: number;
   lastCost?: { cost: number };
   latestSupplier?: { id: string; name: string };
+  itemSupplier?: ItemSupplierRow;
 }
 
 function BulkPODialog({
@@ -733,8 +734,18 @@ function BulkPODialog({
   onCreated: (itemIds: string[]) => void;
 }) {
   // Per-row editable state, keyed by item id
-  const [edits, setEdits] = useState<Record<string, { qty: number; cost: number; supplier_id: string; supplier_name: string }>>({});
+  const [edits, setEdits] = useState<Record<string, { qty: number; cost: number; supplier_id: string; supplier_name: string; saveDefault: boolean }>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // All local suppliers for inline assignment of "Unassigned" rows
+  const { data: allSuppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["bulkpo-suppliers"],
+    queryFn: async () => {
+      const { data } = await supabase.from("suppliers").select("*").order("name");
+      return (data as Supplier[]) || [];
+    },
+    enabled: open,
+  });
 
   // Initialize edits whenever rows change / dialog opens
   useEffect(() => {
@@ -742,11 +753,18 @@ function BulkPODialog({
     setEdits((prev) => {
       const next: typeof prev = {};
       for (const r of rows) {
+        // Prefer item_suppliers cost (in supplier currency) when available + local
+        const isLocal = r.itemSupplier && !r.itemSupplier.is_overseas;
+        const seedCost = isLocal && r.itemSupplier
+          ? Number(r.itemSupplier.latest_cost)
+          : (r.lastCost?.cost ?? r.item.cost_price ?? 0);
+        const seedQty = Math.max(r.itemSupplier?.moq || 1, r.suggestedQty || 1);
         next[r.item.id] = prev[r.item.id] ?? {
-          qty: Math.max(1, r.suggestedQty || 1),
-          cost: r.lastCost?.cost ?? r.item.cost_price ?? 0,
+          qty: seedQty,
+          cost: seedCost,
           supplier_id: r.latestSupplier?.id ?? "",
           supplier_name: r.latestSupplier?.name ?? "Unknown supplier",
+          saveDefault: !r.itemSupplier && !!r.latestSupplier?.id, // offer to save when assigning fresh
         };
       }
       return next;
