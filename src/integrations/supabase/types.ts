@@ -406,6 +406,60 @@ export type Database = {
           },
         ]
       }
+      item_suppliers: {
+        Row: {
+          created_at: string
+          created_by_email: string | null
+          currency: string
+          id: string
+          is_primary: boolean
+          item_id: string
+          last_purchased_at: string | null
+          latest_cost: number
+          lead_time_days: number | null
+          moq: number
+          notes: string
+          overseas_supplier_id: string | null
+          supplier_id: string | null
+          supplier_sku: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_email?: string | null
+          currency?: string
+          id?: string
+          is_primary?: boolean
+          item_id: string
+          last_purchased_at?: string | null
+          latest_cost?: number
+          lead_time_days?: number | null
+          moq?: number
+          notes?: string
+          overseas_supplier_id?: string | null
+          supplier_id?: string | null
+          supplier_sku?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_email?: string | null
+          currency?: string
+          id?: string
+          is_primary?: boolean
+          item_id?: string
+          last_purchased_at?: string | null
+          latest_cost?: number
+          lead_time_days?: number | null
+          moq?: number
+          notes?: string
+          overseas_supplier_id?: string | null
+          supplier_id?: string | null
+          supplier_sku?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       item_variations: {
         Row: {
           created_at: string

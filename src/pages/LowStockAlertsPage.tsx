@@ -17,6 +17,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
 import { createPurchaseOrder, createPOItems, generatePONumber } from "@/lib/api";
+import { listItemSuppliersForItems, upsertItemSupplier, type ItemSupplierRow } from "@/lib/itemSuppliers";
+import type { Supplier } from "@/types/database";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -265,6 +267,15 @@ export default function LowStockAlertsPage() {
     },
   });
 
+  // 6b. Preferred item-supplier per item (from new item_suppliers table)
+  const itemIds = useMemo(() => items.map((i) => i.id), [items]);
+  const { data: itemSupplierMap = new Map() } = useQuery<Map<string, ItemSupplierRow>>({
+    queryKey: ["lowstock-item-suppliers", itemIds.length],
+    queryFn: () => listItemSuppliersForItems(itemIds),
+    enabled: itemIds.length > 0,
+  });
+
+
   // Build per-item enriched rows
   const enriched = useMemo(() => {
     const salesByItem = new Map<string, SaleRow[]>();
@@ -327,6 +338,13 @@ export default function LowStockAlertsPage() {
         recommendationText = `Enough stock for ~${Math.floor(daysToOut)} day(s)`;
       }
 
+      const itemSupplier = itemSupplierMap.get(it.id);
+      // Preferred supplier priority: item_suppliers (primary/recent) > PO history latest
+      const preferredSupplier =
+        itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
+          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier" }
+          : latestSupplierMap[it.id];
+
       return {
         item: it,
         threshold,
@@ -345,10 +363,12 @@ export default function LowStockAlertsPage() {
         recommendation,
         recommendationText,
         profit: (it.selling_price - it.cost_price) * q90,
-        latestSupplier: latestSupplierMap[it.id],
+        latestSupplier: preferredSupplier,
+        itemSupplier, // full row incl. currency, MOQ, lead time
       };
     });
-  }, [items, salesRows, openPoLines, lastCostMap, latestSupplierMap]);
+  }, [items, salesRows, openPoLines, lastCostMap, latestSupplierMap, itemSupplierMap]);
+
 
   // Hide items with threshold <= 0 OR healthy stock
   const lowStock = useMemo(
@@ -697,6 +717,7 @@ interface BulkPORow {
   suggestedQty: number;
   lastCost?: { cost: number };
   latestSupplier?: { id: string; name: string };
+  itemSupplier?: ItemSupplierRow;
 }
 
 function BulkPODialog({
@@ -713,8 +734,18 @@ function BulkPODialog({
   onCreated: (itemIds: string[]) => void;
 }) {
   // Per-row editable state, keyed by item id
-  const [edits, setEdits] = useState<Record<string, { qty: number; cost: number; supplier_id: string; supplier_name: string }>>({});
+  const [edits, setEdits] = useState<Record<string, { qty: number; cost: number; supplier_id: string; supplier_name: string; saveDefault: boolean }>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // All local suppliers for inline assignment of "Unassigned" rows
+  const { data: allSuppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["bulkpo-suppliers"],
+    queryFn: async () => {
+      const { data } = await supabase.from("suppliers").select("*").order("name");
+      return (data as Supplier[]) || [];
+    },
+    enabled: open,
+  });
 
   // Initialize edits whenever rows change / dialog opens
   useEffect(() => {
@@ -722,11 +753,18 @@ function BulkPODialog({
     setEdits((prev) => {
       const next: typeof prev = {};
       for (const r of rows) {
+        // Prefer item_suppliers cost (in supplier currency) when available + local
+        const isLocal = r.itemSupplier && !r.itemSupplier.is_overseas;
+        const seedCost = isLocal && r.itemSupplier
+          ? Number(r.itemSupplier.latest_cost)
+          : (r.lastCost?.cost ?? r.item.cost_price ?? 0);
+        const seedQty = Math.max(r.itemSupplier?.moq || 1, r.suggestedQty || 1);
         next[r.item.id] = prev[r.item.id] ?? {
-          qty: Math.max(1, r.suggestedQty || 1),
-          cost: r.lastCost?.cost ?? r.item.cost_price ?? 0,
+          qty: seedQty,
+          cost: seedCost,
           supplier_id: r.latestSupplier?.id ?? "",
           supplier_name: r.latestSupplier?.name ?? "Unknown supplier",
+          saveDefault: !r.itemSupplier && !!r.latestSupplier?.id, // offer to save when assigning fresh
         };
       }
       return next;
@@ -760,12 +798,13 @@ function BulkPODialog({
       return !e?.supplier_id;
     });
     if (valid.length === 0) {
-      toast.error("No items have a known supplier — cannot create POs");
+      toast.error("No items have a supplier assigned — pick one inline before creating");
       return;
     }
     setSubmitting(true);
     const createdItemIds: string[] = [];
     let createdCount = 0;
+    let savedDefaults = 0;
     try {
       for (const g of valid) {
         const po_number = await generatePONumber();
@@ -794,10 +833,29 @@ function BulkPODialog({
         });
         await createPOItems(lineItems);
         createdCount += 1;
-        for (const r of g.rows) createdItemIds.push(r.item.id);
+        for (const r of g.rows) {
+          createdItemIds.push(r.item.id);
+          const e = edits[r.item.id];
+          // Save supplier-to-product when user opted in and product had no record
+          if (e?.saveDefault && e?.supplier_id && !r.itemSupplier) {
+            try {
+              await upsertItemSupplier({
+                item_id: r.item.id,
+                supplier_id: e.supplier_id,
+                currency: "PHP",
+                latest_cost: e.cost || 0,
+                is_primary: true,
+              });
+              savedDefaults += 1;
+            } catch (err) {
+              console.warn("Failed to save default supplier", err);
+            }
+          }
+        }
       }
       toast.success(
         `Created ${createdCount} PO${createdCount === 1 ? "" : "s"} across ${valid.length} supplier${valid.length === 1 ? "" : "s"}` +
+          (savedDefaults ? ` · saved ${savedDefaults} default supplier${savedDefaults === 1 ? "" : "s"}` : "") +
           (skipped.length ? ` (${skipped.length} skipped — no supplier)` : "")
       );
       onCreated(createdItemIds);
@@ -809,7 +867,7 @@ function BulkPODialog({
     }
   };
 
-  const updateEdit = (itemId: string, patch: Partial<{ qty: number; cost: number }>) => {
+  const updateEdit = (itemId: string, patch: Partial<{ qty: number; cost: number; supplier_id: string; supplier_name: string; saveDefault: boolean }>) => {
     setEdits((prev) => ({
       ...prev,
       [itemId]: { ...prev[itemId], ...patch },
@@ -847,6 +905,7 @@ function BulkPODialog({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
+                      {g.supplier_id === "__unknown__" && <TableHead className="w-56">Assign supplier</TableHead>}
                       <TableHead className="w-24 text-right">Qty</TableHead>
                       <TableHead className="w-32 text-right">Unit Cost</TableHead>
                       <TableHead className="w-28 text-right">Subtotal</TableHead>
@@ -856,35 +915,76 @@ function BulkPODialog({
                     {g.rows.map((r) => {
                       const e = edits[r.item.id];
                       const subtotal = (e?.qty || 0) * (e?.cost || 0);
+                      const isUnknown = g.supplier_id === "__unknown__";
+                      const supplierMeta = r.itemSupplier;
                       return (
-                        <TableRow key={r.item.id}>
-                          <TableCell className="text-sm">
-                            <div className="font-medium">{r.item.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {r.item.sku} · stock {r.item.quantity} {r.item.base_unit || "pcs"}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={e?.qty ?? ""}
-                              onChange={(ev) => updateEdit(r.item.id, { qty: Number(ev.target.value) || 0 })}
-                              className="h-8 text-right"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={e?.cost ?? ""}
-                              onChange={(ev) => updateEdit(r.item.id, { cost: Number(ev.target.value) || 0 })}
-                              className="h-8 text-right"
-                            />
-                          </TableCell>
-                          <TableCell className="text-right text-sm font-medium">{money(subtotal)}</TableCell>
-                        </TableRow>
+                        <Fragment key={r.item.id}>
+                          <TableRow>
+                            <TableCell className="text-sm">
+                              <div className="font-medium">{r.item.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {r.item.sku} · stock {r.item.quantity} {r.item.base_unit || "pcs"}
+                              </div>
+                              {supplierMeta && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  {supplierMeta.is_overseas ? "Overseas" : "Local"} · {supplierMeta.currency} {Number(supplierMeta.latest_cost).toFixed(2)}
+                                  {supplierMeta.moq ? ` · MOQ ${supplierMeta.moq}` : ""}
+                                  {supplierMeta.lead_time_days != null ? ` · lead ${supplierMeta.lead_time_days}d` : ""}
+                                </div>
+                              )}
+                            </TableCell>
+                            {isUnknown && (
+                              <TableCell>
+                                <Select
+                                  value={e?.supplier_id || ""}
+                                  onValueChange={(v) => {
+                                    const sup = allSuppliers.find(s => s.id === v);
+                                    updateEdit(r.item.id, { supplier_id: v, supplier_name: sup?.name || "Supplier", saveDefault: true });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pick supplier…" /></SelectTrigger>
+                                  <SelectContent>
+                                    {allSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={e?.qty ?? ""}
+                                onChange={(ev) => updateEdit(r.item.id, { qty: Number(ev.target.value) || 0 })}
+                                className="h-8 text-right"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={e?.cost ?? ""}
+                                onChange={(ev) => updateEdit(r.item.id, { cost: Number(ev.target.value) || 0 })}
+                                className="h-8 text-right"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right text-sm font-medium">{money(subtotal)}</TableCell>
+                          </TableRow>
+                          {!supplierMeta && e?.supplier_id && (
+                            <TableRow>
+                              <TableCell colSpan={isUnknown ? 5 : 4} className="py-1.5">
+                                <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!e?.saveDefault}
+                                    onChange={(ev) => updateEdit(r.item.id, { saveDefault: ev.target.checked })}
+                                  />
+                                  Save <span className="font-medium text-foreground">{e.supplier_name}</span> as the default supplier for this product
+                                </label>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </TableBody>
@@ -950,7 +1050,7 @@ function ExpandedDetails({
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-lg border bg-background p-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Unit Conversion</div>
           <div className="text-sm space-y-1">
@@ -977,6 +1077,23 @@ function ExpandedDetails({
               ))}
               <li className="text-xs text-muted-foreground">{row.pendingOrdered} unit(s) pending arrival</li>
             </ul>
+          )}
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Default Supplier</div>
+          {row.itemSupplier ? (
+            <div className="text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span className="font-medium">{row.itemSupplier.supplier_name || "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span>{row.itemSupplier.is_overseas ? "Overseas" : "Local"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Latest cost</span><span className="font-medium">{currencySymbolForDisplay(row.itemSupplier.currency)}{Number(row.itemSupplier.latest_cost).toFixed(2)} <span className="text-[10px] text-muted-foreground">{row.itemSupplier.currency}</span></span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">MOQ</span><span>{row.itemSupplier.moq || 1}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Lead time</span><span>{row.itemSupplier.lead_time_days != null ? `${row.itemSupplier.lead_time_days}d` : "—"}</span></div>
+              {row.itemSupplier.last_purchased_at && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Last ordered</span><span>{format(parseISO(row.itemSupplier.last_purchased_at), "MMM d, yyyy")}</span></div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No supplier assigned to this product. Add one from Inventory → Suppliers.</p>
           )}
         </div>
         <div className="rounded-lg border bg-background p-3">
@@ -1023,4 +1140,10 @@ function MetricCard({ label, value, sub, icon: Icon }: { label: string; value: a
       {sub && <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{sub}</div>}
     </div>
   );
+}
+
+function currencySymbolForDisplay(c: string) {
+  if (c === "RMB") return "¥";
+  if (c === "USD") return "$";
+  return "₱";
 }
