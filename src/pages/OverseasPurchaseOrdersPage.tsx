@@ -140,17 +140,6 @@ export default function OverseasPurchaseOrdersPage() {
     },
     { not_shipped: 0, incoming: 0, received: 0 } as Record<string, number>,
   );
-  const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(filteredOrders, {
-    po_number: (r) => r.po_number,
-    supplier: (r: any) => r.overseas_suppliers?.name || "",
-    status: (r) => r.status,
-    currency: (r) => r.currency,
-    total_amount: (r) => Number(r.total_amount),
-    php_total: (r) => Number(r.total_amount) * Number(r.exchange_rate || 1),
-    order_date: (r) => r.order_date,
-    expected_delivery: (r) => r.expected_delivery,
-    eta: (r) => shipmentByPo.get(r.id)?.estimated_arrival || r.expected_delivery || "",
-  });
   const { data: suppliers = [] } = useQuery<OverseasSupplier[]>({ queryKey: ["overseas_suppliers"], queryFn: getOverseasSuppliers });
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
@@ -170,6 +159,17 @@ export default function OverseasPurchaseOrdersPage() {
     }
     return map;
   }, [shipments]);
+  const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(filteredOrders, {
+    po_number: (r) => r.po_number,
+    supplier: (r: any) => r.overseas_suppliers?.name || "",
+    status: (r) => r.status,
+    currency: (r) => r.currency,
+    total_amount: (r) => Number(r.total_amount),
+    php_total: (r) => Number(r.total_amount) * Number(r.exchange_rate || 1),
+    order_date: (r) => r.order_date,
+    expected_delivery: (r) => r.expected_delivery,
+    eta: (r) => shipmentByPo.get(r.id)?.estimated_arrival || r.expected_delivery || "",
+  });
   const itemsByPo = useMemo(() => {
     const map = new Map<string, OverseasPurchaseOrderItem[]>();
     for (const it of allPOItems) {
