@@ -17,6 +17,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
 import { createPurchaseOrder, createPOItems, generatePONumber } from "@/lib/api";
+import { listItemSuppliersForItems, upsertItemSupplier, type ItemSupplierRow } from "@/lib/itemSuppliers";
+import type { Supplier, OverseasSupplier } from "@/types/database";
 import { toast } from "sonner";
 import {
   AlertTriangle,
