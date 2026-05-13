@@ -292,13 +292,13 @@ export default function PurchaseOrdersPage() {
             location: receiveLocations[poItemId] || "warehouse",
           };
         });
-      if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate);
+      if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate, { skipCargo });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
+      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false);
       toast.success("Items received and inventory updated");
     },
     onError: (e: any) => toast.error(e.message),
