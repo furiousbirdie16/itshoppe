@@ -121,6 +121,7 @@ export default function PurchaseOrdersPage() {
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [skipCargo, setSkipCargo] = useState(false);
   const [cargoPO, setCargoPO] = useState<any | null>(null);
   const [cargoForm, setCargoForm] = useState({ cargo_cost: "", shipping_fee: "", customs_fee: "", delivery_fee: "", misc_charges: "", notes: "" });
   const { data: cargoPOItems = [] } = useQuery({
