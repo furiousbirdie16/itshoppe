@@ -121,6 +121,7 @@ export default function PurchaseOrdersPage() {
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [skipCargo, setSkipCargo] = useState(false);
   const [cargoPO, setCargoPO] = useState<any | null>(null);
   const [cargoForm, setCargoForm] = useState({ cargo_cost: "", shipping_fee: "", customs_fee: "", delivery_fee: "", misc_charges: "", notes: "" });
   const { data: cargoPOItems = [] } = useQuery({
@@ -291,13 +292,20 @@ export default function PurchaseOrdersPage() {
             location: receiveLocations[poItemId] || "warehouse",
           };
         });
-      if (itemsToReceive.length > 0) await receivePO(receiveOpen!, itemsToReceive, receiveDate);
+      if (itemsToReceive.length > 0) {
+        await receivePO(receiveOpen!, itemsToReceive, receiveDate, { skipCargo });
+      } else if (skipCargo && receiveOpen) {
+        // No new quantities, but user wants to close out cargo adjustment.
+        await updatePurchaseOrder(receiveOpen, { status: "received" } as any);
+      } else {
+        throw new Error("Enter quantities to receive");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
+      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false);
       toast.success("Items received and inventory updated");
     },
     onError: (e: any) => toast.error(e.message),
@@ -557,12 +565,30 @@ export default function PurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Date Received</Label>
-            <DateField value={receiveDate} onChange={setReceiveDate} />
+          <div className="flex items-end gap-3">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Date Received</Label>
+              <DateField value={receiveDate} onChange={setReceiveDate} />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                const next: Record<string, number> = {};
+                poItems.forEach((pi: any) => {
+                  const remaining = pi.quantity - pi.received_quantity;
+                  if (remaining > 0) next[pi.id] = remaining;
+                });
+                setReceiveQtys(next);
+              }}
+            >
+              Fill Remaining
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory at the chosen location, or in <span className="font-medium text-foreground">Undo</span> to deduct from inventory and reverse a prior receipt.</p>
           <div className="grid grid-cols-[1fr_120px_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
@@ -603,6 +629,18 @@ export default function PurchaseOrdersPage() {
               );
             })}
           </div>
+          <label className="flex items-start gap-2 mt-2 p-3 rounded-lg border bg-muted/30 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={skipCargo}
+              onChange={(e) => setSkipCargo(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <div className="text-xs">
+              <div className="font-medium text-foreground">Skip cargo cost adjustment</div>
+              <div className="text-muted-foreground">If all items are fully received, mark the PO as <span className="font-medium text-foreground">Received</span> instead of <span className="font-medium text-foreground">Pending Cargo Adjustment</span>. Use when this order has no cargo / shipping charges to allocate.</div>
+            </div>
+          </label>
           <div className="flex gap-2 mt-2">
             <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending || Object.values(receiveQtys).every(v => !v)} className="flex-1 rounded-lg h-9">Confirm Receipt</Button>
             <Button variant="outline" onClick={() => undoMut.mutate()} disabled={undoMut.isPending || Object.values(undoQtys).every(v => !v)} className="flex-1 rounded-lg h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">Undo Receipt</Button>

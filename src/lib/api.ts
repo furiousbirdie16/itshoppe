@@ -352,6 +352,7 @@ export const receivePO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
+  options?: { skipCargo?: boolean },
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   for (const item of itemsToReceive) {
@@ -397,7 +398,7 @@ export const receivePO = async (
   if (cur === "cargo_adjusted" || cur === "closed") {
     newStatus = cur;
   } else if (allReceived) {
-    newStatus = "pending_cargo_adjustment";
+    newStatus = options?.skipCargo ? "received" : "pending_cargo_adjustment";
   } else if (someReceived) {
     newStatus = "partially_received";
   } else {
