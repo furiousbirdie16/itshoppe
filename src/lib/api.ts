@@ -398,7 +398,7 @@ export const receivePO = async (
   if (cur === "cargo_adjusted" || cur === "closed") {
     newStatus = cur;
   } else if (allReceived) {
-    newStatus = "pending_cargo_adjustment";
+    newStatus = options?.skipCargo ? "received" : "pending_cargo_adjustment";
   } else if (someReceived) {
     newStatus = "partially_received";
   } else {
