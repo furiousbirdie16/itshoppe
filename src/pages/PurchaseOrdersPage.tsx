@@ -558,12 +558,30 @@ export default function PurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Date Received</Label>
-            <DateField value={receiveDate} onChange={setReceiveDate} />
+          <div className="flex items-end gap-3">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Date Received</Label>
+              <DateField value={receiveDate} onChange={setReceiveDate} />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                const next: Record<string, number> = {};
+                poItems.forEach((pi: any) => {
+                  const remaining = pi.quantity - pi.received_quantity;
+                  if (remaining > 0) next[pi.id] = remaining;
+                });
+                setReceiveQtys(next);
+              }}
+            >
+              Fill Remaining
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory at the chosen location, or in <span className="font-medium text-foreground">Undo</span> to deduct from inventory and reverse a prior receipt.</p>
           <div className="grid grid-cols-[1fr_120px_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
