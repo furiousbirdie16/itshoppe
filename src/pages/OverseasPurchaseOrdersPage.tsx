@@ -549,6 +549,8 @@ export default function OverseasPurchaseOrdersPage() {
                     { value: "shipped_not_paid", label: "Shipped, Not Paid (Terms)" },
                     { value: "shipped", label: "Shipped" },
                     { value: "partially_received", label: "Partially Received" },
+                    { value: "pending_cargo_adjustment", label: "Pending Cargo Adjustment" },
+                    { value: "cargo_adjusted", label: "Cargo Adjusted" },
                     { value: "received", label: "Received" },
                   ]},
                   { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
