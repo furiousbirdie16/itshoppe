@@ -122,6 +122,8 @@ export default function OverseasPurchaseOrdersPage() {
     shipped: "incoming",
     sent: "incoming",
     partially_received: "incoming",
+    pending_cargo_adjustment: "incoming",
+    cargo_adjusted: "received",
     received: "received",
   };
   const filteredOrders = orders.filter((order: any) => {
