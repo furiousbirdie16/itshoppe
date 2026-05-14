@@ -951,6 +951,7 @@ export const receiveOverseasPO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
+  options?: { skipCargo?: boolean },
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   for (const item of itemsToReceive) {
@@ -1005,11 +1006,14 @@ export const receiveOverseasPO = async (
   // Preserve the prior shipping/payment status when no items have been received yet.
   const { data: prevPo } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
   const prevStatus = (prevPo as any)?.status || "unpaid";
-  const newStatus = allReceived
-    ? "received"
-    : someReceived
-      ? "partially_received"
-      : (prevStatus === "partially_received" || prevStatus === "received" ? "shipped" : prevStatus);
+  const preserved = prevStatus === "cargo_adjusted" || prevStatus === "received";
+  const newStatus = preserved
+    ? prevStatus
+    : allReceived
+      ? (options?.skipCargo ? "received" : "pending_cargo_adjustment")
+      : someReceived
+        ? "partially_received"
+        : (prevStatus === "partially_received" ? "shipped" : prevStatus);
 
   await from("overseas_purchase_orders")
     .update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -1023,6 +1027,23 @@ export const receiveOverseasPO = async (
   }
 
   await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus, received_date: rcvDate });
+};
+
+export const applyOverseasPOCargoAdjustment = async (
+  poId: string,
+  charges: { cargo_cost: number; shipping_fee: number; customs_fee: number; delivery_fee: number; misc_charges: number; notes?: string },
+) => {
+  const { error } = await (supabase as any).rpc("apply_overseas_po_cargo_adjustment", {
+    _po_id: poId,
+    _cargo_cost: charges.cargo_cost || 0,
+    _shipping_fee: charges.shipping_fee || 0,
+    _customs_fee: charges.customs_fee || 0,
+    _delivery_fee: charges.delivery_fee || 0,
+    _misc_charges: charges.misc_charges || 0,
+    _notes: charges.notes || "",
+  });
+  if (error) throw error;
+  await logActivity("overseas_po_cargo_adjusted", "overseas_purchase_order", poId, charges);
 };
 
 // Shipment Tracking
