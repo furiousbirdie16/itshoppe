@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, getAllOverseasPOItems, getShipments,
+  applyOverseasPOCargoAdjustment,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck } from "lucide-react";
 import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
