@@ -1029,6 +1029,23 @@ export const receiveOverseasPO = async (
   await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus, received_date: rcvDate });
 };
 
+export const applyOverseasPOCargoAdjustment = async (
+  poId: string,
+  charges: { cargo_cost: number; shipping_fee: number; customs_fee: number; delivery_fee: number; misc_charges: number; notes?: string },
+) => {
+  const { error } = await (supabase as any).rpc("apply_overseas_po_cargo_adjustment", {
+    _po_id: poId,
+    _cargo_cost: charges.cargo_cost || 0,
+    _shipping_fee: charges.shipping_fee || 0,
+    _customs_fee: charges.customs_fee || 0,
+    _delivery_fee: charges.delivery_fee || 0,
+    _misc_charges: charges.misc_charges || 0,
+    _notes: charges.notes || "",
+  });
+  if (error) throw error;
+  await logActivity("overseas_po_cargo_adjusted", "overseas_purchase_order", poId, charges);
+};
+
 // Shipment Tracking
 export const getShipments = async (): Promise<ShipmentTracking[]> => {
   const { data, error } = await from("shipment_tracking").select("*, overseas_purchase_orders(*, overseas_suppliers(*))").order("created_at", { ascending: false });
