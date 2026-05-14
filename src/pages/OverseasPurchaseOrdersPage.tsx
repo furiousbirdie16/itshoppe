@@ -1017,7 +1017,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {po.status !== "received" && (
+                    {po.status !== "received" && po.status !== "cargo_adjusted" && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1026,6 +1026,17 @@ export default function OverseasPurchaseOrdersPage() {
                         title="Receive items"
                       >
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
+                      </Button>
+                    )}
+                    {(po.status === "pending_cargo_adjustment" || po.status === "cargo_adjusted") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openCargo(po)}
+                        title={po.status === "cargo_adjusted" ? "Re-adjust Cargo Costs" : "Add Cargo Costs"}
+                        className="h-7 w-7 rounded-md"
+                      >
+                        <Truck className={`h-3.5 w-3.5 ${po.status === "cargo_adjusted" ? "text-success" : "text-warning"}`} />
                       </Button>
                     )}
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
