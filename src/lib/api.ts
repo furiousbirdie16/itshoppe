@@ -1006,11 +1006,14 @@ export const receiveOverseasPO = async (
   // Preserve the prior shipping/payment status when no items have been received yet.
   const { data: prevPo } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
   const prevStatus = (prevPo as any)?.status || "unpaid";
-  const newStatus = allReceived
-    ? "received"
-    : someReceived
-      ? "partially_received"
-      : (prevStatus === "partially_received" || prevStatus === "received" ? "shipped" : prevStatus);
+  const preserved = prevStatus === "cargo_adjusted" || prevStatus === "received";
+  const newStatus = preserved
+    ? prevStatus
+    : allReceived
+      ? (options?.skipCargo ? "received" : "pending_cargo_adjustment")
+      : someReceived
+        ? "partially_received"
+        : (prevStatus === "partially_received" ? "shipped" : prevStatus);
 
   await from("overseas_purchase_orders")
     .update({ status: newStatus, updated_at: new Date().toISOString() })
