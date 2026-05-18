@@ -657,8 +657,6 @@ export default function PurchaseOrdersPage() {
                     <SelectItem value="sent">Sent</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
-                    <SelectItem value="pending_cargo_adjustment">Pending Cargo Adjustment</SelectItem>
-                    <SelectItem value="cargo_adjusted">Cargo Adjusted</SelectItem>
                     <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
                 </Select>
