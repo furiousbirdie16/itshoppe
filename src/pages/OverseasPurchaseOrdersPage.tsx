@@ -975,7 +975,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {po.status !== "received" && po.status !== "cargo_adjusted" && (
+                    {po.status !== "received" && (
                       <Button
                         variant="ghost"
                         size="icon"
