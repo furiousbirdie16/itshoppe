@@ -246,14 +246,8 @@ export default function PurchaseOrdersPage() {
             location: receiveLocations[poItemId] || "warehouse",
           };
         });
-      if (itemsToReceive.length > 0) {
-        await receivePO(receiveOpen!, itemsToReceive, receiveDate, { skipCargo });
-      } else if (skipCargo && receiveOpen) {
-        // No new quantities, but user wants to close out cargo adjustment.
-        await updatePurchaseOrder(receiveOpen, { status: "received" } as any);
-      } else {
-        throw new Error("Enter quantities to receive");
-      }
+      if (itemsToReceive.length === 0) throw new Error("Enter quantities to receive");
+      await receivePO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
