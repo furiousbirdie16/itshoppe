@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { SupplierSearch } from "@/components/SupplierSearch";
 import { ItemSearch } from "@/components/ItemSearch";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search, Truck } from "lucide-react";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
