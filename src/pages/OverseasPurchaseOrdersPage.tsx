@@ -269,18 +269,10 @@ export default function OverseasPurchaseOrdersPage() {
           };
         });
       if (itemsToReceive.length === 0) {
-        // No new quantities — allow closing out cargo step if everything is already received and skipCargo is set.
-        if (skipCargo) {
-          const allReceived = receiveItems.length > 0 && receiveItems.every((i: any) => (i.received_quantity || 0) >= i.quantity);
-          if (allReceived) {
-            await updateOverseasPurchaseOrder(receiveOpen!, { status: "received" } as any);
-            return;
-          }
-        }
         toast.info("Enter a quantity for at least one item");
         return;
       }
-      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate, { skipCargo });
+      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -292,32 +284,7 @@ export default function OverseasPurchaseOrdersPage() {
       setReceiveQtys({});
       setReceiveLocations({});
       setReceiveDate(new Date().toISOString().split("T")[0]);
-      setSkipCargo(false);
       toast.success("Items received and added to stock");
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const cargoMut = useMutation({
-    mutationFn: async () => {
-      if (!cargoPO) return;
-      if (cargoTotalQty <= 0) throw new Error("No received quantity to allocate cargo against");
-      await applyOverseasPOCargoAdjustment(cargoPO.id, {
-        cargo_cost: parseFloat(cargoForm.cargo_cost) || 0,
-        shipping_fee: parseFloat(cargoForm.shipping_fee) || 0,
-        customs_fee: parseFloat(cargoForm.customs_fee) || 0,
-        delivery_fee: parseFloat(cargoForm.delivery_fee) || 0,
-        misc_charges: parseFloat(cargoForm.misc_charges) || 0,
-        notes: cargoForm.notes,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
-      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_cargo"] });
-      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      setCargoPO(null);
-      toast.success("Cargo cost allocated and landed cost updated");
     },
     onError: (e: any) => toast.error(e.message),
   });
