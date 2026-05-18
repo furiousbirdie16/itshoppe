@@ -815,7 +815,7 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false); }}>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
