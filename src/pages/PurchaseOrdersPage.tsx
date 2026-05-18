@@ -253,7 +253,7 @@ export default function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false);
+      setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and inventory updated");
     },
     onError: (e: any) => toast.error(e.message),
