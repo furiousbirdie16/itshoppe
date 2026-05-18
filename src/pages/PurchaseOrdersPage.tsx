@@ -577,18 +577,8 @@ export default function PurchaseOrdersPage() {
               );
             })}
           </div>
-          <label className="flex items-start gap-2 mt-2 p-3 rounded-lg border bg-muted/30 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={skipCargo}
-              onChange={(e) => setSkipCargo(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
-            />
-            <div className="text-xs">
-              <div className="font-medium text-foreground">Skip cargo cost adjustment</div>
-              <div className="text-muted-foreground">If all items are fully received, mark the PO as <span className="font-medium text-foreground">Received</span> instead of <span className="font-medium text-foreground">Pending Cargo Adjustment</span>. Use when this order has no cargo / shipping charges to allocate.</div>
-            </div>
-          </label>
+
+
           <div className="flex gap-2 mt-2">
             <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending || Object.values(receiveQtys).every(v => !v)} className="flex-1 rounded-lg h-9">Confirm Receipt</Button>
             <Button variant="outline" onClick={() => undoMut.mutate()} disabled={undoMut.isPending || Object.values(undoQtys).every(v => !v)} className="flex-1 rounded-lg h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">Undo Receipt</Button>
