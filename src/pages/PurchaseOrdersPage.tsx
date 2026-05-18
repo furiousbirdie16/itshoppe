@@ -325,8 +325,6 @@ export default function PurchaseOrdersPage() {
                     { value: "sent", label: "Sent" },
                     { value: "partially_received", label: "Partially Received" },
                     { value: "received", label: "Received" },
-                    { value: "pending_cargo_adjustment", label: "Pending Cargo Adjustment" },
-                    { value: "cargo_adjusted", label: "Cargo Adjusted" },
                     { value: "closed", label: "Closed" },
                   ]},
                   { key: "order_date", label: "Order Date", type: "date" },
