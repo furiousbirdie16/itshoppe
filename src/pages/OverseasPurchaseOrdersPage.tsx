@@ -614,8 +614,6 @@ export default function OverseasPurchaseOrdersPage() {
                     <SelectItem value="shipped_not_paid">Shipped, Not Paid (Terms)</SelectItem>
                     <SelectItem value="shipped">Shipped</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
-                    <SelectItem value="pending_cargo_adjustment">Pending Cargo Adjustment</SelectItem>
-                    <SelectItem value="cargo_adjusted">Cargo Adjusted</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
                   </SelectContent>
                 </Select>
