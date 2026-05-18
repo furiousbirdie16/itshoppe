@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder, applyPOCargoAdjustment } from "@/lib/api";
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder } from "@/lib/api";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
