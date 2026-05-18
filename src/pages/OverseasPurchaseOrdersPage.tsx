@@ -192,26 +192,6 @@ export default function OverseasPurchaseOrdersPage() {
     queryFn: () => getOverseasPOItems(receiveOpen!),
     enabled: !!receiveOpen,
   });
-  const { data: cargoPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
-    queryKey: ["overseas_po_items_cargo", cargoPO?.id],
-    queryFn: () => getOverseasPOItems(cargoPO!.id),
-    enabled: !!cargoPO,
-  });
-  const cargoTotalCharges = ["cargo_cost", "shipping_fee", "customs_fee", "delivery_fee", "misc_charges"]
-    .reduce((s, k) => s + (parseFloat((cargoForm as any)[k]) || 0), 0);
-  const cargoTotalQty = cargoPOItems.reduce((s, li: any) => s + Number(li.received_quantity || 0), 0);
-  const cargoPerUnit = cargoTotalQty > 0 ? cargoTotalCharges / cargoTotalQty : 0;
-  const openCargo = (po: any) => {
-    setCargoPO(po);
-    setCargoForm({
-      cargo_cost: po.cargo_cost ? String(po.cargo_cost) : "",
-      shipping_fee: po.shipping_fee ? String(po.shipping_fee) : "",
-      customs_fee: po.customs_fee ? String(po.customs_fee) : "",
-      delivery_fee: po.delivery_fee ? String(po.delivery_fee) : "",
-      misc_charges: po.misc_charges ? String(po.misc_charges) : "",
-      notes: po.cargo_notes || "",
-    });
-  };
 
   const createMut = useMutation({
     mutationFn: async () => {
