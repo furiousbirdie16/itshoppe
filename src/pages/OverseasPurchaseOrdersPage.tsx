@@ -106,11 +106,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [skipCargo, setSkipCargo] = useState(false);
 
-  // Cargo dialog
-  const [cargoPO, setCargoPO] = useState<any | null>(null);
-  const [cargoForm, setCargoForm] = useState({ cargo_cost: "", shipping_fee: "", customs_fee: "", delivery_fee: "", misc_charges: "", notes: "" });
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const statusBuckets: Record<string, "not_shipped" | "incoming" | "received"> = {
