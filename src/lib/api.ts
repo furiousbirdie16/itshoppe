@@ -352,7 +352,6 @@ export const receivePO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
-  options?: { skipCargo?: boolean },
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   for (const item of itemsToReceive) {
@@ -391,14 +390,13 @@ export const receivePO = async (
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
   const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
   const someReceived = (allItems as any[])?.some((i: any) => i.received_quantity > 0);
-  // Check current status — don't downgrade cargo_adjusted/closed
   const { data: curPO } = await from("purchase_orders").select("status").eq("id", poId).single();
   const cur = (curPO as any)?.status;
   let newStatus: string;
-  if (cur === "cargo_adjusted" || cur === "closed") {
+  if (cur === "closed") {
     newStatus = cur;
   } else if (allReceived) {
-    newStatus = options?.skipCargo ? "received" : "pending_cargo_adjustment";
+    newStatus = "received";
   } else if (someReceived) {
     newStatus = "partially_received";
   } else {
@@ -406,23 +404,6 @@ export const receivePO = async (
   }
   await from("purchase_orders").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", poId);
   await logActivity("received_purchase_order", "purchase_order", poId, { status: newStatus });
-};
-
-export const applyPOCargoAdjustment = async (
-  poId: string,
-  charges: { cargo_cost: number; shipping_fee: number; customs_fee: number; delivery_fee: number; misc_charges: number; notes?: string },
-) => {
-  const { error } = await (supabase as any).rpc("apply_po_cargo_adjustment", {
-    _po_id: poId,
-    _cargo_cost: charges.cargo_cost || 0,
-    _shipping_fee: charges.shipping_fee || 0,
-    _customs_fee: charges.customs_fee || 0,
-    _delivery_fee: charges.delivery_fee || 0,
-    _misc_charges: charges.misc_charges || 0,
-    _notes: charges.notes || "",
-  });
-  if (error) throw error;
-  await logActivity("po_cargo_adjusted", "purchase_order", poId, charges);
 };
 
 // Undo Receive — reverses received quantities for selected PO line items and deducts inventory
@@ -951,7 +932,6 @@ export const receiveOverseasPO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
-  options?: { skipCargo?: boolean },
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   for (const item of itemsToReceive) {
@@ -995,7 +975,6 @@ export const receiveOverseasPO = async (
     }
   }
 
-  // Recompute PO status based on all line items
   const { data: allItems } = await from("overseas_purchase_order_items")
     .select("quantity, received_quantity")
     .eq("po_id", poId);
@@ -1003,14 +982,13 @@ export const receiveOverseasPO = async (
   const allReceived = list.length > 0 && list.every((i) => (i.received_quantity || 0) >= i.quantity);
   const someReceived = list.some((i) => (i.received_quantity || 0) > 0);
 
-  // Preserve the prior shipping/payment status when no items have been received yet.
   const { data: prevPo } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
   const prevStatus = (prevPo as any)?.status || "unpaid";
-  const preserved = prevStatus === "cargo_adjusted" || prevStatus === "received";
+  const preserved = prevStatus === "received";
   const newStatus = preserved
     ? prevStatus
     : allReceived
-      ? (options?.skipCargo ? "received" : "pending_cargo_adjustment")
+      ? "received"
       : someReceived
         ? "partially_received"
         : (prevStatus === "partially_received" ? "shipped" : prevStatus);
@@ -1019,7 +997,6 @@ export const receiveOverseasPO = async (
     .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq("id", poId);
 
-  // If the PO is fully received, mark any linked shipment as delivered
   if (allReceived) {
     await from("shipment_tracking")
       .update({ status: "delivered", actual_arrival: rcvDate, updated_at: new Date().toISOString() })
@@ -1027,23 +1004,6 @@ export const receiveOverseasPO = async (
   }
 
   await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus, received_date: rcvDate });
-};
-
-export const applyOverseasPOCargoAdjustment = async (
-  poId: string,
-  charges: { cargo_cost: number; shipping_fee: number; customs_fee: number; delivery_fee: number; misc_charges: number; notes?: string },
-) => {
-  const { error } = await (supabase as any).rpc("apply_overseas_po_cargo_adjustment", {
-    _po_id: poId,
-    _cargo_cost: charges.cargo_cost || 0,
-    _shipping_fee: charges.shipping_fee || 0,
-    _customs_fee: charges.customs_fee || 0,
-    _delivery_fee: charges.delivery_fee || 0,
-    _misc_charges: charges.misc_charges || 0,
-    _notes: charges.notes || "",
-  });
-  if (error) throw error;
-  await logActivity("overseas_po_cargo_adjusted", "overseas_purchase_order", poId, charges);
 };
 
 // Shipment Tracking

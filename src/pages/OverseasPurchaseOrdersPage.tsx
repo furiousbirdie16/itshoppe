@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, getAllOverseasPOItems, getShipments,
-  applyOverseasPOCargoAdjustment,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -14,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
 import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -107,11 +106,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [skipCargo, setSkipCargo] = useState(false);
 
-  // Cargo dialog
-  const [cargoPO, setCargoPO] = useState<any | null>(null);
-  const [cargoForm, setCargoForm] = useState({ cargo_cost: "", shipping_fee: "", customs_fee: "", delivery_fee: "", misc_charges: "", notes: "" });
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const statusBuckets: Record<string, "not_shipped" | "incoming" | "received"> = {
@@ -122,8 +117,6 @@ export default function OverseasPurchaseOrdersPage() {
     shipped: "incoming",
     sent: "incoming",
     partially_received: "incoming",
-    pending_cargo_adjustment: "incoming",
-    cargo_adjusted: "received",
     received: "received",
   };
   const filteredOrders = orders.filter((order: any) => {
@@ -197,26 +190,6 @@ export default function OverseasPurchaseOrdersPage() {
     queryFn: () => getOverseasPOItems(receiveOpen!),
     enabled: !!receiveOpen,
   });
-  const { data: cargoPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({
-    queryKey: ["overseas_po_items_cargo", cargoPO?.id],
-    queryFn: () => getOverseasPOItems(cargoPO!.id),
-    enabled: !!cargoPO,
-  });
-  const cargoTotalCharges = ["cargo_cost", "shipping_fee", "customs_fee", "delivery_fee", "misc_charges"]
-    .reduce((s, k) => s + (parseFloat((cargoForm as any)[k]) || 0), 0);
-  const cargoTotalQty = cargoPOItems.reduce((s, li: any) => s + Number(li.received_quantity || 0), 0);
-  const cargoPerUnit = cargoTotalQty > 0 ? cargoTotalCharges / cargoTotalQty : 0;
-  const openCargo = (po: any) => {
-    setCargoPO(po);
-    setCargoForm({
-      cargo_cost: po.cargo_cost ? String(po.cargo_cost) : "",
-      shipping_fee: po.shipping_fee ? String(po.shipping_fee) : "",
-      customs_fee: po.customs_fee ? String(po.customs_fee) : "",
-      delivery_fee: po.delivery_fee ? String(po.delivery_fee) : "",
-      misc_charges: po.misc_charges ? String(po.misc_charges) : "",
-      notes: po.cargo_notes || "",
-    });
-  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -294,18 +267,10 @@ export default function OverseasPurchaseOrdersPage() {
           };
         });
       if (itemsToReceive.length === 0) {
-        // No new quantities — allow closing out cargo step if everything is already received and skipCargo is set.
-        if (skipCargo) {
-          const allReceived = receiveItems.length > 0 && receiveItems.every((i: any) => (i.received_quantity || 0) >= i.quantity);
-          if (allReceived) {
-            await updateOverseasPurchaseOrder(receiveOpen!, { status: "received" } as any);
-            return;
-          }
-        }
         toast.info("Enter a quantity for at least one item");
         return;
       }
-      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate, { skipCargo });
+      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -317,32 +282,7 @@ export default function OverseasPurchaseOrdersPage() {
       setReceiveQtys({});
       setReceiveLocations({});
       setReceiveDate(new Date().toISOString().split("T")[0]);
-      setSkipCargo(false);
       toast.success("Items received and added to stock");
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const cargoMut = useMutation({
-    mutationFn: async () => {
-      if (!cargoPO) return;
-      if (cargoTotalQty <= 0) throw new Error("No received quantity to allocate cargo against");
-      await applyOverseasPOCargoAdjustment(cargoPO.id, {
-        cargo_cost: parseFloat(cargoForm.cargo_cost) || 0,
-        shipping_fee: parseFloat(cargoForm.shipping_fee) || 0,
-        customs_fee: parseFloat(cargoForm.customs_fee) || 0,
-        delivery_fee: parseFloat(cargoForm.delivery_fee) || 0,
-        misc_charges: parseFloat(cargoForm.misc_charges) || 0,
-        notes: cargoForm.notes,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
-      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_cargo"] });
-      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      setCargoPO(null);
-      toast.success("Cargo cost allocated and landed cost updated");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -549,8 +489,6 @@ export default function OverseasPurchaseOrdersPage() {
                     { value: "shipped_not_paid", label: "Shipped, Not Paid (Terms)" },
                     { value: "shipped", label: "Shipped" },
                     { value: "partially_received", label: "Partially Received" },
-                    { value: "pending_cargo_adjustment", label: "Pending Cargo Adjustment" },
-                    { value: "cargo_adjusted", label: "Cargo Adjusted" },
                     { value: "received", label: "Received" },
                   ]},
                   { key: "currency", label: "Currency", type: "select", options: [{ value: "USD", label: "USD" }, { value: "RMB", label: "RMB" }] },
@@ -676,8 +614,6 @@ export default function OverseasPurchaseOrdersPage() {
                     <SelectItem value="shipped_not_paid">Shipped, Not Paid (Terms)</SelectItem>
                     <SelectItem value="shipped">Shipped</SelectItem>
                     <SelectItem value="partially_received">Partially Received</SelectItem>
-                    <SelectItem value="pending_cargo_adjustment">Pending Cargo Adjustment</SelectItem>
-                    <SelectItem value="cargo_adjusted">Cargo Adjusted</SelectItem>
                     <SelectItem value="received">Received</SelectItem>
                   </SelectContent>
                 </Select>
@@ -873,7 +809,7 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); setSkipCargo(false); }}>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
@@ -949,82 +885,9 @@ export default function OverseasPurchaseOrdersPage() {
               );
             })}
           </div>
-          <label className="flex items-start gap-2 rounded-md border p-2.5 text-xs cursor-pointer">
-            <Checkbox checked={skipCargo} onCheckedChange={(v) => setSkipCargo(v === true)} className="mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="font-medium text-foreground">Skip cargo cost adjustment</div>
-              <div className="text-muted-foreground">If all items are fully received, mark the PO as <span className="font-medium text-foreground">Received</span> instead of <span className="font-medium text-foreground">Pending Cargo Adjustment</span>. Use when this order has no cargo / shipping charges to allocate.</div>
-            </div>
-          </label>
           <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">
             Confirm Receipt
           </Button>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cargo Cost Adjustment Dialog */}
-      <Dialog open={!!cargoPO} onOpenChange={(o) => { if (!o) setCargoPO(null); }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg flex items-center gap-2"><Truck className="h-4 w-4" /> Cargo Cost Adjustment — {cargoPO?.po_number}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Enter actual cargo / shipping charges paid (in PHP) after the shipment arrived. Charges are allocated across received items by quantity. Inventory landed cost will be updated; stock quantities and past sales are untouched.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { k: "cargo_cost", l: "Cargo Cost" },
-                { k: "shipping_fee", l: "Shipping Fee" },
-                { k: "customs_fee", l: "Customs Fee" },
-                { k: "delivery_fee", l: "Delivery Fee" },
-                { k: "misc_charges", l: "Misc Charges" },
-              ].map((f) => (
-                <div key={f.k} className="space-y-1">
-                  <Label className="text-xs">{f.l} (PHP)</Label>
-                  <Input type="number" step="0.01" value={(cargoForm as any)[f.k]} onChange={e => setCargoForm({ ...cargoForm, [f.k]: e.target.value })} className="h-9" placeholder="0.00" />
-                </div>
-              ))}
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
-              <Textarea value={cargoForm.notes} onChange={e => setCargoForm({ ...cargoForm, notes: e.target.value })} rows={2} className="resize-none" />
-            </div>
-            <div className="grid grid-cols-3 gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-              <div><div className="text-[11px] text-muted-foreground">Total Charges</div><div className="font-semibold">{peso(cargoTotalCharges)}</div></div>
-              <div><div className="text-[11px] text-muted-foreground">Total Qty Received</div><div className="font-semibold">{cargoTotalQty}</div></div>
-              <div><div className="text-[11px] text-muted-foreground">Cost Per Unit</div><div className="font-semibold">{peso(cargoPerUnit)}</div></div>
-            </div>
-            <div className="rounded-md border max-h-[40vh] overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Item</TableHead>
-                    <TableHead className="text-xs text-right">Received</TableHead>
-                    <TableHead className="text-xs text-right">Supplier Cost (PHP)</TableHead>
-                    <TableHead className="text-xs text-right">+ Cargo / Unit</TableHead>
-                    <TableHead className="text-xs text-right">Landed Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cargoPOItems.map((pi: any) => {
-                    const supCostPhp = Number(pi.unit_cost || 0) * Number(cargoPO?.exchange_rate || 1);
-                    const landed = supCostPhp + cargoPerUnit;
-                    return (
-                      <TableRow key={pi.id}>
-                        <TableCell className="text-sm">{pi.items?.name || pi.item_name}</TableCell>
-                        <TableCell className="text-sm text-right">{pi.received_quantity || 0}</TableCell>
-                        <TableCell className="text-sm text-right">{peso(supCostPhp)}</TableCell>
-                        <TableCell className="text-sm text-right text-warning">{peso(cargoPerUnit)}</TableCell>
-                        <TableCell className="text-sm text-right font-semibold">{peso(landed)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-            <Button onClick={() => cargoMut.mutate()} disabled={cargoMut.isPending || cargoTotalCharges <= 0} className="w-full rounded-lg h-9">
-              Apply Cargo Allocation
-            </Button>
-          </div>
         </DialogContent>
       </Dialog>
 
@@ -1112,7 +975,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {po.status !== "received" && po.status !== "cargo_adjusted" && (
+                    {po.status !== "received" && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1121,17 +984,6 @@ export default function OverseasPurchaseOrdersPage() {
                         title="Receive items"
                       >
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
-                      </Button>
-                    )}
-                    {(po.status === "pending_cargo_adjustment" || po.status === "cargo_adjusted") && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openCargo(po)}
-                        title={po.status === "cargo_adjusted" ? "Re-adjust Cargo Costs" : "Add Cargo Costs"}
-                        className="h-7 w-7 rounded-md"
-                      >
-                        <Truck className={`h-3.5 w-3.5 ${po.status === "cargo_adjusted" ? "text-success" : "text-warning"}`} />
                       </Button>
                     )}
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
