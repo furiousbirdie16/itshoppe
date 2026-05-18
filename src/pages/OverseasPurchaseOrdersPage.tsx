@@ -891,82 +891,9 @@ export default function OverseasPurchaseOrdersPage() {
               );
             })}
           </div>
-          <label className="flex items-start gap-2 rounded-md border p-2.5 text-xs cursor-pointer">
-            <Checkbox checked={skipCargo} onCheckedChange={(v) => setSkipCargo(v === true)} className="mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="font-medium text-foreground">Skip cargo cost adjustment</div>
-              <div className="text-muted-foreground">If all items are fully received, mark the PO as <span className="font-medium text-foreground">Received</span> instead of <span className="font-medium text-foreground">Pending Cargo Adjustment</span>. Use when this order has no cargo / shipping charges to allocate.</div>
-            </div>
-          </label>
           <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">
             Confirm Receipt
           </Button>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cargo Cost Adjustment Dialog */}
-      <Dialog open={!!cargoPO} onOpenChange={(o) => { if (!o) setCargoPO(null); }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg flex items-center gap-2"><Truck className="h-4 w-4" /> Cargo Cost Adjustment — {cargoPO?.po_number}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Enter actual cargo / shipping charges paid (in PHP) after the shipment arrived. Charges are allocated across received items by quantity. Inventory landed cost will be updated; stock quantities and past sales are untouched.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { k: "cargo_cost", l: "Cargo Cost" },
-                { k: "shipping_fee", l: "Shipping Fee" },
-                { k: "customs_fee", l: "Customs Fee" },
-                { k: "delivery_fee", l: "Delivery Fee" },
-                { k: "misc_charges", l: "Misc Charges" },
-              ].map((f) => (
-                <div key={f.k} className="space-y-1">
-                  <Label className="text-xs">{f.l} (PHP)</Label>
-                  <Input type="number" step="0.01" value={(cargoForm as any)[f.k]} onChange={e => setCargoForm({ ...cargoForm, [f.k]: e.target.value })} className="h-9" placeholder="0.00" />
-                </div>
-              ))}
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
-              <Textarea value={cargoForm.notes} onChange={e => setCargoForm({ ...cargoForm, notes: e.target.value })} rows={2} className="resize-none" />
-            </div>
-            <div className="grid grid-cols-3 gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-              <div><div className="text-[11px] text-muted-foreground">Total Charges</div><div className="font-semibold">{peso(cargoTotalCharges)}</div></div>
-              <div><div className="text-[11px] text-muted-foreground">Total Qty Received</div><div className="font-semibold">{cargoTotalQty}</div></div>
-              <div><div className="text-[11px] text-muted-foreground">Cost Per Unit</div><div className="font-semibold">{peso(cargoPerUnit)}</div></div>
-            </div>
-            <div className="rounded-md border max-h-[40vh] overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Item</TableHead>
-                    <TableHead className="text-xs text-right">Received</TableHead>
-                    <TableHead className="text-xs text-right">Supplier Cost (PHP)</TableHead>
-                    <TableHead className="text-xs text-right">+ Cargo / Unit</TableHead>
-                    <TableHead className="text-xs text-right">Landed Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cargoPOItems.map((pi: any) => {
-                    const supCostPhp = Number(pi.unit_cost || 0) * Number(cargoPO?.exchange_rate || 1);
-                    const landed = supCostPhp + cargoPerUnit;
-                    return (
-                      <TableRow key={pi.id}>
-                        <TableCell className="text-sm">{pi.items?.name || pi.item_name}</TableCell>
-                        <TableCell className="text-sm text-right">{pi.received_quantity || 0}</TableCell>
-                        <TableCell className="text-sm text-right">{peso(supCostPhp)}</TableCell>
-                        <TableCell className="text-sm text-right text-warning">{peso(cargoPerUnit)}</TableCell>
-                        <TableCell className="text-sm text-right font-semibold">{peso(landed)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-            <Button onClick={() => cargoMut.mutate()} disabled={cargoMut.isPending || cargoTotalCharges <= 0} className="w-full rounded-lg h-9">
-              Apply Cargo Allocation
-            </Button>
-          </div>
         </DialogContent>
       </Dialog>
 
