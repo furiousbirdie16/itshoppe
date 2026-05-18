@@ -462,7 +462,7 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">PO Details</DialogTitle></DialogHeader>
           {(() => {
             const po: any = pos.find((p: any) => p.id === viewPO);
-            const adjusted = po?.status === "cargo_adjusted" || Number(po?.total_additional_charges || 0) > 0;
+            const adjusted = Number(po?.total_additional_charges || 0) > 0;
             return (
               <>
                 {po && (
