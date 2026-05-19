@@ -768,9 +768,9 @@ export default function OverseasPurchaseOrdersPage() {
                       <TableHead className="text-xs text-right">Received</TableHead>
                       <TableHead className="text-xs text-right">Remaining</TableHead>
                       <TableHead className="text-xs">Date Received</TableHead>
-                      <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
-                      <TableHead className="text-xs text-right">Line Total</TableHead>
-                      <TableHead className="text-xs text-right">PHP Value</TableHead>
+                      {isAdmin && <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>}
+                      {isAdmin && <TableHead className="text-xs text-right">Line Total</TableHead>}
+                      {isAdmin && <TableHead className="text-xs text-right">PHP Value</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
