@@ -1137,10 +1137,12 @@ export default function OverseasPurchaseOrdersPage() {
                   <TableCell className="text-sm text-right">{row.ordered_quantity}</TableCell>
                   <TableCell className="text-sm text-right">{row.received_quantity}</TableCell>
                   <TableCell className="text-sm text-right font-medium">{row.remaining_quantity}</TableCell>
-                  <TableCell className="text-sm text-right font-mono">
-                    {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>
+                  {isAdmin && (
+                    <TableCell className="text-sm text-right font-mono">
+                      {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                  )}
+                  {isAdmin && <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>}
                   <TableCell className="text-sm">{row.expected_delivery ? new Date(row.expected_delivery).toLocaleDateString("en-US") : "—"}</TableCell>
                 </TableRow>
               ))}
