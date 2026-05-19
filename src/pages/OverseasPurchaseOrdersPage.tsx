@@ -1087,12 +1087,14 @@ export default function OverseasPurchaseOrdersPage() {
               {filteredIncomingRows.reduce((sum, row) => sum + row.remaining_quantity, 0)}
             </p>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
-            <p className="mt-1 text-2xl font-semibold text-primary">
-              {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
-            </p>
-          </div>
+          {isAdmin && (
+            <div className="rounded-lg border bg-card p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
+              <p className="mt-1 text-2xl font-semibold text-primary">
+                {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="data-table-wrapper">
