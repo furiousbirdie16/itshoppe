@@ -64,6 +64,7 @@ const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
