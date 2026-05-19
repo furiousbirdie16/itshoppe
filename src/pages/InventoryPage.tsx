@@ -212,7 +212,9 @@ export default function InventoryPage() {
               "Warehouse Qty": (r: any) => r.warehouse_quantity ?? 0,
               "Store Qty": (r: any) => r.store_quantity ?? 0,
               "Low Stock Threshold": (r: any) => r.low_stock_threshold ?? "",
-              "Cost Price": (r: any) => r.cost_price,
+              ...(isAdmin
+                ? { "Cost Price": (r: any) => r.cost_price }
+                : { "Cost Price": (r: any) => ((r.source ?? "local") === "local" ? r.cost_price : "") }),
               "Selling Price": (r: any) => r.selling_price,
               "Created": (r: any) => r.created_at || "",
               "Updated": (r: any) => r.updated_at || "",
