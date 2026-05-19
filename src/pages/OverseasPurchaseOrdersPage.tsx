@@ -729,8 +729,8 @@ export default function OverseasPurchaseOrdersPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Supplier:</span> <span className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</span></div>
                 <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
-                <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>
-                <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>
+                {isAdmin && <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>}
+                {isAdmin && <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border bg-card p-4">
