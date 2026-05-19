@@ -789,11 +789,13 @@ export default function OverseasPurchaseOrdersPage() {
                           <TableCell className="text-sm text-right">{item.item_id ? receivedQty : "—"}</TableCell>
                           <TableCell className="text-sm text-right font-medium">{remainingQty}</TableCell>
                           <TableCell className="text-sm">{item.received_date ? new Date(item.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
-                          <TableCell className="text-sm text-right">{Number(item.unit_cost || 0).toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
-                          <TableCell className="text-sm text-right font-medium">
-                            {viewPO.currency === "USD" ? "$" : "¥"}{lineTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
-                          </TableCell>
-                          <TableCell className="text-sm text-right">{peso(lineTotal * Number(viewPO.exchange_rate || 1))}</TableCell>
+                          {isAdmin && <TableCell className="text-sm text-right">{Number(item.unit_cost || 0).toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>}
+                          {isAdmin && (
+                            <TableCell className="text-sm text-right font-medium">
+                              {viewPO.currency === "USD" ? "$" : "¥"}{lineTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
+                            </TableCell>
+                          )}
+                          {isAdmin && <TableCell className="text-sm text-right">{peso(lineTotal * Number(viewPO.exchange_rate || 1))}</TableCell>}
                         </TableRow>
                       );
                     })}
