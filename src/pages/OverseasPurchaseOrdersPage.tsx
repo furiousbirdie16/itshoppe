@@ -803,16 +803,18 @@ export default function OverseasPurchaseOrdersPage() {
                 </Table>
               </div>
 
-              <div className="rounded-lg bg-muted/50 p-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Total ({viewPO.currency})</span>
-                  <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{viewPO.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+              {isAdmin && (
+                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span>Total ({viewPO.currency})</span>
+                    <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{viewPO.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Total (PHP)</span>
+                    <span className="font-semibold text-primary">{peso(viewPO.total_amount * viewPO.exchange_rate)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>Total (PHP)</span>
-                  <span className="font-semibold text-primary">{peso(viewPO.total_amount * viewPO.exchange_rate)}</span>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </DialogContent>
