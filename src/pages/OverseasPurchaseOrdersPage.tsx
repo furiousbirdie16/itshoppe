@@ -29,6 +29,7 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { usePermissions } from "@/lib/permissions";
 
 interface LineItem {
   item_name: string;
@@ -63,6 +64,7 @@ const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
@@ -468,7 +470,7 @@ export default function OverseasPurchaseOrdersPage() {
       <Tabs defaultValue="orders" className="space-y-6">
         <TabsList>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
-          <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>
+          {isAdmin && <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>}
         </TabsList>
         <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
@@ -477,7 +479,7 @@ export default function OverseasPurchaseOrdersPage() {
           <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
         </div>
         <div className="toolbar-actions">
-          {selectedIds.size > 0 && (
+          {isAdmin && selectedIds.size > 0 && (
             <>
               <BulkEditDialog
                 selectedIds={Array.from(selectedIds)}
@@ -505,43 +507,49 @@ export default function OverseasPurchaseOrdersPage() {
               </Button>
             </>
           )}
-          <ExportButton
-            data={orders}
-            columns={{
-              "PO #": (r: any) => r.po_number,
-              "Order Date": (r: any) => r.order_date,
-              "Supplier": (r: any) => r.overseas_suppliers?.name || "",
-              "Status": (r: any) => r.status,
-              "Currency": (r: any) => r.currency,
-              "Exchange Rate": (r: any) => r.exchange_rate,
-              "Expected Delivery": (r: any) => r.expected_delivery || "",
-              "PO Total": (r: any) => r.total_amount,
-              "Notes": (r: any) => r.notes || "",
-            }}
-            childItems={{
-              table: "overseas_purchase_order_items",
-              foreignKey: "po_id",
-              select: "*, items(name, sku)",
-              columns: {
-                "Item Name": (li: any) => li.item_name || li.items?.name || "",
-                "SKU": (li: any) => li.items?.sku || "",
-                "Description": (li: any) => li.description || "",
-                "Quantity": (li: any) => Number(li.quantity || 0),
-                "Received": (li: any) => Number(li.received_quantity || 0),
-                "Received Date": (li: any) => li.received_date || "",
-                "Unit Cost": (li: any) => Number(li.unit_cost || 0),
-                "Line Total": (li: any) => Number(li.quantity || 0) * Number(li.unit_cost || 0),
-              },
-            }}
-            dateField={(r: any) => r.order_date || ""}
-            fileName="Overseas_POs"
-          />
-          <Button variant="outline" onClick={() => setBulkUploadOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
-          </Button>
-          <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
-          </Button>
+          {isAdmin && (
+            <ExportButton
+              data={orders}
+              columns={{
+                "PO #": (r: any) => r.po_number,
+                "Order Date": (r: any) => r.order_date,
+                "Supplier": (r: any) => r.overseas_suppliers?.name || "",
+                "Status": (r: any) => r.status,
+                "Currency": (r: any) => r.currency,
+                "Exchange Rate": (r: any) => r.exchange_rate,
+                "Expected Delivery": (r: any) => r.expected_delivery || "",
+                "PO Total": (r: any) => r.total_amount,
+                "Notes": (r: any) => r.notes || "",
+              }}
+              childItems={{
+                table: "overseas_purchase_order_items",
+                foreignKey: "po_id",
+                select: "*, items(name, sku)",
+                columns: {
+                  "Item Name": (li: any) => li.item_name || li.items?.name || "",
+                  "SKU": (li: any) => li.items?.sku || "",
+                  "Description": (li: any) => li.description || "",
+                  "Quantity": (li: any) => Number(li.quantity || 0),
+                  "Received": (li: any) => Number(li.received_quantity || 0),
+                  "Received Date": (li: any) => li.received_date || "",
+                  "Unit Cost": (li: any) => Number(li.unit_cost || 0),
+                  "Line Total": (li: any) => Number(li.quantity || 0) * Number(li.unit_cost || 0),
+                },
+              }}
+              dateField={(r: any) => r.order_date || ""}
+              fileName="Overseas_POs"
+            />
+          )}
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setBulkUploadOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
+            </Button>
+          )}
+          {isAdmin && (
+            <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
+            </Button>
+          )}
         </div>
       </div>
 
@@ -721,8 +729,8 @@ export default function OverseasPurchaseOrdersPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Supplier:</span> <span className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</span></div>
                 <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
-                <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>
-                <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>
+                {isAdmin && <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>}
+                {isAdmin && <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border bg-card p-4">
@@ -760,9 +768,9 @@ export default function OverseasPurchaseOrdersPage() {
                       <TableHead className="text-xs text-right">Received</TableHead>
                       <TableHead className="text-xs text-right">Remaining</TableHead>
                       <TableHead className="text-xs">Date Received</TableHead>
-                      <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>
-                      <TableHead className="text-xs text-right">Line Total</TableHead>
-                      <TableHead className="text-xs text-right">PHP Value</TableHead>
+                      {isAdmin && <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>}
+                      {isAdmin && <TableHead className="text-xs text-right">Line Total</TableHead>}
+                      {isAdmin && <TableHead className="text-xs text-right">PHP Value</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -781,11 +789,13 @@ export default function OverseasPurchaseOrdersPage() {
                           <TableCell className="text-sm text-right">{item.item_id ? receivedQty : "—"}</TableCell>
                           <TableCell className="text-sm text-right font-medium">{remainingQty}</TableCell>
                           <TableCell className="text-sm">{item.received_date ? new Date(item.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
-                          <TableCell className="text-sm text-right">{Number(item.unit_cost || 0).toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>
-                          <TableCell className="text-sm text-right font-medium">
-                            {viewPO.currency === "USD" ? "$" : "¥"}{lineTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
-                          </TableCell>
-                          <TableCell className="text-sm text-right">{peso(lineTotal * Number(viewPO.exchange_rate || 1))}</TableCell>
+                          {isAdmin && <TableCell className="text-sm text-right">{Number(item.unit_cost || 0).toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>}
+                          {isAdmin && (
+                            <TableCell className="text-sm text-right font-medium">
+                              {viewPO.currency === "USD" ? "$" : "¥"}{lineTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
+                            </TableCell>
+                          )}
+                          {isAdmin && <TableCell className="text-sm text-right">{peso(lineTotal * Number(viewPO.exchange_rate || 1))}</TableCell>}
                         </TableRow>
                       );
                     })}
@@ -793,16 +803,18 @@ export default function OverseasPurchaseOrdersPage() {
                 </Table>
               </div>
 
-              <div className="rounded-lg bg-muted/50 p-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Total ({viewPO.currency})</span>
-                  <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{viewPO.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+              {isAdmin && (
+                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span>Total ({viewPO.currency})</span>
+                    <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{viewPO.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Total (PHP)</span>
+                    <span className="font-semibold text-primary">{peso(viewPO.total_amount * viewPO.exchange_rate)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>Total (PHP)</span>
-                  <span className="font-semibold text-primary">{peso(viewPO.total_amount * viewPO.exchange_rate)}</span>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -891,27 +903,29 @@ export default function OverseasPurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
+      {isAdmin && (
+        <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
+          </div>
+          <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
         </div>
-        <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
-      </div>
+      )}
 
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>
+              {isAdmin && <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>}
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="eta" label="ETA" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Items</TableHead>
-              <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
+              {isAdmin && <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />}
+              {isAdmin && <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />}
+              {isAdmin && <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />}
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -932,7 +946,7 @@ export default function OverseasPurchaseOrdersPage() {
               const totalReceivedQty = poItems.reduce((s, i) => s + (i.received_quantity || 0), 0);
               return (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
-                <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
+                {isAdmin && <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>}
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
@@ -960,20 +974,26 @@ export default function OverseasPurchaseOrdersPage() {
                     </div>
                   )}
                 </TableCell>
-                <TableCell className="text-sm">
-                  <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
-                    {po.currency === "USD" ? "$ USD" : "¥ RMB"}
-                  </span>
-                </TableCell>
-                <TableCell className="text-sm text-right font-mono">
-                  {po.currency === "USD" ? "$" : "¥"}{po.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}
-                </TableCell>
-                <TableCell className="text-sm text-right font-mono text-primary">
-                  {peso(po.total_amount * po.exchange_rate)}
-                </TableCell>
+                {isAdmin && (
+                  <TableCell className="text-sm">
+                    <span className="inline-flex items-center rounded-md bg-accent px-2 py-0.5 text-xs font-medium">
+                      {po.currency === "USD" ? "$ USD" : "¥ RMB"}
+                    </span>
+                  </TableCell>
+                )}
+                {isAdmin && (
+                  <TableCell className="text-sm text-right font-mono">
+                    {po.currency === "USD" ? "$" : "¥"}{po.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}
+                  </TableCell>
+                )}
+                {isAdmin && (
+                  <TableCell className="text-sm text-right font-mono text-primary">
+                    {peso(po.total_amount * po.exchange_rate)}
+                  </TableCell>
+                )}
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
+                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>}
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {po.status !== "received" && (
                       <Button
@@ -986,8 +1006,8 @@ export default function OverseasPurchaseOrdersPage() {
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
+                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
                   </div>
                 </TableCell>
               </TableRow>
@@ -1067,12 +1087,14 @@ export default function OverseasPurchaseOrdersPage() {
               {filteredIncomingRows.reduce((sum, row) => sum + row.remaining_quantity, 0)}
             </p>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
-            <p className="mt-1 text-2xl font-semibold text-primary">
-              {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
-            </p>
-          </div>
+          {isAdmin && (
+            <div className="rounded-lg border bg-card p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
+              <p className="mt-1 text-2xl font-semibold text-primary">
+                {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="data-table-wrapper">
@@ -1086,8 +1108,8 @@ export default function OverseasPurchaseOrdersPage() {
                 <SortableHeader sortKey="ordered" label="Ordered" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
                 <SortableHeader sortKey="received" label="Received" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
                 <SortableHeader sortKey="remaining" label="Remaining" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
-                <SortableHeader sortKey="unit_cost" label="Unit Cost" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
-                <SortableHeader sortKey="php_value" label="PHP Value" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                {isAdmin && <SortableHeader sortKey="unit_cost" label="Unit Cost" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />}
+                {isAdmin && <SortableHeader sortKey="php_value" label="PHP Value" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />}
                 <SortableHeader sortKey="expected_delivery" label="ETA" sort={incomingSort} onToggle={toggleIncomingSort} />
               </TableRow>
             </TableHeader>
@@ -1115,10 +1137,12 @@ export default function OverseasPurchaseOrdersPage() {
                   <TableCell className="text-sm text-right">{row.ordered_quantity}</TableCell>
                   <TableCell className="text-sm text-right">{row.received_quantity}</TableCell>
                   <TableCell className="text-sm text-right font-medium">{row.remaining_quantity}</TableCell>
-                  <TableCell className="text-sm text-right font-mono">
-                    {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>
+                  {isAdmin && (
+                    <TableCell className="text-sm text-right font-mono">
+                      {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                  )}
+                  {isAdmin && <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>}
                   <TableCell className="text-sm">{row.expected_delivery ? new Date(row.expected_delivery).toLocaleDateString("en-US") : "—"}</TableCell>
                 </TableRow>
               ))}

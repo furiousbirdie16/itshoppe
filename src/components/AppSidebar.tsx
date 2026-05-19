@@ -20,7 +20,7 @@ const navItems = [
   { title: "Low Stock Alerts", url: "/low-stock-alerts", icon: AlertTriangle, adminOnly: false },
   { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: false },
   { title: "Overseas Suppliers", url: "/overseas-suppliers", icon: Globe, adminOnly: true },
-  { title: "Overseas PO", url: "/overseas-purchase-orders", icon: ShoppingCart, adminOnly: true },
+  { title: "Overseas PO", url: "/overseas-purchase-orders", icon: ShoppingCart },
   { title: "Customers", url: "/customers", icon: Users, adminOnly: false },
   { title: "Customer Pricing", url: "/customer-pricing", icon: Tag, adminOnly: false },
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },
