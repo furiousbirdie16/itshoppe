@@ -913,15 +913,15 @@ export default function OverseasPurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>
+              {isAdmin && <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>}
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="eta" label="ETA" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Items</TableHead>
-              <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />
+              {isAdmin && <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />}
+              {isAdmin && <SortableHeader sortKey="total_amount" label="Amount" sort={sort} onToggle={toggle} align="right" />}
+              {isAdmin && <SortableHeader sortKey="php_total" label="PHP Equiv." sort={sort} onToggle={toggle} align="right" />}
               <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
