@@ -470,7 +470,7 @@ export default function OverseasPurchaseOrdersPage() {
       <Tabs defaultValue="orders" className="space-y-6">
         <TabsList>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
-          <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>
+          {isAdmin && <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>}
         </TabsList>
         <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
