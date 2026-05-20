@@ -52,7 +52,7 @@ export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const money = (n: number) => (isAdmin ? peso(n) : "—");
-  const [preset, setPreset] = useState<RangePreset>("30d");
+  const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [source, setSource] = useState<SourceFilter>("all");
