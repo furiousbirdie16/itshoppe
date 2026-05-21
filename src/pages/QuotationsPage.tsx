@@ -496,7 +496,7 @@ export default function QuotationsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
-                <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
+                <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={handleCustomerChange} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
