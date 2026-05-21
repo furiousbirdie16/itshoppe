@@ -143,6 +143,9 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Analytics: charts (admin only) */}
+      {isAdmin && <DashboardAnalytics />}
+
       {/* Sales Summary */}
       {isAdmin && (
         <div>
