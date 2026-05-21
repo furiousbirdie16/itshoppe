@@ -678,10 +678,17 @@ export default function QuotationsPage() {
           <TableBody>
             {sortedQuotations.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
-            ) : sortedQuotations.map((q: any) => (
+            ) : sortedQuotations.map((q: any) => {
+              const locked = isQuotationLocked(q.status);
+              return (
               <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
+                <TableCell className="font-mono text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    {q.quotation_number}
+                    {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
+                  </span>
+                </TableCell>
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
@@ -690,16 +697,24 @@ export default function QuotationsPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {!locked && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    {locked && (
+                      <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                    )}
+                    {!locked && (
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>
