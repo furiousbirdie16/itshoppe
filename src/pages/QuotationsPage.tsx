@@ -347,27 +347,35 @@ export default function QuotationsPage() {
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
-              <BulkEditDialog
-                selectedIds={Array.from(selectedIds)}
-                entityLabel="quotations"
-                fields={[
-                  { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Draft" },
-                    { value: "sent", label: "Sent" },
-                    { value: "accepted", label: "Accepted" },
-                    { value: "rejected", label: "Rejected" },
-                  ]},
-                  { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
-                  { key: "valid_until", label: "Valid Until", type: "date" },
-                  { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
-                  { key: "notes", label: "Notes", type: "textarea" },
-                ] as BulkField[]}
-                updateOne={async (id, patch) => { await updateQuotation(id, patch as any); }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); }}
-              />
-              <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
-                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-              </Button>
+              {anySelectedLocked ? (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-600 px-2">
+                  <Lock className="h-3.5 w-3.5" /> Selection contains accepted quotations — bulk actions disabled
+                </span>
+              ) : (
+                <>
+                  <BulkEditDialog
+                    selectedIds={Array.from(selectedIds)}
+                    entityLabel="quotations"
+                    fields={[
+                      { key: "status", label: "Status", type: "select", options: [
+                        { value: "draft", label: "Draft" },
+                        { value: "sent", label: "Sent" },
+                        { value: "accepted", label: "Accepted" },
+                        { value: "rejected", label: "Rejected" },
+                      ]},
+                      { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
+                      { key: "valid_until", label: "Valid Until", type: "date" },
+                      { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
+                      { key: "notes", label: "Notes", type: "textarea" },
+                    ] as BulkField[]}
+                    updateOne={async (id, patch) => { await updateQuotation(id, patch as any); }}
+                    onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); }}
+                  />
+                  <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+                  </Button>
+                </>
+              )}
             </>
           )}
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
