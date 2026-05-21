@@ -180,6 +180,14 @@ export default function InvoicesPage() {
     setSelectedIds(next);
   };
 
+  // Any selected invoice locked? Disables bulk edit / delete to enforce locking rules.
+  const anySelectedLocked = useMemo(() => {
+    return Array.from(selectedIds).some((id) => {
+      const inv: any = invoices.find((i: any) => i.id === id);
+      return inv && isInvoiceLocked(inv.status);
+    });
+  }, [selectedIds, invoices]);
+
   const bulkDeleteMut = useMutation({
     mutationFn: async () => { for (const id of selectedIds) await deleteInvoice(id); },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} invoices`); },
