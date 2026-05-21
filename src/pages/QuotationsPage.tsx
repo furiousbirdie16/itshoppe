@@ -502,7 +502,7 @@ export default function QuotationsPage() {
                 <Label className="text-xs font-medium">Sales Agent</Label>
                 {!addingAgent ? (
                   <div className="flex gap-1.5">
-                    <Select value={form.sales_agent} onValueChange={v => setForm({ ...form, sales_agent: v })}>
+                    <Select value={form.sales_agent} onValueChange={v => { setForm({ ...form, sales_agent: v }); setAgentAutoFilled(false); }}>
                       <SelectTrigger className="h-9"><SelectValue placeholder="Select agent" /></SelectTrigger>
                       <SelectContent>
                         {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
