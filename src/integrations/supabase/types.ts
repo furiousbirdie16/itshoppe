@@ -1295,6 +1295,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_invoice_status_locked: { Args: { _status: string }; Returns: boolean }
+      is_quotation_status_locked: {
+        Args: { _status: string }
+        Returns: boolean
+      }
       record_item_cost_change: {
         Args: {
           _changed_by: string

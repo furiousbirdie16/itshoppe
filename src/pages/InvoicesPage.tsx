@@ -30,6 +30,8 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
+import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
+import { Lock } from "lucide-react";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number; variation_id: string | null; }
 
@@ -178,6 +180,14 @@ export default function InvoicesPage() {
     setSelectedIds(next);
   };
 
+  // Any selected invoice locked? Disables bulk edit / delete to enforce locking rules.
+  const anySelectedLocked = useMemo(() => {
+    return Array.from(selectedIds).some((id) => {
+      const inv: any = invoices.find((i: any) => i.id === id);
+      return inv && isInvoiceLocked(inv.status);
+    });
+  }, [selectedIds, invoices]);
+
   const bulkDeleteMut = useMutation({
     mutationFn: async () => { for (const id of selectedIds) await deleteInvoice(id); },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} invoices`); },
@@ -214,6 +224,10 @@ export default function InvoicesPage() {
   };
 
   const openEdit = async (inv: any) => {
+    if (isInvoiceLocked(inv.status)) {
+      toast.error(INVOICE_LOCK_MESSAGE);
+      return;
+    }
     const lineItems = await getInvoiceItems(inv.id);
     setForm({
       customer_id: inv.customer_id || "",
@@ -408,27 +422,35 @@ export default function InvoicesPage() {
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
-              <BulkEditDialog
-                selectedIds={Array.from(selectedIds)}
-                entityLabel="invoices"
-                fields={[
-                  { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Not Shipped" },
-                    { value: "confirmed", label: "Shipped" },
-                    { value: "paid", label: "Paid" },
-                    { value: "unpaid", label: "Unpaid" },
-                  ]},
-                  { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
-                  { key: "due_date", label: "Due Date", type: "date" },
-                  { key: "notes", label: "Notes", type: "textarea" },
-                ] as BulkField[]}
-                updateOne={async (id, patch) => { await updateInvoice(id, patch as any); }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); }}
-              />
-              {isAdmin && (
-                <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
-                  <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-                </Button>
+              {anySelectedLocked ? (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-600 px-2">
+                  <Lock className="h-3.5 w-3.5" /> Selection contains locked invoices — bulk actions disabled
+                </span>
+              ) : (
+                <>
+                  <BulkEditDialog
+                    selectedIds={Array.from(selectedIds)}
+                    entityLabel="invoices"
+                    fields={[
+                      { key: "status", label: "Status", type: "select", options: [
+                        { value: "draft", label: "Not Shipped" },
+                        { value: "confirmed", label: "Shipped" },
+                        { value: "paid", label: "Paid" },
+                        { value: "unpaid", label: "Unpaid" },
+                      ]},
+                      { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
+                      { key: "due_date", label: "Due Date", type: "date" },
+                      { key: "notes", label: "Notes", type: "textarea" },
+                    ] as BulkField[]}
+                    updateOne={async (id, patch) => { await updateInvoice(id, patch as any); }}
+                    onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); }}
+                  />
+                  {isAdmin && (
+                    <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                      <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+                    </Button>
+                  )}
+                </>
               )}
             </>
           )}
@@ -735,7 +757,13 @@ export default function InvoicesPage() {
             const inv: any = invoices.find((i: any) => i.id === viewInv);
             if (!inv) return null;
             return (
-              <div className="space-y-1 text-sm">
+              <div className="space-y-2 text-sm">
+                {isInvoiceLocked(inv.status) && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                    <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>{INVOICE_LOCK_MESSAGE}</span>
+                  </div>
+                )}
                 {inv.payment_method && (
                   <div className="text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
                 )}
@@ -788,10 +816,17 @@ export default function InvoicesPage() {
           <TableBody>
             {sortedInvoices.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
-            ) : sortedInvoices.map((inv: any) => (
+            ) : sortedInvoices.map((inv: any) => {
+              const locked = isInvoiceLocked(inv.status);
+              return (
               <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                <TableCell className="font-mono text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    {inv.invoice_number}
+                    {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
+                  </span>
+                </TableCell>
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{inv.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
@@ -800,7 +835,9 @@ export default function InvoicesPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(inv)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {!locked && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(inv)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
@@ -811,19 +848,20 @@ export default function InvoicesPage() {
                     {inv.status === "confirmed" && (
                       <>
                         <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
                     {(inv.status === "paid" || inv.status === "unpaid") && (
-                      <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
-                    {isAdmin && (
+                    {isAdmin && !locked && (
                       <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>

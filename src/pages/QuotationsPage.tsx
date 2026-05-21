@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent } from "@/lib/api";
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock } from "lucide-react";
+import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -196,6 +197,10 @@ export default function QuotationsPage() {
   };
 
   const openEdit = async (q: any) => {
+    if (isQuotationLocked(q.status)) {
+      toast.error(QUOTATION_LOCK_MESSAGE);
+      return;
+    }
     const lineItems = await getQuotationItems(q.id);
     setForm({
       customer_id: q.customer_id || "",
@@ -296,6 +301,22 @@ export default function QuotationsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const revertQuotationMut = useMutation({
+    mutationFn: revertQuotation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+      toast.success("Quotation reverted to draft");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const anySelectedLocked = useMemo(() => {
+    return Array.from(selectedIds).some((id) => {
+      const q: any = quotations.find((x: any) => x.id === id);
+      return q && isQuotationLocked(q.status);
+    });
+  }, [selectedIds, quotations]);
+
   const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
@@ -326,27 +347,35 @@ export default function QuotationsPage() {
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
-              <BulkEditDialog
-                selectedIds={Array.from(selectedIds)}
-                entityLabel="quotations"
-                fields={[
-                  { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Draft" },
-                    { value: "sent", label: "Sent" },
-                    { value: "accepted", label: "Accepted" },
-                    { value: "rejected", label: "Rejected" },
-                  ]},
-                  { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
-                  { key: "valid_until", label: "Valid Until", type: "date" },
-                  { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
-                  { key: "notes", label: "Notes", type: "textarea" },
-                ] as BulkField[]}
-                updateOne={async (id, patch) => { await updateQuotation(id, patch as any); }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); }}
-              />
-              <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
-                <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-              </Button>
+              {anySelectedLocked ? (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-600 px-2">
+                  <Lock className="h-3.5 w-3.5" /> Selection contains accepted quotations — bulk actions disabled
+                </span>
+              ) : (
+                <>
+                  <BulkEditDialog
+                    selectedIds={Array.from(selectedIds)}
+                    entityLabel="quotations"
+                    fields={[
+                      { key: "status", label: "Status", type: "select", options: [
+                        { value: "draft", label: "Draft" },
+                        { value: "sent", label: "Sent" },
+                        { value: "accepted", label: "Accepted" },
+                        { value: "rejected", label: "Rejected" },
+                      ]},
+                      { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
+                      { key: "valid_until", label: "Valid Until", type: "date" },
+                      { key: "payment_terms", label: "Payment Terms (days)", type: "number", transform: v => parseInt(v) || null },
+                      { key: "notes", label: "Notes", type: "textarea" },
+                    ] as BulkField[]}
+                    updateOne={async (id, patch) => { await updateQuotation(id, patch as any); }}
+                    onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); }}
+                  />
+                  <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMut.isPending}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+                  </Button>
+                </>
+              )}
             </>
           )}
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
@@ -601,6 +630,18 @@ export default function QuotationsPage() {
       <Dialog open={!!viewQ} onOpenChange={() => setViewQ(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Quotation Details</DialogTitle></DialogHeader>
+          {(() => {
+            const q: any = quotations.find((x: any) => x.id === viewQ);
+            if (q && isQuotationLocked(q.status)) {
+              return (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                  <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>{QUOTATION_LOCK_MESSAGE}</span>
+                </div>
+              );
+            }
+            return null;
+          })()}
           <div className="data-table-wrapper mt-2">
             <Table>
               <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
@@ -637,10 +678,17 @@ export default function QuotationsPage() {
           <TableBody>
             {sortedQuotations.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
-            ) : sortedQuotations.map((q: any) => (
+            ) : sortedQuotations.map((q: any) => {
+              const locked = isQuotationLocked(q.status);
+              return (
               <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{q.quotation_number}</TableCell>
+                <TableCell className="font-mono text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    {q.quotation_number}
+                    {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
+                  </span>
+                </TableCell>
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
@@ -649,16 +697,24 @@ export default function QuotationsPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {!locked && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
                       <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    {locked && (
+                      <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                    )}
+                    {!locked && (
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>
