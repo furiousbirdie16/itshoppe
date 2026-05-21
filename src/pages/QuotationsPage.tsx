@@ -197,6 +197,10 @@ export default function QuotationsPage() {
   };
 
   const openEdit = async (q: any) => {
+    if (isQuotationLocked(q.status)) {
+      toast.error(QUOTATION_LOCK_MESSAGE);
+      return;
+    }
     const lineItems = await getQuotationItems(q.id);
     setForm({
       customer_id: q.customer_id || "",
