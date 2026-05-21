@@ -33,3 +33,18 @@ export function usePermissions() {
       isAdmin || (item?.source ?? "local") === "local" ? peso(n) : "—",
   };
 }
+
+/** An invoice is locked once it is shipped, paid, or marked unpaid (shipped-not-paid). */
+export function isInvoiceLocked(status?: string | null): boolean {
+  return status === "confirmed" || status === "paid" || status === "unpaid";
+}
+
+/** A quotation is locked once accepted. */
+export function isQuotationLocked(status?: string | null): boolean {
+  return status === "accepted";
+}
+
+export const INVOICE_LOCK_MESSAGE =
+  "This invoice is locked because it has already been shipped or paid. Revert it to draft to enable editing.";
+export const QUOTATION_LOCK_MESSAGE =
+  "This quotation is locked because it has already been accepted. Revert it to enable editing.";
