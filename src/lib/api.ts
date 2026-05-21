@@ -467,6 +467,12 @@ export const updateQuotation = async (id: string, q: Partial<Quotation>) => {
   return data as Quotation;
 };
 
+export const revertQuotation = async (id: string) => {
+  const { error } = await from("quotations").update({ status: "draft" }).eq("id", id);
+  if (error) throw error;
+  await logActivity("reverted_quotation", "quotation", id);
+};
+
 export const deleteQuotation = async (id: string) => {
   const { error } = await from("quotations").delete().eq("id", id);
   if (error) throw error;
