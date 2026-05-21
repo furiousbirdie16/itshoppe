@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation } from "@/lib/api";
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,19 @@ export default function QuotationsPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
+  const [agentAutoFilled, setAgentAutoFilled] = useState(false);
+  const handleCustomerChange = async (v: string) => {
+    setForm((f) => ({ ...f, customer_id: v }));
+    setAgentAutoFilled(false);
+    if (!v || editId) return;
+    try {
+      const agent = await getLastSalesAgentForCustomer(v);
+      if (agent) {
+        setForm((f) => (f.sales_agent ? f : { ...f, sales_agent: agent }));
+        setAgentAutoFilled(true);
+      }
+    } catch {/* ignore */}
+  };
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -317,7 +330,7 @@ export default function QuotationsPage() {
     });
   }, [selectedIds, quotations]);
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -483,13 +496,13 @@ export default function QuotationsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
-                <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v })} />
+                <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={handleCustomerChange} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
                 {!addingAgent ? (
                   <div className="flex gap-1.5">
-                    <Select value={form.sales_agent} onValueChange={v => setForm({ ...form, sales_agent: v })}>
+                    <Select value={form.sales_agent} onValueChange={v => { setForm({ ...form, sales_agent: v }); setAgentAutoFilled(false); }}>
                       <SelectTrigger className="h-9"><SelectValue placeholder="Select agent" /></SelectTrigger>
                       <SelectContent>
                         {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
@@ -503,6 +516,9 @@ export default function QuotationsPage() {
                     <Button type="button" size="sm" className="h-9 px-3 text-xs" disabled={!newAgentName.trim() || addAgentMut.isPending} onClick={() => addAgentMut.mutate(newAgentName.trim())}>Save</Button>
                     <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setAddingAgent(false); setNewAgentName(""); }}>Cancel</Button>
                   </div>
+                )}
+                {agentAutoFilled && form.sales_agent && (
+                  <p className="text-[10px] text-muted-foreground">Auto-filled from customer's latest transaction</p>
                 )}
               </div>
             </div>
