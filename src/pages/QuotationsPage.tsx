@@ -517,6 +517,9 @@ export default function QuotationsPage() {
                     <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setAddingAgent(false); setNewAgentName(""); }}>Cancel</Button>
                   </div>
                 )}
+                {agentAutoFilled && form.sales_agent && (
+                  <p className="text-[10px] text-muted-foreground">Auto-filled from customer's latest transaction</p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
