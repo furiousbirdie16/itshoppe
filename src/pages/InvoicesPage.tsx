@@ -757,7 +757,13 @@ export default function InvoicesPage() {
             const inv: any = invoices.find((i: any) => i.id === viewInv);
             if (!inv) return null;
             return (
-              <div className="space-y-1 text-sm">
+              <div className="space-y-2 text-sm">
+                {isInvoiceLocked(inv.status) && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                    <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>{INVOICE_LOCK_MESSAGE}</span>
+                  </div>
+                )}
                 {inv.payment_method && (
                   <div className="text-muted-foreground">Payment Method: <span className="font-medium text-foreground">{inv.payment_method}</span></div>
                 )}
