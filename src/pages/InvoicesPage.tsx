@@ -816,10 +816,17 @@ export default function InvoicesPage() {
           <TableBody>
             {sortedInvoices.length === 0 ? (
               <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
-            ) : sortedInvoices.map((inv: any) => (
+            ) : sortedInvoices.map((inv: any) => {
+              const locked = isInvoiceLocked(inv.status);
+              return (
               <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                <TableCell className="font-mono text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    {inv.invoice_number}
+                    {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
+                  </span>
+                </TableCell>
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{inv.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
@@ -828,7 +835,9 @@ export default function InvoicesPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(inv)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {!locked && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(inv)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
@@ -839,13 +848,13 @@ export default function InvoicesPage() {
                     {inv.status === "confirmed" && (
                       <>
                         <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
                     {(inv.status === "paid" || inv.status === "unpaid") && (
-                      <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
-                    {isAdmin && (
+                    {isAdmin && !locked && (
                       <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
                   </div>
