@@ -1048,3 +1048,78 @@ export const createSalesAgent = async (name: string) => {
   if (error) throw error;
   return data;
 };
+
+/** Returns last sales agent + last order date for each given customer. */
+export const getCustomerSalesActivity = async (
+  customerIds: string[],
+): Promise<Record<string, { lastAgent: string | null; lastDate: string | null }>> => {
+  const out: Record<string, { lastAgent: string | null; lastDate: string | null }> = {};
+  if (!customerIds.length) return out;
+  const apply = (cid: string, agent: string | null, date: string | null) => {
+    const cur = out[cid];
+    if (!cur || (date && (!cur.lastDate || date > cur.lastDate))) {
+      out[cid] = { lastAgent: agent || cur?.lastAgent || null, lastDate: date || cur?.lastDate || null };
+    }
+  };
+  const { data: invs } = await from("invoices")
+    .select("customer_id, sales_agent, invoice_date")
+    .in("customer_id", customerIds)
+    .in("status", ["confirmed", "paid", "unpaid"])
+    .order("invoice_date", { ascending: false });
+  for (const r of (invs as any[]) || []) if (r.customer_id) apply(r.customer_id, r.sales_agent || null, r.invoice_date || null);
+  const { data: quotes } = await from("quotations")
+    .select("customer_id, sales_agent, quotation_date")
+    .in("customer_id", customerIds)
+    .order("quotation_date", { ascending: false });
+  for (const r of (quotes as any[]) || []) if (r.customer_id) apply(r.customer_id, r.sales_agent || null, r.quotation_date || null);
+  return out;
+};
+
+/** Returns the most-recently-used sales agent for a single customer. */
+export const getLastSalesAgentForCustomer = async (customerId: string): Promise<string | null> => {
+  if (!customerId) return null;
+  const map = await getCustomerSalesActivity([customerId]);
+  return map[customerId]?.lastAgent || null;
+};
+
+/** Aggregates accounts receivable (unpaid invoices + manual receivables). */
+export const getAccountsReceivable = async (): Promise<number> => {
+  const { data: invs } = await from("invoices")
+    .select("total_amount, status")
+    .in("status", ["confirmed", "unpaid"]);
+  const invTotal = ((invs as any[]) || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
+  const { data: mr } = await from("manual_receivables").select("amount, status").neq("status", "paid");
+  const mrTotal = ((mr as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  return invTotal + mrTotal;
+};
+
+/** Daily series of sales totals (online + invoice) between two ISO dates. */
+export const getSalesTrend = async (
+  fromIso: string,
+  toIso: string,
+): Promise<{ date: string; online: number; invoice: number; total: number }[]> => {
+  const { data: online } = await from("online_sales")
+    .select("order_date, posted_price, quantity")
+    .gte("order_date", fromIso)
+    .lte("order_date", toIso)
+    .eq("status", "completed");
+  const { data: invs } = await from("invoices")
+    .select("invoice_date, total_amount, status")
+    .gte("invoice_date", fromIso)
+    .lte("invoice_date", toIso)
+    .in("status", ["confirmed", "paid"]);
+  const map: Record<string, { online: number; invoice: number }> = {};
+  for (const r of (online as any[]) || []) {
+    const k = r.order_date;
+    if (!k) continue;
+    (map[k] ||= { online: 0, invoice: 0 }).online += Number(r.posted_price || 0) * (r.quantity || 1);
+  }
+  for (const r of (invs as any[]) || []) {
+    const k = r.invoice_date;
+    if (!k) continue;
+    (map[k] ||= { online: 0, invoice: 0 }).invoice += Number(r.total_amount || 0);
+  }
+  return Object.entries(map)
+    .map(([date, v]) => ({ date, online: v.online, invoice: v.invoice, total: v.online + v.invoice }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+};
