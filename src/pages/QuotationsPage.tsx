@@ -46,6 +46,19 @@ export default function QuotationsPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
+  const [agentAutoFilled, setAgentAutoFilled] = useState(false);
+  const handleCustomerChange = async (v: string) => {
+    setForm((f) => ({ ...f, customer_id: v }));
+    setAgentAutoFilled(false);
+    if (!v || editId) return;
+    try {
+      const agent = await getLastSalesAgentForCustomer(v);
+      if (agent) {
+        setForm((f) => (f.sales_agent ? f : { ...f, sales_agent: agent }));
+        setAgentAutoFilled(true);
+      }
+    } catch {/* ignore */}
+  };
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
