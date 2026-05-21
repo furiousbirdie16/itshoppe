@@ -216,6 +216,10 @@ export default function InvoicesPage() {
   };
 
   const openEdit = async (inv: any) => {
+    if (isInvoiceLocked(inv.status)) {
+      toast.error(INVOICE_LOCK_MESSAGE);
+      return;
+    }
     const lineItems = await getInvoiceItems(inv.id);
     setForm({
       customer_id: inv.customer_id || "",
