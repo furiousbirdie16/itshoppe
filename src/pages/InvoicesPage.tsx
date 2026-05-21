@@ -46,6 +46,19 @@ export default function InvoicesPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" });
+  const [agentAutoFilled, setAgentAutoFilled] = useState(false);
+  const handleCustomerChange = async (v: string) => {
+    setForm((f) => ({ ...f, customer_id: v }));
+    setAgentAutoFilled(false);
+    if (!v || editId) return;
+    try {
+      const agent = await getLastSalesAgentForCustomer(v);
+      if (agent) {
+        setForm((f) => (f.sales_agent ? f : { ...f, sales_agent: agent }));
+        setAgentAutoFilled(true);
+      }
+    } catch {/* ignore */}
+  };
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
