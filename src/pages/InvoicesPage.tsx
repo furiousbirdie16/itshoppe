@@ -30,6 +30,8 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
+import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
+import { Lock } from "lucide-react";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number; variation_id: string | null; }
 
