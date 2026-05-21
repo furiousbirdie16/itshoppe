@@ -301,6 +301,22 @@ export default function QuotationsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const revertQuotationMut = useMutation({
+    mutationFn: revertQuotation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+      toast.success("Quotation reverted to draft");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const anySelectedLocked = useMemo(() => {
+    return Array.from(selectedIds).some((id) => {
+      const q: any = quotations.find((x: any) => x.id === id);
+      return q && isQuotationLocked(q.status);
+    });
+  }, [selectedIds, quotations]);
+
   const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
