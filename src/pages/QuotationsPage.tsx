@@ -630,6 +630,18 @@ export default function QuotationsPage() {
       <Dialog open={!!viewQ} onOpenChange={() => setViewQ(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Quotation Details</DialogTitle></DialogHeader>
+          {(() => {
+            const q: any = quotations.find((x: any) => x.id === viewQ);
+            if (q && isQuotationLocked(q.status)) {
+              return (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                  <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>{QUOTATION_LOCK_MESSAGE}</span>
+                </div>
+              );
+            }
+            return null;
+          })()}
           <div className="data-table-wrapper mt-2">
             <Table>
               <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
