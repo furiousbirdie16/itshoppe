@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter } from "lucide-react";
+import { Plus, Trash2, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock } from "lucide-react";
+import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
