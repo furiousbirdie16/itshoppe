@@ -422,27 +422,35 @@ export default function InvoicesPage() {
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
-              <BulkEditDialog
-                selectedIds={Array.from(selectedIds)}
-                entityLabel="invoices"
-                fields={[
-                  { key: "status", label: "Status", type: "select", options: [
-                    { value: "draft", label: "Not Shipped" },
-                    { value: "confirmed", label: "Shipped" },
-                    { value: "paid", label: "Paid" },
-                    { value: "unpaid", label: "Unpaid" },
-                  ]},
-                  { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
-                  { key: "due_date", label: "Due Date", type: "date" },
-                  { key: "notes", label: "Notes", type: "textarea" },
-                ] as BulkField[]}
-                updateOne={async (id, patch) => { await updateInvoice(id, patch as any); }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); }}
-              />
-              {isAdmin && (
-                <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
-                  <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
-                </Button>
+              {anySelectedLocked ? (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-600 px-2">
+                  <Lock className="h-3.5 w-3.5" /> Selection contains locked invoices — bulk actions disabled
+                </span>
+              ) : (
+                <>
+                  <BulkEditDialog
+                    selectedIds={Array.from(selectedIds)}
+                    entityLabel="invoices"
+                    fields={[
+                      { key: "status", label: "Status", type: "select", options: [
+                        { value: "draft", label: "Not Shipped" },
+                        { value: "confirmed", label: "Shipped" },
+                        { value: "paid", label: "Paid" },
+                        { value: "unpaid", label: "Unpaid" },
+                      ]},
+                      { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
+                      { key: "due_date", label: "Due Date", type: "date" },
+                      { key: "notes", label: "Notes", type: "textarea" },
+                    ] as BulkField[]}
+                    updateOne={async (id, patch) => { await updateInvoice(id, patch as any); }}
+                    onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); }}
+                  />
+                  {isAdmin && (
+                    <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
+                      <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
+                    </Button>
+                  )}
+                </>
               )}
             </>
           )}
