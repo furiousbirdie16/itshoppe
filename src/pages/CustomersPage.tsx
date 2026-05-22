@@ -230,6 +230,25 @@ export default function CustomersPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["customers"] }); toast.success("Deleted"); },
   });
 
+  const followUpMut = useMutation({
+    mutationFn: async ({ customerId, notes }: { customerId: string; notes: string }) => {
+      await markFollowedUp(customerId, notes);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["follow_up_history"] });
+      setFollowDialog(null);
+      toast.success("Marked as followed up");
+    },
+    onError: (e: any) => toast.error(e.message || "Failed to record follow-up"),
+  });
+
+  const { data: historyEntries = [] } = useQuery({
+    queryKey: ["follow_up_history", historyDialog?.id],
+    queryFn: () => getFollowUpHistory(historyDialog!.id),
+    enabled: !!historyDialog,
+  });
+
   const openCreate = () => {
     setEditing(null);
     setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
