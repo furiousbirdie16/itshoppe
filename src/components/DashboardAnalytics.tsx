@@ -238,6 +238,7 @@ export function DashboardAnalytics() {
         </Card>
       </div>
 
+      <FollowUpOverview />
       <GeographicAnalytics fromIso={fromIso} toIso={toIso} />
     </div>
   );
