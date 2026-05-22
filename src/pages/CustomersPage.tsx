@@ -153,7 +153,8 @@ export default function CustomersPage() {
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
-      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address]
+      const cls = classificationMeta(customer.classification).label;
+      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address, cls]
         .some((value) => (value || "").toLowerCase().includes(q));
       if (!hit) return false;
     }
@@ -162,6 +163,13 @@ export default function CustomersPage() {
       if (b !== activityFilter) return false;
     }
     if (agentFilter !== "all" && customer._lastAgent !== agentFilter) return false;
+    if (classFilter !== "all" && (customer.classification || "retail") !== classFilter) return false;
+    if (followUpFilter !== "all") {
+      const s = getFollowUpInfo(customer.last_follow_up_at).status;
+      if (followUpFilter === "active" && s !== "active") return false;
+      if (followUpFilter === "needs" && s !== "needs") return false;
+      if (followUpFilter === "never" && s !== "never") return false;
+    }
     if (countryFilter !== "all" && customer.country !== countryFilter) return false;
     if (provinceFilter !== "all" && customer.province_state !== provinceFilter) return false;
     if (cityFilter !== "all" && customer.city_municipality !== cityFilter) return false;
