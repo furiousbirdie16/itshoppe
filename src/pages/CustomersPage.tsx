@@ -9,12 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Customer } from "@/types/database";
@@ -22,6 +21,8 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
+import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
+import { formatLocationChip } from "@/lib/locations";
 
 type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
@@ -34,15 +35,25 @@ function activityFromDays(days: number | null): { bucket: ActivityBucket; label:
   return { bucket: "dormant", label: "Dormant", variant: "destructive", className: "bg-destructive/15 text-destructive border-destructive/30" };
 }
 
+function csvCell(v: unknown): string {
+  const s = v === null || v === undefined ? "" : String(v);
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "", address: "" });
+  const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "" });
+  const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
+  const [provinceFilter, setProvinceFilter] = useState<string>("all");
+  const [cityFilter, setCityFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
 
@@ -51,14 +62,12 @@ export default function CustomersPage() {
 
   const { data: customers = [], isLoading } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
 
-  // Per-customer last sales agent + last order date (independent of filter)
   const { data: activityMap = {} } = useQuery({
     queryKey: ["customer_sales_activity", customers.map((c) => c.id).sort().join(",")],
     queryFn: () => getCustomerSalesActivity(customers.map((c) => c.id)),
     enabled: customers.length > 0,
   });
 
-  // Aggregate invoice stats per customer for selected date range
   const { data: customerStats = {} } = useQuery({
     queryKey: ["customer_invoice_stats", fromStr, toStr],
     queryFn: async () => {
@@ -103,18 +112,39 @@ export default function CustomersPage() {
 
   const agentOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const c of enriched) {
-      if (c._lastAgent) set.add(c._lastAgent);
-    }
-    return Array.from(set)
-      .sort()
-      .map((name) => ({ value: name, label: name }));
+    for (const c of enriched) if (c._lastAgent) set.add(c._lastAgent);
+    return Array.from(set).sort().map((name) => ({ value: name, label: name }));
   }, [enriched]);
+
+  const countryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of enriched) if (c.country) set.add(c.country);
+    return Array.from(set).sort().map((v) => ({ value: v, label: v }));
+  }, [enriched]);
+
+  const provinceOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of enriched) {
+      if (countryFilter !== "all" && c.country !== countryFilter) continue;
+      if (c.province_state) set.add(c.province_state);
+    }
+    return Array.from(set).sort().map((v) => ({ value: v, label: v }));
+  }, [enriched, countryFilter]);
+
+  const cityOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of enriched) {
+      if (countryFilter !== "all" && c.country !== countryFilter) continue;
+      if (provinceFilter !== "all" && c.province_state !== provinceFilter) continue;
+      if (c.city_municipality) set.add(c.city_municipality);
+    }
+    return Array.from(set).sort().map((v) => ({ value: v, label: v }));
+  }, [enriched, countryFilter, provinceFilter]);
 
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
-      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent]
+      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address]
         .some((value) => (value || "").toLowerCase().includes(q));
       if (!hit) return false;
     }
@@ -122,9 +152,10 @@ export default function CustomersPage() {
       const b = activityFromDays(customer._daysSince).bucket;
       if (b !== activityFilter) return false;
     }
-    if (agentFilter !== "all") {
-      if (customer._lastAgent !== agentFilter) return false;
-    }
+    if (agentFilter !== "all" && customer._lastAgent !== agentFilter) return false;
+    if (countryFilter !== "all" && customer.country !== countryFilter) return false;
+    if (provinceFilter !== "all" && customer.province_state !== provinceFilter) return false;
+    if (cityFilter !== "all" && customer.city_municipality !== cityFilter) return false;
     return true;
   });
 
@@ -140,9 +171,7 @@ export default function CustomersPage() {
   };
 
   const bulkDeleteMut = useMutation({
-    mutationFn: async () => {
-      for (const id of selectedIds) await deleteCustomer(id);
-    },
+    mutationFn: async () => { for (const id of selectedIds) await deleteCustomer(id); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setSelectedIds(new Set());
@@ -159,55 +188,83 @@ export default function CustomersPage() {
     _lastDate: (r) => r._lastDate || "",
     _orders: (r) => r._orders,
     _total: (r) => r._total,
+    city_municipality: (r) => r.city_municipality || "",
   });
 
   const createMut = useMutation({
     mutationFn: (data: Partial<Customer>) => createCustomer(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      setOpen(false);
-      toast.success("Customer created");
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["customers"] }); setOpen(false); toast.success("Customer created"); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Customer> }) => updateCustomer(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      setOpen(false);
-      setEditing(null);
-      toast.success("Updated");
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["customers"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteCustomer,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      toast.success("Deleted");
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["customers"] }); toast.success("Deleted"); },
   });
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "", address: "" });
+    setForm({ name: "", contact_person: "", email: "", phone: "" });
+    setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, address: c.address });
+    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone });
+    setAddress({
+      country: c.country || "Philippines",
+      province_state: c.province_state || "",
+      city_municipality: c.city_municipality || "",
+      district_area: c.district_area || "",
+      barangay_village: c.barangay_village || "",
+      full_address: c.full_address || c.address || "",
+      postal_code: c.postal_code || "",
+    });
     setOpen(true);
   };
 
   const handleSubmit = () => {
-    if (editing) updateMut.mutate({ id: editing.id, data: form });
-    else createMut.mutate(form);
+    const composedLegacy = [address.full_address, address.barangay_village, address.district_area, address.city_municipality, address.province_state, address.country, address.postal_code]
+      .filter(Boolean).join(", ");
+    const payload: Partial<Customer> = {
+      ...form,
+      country: address.country || null,
+      province_state: address.province_state || null,
+      city_municipality: address.city_municipality || null,
+      district_area: address.district_area || null,
+      barangay_village: address.barangay_village || null,
+      full_address: address.full_address || null,
+      postal_code: address.postal_code || null,
+      address: composedLegacy,
+    };
+    if (editing) updateMut.mutate({ id: editing.id, data: payload });
+    else createMut.mutate(payload);
   };
 
-  const presetRange = (days: number) => {
-    setDateTo(new Date());
-    setDateFrom(subDays(new Date(), days));
+  const presetRange = (days: number) => { setDateTo(new Date()); setDateFrom(subDays(new Date(), days)); };
+
+  const exportLocations = () => {
+    const headers = ["Name","Contact","Email","Phone","Country","Province/State","City/Municipality","District","Barangay","Full Address","Postal Code"];
+    const rows = sortedCustomers.map((c) => [
+      c.name, c.contact_person, c.email, c.phone,
+      c.country || "", c.province_state || "", c.city_municipality || "",
+      c.district_area || "", c.barangay_village || "",
+      c.full_address || c.address || "", c.postal_code || "",
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `customer-locations-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} customers`);
   };
 
   return (
@@ -230,21 +287,21 @@ export default function CustomersPage() {
                   { key: "contact_person", label: "Contact Person", type: "text" },
                   { key: "email", label: "Email", type: "text" },
                   { key: "phone", label: "Phone", type: "text" },
-                  { key: "address", label: "Address", type: "textarea" },
+                  { key: "country", label: "Country", type: "text" },
+                  { key: "province_state", label: "Province / State", type: "text" },
+                  { key: "city_municipality", label: "City", type: "text" },
                 ] as BulkField[]}
-                updateOne={async (id, patch) => {
-                  await updateCustomer(id, patch as Partial<Customer>);
-                }}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ["customers"] });
-                  setSelectedIds(new Set());
-                }}
+                updateOne={async (id, patch) => { await updateCustomer(id, patch as Partial<Customer>); }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["customers"] }); setSelectedIds(new Set()); }}
               />
               <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
                 <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
               </Button>
             </>
           )}
+          <Button variant="outline" size="sm" className="h-9" onClick={exportLocations}>
+            <Download className="h-4 w-4 mr-1.5" /> Export Locations
+          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Customer
           </Button>
@@ -257,7 +314,6 @@ export default function CustomersPage() {
           <Input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
 
-        {/* Activity bucket filter */}
         <div className="flex items-center gap-1 rounded-lg border bg-card p-1 flex-wrap">
           {([
             { v: "all", l: "All" },
@@ -273,18 +329,11 @@ export default function CustomersPage() {
           ))}
         </div>
 
-        {/* Sales agent filter */}
-        <FilterCombobox
-          value={agentFilter}
-          onChange={setAgentFilter}
-          options={agentOptions}
-          allLabel="All agents"
-          placeholder="Search agent..."
-          className="h-8 text-xs w-[180px]"
-          emptyText="No agents"
-        />
+        <FilterCombobox value={agentFilter} onChange={setAgentFilter} options={agentOptions} allLabel="All agents" placeholder="Search agent..." className="h-8 text-xs w-[170px]" emptyText="No agents" />
+        <FilterCombobox value={countryFilter} onChange={(v) => { setCountryFilter(v); setProvinceFilter("all"); setCityFilter("all"); }} options={countryOptions} allLabel="All countries" placeholder="Search country..." className="h-8 text-xs w-[160px]" emptyText="No countries" />
+        <FilterCombobox value={provinceFilter} onChange={(v) => { setProvinceFilter(v); setCityFilter("all"); }} options={provinceOptions} allLabel="All provinces" placeholder="Search province..." className="h-8 text-xs w-[170px]" emptyText="No provinces" />
+        <FilterCombobox value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="All cities" placeholder="Search city..." className="h-8 text-xs w-[160px]" emptyText="No cities" />
 
-        {/* Custom date range */}
         <div className="flex items-center gap-1">
           <Popover>
             <PopoverTrigger asChild>
@@ -324,7 +373,7 @@ export default function CustomersPage() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg">{editing ? "Edit Customer" : "New Customer"}</DialogTitle>
           </DialogHeader>
@@ -333,7 +382,7 @@ export default function CustomersPage() {
               <Label className="text-xs font-medium">Name</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-9" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Contact Person</Label>
                 <Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
@@ -347,10 +396,9 @@ export default function CustomersPage() {
               <Label className="text-xs font-medium">Email</Label>
               <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Address</Label>
-              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="resize-none" rows={2} />
-            </div>
+
+            <AddressSelector value={address} onChange={setAddress} />
+
             <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">
               {editing ? "Update" : "Create Customer"}
             </Button>
@@ -369,6 +417,7 @@ export default function CustomersPage() {
               <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="city_municipality" label="Location" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Activity</TableHead>
@@ -380,7 +429,7 @@ export default function CustomersPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={11} className="h-32 text-center">
+                <TableCell colSpan={12} className="h-32 text-center">
                   <div className="flex justify-center">
                     <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
@@ -388,7 +437,7 @@ export default function CustomersPage() {
               </TableRow>
             ) : sortedCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11}>
+                <TableCell colSpan={12}>
                   <div className="empty-state">
                     <Users className="empty-state-icon" />
                     <p className="text-sm">No customers match</p>
@@ -398,6 +447,7 @@ export default function CustomersPage() {
             ) : (
               sortedCustomers.map((c) => {
                 const activity = activityFromDays(c._daysSince);
+                const locChip = formatLocationChip(c);
                 return (
                   <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                     <TableCell>
@@ -407,6 +457,16 @@ export default function CustomersPage() {
                     <TableCell className="text-sm text-muted-foreground">{c.contact_person}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.email}</TableCell>
                     <TableCell className="text-sm">{c.phone}</TableCell>
+                    <TableCell className="text-sm">
+                      {locChip ? (
+                        <Badge variant="outline" className="text-[10px] font-medium gap-1 max-w-[180px]">
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{locChip}</span>
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm">{c._lastAgent || "—"}</TableCell>
                     <TableCell className="text-sm">
                       {c._lastDate ? (

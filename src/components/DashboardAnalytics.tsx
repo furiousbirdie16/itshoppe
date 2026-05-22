@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarIcon, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
-import { getSalesTrend, getAccountsReceivable, getDashboardStats } from "@/lib/api";
+import { getSalesTrend, getAccountsReceivable, getDashboardStats, getCustomers } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend, Bar, BarChart } from "recharts";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
@@ -236,6 +237,124 @@ export function DashboardAnalytics() {
           </CardContent>
         </Card>
       </div>
+
+      <GeographicAnalytics fromIso={fromIso} toIso={toIso} />
+    </div>
+  );
+}
+
+function GeographicAnalytics({ fromIso, toIso }: { fromIso: string; toIso: string }) {
+  const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+
+  const { data: invoiceSales = [] } = useQuery({
+    queryKey: ["geo_sales", fromIso, toIso],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("invoices")
+        .select("customer_id, total_amount")
+        .in("status", ["confirmed", "paid"])
+        .gte("invoice_date", fromIso)
+        .lte("invoice_date", toIso);
+      return (data || []) as { customer_id: string | null; total_amount: number }[];
+    },
+  });
+
+  const { byProvince, byCity, salesByCity } = useMemo(() => {
+    const prov: Record<string, number> = {};
+    const city: Record<string, number> = {};
+    const custToCity: Record<string, string> = {};
+    for (const c of customers as any[]) {
+      if (c.province_state) prov[c.province_state] = (prov[c.province_state] || 0) + 1;
+      if (c.city_municipality) {
+        city[c.city_municipality] = (city[c.city_municipality] || 0) + 1;
+        custToCity[c.id] = c.city_municipality;
+      }
+    }
+    const sales: Record<string, number> = {};
+    for (const inv of invoiceSales) {
+      if (!inv.customer_id) continue;
+      const k = custToCity[inv.customer_id];
+      if (!k) continue;
+      sales[k] = (sales[k] || 0) + Number(inv.total_amount || 0);
+    }
+    const top = (m: Record<string, number>, n: number) =>
+      Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, value]) => ({ name, value }));
+    return {
+      byProvince: top(prov, 10),
+      byCity: top(city, 10),
+      salesByCity: top(sales, 10),
+    };
+  }, [customers, invoiceSales]);
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Customers per Province</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">Top 10</p>
+        </CardHeader>
+        <CardContent>
+          {byProvince.length === 0 ? (
+            <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">No location data</div>
+          ) : (
+            <ChartContainer config={{ value: { label: "Customers", color: "hsl(var(--primary))" } }} className="h-[200px] w-full">
+              <BarChart data={byProvince} layout="vertical" margin={{ left: 4, right: 8 }}>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} width={100} tick={{ fontSize: 11 }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ChartContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Customers per City</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">Top 10</p>
+        </CardHeader>
+        <CardContent>
+          {byCity.length === 0 ? (
+            <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">No location data</div>
+          ) : (
+            <ChartContainer config={{ value: { label: "Customers", color: "hsl(var(--accent))" } }} className="h-[200px] w-full">
+              <BarChart data={byCity} layout="vertical" margin={{ left: 4, right: 8 }}>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} width={100} tick={{ fontSize: 11 }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="value" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ChartContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Top Sales by City</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">{fromIso} → {toIso}</p>
+        </CardHeader>
+        <CardContent>
+          {salesByCity.length === 0 ? (
+            <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">No sales in range</div>
+          ) : (
+            <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+              {salesByCity.map((row, i) => (
+                <div key={row.name} className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="inline-flex items-center justify-center h-5 w-5 rounded bg-muted text-[10px] font-medium shrink-0">{i + 1}</span>
+                    <span className="truncate">{row.name}</span>
+                  </span>
+                  <span className="font-semibold tabular-nums">{peso(row.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
