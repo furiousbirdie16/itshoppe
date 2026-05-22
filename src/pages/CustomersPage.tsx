@@ -689,7 +689,6 @@ export default function CustomersPage() {
           })
         )}
       </div>
-      </div>
 
       {/* Mark as followed up */}
       <Dialog open={!!followDialog} onOpenChange={(o) => !o && setFollowDialog(null)}>
