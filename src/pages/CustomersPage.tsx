@@ -13,7 +13,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Customer } from "@/types/database";
@@ -23,6 +25,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { formatLocationChip } from "@/lib/locations";
+import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 
 type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
@@ -45,17 +48,23 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "" });
+  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; classification: ClassificationValue }>({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [classFilter, setClassFilter] = useState<"all" | ClassificationValue>("all");
+  const [followUpFilter, setFollowUpFilter] = useState<"all" | "active" | "needs" | "never">("all");
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [provinceFilter, setProvinceFilter] = useState<string>("all");
   const [cityFilter, setCityFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+
+  // Follow-up dialog state
+  const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
+  const [historyDialog, setHistoryDialog] = useState<Customer | null>(null);
 
   const fromStr = dateFrom ? format(startOfDay(dateFrom), "yyyy-MM-dd") : null;
   const toStr = dateTo ? format(endOfDay(dateTo), "yyyy-MM-dd") : null;
@@ -144,7 +153,8 @@ export default function CustomersPage() {
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
-      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address]
+      const cls = classificationMeta(customer.classification).label;
+      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address, cls]
         .some((value) => (value || "").toLowerCase().includes(q));
       if (!hit) return false;
     }
@@ -153,6 +163,13 @@ export default function CustomersPage() {
       if (b !== activityFilter) return false;
     }
     if (agentFilter !== "all" && customer._lastAgent !== agentFilter) return false;
+    if (classFilter !== "all" && (customer.classification || "retail") !== classFilter) return false;
+    if (followUpFilter !== "all") {
+      const s = getFollowUpInfo(customer.last_follow_up_at).status;
+      if (followUpFilter === "active" && s !== "active") return false;
+      if (followUpFilter === "needs" && s !== "needs") return false;
+      if (followUpFilter === "never" && s !== "never") return false;
+    }
     if (countryFilter !== "all" && customer.country !== countryFilter) return false;
     if (provinceFilter !== "all" && customer.province_state !== provinceFilter) return false;
     if (cityFilter !== "all" && customer.city_municipality !== cityFilter) return false;
@@ -189,6 +206,12 @@ export default function CustomersPage() {
     _orders: (r) => r._orders,
     _total: (r) => r._total,
     city_municipality: (r) => r.city_municipality || "",
+    classification: (r) => r.classification || "retail",
+    last_follow_up_at: (r) => r.last_follow_up_at || "",
+    days_since_follow_up: (r) => {
+      const i = getFollowUpInfo(r.last_follow_up_at);
+      return i.days ?? Number.MAX_SAFE_INTEGER;
+    },
   });
 
   const createMut = useMutation({
@@ -207,15 +230,34 @@ export default function CustomersPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["customers"] }); toast.success("Deleted"); },
   });
 
+  const followUpMut = useMutation({
+    mutationFn: async ({ customerId, notes }: { customerId: string; notes: string }) => {
+      await markFollowedUp(customerId, notes);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["follow_up_history"] });
+      setFollowDialog(null);
+      toast.success("Marked as followed up");
+    },
+    onError: (e: any) => toast.error(e.message || "Failed to record follow-up"),
+  });
+
+  const { data: historyEntries = [] } = useQuery({
+    queryKey: ["follow_up_history", historyDialog?.id],
+    queryFn: () => getFollowUpHistory(historyDialog!.id),
+    enabled: !!historyDialog,
+  });
+
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "" });
+    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
     setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone });
+    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, classification: (c.classification as ClassificationValue) || "retail" });
     setAddress({
       country: c.country || "Philippines",
       province_state: c.province_state || "",
@@ -330,6 +372,27 @@ export default function CustomersPage() {
         </div>
 
         <FilterCombobox value={agentFilter} onChange={setAgentFilter} options={agentOptions} allLabel="All agents" placeholder="Search agent..." className="h-8 text-xs w-[170px]" emptyText="No agents" />
+
+        <Select value={classFilter} onValueChange={(v) => setClassFilter(v as typeof classFilter)}>
+          <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue placeholder="Classification" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            {CLASSIFICATIONS.map((c) => (
+              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={followUpFilter} onValueChange={(v) => setFollowUpFilter(v as typeof followUpFilter)}>
+          <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All follow-ups</SelectItem>
+            <SelectItem value="active">Active (≤14d)</SelectItem>
+            <SelectItem value="needs">Needs follow up</SelectItem>
+            <SelectItem value="never">Never followed up</SelectItem>
+          </SelectContent>
+        </Select>
+
         <FilterCombobox value={countryFilter} onChange={(v) => { setCountryFilter(v); setProvinceFilter("all"); setCityFilter("all"); }} options={countryOptions} allLabel="All countries" placeholder="Search country..." className="h-8 text-xs w-[160px]" emptyText="No countries" />
         <FilterCombobox value={provinceFilter} onChange={(v) => { setProvinceFilter(v); setCityFilter("all"); }} options={provinceOptions} allLabel="All provinces" placeholder="Search province..." className="h-8 text-xs w-[170px]" emptyText="No provinces" />
         <FilterCombobox value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="All cities" placeholder="Search city..." className="h-8 text-xs w-[160px]" emptyText="No cities" />
@@ -392,9 +455,27 @@ export default function CustomersPage() {
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="h-9" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Email</Label>
-              <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Email</Label>
+                <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Classification</Label>
+                <Select value={form.classification} onValueChange={(v) => setForm({ ...form, classification: v as ClassificationValue })}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CLASSIFICATIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{c.label}</span>
+                          <span className="text-[10px] text-muted-foreground">{c.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <AddressSelector value={address} onChange={setAddress} />
@@ -414,6 +495,7 @@ export default function CustomersPage() {
                 <Checkbox checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))} onCheckedChange={toggleAll} />
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />
@@ -421,15 +503,16 @@ export default function CustomersPage() {
               <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Activity</TableHead>
+              <SortableHeader sortKey="last_follow_up_at" label="Last Follow-up" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_orders" label="# Orders" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="_total" label="Total ₱" sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-24">Actions</TableHead>
+              <TableHead className="text-xs text-right w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={12} className="h-32 text-center">
+                <TableCell colSpan={13} className="h-32 text-center">
                   <div className="flex justify-center">
                     <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
@@ -437,7 +520,7 @@ export default function CustomersPage() {
               </TableRow>
             ) : sortedCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12}>
+                <TableCell colSpan={13}>
                   <div className="empty-state">
                     <Users className="empty-state-icon" />
                     <p className="text-sm">No customers match</p>
@@ -448,12 +531,22 @@ export default function CustomersPage() {
               sortedCustomers.map((c) => {
                 const activity = activityFromDays(c._daysSince);
                 const locChip = formatLocationChip(c);
+                const cls = classificationMeta(c.classification);
+                const fu = getFollowUpInfo(c.last_follow_up_at);
                 return (
                   <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                     <TableCell>
                       <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
                     </TableCell>
-                    <TableCell className="font-medium text-sm">{c.name}</TableCell>
+                    <TableCell className="font-medium text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} title={fu.label} />
+                        {c.name}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.contact_person}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.email}</TableCell>
                     <TableCell className="text-sm">{c.phone}</TableCell>
@@ -483,10 +576,24 @@ export default function CustomersPage() {
                         {activity.label}
                       </Badge>
                     </TableCell>
+                    <TableCell className="text-sm">
+                      <div className="flex flex-col gap-0.5">
+                        <Badge variant="outline" className={cn("text-[10px] font-medium w-fit", fu.className)}>{fu.label}</Badge>
+                        {c.last_follow_up_at && (
+                          <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm text-right font-medium">{c._orders || "—"}</TableCell>
                     <TableCell className="text-sm text-right font-semibold">{c._total ? peso(c._total) : "—"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-0.5">
+                        <Button variant="ghost" size="icon" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-7 w-7 rounded-md" title="Mark as followed up">
+                          <BellRing className="h-3.5 w-3.5 text-primary" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setHistoryDialog(c)} className="h-7 w-7 rounded-md" title="Follow-up history">
+                          <History className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => openEdit(c)} className="h-7 w-7 rounded-md">
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
@@ -502,6 +609,72 @@ export default function CustomersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Mark as followed up */}
+      <Dialog open={!!followDialog} onOpenChange={(o) => !o && setFollowDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Mark as Followed Up</DialogTitle>
+          </DialogHeader>
+          {followDialog && (
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Recording a follow-up for <span className="font-medium text-foreground">{followDialog.customer.name}</span> at{" "}
+                <span className="font-medium text-foreground">{format(new Date(), "MMM d, yyyy HH:mm")}</span>.
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Notes (optional)</Label>
+                <Textarea
+                  rows={3}
+                  value={followDialog.notes}
+                  onChange={(e) => setFollowDialog({ ...followDialog, notes: e.target.value })}
+                  placeholder="What did you discuss? Next steps?"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setFollowDialog(null)}>Cancel</Button>
+                <Button
+                  onClick={() => followUpMut.mutate({ customerId: followDialog.customer.id, notes: followDialog.notes })}
+                  disabled={followUpMut.isPending}
+                >
+                  <BellRing className="h-4 w-4 mr-1.5" />
+                  Record Follow-up
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* History */}
+      <Dialog open={!!historyDialog} onOpenChange={(o) => !o && setHistoryDialog(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Follow-up History · {historyDialog?.name}</DialogTitle>
+          </DialogHeader>
+          {historyEntries.length === 0 ? (
+            <div className="empty-state py-8">
+              <History className="empty-state-icon" />
+              <p className="text-sm">No follow-ups recorded yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2 pt-2">
+              {historyEntries.map((e) => (
+                <div key={e.id} className="flex items-start gap-3 rounded-lg border bg-card p-3">
+                  <BellRing className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{format(new Date(e.followed_up_at), "MMM d, yyyy HH:mm")}</span>
+                      <span className="text-xs text-muted-foreground">{e.user_email || e.sales_agent || "—"}</span>
+                    </div>
+                    {e.notes && <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{e.notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

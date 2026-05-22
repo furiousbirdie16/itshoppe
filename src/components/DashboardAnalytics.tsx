@@ -12,6 +12,10 @@ import { getSalesTrend, getAccountsReceivable, getDashboardStats, getCustomers }
 import { supabase } from "@/integrations/supabase/client";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend, Bar, BarChart } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import { getFollowUpInfo, classificationMeta } from "@/lib/followUps";
+import { Link } from "react-router-dom";
+import { BellRing } from "lucide-react";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
@@ -238,6 +242,7 @@ export function DashboardAnalytics() {
         </Card>
       </div>
 
+      <FollowUpOverview />
       <GeographicAnalytics fromIso={fromIso} toIso={toIso} />
     </div>
   );
@@ -349,6 +354,96 @@ function GeographicAnalytics({ fromIso, toIso }: { fromIso: string; toIso: strin
                     <span className="truncate">{row.name}</span>
                   </span>
                   <span className="font-semibold tabular-nums">{peso(row.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function FollowUpOverview() {
+  const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+
+  const stats = useMemo(() => {
+    let active = 0, needs = 0, never = 0;
+    const byClass: Record<string, number> = { retail: 0, wholesale: 0, recurring: 0 };
+    for (const c of customers) {
+      const s = getFollowUpInfo(c.last_follow_up_at).status;
+      if (s === "active") active++; else if (s === "needs") needs++; else never++;
+      const cls = (c.classification || "retail") as keyof typeof byClass;
+      if (byClass[cls] !== undefined) byClass[cls]++;
+    }
+    const overdue = [...customers]
+      .map((c) => ({ c, info: getFollowUpInfo(c.last_follow_up_at) }))
+      .filter((r) => r.info.status !== "active")
+      .sort((a, b) => (b.info.days ?? 9999) - (a.info.days ?? 9999))
+      .slice(0, 8);
+    return { active, needs, never, byClass, overdue };
+  }, [customers]);
+
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <Card className="md:col-span-1">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Customer Follow-ups</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-md border bg-success/5 p-2">
+              <div className="text-xl font-semibold text-success">{stats.active}</div>
+              <div className="text-[10px] text-muted-foreground">Active</div>
+            </div>
+            <div className="rounded-md border bg-warning/5 p-2">
+              <div className="text-xl font-semibold text-warning">{stats.needs}</div>
+              <div className="text-[10px] text-muted-foreground">Needs FU</div>
+            </div>
+            <div className="rounded-md border bg-destructive/5 p-2">
+              <div className="text-xl font-semibold text-destructive">{stats.never}</div>
+              <div className="text-[10px] text-muted-foreground">Never</div>
+            </div>
+          </div>
+          <div className="space-y-1.5 pt-1">
+            {(["retail", "wholesale", "recurring"] as const).map((k) => {
+              const meta = classificationMeta(k);
+              return (
+                <div key={k} className="flex items-center justify-between text-xs">
+                  <Badge variant="outline" className={cn("text-[10px] font-medium", meta.className)}>{meta.label}</Badge>
+                  <span className="font-medium tabular-nums">{stats.byClass[k]}</span>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Customers needing follow-up</CardTitle>
+          <Link to="/customers" className="text-xs text-primary hover:underline">View all</Link>
+        </CardHeader>
+        <CardContent>
+          {stats.overdue.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">All customers are up to date.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {stats.overdue.map(({ c, info }) => (
+                <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", info.dotClass)} />
+                    <span className="text-sm font-medium truncate">{c.name}</span>
+                    <Badge variant="outline" className={cn("text-[10px] font-medium", classificationMeta(c.classification).className)}>
+                      {classificationMeta(c.classification).label}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="outline" className={cn("text-[10px] font-medium", info.className)}>{info.label}</Badge>
+                    <Link to="/customers">
+                      <Button variant="ghost" size="icon" className="h-6 w-6"><BellRing className="h-3.5 w-3.5 text-primary" /></Button>
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>
