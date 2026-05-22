@@ -50,6 +50,15 @@ export interface Customer {
   email: string;
   phone: string;
   address: string;
+  country?: string | null;
+  province_state?: string | null;
+  city_municipality?: string | null;
+  district_area?: string | null;
+  barangay_village?: string | null;
+  full_address?: string | null;
+  postal_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at: string;
 }
 
