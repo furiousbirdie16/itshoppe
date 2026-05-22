@@ -273,6 +273,17 @@ export default function CustomersPage() {
           ))}
         </div>
 
+        {/* Sales agent filter */}
+        <FilterCombobox
+          value={agentFilter}
+          onChange={setAgentFilter}
+          options={agentOptions}
+          allLabel="All agents"
+          placeholder="Search agent..."
+          className="h-8 text-xs w-[180px]"
+          emptyText="No agents"
+        />
+
         {/* Custom date range */}
         <div className="flex items-center gap-1">
           <Popover>
