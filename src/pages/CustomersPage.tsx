@@ -26,6 +26,22 @@ import { FilterCombobox } from "@/components/FilterCombobox";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { formatLocationChip } from "@/lib/locations";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
+import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
+
+const CUSTOMER_COLUMNS: ColumnDef[] = [
+  { key: "name", label: "Customer Name", required: true },
+  { key: "type", label: "Type", defaultVisible: true },
+  { key: "location", label: "Location", defaultVisible: true },
+  { key: "agent", label: "Sales Agent", defaultVisible: true },
+  { key: "lastOrder", label: "Last Order", defaultVisible: true },
+  { key: "activity", label: "Activity", defaultVisible: true },
+  { key: "followUp", label: "Last Follow-up", defaultVisible: true },
+  { key: "orders", label: "# Orders", defaultVisible: false },
+  { key: "total", label: "Total ₱", defaultVisible: true },
+  { key: "contact", label: "Contact Person", defaultVisible: false },
+  { key: "email", label: "Email", defaultVisible: false },
+  { key: "phone", label: "Phone", defaultVisible: false },
+];
 
 type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
