@@ -451,6 +451,10 @@ export default function CustomersPage() {
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(30)}>30d</Button>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(90)}>90d</Button>
         </div>
+
+        <div className="ml-auto">
+          <ColumnVisibilityMenu columns={CUSTOMER_COLUMNS} visible={colVisible} onToggle={toggleCol} onReset={resetCols} />
+        </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
