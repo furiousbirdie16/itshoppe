@@ -47,6 +47,39 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_follow_ups: {
+        Row: {
+          created_at: string
+          customer_id: string
+          followed_up_at: string
+          id: string
+          notes: string
+          sales_agent: string | null
+          user_email: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          followed_up_at?: string
+          id?: string
+          notes?: string
+          sales_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          followed_up_at?: string
+          id?: string
+          notes?: string
+          sales_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       customer_price_history: {
         Row: {
           created_at: string
@@ -133,6 +166,7 @@ export type Database = {
           address: string | null
           barangay_village: string | null
           city_municipality: string | null
+          classification: string
           contact_person: string | null
           country: string | null
           created_at: string | null
@@ -140,6 +174,7 @@ export type Database = {
           email: string | null
           full_address: string | null
           id: string
+          last_follow_up_at: string | null
           latitude: number | null
           longitude: number | null
           name: string
@@ -151,6 +186,7 @@ export type Database = {
           address?: string | null
           barangay_village?: string | null
           city_municipality?: string | null
+          classification?: string
           contact_person?: string | null
           country?: string | null
           created_at?: string | null
@@ -158,6 +194,7 @@ export type Database = {
           email?: string | null
           full_address?: string | null
           id?: string
+          last_follow_up_at?: string | null
           latitude?: number | null
           longitude?: number | null
           name: string
@@ -169,6 +206,7 @@ export type Database = {
           address?: string | null
           barangay_village?: string | null
           city_municipality?: string | null
+          classification?: string
           contact_person?: string | null
           country?: string | null
           created_at?: string | null
@@ -176,6 +214,7 @@ export type Database = {
           email?: string | null
           full_address?: string | null
           id?: string
+          last_follow_up_at?: string | null
           latitude?: number | null
           longitude?: number | null
           name?: string
