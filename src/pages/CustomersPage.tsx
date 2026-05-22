@@ -493,7 +493,7 @@ export default function CustomersPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={12} className="h-32 text-center">
+                <TableCell colSpan={13} className="h-32 text-center">
                   <div className="flex justify-center">
                     <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
@@ -501,7 +501,7 @@ export default function CustomersPage() {
               </TableRow>
             ) : sortedCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12}>
+                <TableCell colSpan={13}>
                   <div className="empty-state">
                     <Users className="empty-state-icon" />
                     <p className="text-sm">No customers match</p>
@@ -512,12 +512,22 @@ export default function CustomersPage() {
               sortedCustomers.map((c) => {
                 const activity = activityFromDays(c._daysSince);
                 const locChip = formatLocationChip(c);
+                const cls = classificationMeta(c.classification);
+                const fu = getFollowUpInfo(c.last_follow_up_at);
                 return (
                   <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                     <TableCell>
                       <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
                     </TableCell>
-                    <TableCell className="font-medium text-sm">{c.name}</TableCell>
+                    <TableCell className="font-medium text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} title={fu.label} />
+                        {c.name}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.contact_person}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.email}</TableCell>
                     <TableCell className="text-sm">{c.phone}</TableCell>
@@ -547,10 +557,24 @@ export default function CustomersPage() {
                         {activity.label}
                       </Badge>
                     </TableCell>
+                    <TableCell className="text-sm">
+                      <div className="flex flex-col gap-0.5">
+                        <Badge variant="outline" className={cn("text-[10px] font-medium w-fit", fu.className)}>{fu.label}</Badge>
+                        {c.last_follow_up_at && (
+                          <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm text-right font-medium">{c._orders || "—"}</TableCell>
                     <TableCell className="text-sm text-right font-semibold">{c._total ? peso(c._total) : "—"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-0.5">
+                        <Button variant="ghost" size="icon" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-7 w-7 rounded-md" title="Mark as followed up">
+                          <BellRing className="h-3.5 w-3.5 text-primary" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setHistoryDialog(c)} className="h-7 w-7 rounded-md" title="Follow-up history">
+                          <History className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => openEdit(c)} className="h-7 w-7 rounded-md">
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
