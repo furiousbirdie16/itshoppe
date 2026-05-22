@@ -101,6 +101,16 @@ export default function CustomersPage() {
     [customers, customerStats, activityMap],
   );
 
+  const agentOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of enriched) {
+      if (c._lastAgent) set.add(c._lastAgent);
+    }
+    return Array.from(set)
+      .sort()
+      .map((name) => ({ value: name, label: name }));
+  }, [enriched]);
+
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
@@ -111,6 +121,9 @@ export default function CustomersPage() {
     if (activityFilter !== "all") {
       const b = activityFromDays(customer._daysSince).bucket;
       if (b !== activityFilter) return false;
+    }
+    if (agentFilter !== "all") {
+      if (customer._lastAgent !== agentFilter) return false;
     }
     return true;
   });
