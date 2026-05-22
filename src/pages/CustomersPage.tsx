@@ -82,6 +82,8 @@ export default function CustomersPage() {
   const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
   const [historyDialog, setHistoryDialog] = useState<Customer | null>(null);
 
+  const { visible: colVisible, isVisible: showCol, toggle: toggleCol, reset: resetCols } = useColumnVisibility("customers.columns.v1", CUSTOMER_COLUMNS);
+
   const fromStr = dateFrom ? format(startOfDay(dateFrom), "yyyy-MM-dd") : null;
   const toStr = dateTo ? format(endOfDay(dateTo), "yyyy-MM-dd") : null;
 
