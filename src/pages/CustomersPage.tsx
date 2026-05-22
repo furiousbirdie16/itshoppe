@@ -21,6 +21,7 @@ import type { Customer } from "@/types/database";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { FilterCombobox } from "@/components/FilterCombobox";
 
 type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
@@ -41,6 +42,7 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
+  const [agentFilter, setAgentFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
 
@@ -99,6 +101,16 @@ export default function CustomersPage() {
     [customers, customerStats, activityMap],
   );
 
+  const agentOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of enriched) {
+      if (c._lastAgent) set.add(c._lastAgent);
+    }
+    return Array.from(set)
+      .sort()
+      .map((name) => ({ value: name, label: name }));
+  }, [enriched]);
+
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
@@ -109,6 +121,9 @@ export default function CustomersPage() {
     if (activityFilter !== "all") {
       const b = activityFromDays(customer._daysSince).bucket;
       if (b !== activityFilter) return false;
+    }
+    if (agentFilter !== "all") {
+      if (customer._lastAgent !== agentFilter) return false;
     }
     return true;
   });
@@ -257,6 +272,17 @@ export default function CustomersPage() {
             </Button>
           ))}
         </div>
+
+        {/* Sales agent filter */}
+        <FilterCombobox
+          value={agentFilter}
+          onChange={setAgentFilter}
+          options={agentOptions}
+          allLabel="All agents"
+          placeholder="Search agent..."
+          className="h-8 text-xs w-[180px]"
+          emptyText="No agents"
+        />
 
         {/* Custom date range */}
         <div className="flex items-center gap-1">
