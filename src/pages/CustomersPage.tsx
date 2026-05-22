@@ -26,6 +26,22 @@ import { FilterCombobox } from "@/components/FilterCombobox";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { formatLocationChip } from "@/lib/locations";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
+import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
+
+const CUSTOMER_COLUMNS: ColumnDef[] = [
+  { key: "name", label: "Customer Name", required: true },
+  { key: "type", label: "Type", defaultVisible: true },
+  { key: "location", label: "Location", defaultVisible: true },
+  { key: "agent", label: "Sales Agent", defaultVisible: true },
+  { key: "lastOrder", label: "Last Order", defaultVisible: true },
+  { key: "activity", label: "Activity", defaultVisible: true },
+  { key: "followUp", label: "Last Follow-up", defaultVisible: true },
+  { key: "orders", label: "# Orders", defaultVisible: false },
+  { key: "total", label: "Total ₱", defaultVisible: true },
+  { key: "contact", label: "Contact Person", defaultVisible: false },
+  { key: "email", label: "Email", defaultVisible: false },
+  { key: "phone", label: "Phone", defaultVisible: false },
+];
 
 type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
@@ -65,6 +81,8 @@ export default function CustomersPage() {
   // Follow-up dialog state
   const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
   const [historyDialog, setHistoryDialog] = useState<Customer | null>(null);
+
+  const { visible: colVisible, isVisible: showCol, toggle: toggleCol, reset: resetCols } = useColumnVisibility("customers.columns.v1", CUSTOMER_COLUMNS);
 
   const fromStr = dateFrom ? format(startOfDay(dateFrom), "yyyy-MM-dd") : null;
   const toStr = dateTo ? format(endOfDay(dateTo), "yyyy-MM-dd") : null;
@@ -433,6 +451,10 @@ export default function CustomersPage() {
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(30)}>30d</Button>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(90)}>90d</Button>
         </div>
+
+        <div className="ml-auto">
+          <ColumnVisibilityMenu columns={CUSTOMER_COLUMNS} visible={colVisible} onToggle={toggleCol} onReset={resetCols} />
+        </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -495,22 +517,25 @@ export default function CustomersPage() {
               <TableHead className="w-10">
                 <Checkbox checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))} onCheckedChange={toggleAll} />
               </TableHead>
-              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="city_municipality" label="Location" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />
-              <TableHead className="text-xs">Activity</TableHead>
-              <SortableHeader sortKey="last_follow_up_at" label="Last Follow-up" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="_orders" label="# Orders" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="_total" label="Total ₱" sort={sort} onToggle={toggle} align="right" />
+              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} className="w-[180px]" />
+              {showCol("type") && <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />}
+              {showCol("contact") && <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />}
+              {showCol("email") && <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />}
+              {showCol("phone") && <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />}
+              {showCol("location") && <SortableHeader sortKey="city_municipality" label="Location" sort={sort} onToggle={toggle} />}
+              {showCol("agent") && <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />}
+              {showCol("lastOrder") && <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />}
+              {showCol("activity") && <TableHead className="text-xs">Activity</TableHead>}
+              {showCol("followUp") && <SortableHeader sortKey="last_follow_up_at" label="Last Follow-up" sort={sort} onToggle={toggle} />}
+              {showCol("orders") && <SortableHeader sortKey="_orders" label="# Orders" sort={sort} onToggle={toggle} align="right" />}
+              {showCol("total") && <SortableHeader sortKey="_total" label="Total ₱" sort={sort} onToggle={toggle} align="right" />}
               <TableHead className="text-xs text-right w-32 sticky right-0 bg-background shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={11} className="h-32 text-center">
+                <TableCell colSpan={20} className="h-32 text-center">
                   <div className="flex justify-center">
                     <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
@@ -518,7 +543,7 @@ export default function CustomersPage() {
               </TableRow>
             ) : sortedCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11}>
+                <TableCell colSpan={20}>
                   <div className="empty-state">
                     <Users className="empty-state-icon" />
                     <p className="text-sm">No customers match</p>
@@ -537,56 +562,81 @@ export default function CustomersPage() {
                     <TableCell>
                       <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
                     </TableCell>
-                    <TableCell className="font-medium text-sm">
+                    <TableCell className="font-medium text-sm max-w-[180px]">
                       <div className="flex items-center gap-2">
                         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} title={fu.label} />
                         <div className="min-w-0">
                           <div className="truncate">{c.name}</div>
-                          {c.contact_person && (
+                          {!showCol("contact") && c.contact_person && (
                             <div className="text-[11px] text-muted-foreground truncate">{c.contact_person}</div>
                           )}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {locChip ? (
-                        <Badge variant="outline" className="text-[10px] font-medium gap-1 max-w-[180px]">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{locChip}</span>
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm">{c._lastAgent || "—"}</TableCell>
-                    <TableCell className="text-sm">
-                      {c._lastDate ? (
-                        <span>
-                          {format(new Date(c._lastDate), "MMM d, yyyy")}
-                          <span className="text-xs text-muted-foreground ml-1">({c._daysSince}d)</span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px] font-medium", activity.className)}>
-                        {activity.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <div className="flex flex-col gap-0.5">
-                        <Badge variant="outline" className={cn("text-[10px] font-medium w-fit", fu.className)}>{fu.label}</Badge>
-                        {c.last_follow_up_at && (
-                          <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
+                    {showCol("type") && (
+                      <TableCell>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
+                      </TableCell>
+                    )}
+                    {showCol("contact") && (
+                      <TableCell className="text-sm text-muted-foreground">{c.contact_person || "—"}</TableCell>
+                    )}
+                    {showCol("email") && (
+                      <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">{c.email || "—"}</TableCell>
+                    )}
+                    {showCol("phone") && (
+                      <TableCell className="text-sm">{c.phone || "—"}</TableCell>
+                    )}
+                    {showCol("location") && (
+                      <TableCell className="text-sm">
+                        {locChip ? (
+                          <Badge variant="outline" className="text-[10px] font-medium gap-1 max-w-[180px]">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{locChip}</span>
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-right font-medium">{c._orders || "—"}</TableCell>
-                    <TableCell className="text-sm text-right font-semibold">{c._total ? peso(c._total) : "—"}</TableCell>
+                      </TableCell>
+                    )}
+                    {showCol("agent") && (
+                      <TableCell className="text-sm">{c._lastAgent || "—"}</TableCell>
+                    )}
+                    {showCol("lastOrder") && (
+                      <TableCell className="text-sm">
+                        {c._lastDate ? (
+                          <span>
+                            {format(new Date(c._lastDate), "MMM d, yyyy")}
+                            <span className="text-xs text-muted-foreground ml-1">({c._daysSince}d)</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
+                    {showCol("activity") && (
+                      <TableCell>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium", activity.className)}>
+                          {activity.label}
+                        </Badge>
+                      </TableCell>
+                    )}
+                    {showCol("followUp") && (
+                      <TableCell className="text-sm">
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className={cn("text-[10px] font-medium w-fit", fu.className)}>{fu.label}</Badge>
+                          {c.last_follow_up_at && (
+                            <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+                    {showCol("orders") && (
+                      <TableCell className="text-sm text-right font-medium">{c._orders || "—"}</TableCell>
+                    )}
+                    {showCol("total") && (
+                      <TableCell className="text-sm text-right font-semibold">{c._total ? peso(c._total) : "—"}</TableCell>
+                    )}
                     <TableCell className={cn("text-right sticky right-0 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]", rowBg)}>
                       <div className="flex justify-end gap-0.5">
                         <Button variant="ghost" size="icon" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-7 w-7 rounded-md" title="Mark as followed up">
