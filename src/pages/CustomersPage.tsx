@@ -206,6 +206,12 @@ export default function CustomersPage() {
     _orders: (r) => r._orders,
     _total: (r) => r._total,
     city_municipality: (r) => r.city_municipality || "",
+    classification: (r) => r.classification || "retail",
+    last_follow_up_at: (r) => r.last_follow_up_at || "",
+    days_since_follow_up: (r) => {
+      const i = getFollowUpInfo(r.last_follow_up_at);
+      return i.days ?? Number.MAX_SAFE_INTEGER;
+    },
   });
 
   const createMut = useMutation({
