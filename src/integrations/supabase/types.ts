@@ -131,30 +131,57 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          barangay_village: string | null
+          city_municipality: string | null
           contact_person: string | null
+          country: string | null
           created_at: string | null
+          district_area: string | null
           email: string | null
+          full_address: string | null
           id: string
+          latitude: number | null
+          longitude: number | null
           name: string
           phone: string | null
+          postal_code: string | null
+          province_state: string | null
         }
         Insert: {
           address?: string | null
+          barangay_village?: string | null
+          city_municipality?: string | null
           contact_person?: string | null
+          country?: string | null
           created_at?: string | null
+          district_area?: string | null
           email?: string | null
+          full_address?: string | null
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name: string
           phone?: string | null
+          postal_code?: string | null
+          province_state?: string | null
         }
         Update: {
           address?: string | null
+          barangay_village?: string | null
+          city_municipality?: string | null
           contact_person?: string | null
+          country?: string | null
           created_at?: string | null
+          district_area?: string | null
           email?: string | null
+          full_address?: string | null
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           phone?: string | null
+          postal_code?: string | null
+          province_state?: string | null
         }
         Relationships: []
       }
@@ -564,6 +591,99 @@ export type Database = {
           units_per_stock?: number
           updated_at?: string | null
           warehouse_quantity?: number
+        }
+        Relationships: []
+      }
+      locations_barangay: {
+        Row: {
+          city_name: string
+          country_code: string
+          created_at: string
+          id: string
+          name: string
+          region_name: string
+        }
+        Insert: {
+          city_name: string
+          country_code?: string
+          created_at?: string
+          id?: string
+          name: string
+          region_name: string
+        }
+        Update: {
+          city_name?: string
+          country_code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          region_name?: string
+        }
+        Relationships: []
+      }
+      locations_city: {
+        Row: {
+          country_code: string
+          created_at: string
+          id: string
+          name: string
+          region_name: string
+        }
+        Insert: {
+          country_code: string
+          created_at?: string
+          id?: string
+          name: string
+          region_name: string
+        }
+        Update: {
+          country_code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          region_name?: string
+        }
+        Relationships: []
+      }
+      locations_country: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      locations_region: {
+        Row: {
+          country_code: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          country_code: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          country_code?: string
+          created_at?: string
+          id?: string
+          name?: string
         }
         Relationships: []
       }
