@@ -59,6 +59,8 @@ export interface Customer {
   postal_code?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  classification?: "retail" | "wholesale" | "recurring" | null;
+  last_follow_up_at?: string | null;
   created_at: string;
 }
 
