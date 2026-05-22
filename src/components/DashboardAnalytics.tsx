@@ -12,6 +12,10 @@ import { getSalesTrend, getAccountsReceivable, getDashboardStats, getCustomers }
 import { supabase } from "@/integrations/supabase/client";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend, Bar, BarChart } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import { getFollowUpInfo, classificationMeta } from "@/lib/followUps";
+import { Link } from "react-router-dom";
+import { BellRing } from "lucide-react";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
