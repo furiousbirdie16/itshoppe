@@ -42,6 +42,7 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
+  const [agentFilter, setAgentFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
 
