@@ -48,17 +48,23 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "" });
+  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; classification: ClassificationValue }>({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [classFilter, setClassFilter] = useState<"all" | ClassificationValue>("all");
+  const [followUpFilter, setFollowUpFilter] = useState<"all" | "active" | "needs" | "never">("all");
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [provinceFilter, setProvinceFilter] = useState<string>("all");
   const [cityFilter, setCityFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+
+  // Follow-up dialog state
+  const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
+  const [historyDialog, setHistoryDialog] = useState<Customer | null>(null);
 
   const fromStr = dateFrom ? format(startOfDay(dateFrom), "yyyy-MM-dd") : null;
   const toStr = dateTo ? format(endOfDay(dateTo), "yyyy-MM-dd") : null;
