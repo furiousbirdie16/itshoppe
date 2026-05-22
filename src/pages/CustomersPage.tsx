@@ -487,7 +487,8 @@ export default function CustomersPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
+      {/* Desktop / tablet table */}
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -496,9 +497,6 @@ export default function CustomersPage() {
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="city_municipality" label="Location" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />
@@ -506,13 +504,13 @@ export default function CustomersPage() {
               <SortableHeader sortKey="last_follow_up_at" label="Last Follow-up" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_orders" label="# Orders" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="_total" label="Total ₱" sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-32">Actions</TableHead>
+              <TableHead className="text-xs text-right w-32 sticky right-0 bg-background shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={13} className="h-32 text-center">
+                <TableCell colSpan={11} className="h-32 text-center">
                   <div className="flex justify-center">
                     <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
@@ -520,7 +518,7 @@ export default function CustomersPage() {
               </TableRow>
             ) : sortedCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13}>
+                <TableCell colSpan={11}>
                   <div className="empty-state">
                     <Users className="empty-state-icon" />
                     <p className="text-sm">No customers match</p>
@@ -533,23 +531,26 @@ export default function CustomersPage() {
                 const locChip = formatLocationChip(c);
                 const cls = classificationMeta(c.classification);
                 const fu = getFollowUpInfo(c.last_follow_up_at);
+                const rowBg = selectedIds.has(c.id) ? "bg-muted/40" : "bg-background hover:bg-muted/30";
                 return (
-                  <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+                  <TableRow key={c.id} className={rowBg}>
                     <TableCell>
                       <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
                     </TableCell>
                     <TableCell className="font-medium text-sm">
                       <div className="flex items-center gap-2">
                         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} title={fu.label} />
-                        {c.name}
+                        <div className="min-w-0">
+                          <div className="truncate">{c.name}</div>
+                          {c.contact_person && (
+                            <div className="text-[11px] text-muted-foreground truncate">{c.contact_person}</div>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{c.contact_person}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{c.email}</TableCell>
-                    <TableCell className="text-sm">{c.phone}</TableCell>
                     <TableCell className="text-sm">
                       {locChip ? (
                         <Badge variant="outline" className="text-[10px] font-medium gap-1 max-w-[180px]">
@@ -586,7 +587,7 @@ export default function CustomersPage() {
                     </TableCell>
                     <TableCell className="text-sm text-right font-medium">{c._orders || "—"}</TableCell>
                     <TableCell className="text-sm text-right font-semibold">{c._total ? peso(c._total) : "—"}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={cn("text-right sticky right-0 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]", rowBg)}>
                       <div className="flex justify-end gap-0.5">
                         <Button variant="ghost" size="icon" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-7 w-7 rounded-md" title="Mark as followed up">
                           <BellRing className="h-3.5 w-3.5 text-primary" />
@@ -594,10 +595,10 @@ export default function CustomersPage() {
                         <Button variant="ghost" size="icon" onClick={() => setHistoryDialog(c)} className="h-7 w-7 rounded-md" title="Follow-up history">
                           <History className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(c)} className="h-7 w-7 rounded-md">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(c)} className="h-7 w-7 rounded-md" title="Edit">
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(c.id)} className="h-7 w-7 rounded-md">
+                        <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(c.id)} className="h-7 w-7 rounded-md" title="Delete">
                           <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
                         </Button>
                       </div>
@@ -608,6 +609,86 @@ export default function CustomersPage() {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sortedCustomers.length === 0 ? (
+          <div className="empty-state py-10">
+            <Users className="empty-state-icon" />
+            <p className="text-sm">No customers match</p>
+          </div>
+        ) : (
+          sortedCustomers.map((c) => {
+            const activity = activityFromDays(c._daysSince);
+            const locChip = formatLocationChip(c);
+            const cls = classificationMeta(c.classification);
+            const fu = getFollowUpInfo(c.last_follow_up_at);
+            return (
+              <div key={c.id} className={cn("rounded-lg border p-3 space-y-2", selectedIds.has(c.id) ? "bg-muted/40" : "bg-card")}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Checkbox className="mt-1" checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} />
+                        <span className="font-medium text-sm truncate">{c.name}</span>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
+                      </div>
+                      {c.contact_person && (
+                        <div className="text-[11px] text-muted-foreground truncate mt-0.5">{c.contact_person}</div>
+                      )}
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0", activity.className)}>{activity.label}</Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <div className="col-span-2 flex items-center gap-1 text-muted-foreground">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{locChip || "No location"}</span>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-muted-foreground">Sales Agent</div>
+                    <div className="truncate">{c._lastAgent || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-muted-foreground">Last Order</div>
+                    <div className="truncate">{c._lastDate ? format(new Date(c._lastDate), "MMM d, yyyy") : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-muted-foreground">Follow-up</div>
+                    <Badge variant="outline" className={cn("text-[10px] font-medium", fu.className)}>{fu.label}</Badge>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase text-muted-foreground">Total</div>
+                    <div className="font-semibold">{c._total ? peso(c._total) : "—"}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-1 pt-1 border-t">
+                  <Button variant="ghost" size="sm" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-8 px-2">
+                    <BellRing className="h-4 w-4 text-primary mr-1" /> Follow up
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setHistoryDialog(c)} className="h-8 w-8 p-0" title="History">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => openEdit(c)} className="h-8 w-8 p-0" title="Edit">
+                    <Pencil className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate(c.id)} className="h-8 w-8 p-0" title="Delete">
+                    <Trash2 className="h-4 w-4 text-destructive/70" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
       </div>
 
       {/* Mark as followed up */}
