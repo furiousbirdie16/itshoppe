@@ -609,6 +609,72 @@ export default function CustomersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Mark as followed up */}
+      <Dialog open={!!followDialog} onOpenChange={(o) => !o && setFollowDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Mark as Followed Up</DialogTitle>
+          </DialogHeader>
+          {followDialog && (
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Recording a follow-up for <span className="font-medium text-foreground">{followDialog.customer.name}</span> at{" "}
+                <span className="font-medium text-foreground">{format(new Date(), "MMM d, yyyy HH:mm")}</span>.
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Notes (optional)</Label>
+                <Textarea
+                  rows={3}
+                  value={followDialog.notes}
+                  onChange={(e) => setFollowDialog({ ...followDialog, notes: e.target.value })}
+                  placeholder="What did you discuss? Next steps?"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setFollowDialog(null)}>Cancel</Button>
+                <Button
+                  onClick={() => followUpMut.mutate({ customerId: followDialog.customer.id, notes: followDialog.notes })}
+                  disabled={followUpMut.isPending}
+                >
+                  <BellRing className="h-4 w-4 mr-1.5" />
+                  Record Follow-up
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* History */}
+      <Dialog open={!!historyDialog} onOpenChange={(o) => !o && setHistoryDialog(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Follow-up History · {historyDialog?.name}</DialogTitle>
+          </DialogHeader>
+          {historyEntries.length === 0 ? (
+            <div className="empty-state py-8">
+              <History className="empty-state-icon" />
+              <p className="text-sm">No follow-ups recorded yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2 pt-2">
+              {historyEntries.map((e) => (
+                <div key={e.id} className="flex items-start gap-3 rounded-lg border bg-card p-3">
+                  <BellRing className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{format(new Date(e.followed_up_at), "MMM d, yyyy HH:mm")}</span>
+                      <span className="text-xs text-muted-foreground">{e.user_email || e.sales_agent || "—"}</span>
+                    </div>
+                    {e.notes && <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{e.notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
