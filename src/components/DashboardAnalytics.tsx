@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarIcon, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
-import { getSalesTrend, getAccountsReceivable, getDashboardStats } from "@/lib/api";
+import { getSalesTrend, getAccountsReceivable, getDashboardStats, getCustomers } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend, Bar, BarChart } from "recharts";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
