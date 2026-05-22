@@ -353,6 +353,27 @@ export default function CustomersPage() {
         </div>
 
         <FilterCombobox value={agentFilter} onChange={setAgentFilter} options={agentOptions} allLabel="All agents" placeholder="Search agent..." className="h-8 text-xs w-[170px]" emptyText="No agents" />
+
+        <Select value={classFilter} onValueChange={(v) => setClassFilter(v as typeof classFilter)}>
+          <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue placeholder="Classification" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            {CLASSIFICATIONS.map((c) => (
+              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={followUpFilter} onValueChange={(v) => setFollowUpFilter(v as typeof followUpFilter)}>
+          <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All follow-ups</SelectItem>
+            <SelectItem value="active">Active (≤14d)</SelectItem>
+            <SelectItem value="needs">Needs follow up</SelectItem>
+            <SelectItem value="never">Never followed up</SelectItem>
+          </SelectContent>
+        </Select>
+
         <FilterCombobox value={countryFilter} onChange={(v) => { setCountryFilter(v); setProvinceFilter("all"); setCityFilter("all"); }} options={countryOptions} allLabel="All countries" placeholder="Search country..." className="h-8 text-xs w-[160px]" emptyText="No countries" />
         <FilterCombobox value={provinceFilter} onChange={(v) => { setProvinceFilter(v); setCityFilter("all"); }} options={provinceOptions} allLabel="All provinces" placeholder="Search province..." className="h-8 text-xs w-[170px]" emptyText="No provinces" />
         <FilterCombobox value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="All cities" placeholder="Search city..." className="h-8 text-xs w-[160px]" emptyText="No cities" />
