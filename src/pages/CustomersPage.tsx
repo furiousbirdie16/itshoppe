@@ -476,6 +476,7 @@ export default function CustomersPage() {
                 <Checkbox checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))} onCheckedChange={toggleAll} />
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />
@@ -483,9 +484,10 @@ export default function CustomersPage() {
               <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Activity</TableHead>
+              <SortableHeader sortKey="last_follow_up_at" label="Last Follow-up" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="_orders" label="# Orders" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="_total" label="Total ₱" sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-24">Actions</TableHead>
+              <TableHead className="text-xs text-right w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
