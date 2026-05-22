@@ -436,9 +436,27 @@ export default function CustomersPage() {
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="h-9" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Email</Label>
-              <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Email</Label>
+                <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Classification</Label>
+                <Select value={form.classification} onValueChange={(v) => setForm({ ...form, classification: v as ClassificationValue })}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CLASSIFICATIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{c.label}</span>
+                          <span className="text-[10px] text-muted-foreground">{c.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <AddressSelector value={address} onChange={setAddress} />
