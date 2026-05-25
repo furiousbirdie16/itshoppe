@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { getFollowUpInfo, classificationMeta } from "@/lib/followUps";
 import { Link } from "react-router-dom";
 import { BellRing } from "lucide-react";
+import AssetTrendChart from "@/components/AssetTrendChart";
+import { usePermissions } from "@/lib/permissions";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
