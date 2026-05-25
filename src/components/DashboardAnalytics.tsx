@@ -245,6 +245,8 @@ export function DashboardAnalytics() {
         </Card>
       </div>
 
+      {isAdmin && <AssetTrendChart />}
+
       <FollowUpOverview />
       <GeographicAnalytics fromIso={fromIso} toIso={toIso} />
     </div>
