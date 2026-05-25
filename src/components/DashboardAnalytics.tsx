@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { getFollowUpInfo, classificationMeta } from "@/lib/followUps";
 import { Link } from "react-router-dom";
 import { BellRing } from "lucide-react";
+import AssetTrendChart from "@/components/AssetTrendChart";
+import { usePermissions } from "@/lib/permissions";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
@@ -28,6 +30,7 @@ const PRESETS: { id: Preset; label: string }[] = [
 ];
 
 export function DashboardAnalytics() {
+  const { isAdmin } = usePermissions();
   const [preset, setPreset] = useState<Preset>("month");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
@@ -241,6 +244,8 @@ export function DashboardAnalytics() {
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && <AssetTrendChart />}
 
       <FollowUpOverview />
       <GeographicAnalytics fromIso={fromIso} toIso={toIso} />

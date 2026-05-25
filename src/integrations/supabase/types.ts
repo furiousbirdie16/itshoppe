@@ -47,6 +47,39 @@ export type Database = {
         }
         Relationships: []
       }
+      asset_snapshots: {
+        Row: {
+          captured_at: string
+          created_at: string
+          id: string
+          incoming_stock_value: number
+          inventory_value: number
+          receivables_value: number
+          snapshot_date: string
+          total_asset_value: number
+        }
+        Insert: {
+          captured_at?: string
+          created_at?: string
+          id?: string
+          incoming_stock_value?: number
+          inventory_value?: number
+          receivables_value?: number
+          snapshot_date: string
+          total_asset_value?: number
+        }
+        Update: {
+          captured_at?: string
+          created_at?: string
+          id?: string
+          incoming_stock_value?: number
+          inventory_value?: number
+          receivables_value?: number
+          snapshot_date?: string
+          total_asset_value?: number
+        }
+        Relationships: []
+      }
       customer_follow_ups: {
         Row: {
           created_at: string
@@ -1446,6 +1479,25 @@ export type Database = {
           _shipping_fee: number
         }
         Returns: undefined
+      }
+      generate_asset_snapshot: {
+        Args: never
+        Returns: {
+          captured_at: string
+          created_at: string
+          id: string
+          incoming_stock_value: number
+          inventory_value: number
+          receivables_value: number
+          snapshot_date: string
+          total_asset_value: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "asset_snapshots"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       has_role: {
         Args: {
