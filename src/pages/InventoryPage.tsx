@@ -228,6 +228,16 @@ export default function InventoryPage() {
                 "Variation SKU": (v: any) => v.sku || "",
                 "Variation Type": (v: any) => v.type || "",
                 "Variation Factor": (v: any) => Number(v.factor || 1),
+                "Variation Unit": (v: any, p: any) =>
+                  v.type === "cut" ? (p.base_unit || "m") : "pack",
+                "Variation Stock Available": (v: any, p: any) => {
+                  const factor = Number(v.factor || 1) || 1;
+                  const ups = Number(p.units_per_stock || 1) || 1;
+                  const qty = Number(p.quantity || 0);
+                  const open = Number(p.open_roll_remaining || 0);
+                  const totalBase = v.type === "cut" ? qty * ups + open : qty * ups;
+                  return Math.floor(totalBase / factor);
+                },
                 "Variation Selling Price": (v: any) => Number(v.selling_price || 0),
               },
             }}
