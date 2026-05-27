@@ -20,8 +20,8 @@ export interface DocumentData {
     name: string;
     sku?: string;
     quantity: number;
-    unitPrice: number;
-    total: number;
+    unitPrice: number | null;
+    total: number | null;
   }[];
   totalAmount: number;
 }
