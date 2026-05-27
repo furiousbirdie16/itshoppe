@@ -619,6 +619,11 @@ export default function QuotationsPage() {
                 <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + lineTotal(l), 0))}</span>
               </div>
             </div>
+            {hasMissingPrice && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                Warning: One or more items do not have a price. You can still save this quotation.
+              </div>
+            )}
             <Button
               onClick={async () => {
                 // Advisory store-stock warning — quotation always allowed to push through.
