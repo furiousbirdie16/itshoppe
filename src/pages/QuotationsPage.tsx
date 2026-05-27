@@ -233,7 +233,7 @@ export default function QuotationsPage() {
             item_id: li.item_id || "",
             item_name: li.item_name || li.items?.name || "",
             quantity: String(li.quantity),
-            unit_price: String(Number(li.unit_price)),
+            unit_price: Number(li.unit_price) > 0 ? String(Number(li.unit_price)) : "",
             variation_id: li.variation_id || null,
           }))
         : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
