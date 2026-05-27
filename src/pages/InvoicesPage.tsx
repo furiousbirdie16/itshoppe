@@ -717,12 +717,10 @@ export default function InvoicesPage() {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
                               newLines[idx].variation_id = variation.id;
-                              newLines[idx].unit_price = Number(variation.selling_price);
                             } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
-                              if (item) newLines[idx].unit_price = Number(item.selling_price);
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
@@ -734,12 +732,15 @@ export default function InvoicesPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" min={1} value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price || ""} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Enter quantity" />
+                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; updateLine(idx, "unit_price", v === "" ? "" : (parseFloat(v) || "")); }} className="h-9 text-sm" placeholder="Enter price" />
                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(line.item_id || line.item_name) && (line.unit_price === "" || Number(line.unit_price) <= 0) && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
+                      )}
                       {selectedItem && form.customer_id && (
                         <CustomerPriceHint
                           customerId={form.customer_id}
@@ -747,7 +748,7 @@ export default function InvoicesPage() {
                           variationId={line.variation_id}
                           standardPrice={Number(selectedItem.selling_price)}
                           costPrice={Number(selectedItem.cost_price)}
-                          currentPrice={Number(line.unit_price)}
+                          currentPrice={Number(line.unit_price) || 0}
                           onSuggested={(suggested) => updateLine(idx, "unit_price", suggested)}
                         />
                       )}
@@ -756,9 +757,14 @@ export default function InvoicesPage() {
                 })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + Number(l.quantity || 0) * l.unit_price, 0))}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + Number(l.quantity || 0) * (Number(l.unit_price) || 0), 0))}</span>
               </div>
             </div>
+            {hasMissingPrice && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                Warning: One or more items do not have a price. You can still save this invoice.
+              </div>
+            )}
             <Button
               onClick={() => editId ? editMut.mutate() : createMut.mutate()}
               disabled={createMut.isPending || editMut.isPending}
