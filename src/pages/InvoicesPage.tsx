@@ -274,17 +274,18 @@ export default function InvoicesPage() {
     for (const l of saved) {
       const name = l.item_name || "Item";
       if (!l.quantity || Number(l.quantity) <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
-      if (!l.unit_price || Number(l.unit_price) <= 0) throw new Error(`"${name}" must have a price greater than 0`);
     }
     return saved;
   };
 
+  const hasMissingPrice = lines.some(l => (l.item_id || l.item_name) && (l.unit_price === "" || Number(l.unit_price) <= 0));
+
   const createMut = useMutation({
     mutationFn: async () => {
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
-      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -294,10 +295,10 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       if (!editId) return;
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
