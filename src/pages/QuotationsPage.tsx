@@ -267,12 +267,12 @@ export default function QuotationsPage() {
     for (const l of saved) {
       const name = l.item_name || "Item";
       const q = parseQty(l.quantity);
-      const p = parsePrice(l.unit_price);
       if (!q || q <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
-      if (!p || p <= 0) throw new Error(`"${name}" must have a price greater than 0`);
     }
     return saved;
   };
+
+  const hasMissingPrice = lines.some(l => (l.item_id || l.item_name) && parsePrice(l.unit_price) <= 0);
 
   const createMut = useMutation({
     mutationFn: async () => {
