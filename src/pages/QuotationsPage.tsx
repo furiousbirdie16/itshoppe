@@ -197,13 +197,17 @@ export default function QuotationsPage() {
         ...(q.payment_terms ? [{ label: "Payment Terms", value: `${q.payment_terms} days` }] : []),
         ...(dueDate ? [{ label: "Payment Due", value: dueDate }] : []),
       ],
-      items: lineItems.map((li: any) => ({
-        name: li.item_variations?.name || li.item_name || li.items?.name || "—",
-        sku: li.item_variations?.sku || li.items?.sku,
-        quantity: li.quantity,
-        unitPrice: Number(li.unit_price),
-        total: li.quantity * Number(li.unit_price),
-      })),
+      items: lineItems.map((li: any) => {
+        const up = Number(li.unit_price);
+        const hasPrice = li.unit_price != null && up > 0;
+        return {
+          name: li.item_variations?.name || li.item_name || li.items?.name || "—",
+          sku: li.item_variations?.sku || li.items?.sku,
+          quantity: li.quantity,
+          unitPrice: hasPrice ? up : null,
+          total: hasPrice ? li.quantity * up : null,
+        };
+      }),
       totalAmount: Number(q.total_amount),
     });
     setPreviewOpen(true);
