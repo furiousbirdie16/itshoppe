@@ -342,7 +342,6 @@ export default function QuotationsPage() {
     if (field === "item_id") {
       const item = items.find(i => i.id === value);
       if (item) {
-        newLines[idx].unit_price = String(Number(item.selling_price));
         newLines[idx].item_name = item.name;
       }
     }
