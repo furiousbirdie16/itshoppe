@@ -224,13 +224,17 @@ export default function InvoicesPage() {
         ...(inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : []),
         ...(inv.sales_agent ? [{ label: "Sales Agent", value: inv.sales_agent }] : []),
       ],
-      items: lineItems.map((li: any) => ({
-        name: li.item_variations?.name || li.item_name || li.items?.name || "—",
-        sku: li.item_variations?.sku || li.items?.sku,
-        quantity: li.quantity,
-        unitPrice: Number(li.unit_price),
-        total: li.quantity * Number(li.unit_price),
-      })),
+      items: lineItems.map((li: any) => {
+        const up = Number(li.unit_price);
+        const hasPrice = li.unit_price != null && up > 0;
+        return {
+          name: li.item_variations?.name || li.item_name || li.items?.name || "—",
+          sku: li.item_variations?.sku || li.items?.sku,
+          quantity: li.quantity,
+          unitPrice: hasPrice ? up : null,
+          total: hasPrice ? li.quantity * up : null,
+        };
+      }),
       totalAmount: Number(inv.total_amount),
     });
     setPreviewOpen(true);
