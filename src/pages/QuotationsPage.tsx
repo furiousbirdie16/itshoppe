@@ -576,12 +576,10 @@ export default function QuotationsPage() {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
                               newLines[idx].variation_id = variation.id;
-                              newLines[idx].unit_price = String(Number(variation.selling_price));
                             } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
-                              if (item) newLines[idx].unit_price = String(Number(item.selling_price));
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
@@ -593,12 +591,15 @@ export default function QuotationsPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Enter quantity" />
+                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Enter price" />
                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(line.item_id || line.item_name) && parsePrice(line.unit_price) <= 0 && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
+                      )}
                       {selectedItem && form.customer_id && (
                         <CustomerPriceHint
                           customerId={form.customer_id}
