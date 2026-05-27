@@ -59,7 +59,7 @@ export default function InvoicesPage() {
       }
     } catch {/* ignore */}
   };
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters
