@@ -259,10 +259,10 @@ export default function InvoicesPage() {
             item_id: li.item_id || "",
             item_name: li.item_name || li.items?.name || "",
             quantity: li.quantity,
-            unit_price: Number(li.unit_price),
+            unit_price: Number(li.unit_price) > 0 ? Number(li.unit_price) : "" as const,
             variation_id: li.variation_id || null,
           }))
-        : [{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]
+        : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
     );
     setEditId(inv.id);
     setCreateOpen(true);
