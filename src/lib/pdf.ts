@@ -20,8 +20,8 @@ export interface DocumentData {
     name: string;
     sku?: string;
     quantity: number;
-    unitPrice: number;
-    total: number;
+    unitPrice: number | null;
+    total: number | null;
   }[];
   totalAmount: number;
 }
@@ -162,8 +162,8 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
     body: data.items.map((item) => [
       item.quantity.toFixed(2),
       item.name,
-      fmt(item.unitPrice, currencySymbol),
-      fmt(item.total, currencySymbol),
+      item.unitPrice == null ? "" : fmt(item.unitPrice, currencySymbol),
+      item.total == null ? "" : fmt(item.total, currencySymbol),
     ]),
     headStyles: {
       fillColor: TBLHD,

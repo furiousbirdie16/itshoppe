@@ -33,7 +33,7 @@ import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
 
-interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number; variation_id: string | null; }
+interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -59,7 +59,7 @@ export default function InvoicesPage() {
       }
     } catch {/* ignore */}
   };
-  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
+  const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters
@@ -224,13 +224,17 @@ export default function InvoicesPage() {
         ...(inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : []),
         ...(inv.sales_agent ? [{ label: "Sales Agent", value: inv.sales_agent }] : []),
       ],
-      items: lineItems.map((li: any) => ({
-        name: li.item_variations?.name || li.item_name || li.items?.name || "—",
-        sku: li.item_variations?.sku || li.items?.sku,
-        quantity: li.quantity,
-        unitPrice: Number(li.unit_price),
-        total: li.quantity * Number(li.unit_price),
-      })),
+      items: lineItems.map((li: any) => {
+        const up = Number(li.unit_price);
+        const hasPrice = li.unit_price != null && up > 0;
+        return {
+          name: li.item_variations?.name || li.item_name || li.items?.name || "—",
+          sku: li.item_variations?.sku || li.items?.sku,
+          quantity: li.quantity,
+          unitPrice: hasPrice ? up : null,
+          total: hasPrice ? li.quantity * up : null,
+        };
+      }),
       totalAmount: Number(inv.total_amount),
     });
     setPreviewOpen(true);
@@ -255,10 +259,10 @@ export default function InvoicesPage() {
             item_id: li.item_id || "",
             item_name: li.item_name || li.items?.name || "",
             quantity: li.quantity,
-            unit_price: Number(li.unit_price),
+            unit_price: Number(li.unit_price) > 0 ? Number(li.unit_price) : "" as const,
             variation_id: li.variation_id || null,
           }))
-        : [{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]
+        : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
     );
     setEditId(inv.id);
     setCreateOpen(true);
@@ -270,17 +274,18 @@ export default function InvoicesPage() {
     for (const l of saved) {
       const name = l.item_name || "Item";
       if (!l.quantity || Number(l.quantity) <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
-      if (!l.unit_price || Number(l.unit_price) <= 0) throw new Error(`"${name}" must have a price greater than 0`);
     }
     return saved;
   };
 
+  const hasMissingPrice = lines.some(l => (l.item_id || l.item_name) && (l.unit_price === "" || Number(l.unit_price) <= 0));
+
   const createMut = useMutation({
     mutationFn: async () => {
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
-      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -290,10 +295,10 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       if (!editId) return;
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + Number(l.quantity) * l.unit_price, 0);
+      const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: l.unit_price, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
     onError: (e: any) => toast.error(e.message),
@@ -385,16 +390,15 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
-  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: 0, variation_id: null }]);
+  const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
     if (field === "item_id") {
       const item = items.find(i => i.id === value);
       if (item) {
-        newLines[idx].unit_price = Number(item.selling_price);
         newLines[idx].item_name = item.name;
       }
     }
@@ -713,12 +717,10 @@ export default function InvoicesPage() {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
                               newLines[idx].variation_id = variation.id;
-                              newLines[idx].unit_price = Number(variation.selling_price);
                             } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
-                              if (item) newLines[idx].unit_price = Number(item.selling_price);
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
@@ -730,12 +732,15 @@ export default function InvoicesPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" min={1} value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price || ""} onChange={e => updateLine(idx, "unit_price", parseFloat(e.target.value) || 0)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Enter quantity" />
+                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; updateLine(idx, "unit_price", v === "" ? "" : (parseFloat(v) || "")); }} className="h-9 text-sm" placeholder="Enter price" />
                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(line.item_id || line.item_name) && (line.unit_price === "" || Number(line.unit_price) <= 0) && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
+                      )}
                       {selectedItem && form.customer_id && (
                         <CustomerPriceHint
                           customerId={form.customer_id}
@@ -743,7 +748,7 @@ export default function InvoicesPage() {
                           variationId={line.variation_id}
                           standardPrice={Number(selectedItem.selling_price)}
                           costPrice={Number(selectedItem.cost_price)}
-                          currentPrice={Number(line.unit_price)}
+                          currentPrice={Number(line.unit_price) || 0}
                           onSuggested={(suggested) => updateLine(idx, "unit_price", suggested)}
                         />
                       )}
@@ -752,9 +757,14 @@ export default function InvoicesPage() {
                 })}
               </div>
               <div className="flex justify-end mt-3 pt-3 border-t">
-                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + Number(l.quantity || 0) * l.unit_price, 0))}</span>
+                <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + Number(l.quantity || 0) * (Number(l.unit_price) || 0), 0))}</span>
               </div>
             </div>
+            {hasMissingPrice && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                Warning: One or more items do not have a price. You can still save this invoice.
+              </div>
+            )}
             <Button
               onClick={() => editId ? editMut.mutate() : createMut.mutate()}
               disabled={createMut.isPending || editMut.isPending}

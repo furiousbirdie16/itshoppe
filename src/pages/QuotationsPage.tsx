@@ -197,13 +197,17 @@ export default function QuotationsPage() {
         ...(q.payment_terms ? [{ label: "Payment Terms", value: `${q.payment_terms} days` }] : []),
         ...(dueDate ? [{ label: "Payment Due", value: dueDate }] : []),
       ],
-      items: lineItems.map((li: any) => ({
-        name: li.item_variations?.name || li.item_name || li.items?.name || "—",
-        sku: li.item_variations?.sku || li.items?.sku,
-        quantity: li.quantity,
-        unitPrice: Number(li.unit_price),
-        total: li.quantity * Number(li.unit_price),
-      })),
+      items: lineItems.map((li: any) => {
+        const up = Number(li.unit_price);
+        const hasPrice = li.unit_price != null && up > 0;
+        return {
+          name: li.item_variations?.name || li.item_name || li.items?.name || "—",
+          sku: li.item_variations?.sku || li.items?.sku,
+          quantity: li.quantity,
+          unitPrice: hasPrice ? up : null,
+          total: hasPrice ? li.quantity * up : null,
+        };
+      }),
       totalAmount: Number(q.total_amount),
     });
     setPreviewOpen(true);
@@ -229,7 +233,7 @@ export default function QuotationsPage() {
             item_id: li.item_id || "",
             item_name: li.item_name || li.items?.name || "",
             quantity: String(li.quantity),
-            unit_price: String(Number(li.unit_price)),
+            unit_price: Number(li.unit_price) > 0 ? String(Number(li.unit_price)) : "",
             variation_id: li.variation_id || null,
           }))
         : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
@@ -263,12 +267,12 @@ export default function QuotationsPage() {
     for (const l of saved) {
       const name = l.item_name || "Item";
       const q = parseQty(l.quantity);
-      const p = parsePrice(l.unit_price);
       if (!q || q <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
-      if (!p || p <= 0) throw new Error(`"${name}" must have a price greater than 0`);
     }
     return saved;
   };
+
+  const hasMissingPrice = lines.some(l => (l.item_id || l.item_name) && parsePrice(l.unit_price) <= 0);
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -338,7 +342,6 @@ export default function QuotationsPage() {
     if (field === "item_id") {
       const item = items.find(i => i.id === value);
       if (item) {
-        newLines[idx].unit_price = String(Number(item.selling_price));
         newLines[idx].item_name = item.name;
       }
     }
@@ -573,12 +576,10 @@ export default function QuotationsPage() {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
                               newLines[idx].variation_id = variation.id;
-                              newLines[idx].unit_price = String(Number(variation.selling_price));
                             } else if (itemId) {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
-                              if (item) newLines[idx].unit_price = String(Number(item.selling_price));
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
@@ -590,12 +591,15 @@ export default function QuotationsPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" min={1} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Enter quantity" />
+                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Enter price" />
                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                         </div>
                       </div>
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(line.item_id || line.item_name) && parsePrice(line.unit_price) <= 0 && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
+                      )}
                       {selectedItem && form.customer_id && (
                         <CustomerPriceHint
                           customerId={form.customer_id}
@@ -615,6 +619,11 @@ export default function QuotationsPage() {
                 <span className="text-sm font-semibold">Total: {peso(lines.reduce((s, l) => s + lineTotal(l), 0))}</span>
               </div>
             </div>
+            {hasMissingPrice && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                Warning: One or more items do not have a price. You can still save this quotation.
+              </div>
+            )}
             <Button
               onClick={async () => {
                 // Advisory store-stock warning — quotation always allowed to push through.
