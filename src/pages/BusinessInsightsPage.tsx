@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
-type RangePreset = "today" | "7d" | "30d" | "month" | "custom";
+type RangePreset = "today" | "7d" | "30d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
 type PaymentFilter = "all" | "paid" | "unpaid";
 
