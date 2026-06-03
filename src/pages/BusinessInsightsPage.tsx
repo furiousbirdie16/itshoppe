@@ -75,6 +75,7 @@ export default function BusinessInsightsPage() {
     if (preset === "7d") return { dateFrom: startOfDay(subDays(now, 6)), dateTo: endOfDay(now) };
     if (preset === "30d") return { dateFrom: startOfDay(subDays(now, 29)), dateTo: endOfDay(now) };
     if (preset === "month") return { dateFrom: startOfMonth(now), dateTo: endOfMonth(now) };
+    if (preset === "all") return { dateFrom: new Date(2000, 0, 1), dateTo: endOfDay(now) };
     return {
       dateFrom: customFrom ? startOfDay(customFrom) : startOfDay(subDays(now, 29)),
       dateTo: customTo ? endOfDay(customTo) : endOfDay(now),
