@@ -356,6 +356,7 @@ export default function BusinessInsightsPage() {
             { v: "7d", l: "7d" },
             { v: "30d", l: "30d" },
             { v: "month", l: "This month" },
+            { v: "all", l: "All" },
             { v: "custom", l: "Custom" },
           ] as { v: RangePreset; l: string }[]).map((p) => (
             <Button
