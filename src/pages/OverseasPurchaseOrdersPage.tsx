@@ -869,7 +869,63 @@ export default function OverseasPurchaseOrdersPage() {
                   </div>
                 </div>
               )}
+
+              {/* Supplier receipt (hard copy) */}
+              <div className="rounded-lg border bg-card">
+                <div className="border-b px-4 py-3 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Supplier Receipt</h3>
+                    <p className="text-xs text-muted-foreground">Upload the hard-copy receipt provided by the supplier (image or PDF).</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex">
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        disabled={uploadingReceipt}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleReceiptUpload(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button asChild size="sm" variant="outline" className="rounded-lg h-8 px-3 text-xs cursor-pointer" disabled={uploadingReceipt}>
+                        <span><Upload className="h-3.5 w-3.5 mr-1.5" />{uploadingReceipt ? "Uploading..." : receiptPath ? "Replace" : "Upload"}</span>
+                      </Button>
+                    </label>
+                    {receiptPath && (
+                      <Button size="sm" variant="ghost" onClick={handleReceiptRemove} className="rounded-lg h-8 px-2 text-xs text-destructive hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="p-4">
+                  {!receiptPath ? (
+                    <div className="text-xs text-muted-foreground flex items-center gap-2 py-4">
+                      <ImageIcon className="h-4 w-4" /> No receipt uploaded yet.
+                    </div>
+                  ) : receiptSignedUrl ? (
+                    receiptPath.toLowerCase().endsWith(".pdf") ? (
+                      <div className="space-y-2">
+                        <iframe src={receiptSignedUrl} title="Receipt" className="w-full h-[480px] rounded border bg-background" />
+                        <a href={receiptSignedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                          <ExternalLink className="h-3 w-3" /> Open in new tab
+                        </a>
+                      </div>
+                    ) : (
+                      <a href={receiptSignedUrl} target="_blank" rel="noreferrer" className="block">
+                        <img src={receiptSignedUrl} alt="Supplier receipt" className="max-h-[480px] rounded border bg-background" />
+                      </a>
+                    )
+                  ) : (
+                    <div className="text-xs text-muted-foreground py-4">Loading preview…</div>
+                  )}
+                </div>
+              </div>
             </div>
+
           )}
         </DialogContent>
       </Dialog>
