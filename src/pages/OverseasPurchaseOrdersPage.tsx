@@ -30,6 +30,8 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { usePermissions } from "@/lib/permissions";
+import { supabase } from "@/integrations/supabase/client";
+import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 
 interface LineItem {
   item_name: string;
@@ -108,6 +110,58 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  // Receipt upload
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const receiptPath = (viewPO as any)?.receipt_url as string | null | undefined;
+  const { data: receiptSignedUrl } = useQuery({
+    queryKey: ["overseas_po_receipt", viewPO?.id, receiptPath],
+    queryFn: async () => {
+      if (!receiptPath) return null;
+      const { data } = await supabase.storage.from("overseas-po-receipts").createSignedUrl(receiptPath, 3600);
+      return data?.signedUrl || null;
+    },
+    enabled: !!viewPO && !!receiptPath,
+  });
+
+  const handleReceiptUpload = async (file: File) => {
+    if (!viewPO) return;
+    setUploadingReceipt(true);
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `${viewPO.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("overseas-po-receipts")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      // remove old file if exists
+      if (receiptPath && receiptPath !== path) {
+        await supabase.storage.from("overseas-po-receipts").remove([receiptPath]);
+      }
+      await updateOverseasPurchaseOrder(viewPO.id, { receipt_url: path } as any);
+      const updated = { ...viewPO, receipt_url: path } as any;
+      setViewPO(updated);
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      toast.success("Receipt uploaded");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to upload receipt");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const handleReceiptRemove = async () => {
+    if (!viewPO || !receiptPath) return;
+    try {
+      await supabase.storage.from("overseas-po-receipts").remove([receiptPath]);
+      await updateOverseasPurchaseOrder(viewPO.id, { receipt_url: null } as any);
+      setViewPO({ ...viewPO, receipt_url: null } as any);
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      toast.success("Receipt removed");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to remove receipt");
+    }
+  };
 
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
@@ -815,7 +869,63 @@ export default function OverseasPurchaseOrdersPage() {
                   </div>
                 </div>
               )}
+
+              {/* Supplier receipt (hard copy) */}
+              <div className="rounded-lg border bg-card">
+                <div className="border-b px-4 py-3 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Supplier Receipt</h3>
+                    <p className="text-xs text-muted-foreground">Upload the hard-copy receipt provided by the supplier (image or PDF).</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex">
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        disabled={uploadingReceipt}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleReceiptUpload(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button asChild size="sm" variant="outline" className="rounded-lg h-8 px-3 text-xs cursor-pointer" disabled={uploadingReceipt}>
+                        <span><Upload className="h-3.5 w-3.5 mr-1.5" />{uploadingReceipt ? "Uploading..." : receiptPath ? "Replace" : "Upload"}</span>
+                      </Button>
+                    </label>
+                    {receiptPath && (
+                      <Button size="sm" variant="ghost" onClick={handleReceiptRemove} className="rounded-lg h-8 px-2 text-xs text-destructive hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="p-4">
+                  {!receiptPath ? (
+                    <div className="text-xs text-muted-foreground flex items-center gap-2 py-4">
+                      <ImageIcon className="h-4 w-4" /> No receipt uploaded yet.
+                    </div>
+                  ) : receiptSignedUrl ? (
+                    receiptPath.toLowerCase().endsWith(".pdf") ? (
+                      <div className="space-y-2">
+                        <iframe src={receiptSignedUrl} title="Receipt" className="w-full h-[480px] rounded border bg-background" />
+                        <a href={receiptSignedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                          <ExternalLink className="h-3 w-3" /> Open in new tab
+                        </a>
+                      </div>
+                    ) : (
+                      <a href={receiptSignedUrl} target="_blank" rel="noreferrer" className="block">
+                        <img src={receiptSignedUrl} alt="Supplier receipt" className="max-h-[480px] rounded border bg-background" />
+                      </a>
+                    )
+                  ) : (
+                    <div className="text-xs text-muted-foreground py-4">Loading preview…</div>
+                  )}
+                </div>
+              </div>
             </div>
+
           )}
         </DialogContent>
       </Dialog>

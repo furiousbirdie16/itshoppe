@@ -1,0 +1,1 @@
+ALTER TABLE public.overseas_purchase_orders ADD COLUMN IF NOT EXISTS receipt_url TEXT;
