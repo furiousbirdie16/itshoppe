@@ -111,6 +111,58 @@ export default function OverseasPurchaseOrdersPage() {
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
+  // Receipt upload
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const receiptPath = (viewPO as any)?.receipt_url as string | null | undefined;
+  const { data: receiptSignedUrl } = useQuery({
+    queryKey: ["overseas_po_receipt", viewPO?.id, receiptPath],
+    queryFn: async () => {
+      if (!receiptPath) return null;
+      const { data } = await supabase.storage.from("overseas-po-receipts").createSignedUrl(receiptPath, 3600);
+      return data?.signedUrl || null;
+    },
+    enabled: !!viewPO && !!receiptPath,
+  });
+
+  const handleReceiptUpload = async (file: File) => {
+    if (!viewPO) return;
+    setUploadingReceipt(true);
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `${viewPO.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("overseas-po-receipts")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      // remove old file if exists
+      if (receiptPath && receiptPath !== path) {
+        await supabase.storage.from("overseas-po-receipts").remove([receiptPath]);
+      }
+      await updateOverseasPurchaseOrder(viewPO.id, { receipt_url: path } as any);
+      const updated = { ...viewPO, receipt_url: path } as any;
+      setViewPO(updated);
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      toast.success("Receipt uploaded");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to upload receipt");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const handleReceiptRemove = async () => {
+    if (!viewPO || !receiptPath) return;
+    try {
+      await supabase.storage.from("overseas-po-receipts").remove([receiptPath]);
+      await updateOverseasPurchaseOrder(viewPO.id, { receipt_url: null } as any);
+      setViewPO({ ...viewPO, receipt_url: null } as any);
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      toast.success("Receipt removed");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to remove receipt");
+    }
+  };
+
 
   const { data: orders = [], isLoading } = useQuery<OverseasPurchaseOrder[]>({ queryKey: ["overseas_pos"], queryFn: getOverseasPurchaseOrders });
   const statusBuckets: Record<string, "not_shipped" | "incoming" | "received"> = {
