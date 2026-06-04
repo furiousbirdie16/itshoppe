@@ -958,6 +958,7 @@ export type Database = {
           notes: string | null
           order_date: string | null
           po_number: string
+          receipt_url: string | null
           shipping_fee: number
           status: string
           supplier_id: string | null
@@ -981,6 +982,7 @@ export type Database = {
           notes?: string | null
           order_date?: string | null
           po_number: string
+          receipt_url?: string | null
           shipping_fee?: number
           status?: string
           supplier_id?: string | null
@@ -1004,6 +1006,7 @@ export type Database = {
           notes?: string | null
           order_date?: string | null
           po_number?: string
+          receipt_url?: string | null
           shipping_fee?: number
           status?: string
           supplier_id?: string | null
