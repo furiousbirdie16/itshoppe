@@ -225,7 +225,11 @@ export default function OverseasPurchaseOrdersPage() {
     php_total: (r) => Number(r.total_amount) * Number(r.exchange_rate || 1),
     order_date: (r) => r.order_date,
     expected_delivery: (r) => r.expected_delivery,
-    eta: (r) => shipmentByPo.get(r.id)?.estimated_arrival || r.expected_delivery || "",
+    eta: (r) => {
+      const s = shipmentByPo.get(r.id);
+      const v = s?.actual_arrival || s?.estimated_arrival || r.expected_delivery;
+      return v ? new Date(v).getTime() : null;
+    },
   });
   const itemsByPo = useMemo(() => {
     const map = new Map<string, OverseasPurchaseOrderItem[]>();
