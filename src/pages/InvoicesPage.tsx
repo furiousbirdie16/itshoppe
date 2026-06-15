@@ -407,6 +407,49 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const reserveMut = useMutation({
+    mutationFn: reserveInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Order reserved — stock allocated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const shipMut = useMutation({
+    mutationFn: shipInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Marked as shipped");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: cancelInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Order cancelled — reserved stock returned");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const convertMut = useMutation({
+    mutationFn: convertReservedToSale,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Converted to open sales order — stock allocation preserved");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+
   const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
