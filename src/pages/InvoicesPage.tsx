@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -147,22 +147,35 @@ export default function InvoicesPage() {
 
   const [customerFilterOpen, setCustomerFilterOpen] = useState(false);
 
-  const [quickFilter, setQuickFilter] = useState<"all" | "not_shipped" | "unpaid" | "shipped">("all");
-  const statusBuckets: Record<string, "not_shipped" | "unpaid" | "shipped"> = {
+  // Quick filter buckets for the new Reserved workflow.
+  // - reserved: order placed, stock allocated, not paid, not shipped
+  // - not_shipped: legacy draft (no stock deduction yet)
+  // - awaiting_payment: shipped/confirmed but not yet paid (red)
+  // - awaiting_shipment: paid but not yet shipped/picked up (blue)
+  // - completed: paid AND shipped
+  // - cancelled: cancelled — excluded from sales reporting
+  const [quickFilter, setQuickFilter] = useState<
+    "all" | "reserved" | "not_shipped" | "awaiting_payment" | "awaiting_shipment" | "completed" | "cancelled"
+  >("all");
+  const statusBuckets: Record<string, typeof quickFilter> = {
     draft: "not_shipped",
-    confirmed: "unpaid",
-    unpaid: "unpaid",
-    paid: "shipped",
+    reserved: "reserved",
+    confirmed: "awaiting_payment", // legacy: shipped, not paid
+    shipped: "awaiting_payment",
+    unpaid: "awaiting_payment",
+    paid: "awaiting_shipment", // paid, pending shipment/pickup
+    completed: "completed",
+    cancelled: "cancelled",
   };
   const quickFiltered = useMemo(
     () => quickFilter === "all" ? filtered : filtered.filter((inv: any) => statusBuckets[inv.status] === quickFilter),
     [filtered, quickFilter]
   );
   const bucketCounts = useMemo(() => {
-    const c = { not_shipped: 0, unpaid: 0, shipped: 0 } as Record<string, number>;
+    const c = { reserved: 0, not_shipped: 0, awaiting_payment: 0, awaiting_shipment: 0, completed: 0, cancelled: 0 } as Record<string, number>;
     for (const inv of filtered as any[]) {
       const b = statusBuckets[inv.status];
-      if (b) c[b]++;
+      if (b && b !== "all") c[b]++;
     }
     return c;
   }, [filtered]);
@@ -176,12 +189,16 @@ export default function InvoicesPage() {
     total_amount: (r) => Number(r.total_amount),
   });
 
-  // Total sales (admin only) — sum of confirmed/paid invoices in current filter
+  // Statuses that count as a real sale (exclude reserved, draft, cancelled)
+  const SALE_STATUSES = new Set(["confirmed", "paid", "unpaid", "shipped", "completed"]);
+
+  // Total sales (admin only) — sum of real sales (excludes reserved & cancelled) in current filter
   const totalSales = useMemo(() => {
     return filtered
-      .filter((inv: any) => inv.status === "confirmed" || inv.status === "paid")
+      .filter((inv: any) => SALE_STATUSES.has(inv.status))
       .reduce((s: number, inv: any) => s + Number(inv.total_amount || 0), 0);
   }, [filtered]);
+
 
   const toggleAll = () => {
     if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
