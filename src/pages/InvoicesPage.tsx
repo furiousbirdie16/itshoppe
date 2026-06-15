@@ -1064,7 +1064,8 @@ export default function InvoicesPage() {
                         <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Recall this reserved order? It will return to Draft and allocated stock will be restored to inventory.")) revertMut.mutate(inv.id); }} title="Recall reservation (return to draft, restore stock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory and the order will be marked Cancelled.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
