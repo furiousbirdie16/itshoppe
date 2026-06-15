@@ -8,7 +8,7 @@ import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Package, DollarSign, AlertTriangle, TruckIcon, ArrowRight, ShoppingCart, Receipt, CalendarIcon, X } from "lucide-react";
+import { Package, DollarSign, AlertTriangle, TruckIcon, ArrowRight, ShoppingCart, Receipt, CalendarIcon, X, Wallet, Banknote, Coins } from "lucide-react";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -125,6 +125,7 @@ export default function DashboardPage() {
             value={peso(stats?.totalValue || 0)}
             icon={DollarSign}
             variant="success"
+            description="Goods on hand, available for sale"
           />
         )}
         <StatCard
@@ -135,13 +136,40 @@ export default function DashboardPage() {
         />
         {isAdmin && (
           <StatCard
-            title="Incoming Stock Value"
-            value={peso(stats?.incomingStockValue || 0)}
+            title="Incoming Assets"
+            value={peso(stats?.incomingAssetsValue || 0)}
             icon={TruckIcon}
-            description="From unreceived POs"
+            description="Paid goods in transit"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Payable Assets"
+            value={peso(stats?.payableAssetsValue || 0)}
+            icon={Wallet}
+            description="Shipped overseas, not yet paid"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Accounts Payable"
+            value={peso(stats?.accountsPayableValue || 0)}
+            icon={Banknote}
+            variant="warning"
+            description="Owed to overseas suppliers"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Total Asset Value"
+            value={peso(stats?.totalAssetValue || 0)}
+            icon={Coins}
+            variant="success"
+            description="Inventory + Incoming + Payable"
           />
         )}
       </div>
+
 
       {/* Analytics: charts (admin only) */}
       {isAdmin && <DashboardAnalytics />}

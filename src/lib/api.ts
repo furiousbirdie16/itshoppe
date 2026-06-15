@@ -771,28 +771,45 @@ export const getDashboardStats = async () => {
     .neq("overseas_purchase_orders.status", "received");
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};
-  let incomingStockValue = 0;
+  let incomingAssetsValue = 0;   // Paid (or local) goods in transit
+  let payableAssetsValue = 0;    // Overseas goods shipped but not yet paid
+  // Local POs: treat all open remaining as Incoming Assets (paid on receipt model)
   for (const li of (openPOItems as any[]) || []) {
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
-    incomingStockValue += remaining * Number(li.unit_cost || 0);
+    incomingAssetsValue += remaining * Number(li.unit_cost || 0);
     if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.localQty += remaining;
     const num = li.purchase_orders?.po_number;
     if (num && !e.localPOs.includes(num)) e.localPOs.push(num);
   }
+  // Overseas POs: classify by status into Payable vs Incoming
+  const PAYABLE_STATUSES = new Set(["shipped_not_paid", "sent"]);
+  const INCOMING_STATUSES = new Set(["shipped", "partially_received"]);
   for (const li of (openOverseasItems as any[]) || []) {
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
     const rate = Number(li.overseas_purchase_orders?.exchange_rate || 1);
-    incomingStockValue += remaining * Number(li.unit_cost || 0) * rate;
+    const status = li.overseas_purchase_orders?.status;
+    const value = remaining * Number(li.unit_cost || 0) * rate;
+    if (PAYABLE_STATUSES.has(status)) {
+      payableAssetsValue += value;
+    } else if (INCOMING_STATUSES.has(status)) {
+      incomingAssetsValue += value;
+    }
+    // 'draft'/'unpaid'/'paid_not_shipped'/'pending_cargo_adjustment'/'cargo_adjusted' contribute $0
     if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.overseasQty += remaining;
     const num = li.overseas_purchase_orders?.po_number;
     if (num && !e.overseasPOs.includes(num)) e.overseasPOs.push(num);
   }
+
+  // Accounts Payable for overseas = the Payable Assets amount (what we owe suppliers for shipped goods)
+  const accountsPayableValue = payableAssetsValue;
+  // Keep legacy combined "incoming stock" for backward compatibility with the existing chart/UI
+  const incomingStockValue = incomingAssetsValue + payableAssetsValue;
 
   const itemsList = (items as any[]) || [];
   const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
@@ -804,11 +821,16 @@ export const getDashboardStats = async () => {
     totalItems: itemsList.length,
     totalValue,
     incomingStockValue,
+    incomingAssetsValue,
+    payableAssetsValue,
+    accountsPayableValue,
+    totalAssetValue: totalValue + incomingAssetsValue + payableAssetsValue,
     lowStockItems: lowStockItems as (Item & { on_order: { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] } })[],
     recentPOs: (recentPOs || []) as PurchaseOrder[],
     recentInvoices: (recentInvoices || []) as Invoice[],
   };
 };
+
 
 // Document sequences
 export const getDocumentSequences = async () => {
