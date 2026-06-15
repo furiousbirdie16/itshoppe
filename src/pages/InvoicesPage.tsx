@@ -969,6 +969,50 @@ export default function InvoicesPage() {
       </Dialog>
 
       <div className="data-table-wrapper">
+        {selectedIds.size > 0 && (
+          <div className="sticky top-2 z-20 mx-2 my-2 flex flex-wrap items-center gap-2 rounded-lg border bg-card/95 backdrop-blur px-3 py-2 shadow-md">
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(selectionStatusCounts).map(([s, n]) => (
+                  <span key={s} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px]">
+                    <StatusBadge status={s} context="invoice" />
+                    <span className="font-mono text-muted-foreground">×{n}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1 ml-auto">
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("reserve")}>
+                <BookmarkPlus className="h-3.5 w-3.5 mr-1 text-amber-600" /> Reserve
+              </Button>
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("pay")}>
+                <DollarSign className="h-3.5 w-3.5 mr-1 text-primary" /> Paid
+              </Button>
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("ship")}>
+                <Truck className="h-3.5 w-3.5 mr-1 text-success" /> Shipped
+              </Button>
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("complete")}>
+                <CheckCircle className="h-3.5 w-3.5 mr-1 text-success" /> Completed
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={bulkStatusMut.isPending}
+                onClick={() => {
+                  if (window.confirm(`Cancel ${selectedIds.size} selected order(s)? Reserved stock will be returned to inventory.`)) {
+                    bulkStatusMut.mutate("cancel");
+                  }
+                }}
+              >
+                <XCircle className="h-3.5 w-3.5 mr-1 text-destructive" /> Cancel
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+            </div>
+          </div>
+        )}
+
         <Table>
           <TableHeader>
             <TableRow>
