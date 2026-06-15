@@ -160,12 +160,10 @@ export default function InvoicesPage() {
   const statusBuckets: Record<string, typeof quickFilter> = {
     draft: "not_shipped",
     reserved: "reserved",
-    // Legacy locked statuses are treated as completed sales — they predate
-    // the separate payment/shipment tracking and should not show as pending.
-    confirmed: "completed",
-    shipped: "completed",
-    unpaid: "completed",
-    paid: "completed",
+    confirmed: "awaiting_payment", // legacy: shipped, not paid
+    shipped: "awaiting_payment",
+    unpaid: "awaiting_payment",
+    paid: "awaiting_shipment", // paid, pending shipment/pickup
     completed: "completed",
     cancelled: "cancelled",
   };
