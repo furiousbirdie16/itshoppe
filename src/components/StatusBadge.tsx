@@ -62,7 +62,12 @@ export function StatusBadge({ status, className, context = "default" }: StatusBa
         ? "shipped"
         : context === "invoice" && status === "confirmed"
           ? "rejected" // shipped but not paid → red
-          : status;
+          : context === "invoice" && status === "shipped"
+            ? "rejected" // shipped but not yet paid → red
+            : context === "invoice" && status === "paid"
+              ? "paid_not_shipped" // paid but pending shipment → blue
+              : status;
+
   return (
     <span
       className={cn(
