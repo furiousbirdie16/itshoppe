@@ -122,7 +122,7 @@ export interface Invoice {
   invoice_number: string;
   customer_id: string | null;
   quotation_id: string | null;
-  status: 'draft' | 'confirmed' | 'paid' | 'unpaid';
+  status: 'draft' | 'confirmed' | 'paid' | 'unpaid' | 'reserved' | 'shipped' | 'completed' | 'cancelled';
   invoice_date: string;
   due_date: string | null;
   notes: string;
