@@ -511,10 +511,15 @@ export default function InvoicesPage() {
                     fields={[
                       { key: "status", label: "Status", type: "select", options: [
                         { value: "draft", label: "Not Shipped" },
-                        { value: "confirmed", label: "Shipped" },
-                        { value: "paid", label: "Paid" },
+                        { value: "reserved", label: "Reserved" },
+                        { value: "confirmed", label: "Shipped (legacy)" },
+                        { value: "shipped", label: "Shipped" },
+                        { value: "paid", label: "Paid (pending shipment)" },
+                        { value: "completed", label: "Completed" },
+                        { value: "cancelled", label: "Cancelled" },
                         { value: "unpaid", label: "Unpaid" },
                       ]},
+
                       { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
                       { key: "due_date", label: "Due Date", type: "date" },
                       { key: "notes", label: "Notes", type: "textarea" },
