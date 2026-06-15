@@ -49,31 +49,40 @@ export type Database = {
       }
       asset_snapshots: {
         Row: {
+          accounts_payable_value: number
           captured_at: string
           created_at: string
           id: string
+          incoming_assets_value: number
           incoming_stock_value: number
           inventory_value: number
+          payable_assets_value: number
           receivables_value: number
           snapshot_date: string
           total_asset_value: number
         }
         Insert: {
+          accounts_payable_value?: number
           captured_at?: string
           created_at?: string
           id?: string
+          incoming_assets_value?: number
           incoming_stock_value?: number
           inventory_value?: number
+          payable_assets_value?: number
           receivables_value?: number
           snapshot_date: string
           total_asset_value?: number
         }
         Update: {
+          accounts_payable_value?: number
           captured_at?: string
           created_at?: string
           id?: string
+          incoming_assets_value?: number
           incoming_stock_value?: number
           inventory_value?: number
+          payable_assets_value?: number
           receivables_value?: number
           snapshot_date?: string
           total_asset_value?: number
@@ -1492,11 +1501,14 @@ export type Database = {
       generate_asset_snapshot: {
         Args: never
         Returns: {
+          accounts_payable_value: number
           captured_at: string
           created_at: string
           id: string
+          incoming_assets_value: number
           incoming_stock_value: number
           inventory_value: number
+          payable_assets_value: number
           receivables_value: number
           snapshot_date: string
           total_asset_value: number
