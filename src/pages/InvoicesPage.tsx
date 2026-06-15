@@ -941,8 +941,17 @@ export default function InvoicesPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) confirmMut.mutate(inv.id); }} title="Confirm & Deduct Stock (Mark Shipped)" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
                         <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                      </>
+                    )}
+                    {inv.status === "reserved" && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
@@ -951,9 +960,22 @@ export default function InvoicesPage() {
                         <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
-                    {(inv.status === "paid" || inv.status === "unpaid") && (
+                    {inv.status === "shipped" && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid (auto-completes order)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      </>
+                    )}
+                    {inv.status === "paid" && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up (auto-completes order)" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      </>
+                    )}
+                    {(inv.status === "unpaid" || inv.status === "completed" || inv.status === "cancelled") && (
                       <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
+
                     {isAdmin && !locked && (
                       <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
