@@ -20,9 +20,13 @@ interface Snapshot {
   snapshot_date: string;
   inventory_value: number;
   incoming_stock_value: number;
+  payable_assets_value?: number;
+  incoming_assets_value?: number;
+  accounts_payable_value?: number;
   receivables_value: number;
   total_asset_value: number;
 }
+
 
 const RANGES: { id: Range; label: string }[] = [
   { id: "30d", label: "30D" },
@@ -56,7 +60,7 @@ export default function AssetTrendChart() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("asset_snapshots")
-        .select("snapshot_date, inventory_value, incoming_stock_value, receivables_value, total_asset_value")
+        .select("snapshot_date, inventory_value, incoming_stock_value, payable_assets_value, incoming_assets_value, accounts_payable_value, receivables_value, total_asset_value")
         .gte("snapshot_date", format(fromDate, "yyyy-MM-dd"))
         .order("snapshot_date", { ascending: true });
       if (error) throw error;
@@ -126,10 +130,13 @@ export default function AssetTrendChart() {
     const rows = snapshots.map((s) => ({
       Date: s.snapshot_date,
       "Inventory Value": Number(s.inventory_value),
-      "Incoming Stock Value": Number(s.incoming_stock_value),
+      "Incoming Assets Value": Number(s.incoming_assets_value ?? s.incoming_stock_value),
+      "Payable Assets Value": Number(s.payable_assets_value ?? 0),
+      "Accounts Payable Value": Number(s.accounts_payable_value ?? 0),
       "Receivables Value": Number(s.receivables_value),
       "Total Asset Value": Number(s.total_asset_value),
     }));
+
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Asset History");
