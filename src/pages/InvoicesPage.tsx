@@ -683,12 +683,17 @@ export default function InvoicesPage() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 {([
                   { v: "draft", l: "Not Shipped" },
-                  { v: "confirmed", l: "Shipped" },
-                  { v: "paid", l: "Paid" },
+                  { v: "reserved", l: "Reserved" },
+                  { v: "confirmed", l: "Shipped (legacy)" },
+                  { v: "shipped", l: "Shipped, not paid" },
+                  { v: "paid", l: "Paid, pending ship" },
+                  { v: "completed", l: "Completed" },
+                  { v: "cancelled", l: "Cancelled" },
                   { v: "unpaid", l: "Unpaid" },
                 ] as const).filter(s => availableStatuses.has(s.v)).map(s => (
                   <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>
                 ))}
+
               </SelectContent>
             </Select>
           </div>
