@@ -34,9 +34,17 @@ export function usePermissions() {
   };
 }
 
-/** An invoice is locked once it is shipped, paid, or marked unpaid (shipped-not-paid). */
+/** An invoice is locked once it is reserved, shipped, paid, completed, cancelled, or marked unpaid. */
 export function isInvoiceLocked(status?: string | null): boolean {
-  return status === "confirmed" || status === "paid" || status === "unpaid";
+  return (
+    status === "confirmed" ||
+    status === "paid" ||
+    status === "unpaid" ||
+    status === "reserved" ||
+    status === "shipped" ||
+    status === "completed" ||
+    status === "cancelled"
+  );
 }
 
 /** A quotation is locked once accepted. */
@@ -45,6 +53,7 @@ export function isQuotationLocked(status?: string | null): boolean {
 }
 
 export const INVOICE_LOCK_MESSAGE =
-  "This invoice is locked because it has already been shipped or paid. Revert it to draft to enable editing.";
+  "This invoice is locked because it has been reserved, shipped, paid, completed, or cancelled. Revert it to draft to enable editing.";
 export const QUOTATION_LOCK_MESSAGE =
   "This quotation is locked because it has already been accepted. Revert it to enable editing.";
+

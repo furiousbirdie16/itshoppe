@@ -22,11 +22,20 @@ const statusStyles: Record<string, string> = {
   pending_cargo_adjustment: "bg-warning/10 text-warning",
   cargo_adjusted: "bg-success/10 text-success",
   closed: "bg-muted text-muted-foreground",
+  reserved: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  completed: "bg-success/10 text-success",
+  cancelled: "bg-muted text-muted-foreground line-through",
 };
 
 const invoiceLabels: Record<string, string> = {
   draft: "not shipped",
-  confirmed: "shipped",
+  confirmed: "shipped, not paid",
+  paid: "paid, not shipped",
+  shipped: "shipped, not paid",
+  completed: "completed",
+  reserved: "reserved",
+  cancelled: "cancelled",
+  unpaid: "unpaid",
 };
 
 const overseasPoLabels: Record<string, string> = {
@@ -37,6 +46,7 @@ const overseasPoLabels: Record<string, string> = {
   pending_cargo_adjustment: "pending cargo adj.",
   cargo_adjusted: "cargo adjusted",
 };
+
 
 export function StatusBadge({ status, className, context = "default" }: StatusBadgeProps) {
   const label =
