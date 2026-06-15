@@ -223,6 +223,75 @@ export default function InvoicesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} invoices`); },
   });
 
+  type BulkAction = "reserve" | "pay" | "ship" | "complete" | "cancel";
+  const bulkStatusMut = useMutation({
+    mutationFn: async (action: BulkAction) => {
+      const ids = Array.from(selectedIds);
+      let ok = 0, skip = 0, fail = 0;
+      const errors: string[] = [];
+      for (const id of ids) {
+        const inv: any = invoices.find((i: any) => i.id === id);
+        if (!inv) { fail++; continue; }
+        const s: string = inv.status;
+        try {
+          if (action === "reserve") {
+            if (s === "cancelled" || s === "completed" || s === "reserved") { skip++; continue; }
+            await reserveInvoice(id); ok++;
+          } else if (action === "pay") {
+            if (s === "cancelled" || s === "completed" || s === "paid") { skip++; continue; }
+            await markInvoicePaid(id, { payment_method: "Cash", payment_reference: null, payment_reference_url: null });
+            ok++;
+          } else if (action === "ship") {
+            if (s === "cancelled" || s === "completed" || s === "shipped" || s === "confirmed") { skip++; continue; }
+            await shipInvoice(id); ok++;
+          } else if (action === "complete") {
+            // Allowed only when Paid AND Shipped. Single-status model:
+            // 'completed' -> skip; 'paid' -> ship (auto-completes); 'shipped'/'confirmed' -> needs payment.
+            if (s === "completed") { skip++; continue; }
+            if (s === "paid") { await shipInvoice(id); ok++; }
+            else { fail++; errors.push(`${inv.invoice_number}: needs both Paid and Shipped`); }
+          } else if (action === "cancel") {
+            if (s === "cancelled") { skip++; continue; }
+            await cancelInvoice(id); ok++;
+          }
+        } catch (e: any) {
+          fail++;
+          errors.push(`${inv.invoice_number}: ${e?.message || "failed"}`);
+          console.error("Bulk action failed", action, id, e);
+        }
+      }
+      return { ok, skip, fail, action, errors };
+    },
+    onSuccess: ({ ok, skip, fail, action, errors }) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setSelectedIds(new Set());
+      const label: Record<BulkAction, string> = {
+        reserve: "Reserve", pay: "Mark Paid", ship: "Mark Shipped", complete: "Mark Completed", cancel: "Cancel",
+      };
+      const parts: string[] = [];
+      if (ok) parts.push(`${ok} updated`);
+      if (skip) parts.push(`${skip} skipped`);
+      if (fail) parts.push(`${fail} failed`);
+      const msg = `${label[action]}: ${parts.join(", ") || "no changes"}`;
+      const desc = errors.slice(0, 3).join("\n") || undefined;
+      if (fail > 0 && ok === 0) toast.error(msg, { description: desc });
+      else if (fail > 0) toast.warning(msg, { description: desc });
+      else toast.success(msg);
+    },
+  });
+
+  const selectionStatusCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const id of selectedIds) {
+      const inv: any = invoices.find((i: any) => i.id === id);
+      if (!inv) continue;
+      c[inv.status] = (c[inv.status] || 0) + 1;
+    }
+    return c;
+  }, [selectedIds, invoices]);
+
   const openPreview = async (inv: any) => {
     const lineItems = await getInvoiceItems(inv.id);
     setPreviewData({
@@ -900,6 +969,50 @@ export default function InvoicesPage() {
       </Dialog>
 
       <div className="data-table-wrapper">
+        {selectedIds.size > 0 && (
+          <div className="sticky top-2 z-20 mx-2 my-2 flex flex-wrap items-center gap-2 rounded-lg border bg-card/95 backdrop-blur px-3 py-2 shadow-md">
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(selectionStatusCounts).map(([s, n]) => (
+                  <span key={s} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px]">
+                    <StatusBadge status={s} context="invoice" />
+                    <span className="font-mono text-muted-foreground">×{n}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1 ml-auto">
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("reserve")}>
+                <BookmarkPlus className="h-3.5 w-3.5 mr-1 text-amber-600" /> Reserve
+              </Button>
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("pay")}>
+                <DollarSign className="h-3.5 w-3.5 mr-1 text-primary" /> Paid
+              </Button>
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("ship")}>
+                <Truck className="h-3.5 w-3.5 mr-1 text-success" /> Shipped
+              </Button>
+              <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("complete")}>
+                <CheckCircle className="h-3.5 w-3.5 mr-1 text-success" /> Completed
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={bulkStatusMut.isPending}
+                onClick={() => {
+                  if (window.confirm(`Cancel ${selectedIds.size} selected order(s)? Reserved stock will be returned to inventory.`)) {
+                    bulkStatusMut.mutate("cancel");
+                  }
+                }}
+              >
+                <XCircle className="h-3.5 w-3.5 mr-1 text-destructive" /> Cancel
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+            </div>
+          </div>
+        )}
+
         <Table>
           <TableHeader>
             <TableRow>
