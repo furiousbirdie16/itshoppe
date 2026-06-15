@@ -582,12 +582,15 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <div className="inline-flex rounded-lg border bg-card p-0.5">
+      <div className="flex flex-wrap gap-1 rounded-lg border bg-card p-0.5">
         {([
           { key: "all", label: `All (${filtered.length})` },
+          { key: "reserved", label: `Reserved (${bucketCounts.reserved})` },
           { key: "not_shipped", label: `Not Shipped (${bucketCounts.not_shipped})` },
-          { key: "unpaid", label: `Unpaid (${bucketCounts.unpaid})` },
-          { key: "shipped", label: `Shipped (${bucketCounts.shipped})` },
+          { key: "awaiting_payment", label: `Awaiting Payment (${bucketCounts.awaiting_payment})` },
+          { key: "awaiting_shipment", label: `Paid · Pending Ship (${bucketCounts.awaiting_shipment})` },
+          { key: "completed", label: `Completed (${bucketCounts.completed})` },
+          { key: "cancelled", label: `Cancelled (${bucketCounts.cancelled})` },
         ] as const).map((b) => (
           <button
             key={b.key}
@@ -603,6 +606,7 @@ export default function InvoicesPage() {
           </button>
         ))}
       </div>
+
 
       {showFilters && (
         <div className="filter-bar">
