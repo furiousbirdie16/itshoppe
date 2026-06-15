@@ -223,6 +223,75 @@ export default function InvoicesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} invoices`); },
   });
 
+  type BulkAction = "reserve" | "pay" | "ship" | "complete" | "cancel";
+  const bulkStatusMut = useMutation({
+    mutationFn: async (action: BulkAction) => {
+      const ids = Array.from(selectedIds);
+      let ok = 0, skip = 0, fail = 0;
+      const errors: string[] = [];
+      for (const id of ids) {
+        const inv: any = invoices.find((i: any) => i.id === id);
+        if (!inv) { fail++; continue; }
+        const s: string = inv.status;
+        try {
+          if (action === "reserve") {
+            if (s === "cancelled" || s === "completed" || s === "reserved") { skip++; continue; }
+            await reserveInvoice(id); ok++;
+          } else if (action === "pay") {
+            if (s === "cancelled" || s === "completed" || s === "paid") { skip++; continue; }
+            await markInvoicePaid(id, { payment_method: "Cash", payment_reference: null, payment_reference_url: null });
+            ok++;
+          } else if (action === "ship") {
+            if (s === "cancelled" || s === "completed" || s === "shipped" || s === "confirmed") { skip++; continue; }
+            await shipInvoice(id); ok++;
+          } else if (action === "complete") {
+            // Allowed only when Paid AND Shipped. Single-status model:
+            // 'completed' -> skip; 'paid' -> ship (auto-completes); 'shipped'/'confirmed' -> needs payment.
+            if (s === "completed") { skip++; continue; }
+            if (s === "paid") { await shipInvoice(id); ok++; }
+            else { fail++; errors.push(`${inv.invoice_number}: needs both Paid and Shipped`); }
+          } else if (action === "cancel") {
+            if (s === "cancelled") { skip++; continue; }
+            await cancelInvoice(id); ok++;
+          }
+        } catch (e: any) {
+          fail++;
+          errors.push(`${inv.invoice_number}: ${e?.message || "failed"}`);
+          console.error("Bulk action failed", action, id, e);
+        }
+      }
+      return { ok, skip, fail, action, errors };
+    },
+    onSuccess: ({ ok, skip, fail, action, errors }) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setSelectedIds(new Set());
+      const label: Record<BulkAction, string> = {
+        reserve: "Reserve", pay: "Mark Paid", ship: "Mark Shipped", complete: "Mark Completed", cancel: "Cancel",
+      };
+      const parts: string[] = [];
+      if (ok) parts.push(`${ok} updated`);
+      if (skip) parts.push(`${skip} skipped`);
+      if (fail) parts.push(`${fail} failed`);
+      const msg = `${label[action]}: ${parts.join(", ") || "no changes"}`;
+      const desc = errors.slice(0, 3).join("\n") || undefined;
+      if (fail > 0 && ok === 0) toast.error(msg, { description: desc });
+      else if (fail > 0) toast.warning(msg, { description: desc });
+      else toast.success(msg);
+    },
+  });
+
+  const selectionStatusCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const id of selectedIds) {
+      const inv: any = invoices.find((i: any) => i.id === id);
+      if (!inv) continue;
+      c[inv.status] = (c[inv.status] || 0) + 1;
+    }
+    return c;
+  }, [selectedIds, invoices]);
+
   const openPreview = async (inv: any) => {
     const lineItems = await getInvoiceItems(inv.id);
     setPreviewData({
