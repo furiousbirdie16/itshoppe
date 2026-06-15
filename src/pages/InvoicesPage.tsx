@@ -705,7 +705,7 @@ export default function InvoicesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
           <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Sum of shipped &amp; paid invoices in current filter</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Excludes reserved &amp; cancelled. Counts shipped, paid, completed.</p>
           </div>
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
         </div>
