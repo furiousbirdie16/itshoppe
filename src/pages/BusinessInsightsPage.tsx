@@ -106,7 +106,8 @@ export default function BusinessInsightsPage() {
     queryKey: ["bi_invoice", fromStr, toStr, payment],
     queryFn: async () => {
       const statuses =
-        payment === "paid" ? ["paid"] : payment === "unpaid" ? ["confirmed", "unpaid"] : ["confirmed", "paid", "unpaid"];
+        payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
+
       const { data: invs } = await supabase
         .from("invoices")
         .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
