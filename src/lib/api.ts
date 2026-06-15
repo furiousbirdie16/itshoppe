@@ -631,27 +631,86 @@ const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
   return true;
 };
 
-// Confirm Invoice (mark shipped) - deduct stock once
+// Confirm Invoice (mark shipped - legacy "shipped not paid") - deduct stock once
 export const confirmInvoice = async (invoiceId: string) => {
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (shipped)");
   await from("invoices").update({ status: "confirmed", updated_at: new Date().toISOString() }).eq("id", invoiceId);
   await logActivity("confirmed_invoice", "invoice", invoiceId);
 };
 
-// Mark invoice as paid - also deducts stock if not yet deducted (handles draft → paid path)
+// Reserve invoice: allocate stock immediately, not yet paid, not yet shipped.
+export const reserveInvoice = async (invoiceId: string) => {
+  await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (reserved)");
+  await from("invoices").update({ status: "reserved", updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  await logActivity("reserved_invoice", "invoice", invoiceId);
+};
+
+// Convert a Reserved order into an open sales order (legacy "confirmed" = shipped-not-paid bucket
+// in this codebase represents an open, stock-deducted sale awaiting payment). Stock allocation
+// is preserved.
+export const convertReservedToSale = async (invoiceId: string) => {
+  await from("invoices").update({ status: "confirmed", updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  await logActivity("converted_reserved_to_sale", "invoice", invoiceId);
+};
+
+// Mark invoice shipped/picked-up. If already paid -> auto-complete.
+export const shipInvoice = async (invoiceId: string) => {
+  await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (shipped)");
+  const { data: invRow } = await from("invoices").select("status").eq("id", invoiceId).maybeSingle();
+  const wasPaid = (invRow as any)?.status === "paid";
+  await from("invoices").update({
+    status: wasPaid ? "completed" : "shipped",
+    shipped_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", invoiceId);
+  await logActivity(wasPaid ? "completed_invoice" : "shipped_invoice", "invoice", invoiceId);
+};
+
+// Cancel a Reserved (or any open) invoice: restore stock if previously deducted.
+export const cancelInvoice = async (invoiceId: string) => {
+  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const wasDeducted = !!(invRow as any)?.inventory_deducted;
+  if (wasDeducted) {
+    const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
+    for (const invItem of (invItems as any[]) || []) {
+      if (!invItem.item_id) continue;
+      await applyStockChange({
+        itemId: invItem.item_id,
+        variationId: invItem.variation_id || null,
+        qty: -invItem.quantity,
+        referenceId: invoiceId,
+        referenceType: "invoice_cancel",
+        movementType: "in_po",
+        notes: "Restored — invoice cancelled",
+      });
+    }
+  }
+  await from("invoices").update({
+    status: "cancelled",
+    inventory_deducted: false,
+    cancelled_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", invoiceId);
+  await logActivity("cancelled_invoice", "invoice", invoiceId);
+};
+
+// Mark invoice as paid - also deducts stock if not yet deducted (handles draft → paid path).
+// If invoice was already shipped -> auto-complete instead of "paid".
 export const markInvoicePaid = async (
   invoiceId: string,
   payment: { payment_method: string; payment_reference?: string | null; payment_reference_url?: string | null },
 ) => {
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (paid)");
+  const { data: invRow } = await from("invoices").select("status").eq("id", invoiceId).maybeSingle();
+  const wasShipped = (invRow as any)?.status === "shipped";
   await from("invoices").update({
-    status: "paid",
+    status: wasShipped ? "completed" : "paid",
     payment_method: payment.payment_method,
     payment_reference: payment.payment_reference || null,
     payment_reference_url: payment.payment_reference_url || null,
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
-  await logActivity("marked_invoice_paid", "invoice", invoiceId);
+  await logActivity(wasShipped ? "completed_invoice" : "marked_invoice_paid", "invoice", invoiceId);
 };
 
 // Revert invoice to draft - restore stock only if it was previously deducted
@@ -677,9 +736,16 @@ export const revertInvoice = async (invoiceId: string) => {
     }
   }
 
-  await from("invoices").update({ status: "draft", inventory_deducted: false, updated_at: new Date().toISOString() }).eq("id", invoiceId);
+  await from("invoices").update({
+    status: "draft",
+    inventory_deducted: false,
+    shipped_at: null,
+    cancelled_at: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", invoiceId);
   await logActivity("reverted_invoice", "invoice", invoiceId);
 };
+
 
 // Inventory Movements
 export const getInventoryMovements = async (itemId?: string): Promise<InventoryMovement[]> => {

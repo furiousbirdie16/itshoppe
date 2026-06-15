@@ -373,6 +373,7 @@ export type Database = {
       }
       invoices: {
         Row: {
+          cancelled_at: string | null
           created_at: string | null
           customer_id: string | null
           due_date: string | null
@@ -386,11 +387,13 @@ export type Database = {
           payment_reference_url: string | null
           quotation_id: string | null
           sales_agent: string | null
+          shipped_at: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           total_amount: number | null
           updated_at: string | null
         }
         Insert: {
+          cancelled_at?: string | null
           created_at?: string | null
           customer_id?: string | null
           due_date?: string | null
@@ -404,11 +407,13 @@ export type Database = {
           payment_reference_url?: string | null
           quotation_id?: string | null
           sales_agent?: string | null
+          shipped_at?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           total_amount?: number | null
           updated_at?: string | null
         }
         Update: {
+          cancelled_at?: string | null
           created_at?: string | null
           customer_id?: string | null
           due_date?: string | null
@@ -422,6 +427,7 @@ export type Database = {
           payment_reference_url?: string | null
           quotation_id?: string | null
           sales_agent?: string | null
+          shipped_at?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           total_amount?: number | null
           updated_at?: string | null
@@ -1537,7 +1543,15 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
-      invoice_status: "draft" | "confirmed" | "paid" | "unpaid"
+      invoice_status:
+        | "draft"
+        | "confirmed"
+        | "paid"
+        | "unpaid"
+        | "reserved"
+        | "shipped"
+        | "completed"
+        | "cancelled"
       movement_type:
         | "in_po"
         | "out_invoice"
@@ -1686,7 +1700,16 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      invoice_status: ["draft", "confirmed", "paid", "unpaid"],
+      invoice_status: [
+        "draft",
+        "confirmed",
+        "paid",
+        "unpaid",
+        "reserved",
+        "shipped",
+        "completed",
+        "cancelled",
+      ],
       movement_type: [
         "in_po",
         "out_invoice",

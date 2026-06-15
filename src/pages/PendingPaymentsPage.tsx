@@ -71,10 +71,13 @@ export default function PendingPaymentsPage() {
     },
   });
 
-  // Pending = confirmed or unpaid invoices (not paid, not draft)
+  // Pending = invoices that are open and not yet paid (shipped/confirmed/unpaid).
+  // Excludes reserved (not yet a sale), paid (already paid - pending shipment only),
+  // completed, cancelled, and draft.
   const pendingInvoices = useMemo(() => {
-    return invoices.filter((inv: any) => inv.status === "confirmed" || inv.status === "unpaid");
+    return invoices.filter((inv: any) => inv.status === "confirmed" || inv.status === "unpaid" || inv.status === "shipped");
   }, [invoices]);
+
 
   const isOverdue = (item: any): boolean => {
     if (!item.due_date) return true;

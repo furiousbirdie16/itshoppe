@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -147,22 +147,35 @@ export default function InvoicesPage() {
 
   const [customerFilterOpen, setCustomerFilterOpen] = useState(false);
 
-  const [quickFilter, setQuickFilter] = useState<"all" | "not_shipped" | "unpaid" | "shipped">("all");
-  const statusBuckets: Record<string, "not_shipped" | "unpaid" | "shipped"> = {
+  // Quick filter buckets for the new Reserved workflow.
+  // - reserved: order placed, stock allocated, not paid, not shipped
+  // - not_shipped: legacy draft (no stock deduction yet)
+  // - awaiting_payment: shipped/confirmed but not yet paid (red)
+  // - awaiting_shipment: paid but not yet shipped/picked up (blue)
+  // - completed: paid AND shipped
+  // - cancelled: cancelled — excluded from sales reporting
+  const [quickFilter, setQuickFilter] = useState<
+    "all" | "reserved" | "not_shipped" | "awaiting_payment" | "awaiting_shipment" | "completed" | "cancelled"
+  >("all");
+  const statusBuckets: Record<string, typeof quickFilter> = {
     draft: "not_shipped",
-    confirmed: "unpaid",
-    unpaid: "unpaid",
-    paid: "shipped",
+    reserved: "reserved",
+    confirmed: "awaiting_payment", // legacy: shipped, not paid
+    shipped: "awaiting_payment",
+    unpaid: "awaiting_payment",
+    paid: "awaiting_shipment", // paid, pending shipment/pickup
+    completed: "completed",
+    cancelled: "cancelled",
   };
   const quickFiltered = useMemo(
     () => quickFilter === "all" ? filtered : filtered.filter((inv: any) => statusBuckets[inv.status] === quickFilter),
     [filtered, quickFilter]
   );
   const bucketCounts = useMemo(() => {
-    const c = { not_shipped: 0, unpaid: 0, shipped: 0 } as Record<string, number>;
+    const c = { reserved: 0, not_shipped: 0, awaiting_payment: 0, awaiting_shipment: 0, completed: 0, cancelled: 0 } as Record<string, number>;
     for (const inv of filtered as any[]) {
       const b = statusBuckets[inv.status];
-      if (b) c[b]++;
+      if (b && b !== "all") c[b]++;
     }
     return c;
   }, [filtered]);
@@ -176,12 +189,16 @@ export default function InvoicesPage() {
     total_amount: (r) => Number(r.total_amount),
   });
 
-  // Total sales (admin only) — sum of confirmed/paid invoices in current filter
+  // Statuses that count as a real sale (exclude reserved, draft, cancelled)
+  const SALE_STATUSES = new Set(["confirmed", "paid", "unpaid", "shipped", "completed"]);
+
+  // Total sales (admin only) — sum of real sales (excludes reserved & cancelled) in current filter
   const totalSales = useMemo(() => {
     return filtered
-      .filter((inv: any) => inv.status === "confirmed" || inv.status === "paid")
+      .filter((inv: any) => SALE_STATUSES.has(inv.status))
       .reduce((s: number, inv: any) => s + Number(inv.total_amount || 0), 0);
   }, [filtered]);
+
 
   const toggleAll = () => {
     if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
@@ -390,6 +407,49 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const reserveMut = useMutation({
+    mutationFn: reserveInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Order reserved — stock allocated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const shipMut = useMutation({
+    mutationFn: shipInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Marked as shipped");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: cancelInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Order cancelled — reserved stock returned");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const convertMut = useMutation({
+    mutationFn: convertReservedToSale,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Converted to open sales order — stock allocation preserved");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+
   const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
@@ -451,10 +511,15 @@ export default function InvoicesPage() {
                     fields={[
                       { key: "status", label: "Status", type: "select", options: [
                         { value: "draft", label: "Not Shipped" },
-                        { value: "confirmed", label: "Shipped" },
-                        { value: "paid", label: "Paid" },
+                        { value: "reserved", label: "Reserved" },
+                        { value: "confirmed", label: "Shipped (legacy)" },
+                        { value: "shipped", label: "Shipped" },
+                        { value: "paid", label: "Paid (pending shipment)" },
+                        { value: "completed", label: "Completed" },
+                        { value: "cancelled", label: "Cancelled" },
                         { value: "unpaid", label: "Unpaid" },
                       ]},
+
                       { key: "sales_agent", label: "Sales Agent", type: "select", options: salesAgents.map((a: any) => ({ value: a.name, label: a.name })) },
                       { key: "due_date", label: "Due Date", type: "date" },
                       { key: "notes", label: "Notes", type: "textarea" },
@@ -517,12 +582,15 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <div className="inline-flex rounded-lg border bg-card p-0.5">
+      <div className="flex flex-wrap gap-1 rounded-lg border bg-card p-0.5">
         {([
           { key: "all", label: `All (${filtered.length})` },
+          { key: "reserved", label: `Reserved (${bucketCounts.reserved})` },
           { key: "not_shipped", label: `Not Shipped (${bucketCounts.not_shipped})` },
-          { key: "unpaid", label: `Unpaid (${bucketCounts.unpaid})` },
-          { key: "shipped", label: `Shipped (${bucketCounts.shipped})` },
+          { key: "awaiting_payment", label: `Awaiting Payment (${bucketCounts.awaiting_payment})` },
+          { key: "awaiting_shipment", label: `Paid · Pending Ship (${bucketCounts.awaiting_shipment})` },
+          { key: "completed", label: `Completed (${bucketCounts.completed})` },
+          { key: "cancelled", label: `Cancelled (${bucketCounts.cancelled})` },
         ] as const).map((b) => (
           <button
             key={b.key}
@@ -538,6 +606,7 @@ export default function InvoicesPage() {
           </button>
         ))}
       </div>
+
 
       {showFilters && (
         <div className="filter-bar">
@@ -614,12 +683,17 @@ export default function InvoicesPage() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 {([
                   { v: "draft", l: "Not Shipped" },
-                  { v: "confirmed", l: "Shipped" },
-                  { v: "paid", l: "Paid" },
+                  { v: "reserved", l: "Reserved" },
+                  { v: "confirmed", l: "Shipped (legacy)" },
+                  { v: "shipped", l: "Shipped, not paid" },
+                  { v: "paid", l: "Paid, pending ship" },
+                  { v: "completed", l: "Completed" },
+                  { v: "cancelled", l: "Cancelled" },
                   { v: "unpaid", l: "Unpaid" },
                 ] as const).filter(s => availableStatuses.has(s.v)).map(s => (
                   <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>
                 ))}
+
               </SelectContent>
             </Select>
           </div>
@@ -631,7 +705,7 @@ export default function InvoicesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
           <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Sum of shipped &amp; paid invoices in current filter</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Excludes reserved &amp; cancelled. Counts shipped, paid, completed.</p>
           </div>
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
         </div>
@@ -867,8 +941,17 @@ export default function InvoicesPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) confirmMut.mutate(inv.id); }} title="Confirm & Deduct Stock (Mark Shipped)" className="h-7 w-7 rounded-md"><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
                         <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                      </>
+                    )}
+                    {inv.status === "reserved" && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
@@ -877,9 +960,22 @@ export default function InvoicesPage() {
                         <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
-                    {(inv.status === "paid" || inv.status === "unpaid") && (
+                    {inv.status === "shipped" && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid (auto-completes order)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      </>
+                    )}
+                    {inv.status === "paid" && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up (auto-completes order)" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      </>
+                    )}
+                    {(inv.status === "unpaid" || inv.status === "completed" || inv.status === "cancelled") && (
                       <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
+
                     {isAdmin && !locked && (
                       <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
