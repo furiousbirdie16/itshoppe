@@ -248,7 +248,7 @@ export default function InventoryPage() {
             <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
           </Button>
           <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit (Excel)
+            <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit
           </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
