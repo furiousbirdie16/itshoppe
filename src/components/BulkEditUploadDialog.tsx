@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Upload, FileSpreadsheet, AlertCircle, Check, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { updateItem, updateItemVariation, getItemVariations } from "@/lib/api";
+import { updateItem, updateItemVariation } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import * as XLSX from "xlsx";
 import type { Item, ItemVariation } from "@/types/database";
