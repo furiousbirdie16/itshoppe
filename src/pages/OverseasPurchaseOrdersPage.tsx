@@ -285,10 +285,11 @@ export default function OverseasPurchaseOrdersPage() {
 
   const updateMut = useMutation({
     mutationFn: async () => {
-      if (!editing) return;
+      if (!editing) throw new Error("No PO selected for editing");
       const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
       const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
-      await updateOverseasPurchaseOrder(editing.id, {
+      // Update the existing PO in place — never generate a new po_number or insert a new row.
+      const updated = await updateOverseasPurchaseOrder(editing.id, {
         supplier_id: supplierId || null,
         status: status as any,
         order_date: orderDate || null,
@@ -303,8 +304,17 @@ export default function OverseasPurchaseOrdersPage() {
       if (valid.length > 0) {
         await createOverseasPOItems(valid.map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
+      return updated;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items", editing?.id] });
+      setOpen(false);
+      setEditing(null);
+      toast.success("Purchase Order updated successfully.");
+      if (updated) openPreview(updated as OverseasPurchaseOrder);
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
