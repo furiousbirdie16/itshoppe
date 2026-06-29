@@ -285,10 +285,11 @@ export default function OverseasPurchaseOrdersPage() {
 
   const updateMut = useMutation({
     mutationFn: async () => {
-      if (!editing) return;
+      if (!editing) throw new Error("No PO selected for editing");
       const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
       const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
-      await updateOverseasPurchaseOrder(editing.id, {
+      // Update the existing PO in place — never generate a new po_number or insert a new row.
+      const updated = await updateOverseasPurchaseOrder(editing.id, {
         supplier_id: supplierId || null,
         status: status as any,
         order_date: orderDate || null,
@@ -303,8 +304,17 @@ export default function OverseasPurchaseOrdersPage() {
       if (valid.length > 0) {
         await createOverseasPOItems(valid.map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
       }
+      return updated;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setOpen(false); setEditing(null); toast.success("Updated"); },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items", editing?.id] });
+      setOpen(false);
+      setEditing(null);
+      toast.success("Purchase Order updated successfully.");
+      if (updated) openPreview(updated as OverseasPurchaseOrder);
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -519,6 +529,7 @@ export default function OverseasPurchaseOrdersPage() {
   })();
 
   const handleSubmit = () => {
+    if (createMut.isPending || updateMut.isPending) return;
     if (editing) updateMut.mutate();
     else createMut.mutate();
   };
@@ -654,7 +665,7 @@ export default function OverseasPurchaseOrdersPage() {
       />
 
       {/* Create / Edit Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(v) => { if (updateMut.isPending || createMut.isPending) return; setOpen(v); if (!v) setEditing(null); }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Overseas PO" : "New Overseas PO"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
@@ -773,7 +784,7 @@ export default function OverseasPurchaseOrdersPage() {
               <Label className="text-xs font-medium">Notes</Label>
               <Textarea value={notes} onChange={e => setNotes(e.target.value)} className="resize-none" rows={2} />
             </div>
-            <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">{editing ? "Update" : "Create PO"}</Button>
+            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="mt-2 rounded-lg h-9">{editing ? (updateMut.isPending ? "Updating..." : "Update") : (createMut.isPending ? "Creating..." : "Create PO")}</Button>
           </div>
         </DialogContent>
       </Dialog>
