@@ -784,7 +784,7 @@ export default function OverseasPurchaseOrdersPage() {
               <Label className="text-xs font-medium">Notes</Label>
               <Textarea value={notes} onChange={e => setNotes(e.target.value)} className="resize-none" rows={2} />
             </div>
-            <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">{editing ? "Update" : "Create PO"}</Button>
+            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="mt-2 rounded-lg h-9">{editing ? (updateMut.isPending ? "Updating..." : "Update") : (createMut.isPending ? "Creating..." : "Create PO")}</Button>
           </div>
         </DialogContent>
       </Dialog>
