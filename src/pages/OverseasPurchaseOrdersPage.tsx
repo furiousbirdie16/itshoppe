@@ -665,7 +665,7 @@ export default function OverseasPurchaseOrdersPage() {
       />
 
       {/* Create / Edit Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(v) => { if (updateMut.isPending || createMut.isPending) return; setOpen(v); if (!v) setEditing(null); }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Overseas PO" : "New Overseas PO"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
