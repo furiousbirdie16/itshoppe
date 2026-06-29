@@ -529,6 +529,7 @@ export default function OverseasPurchaseOrdersPage() {
   })();
 
   const handleSubmit = () => {
+    if (createMut.isPending || updateMut.isPending) return;
     if (editing) updateMut.mutate();
     else createMut.mutate();
   };
