@@ -89,26 +89,15 @@ export default function BusinessInsightsPage() {
   const { data: onlineRows = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
-      const PAGE = 1000;
-      const all: any[] = [];
-      for (let from = 0; ; from += PAGE) {
-        let q = supabase
-          .from("online_sales")
-          .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
-          .eq("status", "completed")
-          .gte("order_date", fromStr)
-          .lte("order_date", toStr)
-          .order("order_date", { ascending: false })
-          .order("id", { ascending: false })
-          .range(from, from + PAGE - 1);
-        if (payment !== "all") q = q.eq("payment_status", payment);
-        const { data, error } = await q;
-        if (error) throw error;
-        const batch = data || [];
-        all.push(...batch);
-        if (batch.length < PAGE) break;
-      }
-      return all;
+      let q = supabase
+        .from("online_sales")
+        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
+        .eq("status", "completed")
+        .gte("order_date", fromStr)
+        .lte("order_date", toStr);
+      if (payment !== "all") q = q.eq("payment_status", payment);
+      const { data } = await q;
+      return data || [];
     },
   });
 
@@ -119,46 +108,20 @@ export default function BusinessInsightsPage() {
       const statuses =
         payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
 
-      const PAGE = 1000;
-      const invs: any[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await supabase
-          .from("invoices")
-          .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
-          .in("status", statuses as any)
-          .gte("invoice_date", fromStr)
-          .lte("invoice_date", toStr)
-          .order("invoice_date", { ascending: false })
-          .order("id", { ascending: false })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        const batch = data || [];
-        invs.push(...batch);
-        if (batch.length < PAGE) break;
-      }
-      const ids = invs.map((i: any) => i.id);
+      const { data: invs } = await supabase
+        .from("invoices")
+        .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
+        .in("status", statuses as any)
+        .gte("invoice_date", fromStr)
+        .lte("invoice_date", toStr);
+      const ids = (invs || []).map((i: any) => i.id);
       if (!ids.length) return [];
-
-      // Fetch invoice_items in chunks (both for .in() size safety and the 1000-row cap)
-      const items: any[] = [];
-      const ID_CHUNK = 200;
-      for (let i = 0; i < ids.length; i += ID_CHUNK) {
-        const chunk = ids.slice(i, i + ID_CHUNK);
-        for (let from = 0; ; from += PAGE) {
-          const { data, error } = await supabase
-            .from("invoice_items")
-            .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
-            .in("invoice_id", chunk)
-            .order("id", { ascending: false })
-            .range(from, from + PAGE - 1);
-          if (error) throw error;
-          const batch = data || [];
-          items.push(...batch);
-          if (batch.length < PAGE) break;
-        }
-      }
-      const invMap = new Map<string, any>(invs.map((i: any) => [i.id, i]));
-      return items.map((row: any) => ({ ...row, _invoice: invMap.get(row.invoice_id) }));
+      const { data } = await supabase
+        .from("invoice_items")
+        .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
+        .in("invoice_id", ids);
+      const invMap = new Map<string, any>((invs || []).map((i: any) => [i.id, i]));
+      return (data || []).map((row: any) => ({ ...row, _invoice: invMap.get(row.invoice_id) }));
     },
   });
 
