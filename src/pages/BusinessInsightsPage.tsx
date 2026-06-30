@@ -85,19 +85,37 @@ export default function BusinessInsightsPage() {
   const fromStr = format(dateFrom, "yyyy-MM-dd");
   const toStr = format(dateTo, "yyyy-MM-dd");
 
+  // Helper: fetch all rows in pages to bypass PostgREST's default 1000-row cap
+  async function fetchAll<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
+    const out: T[] = [];
+    let from = 0;
+    // Loop until a short page is returned
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await build().range(from, from + pageSize - 1);
+      if (error) throw error;
+      const rows = (data || []) as T[];
+      out.push(...rows);
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+    return out;
+  }
+
   // Online sales (qty from quantity column, price posted_price)
   const { data: onlineRows = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
-      let q = supabase
-        .from("online_sales")
-        .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
-        .eq("status", "completed")
-        .gte("order_date", fromStr)
-        .lte("order_date", toStr);
-      if (payment !== "all") q = q.eq("payment_status", payment);
-      const { data } = await q;
-      return data || [];
+      return fetchAll(() => {
+        let q = supabase
+          .from("online_sales")
+          .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
+          .eq("status", "completed")
+          .gte("order_date", fromStr)
+          .lte("order_date", toStr);
+        if (payment !== "all") q = q.eq("payment_status", payment);
+        return q;
+      });
     },
   });
 
@@ -108,22 +126,34 @@ export default function BusinessInsightsPage() {
       const statuses =
         payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
 
-      const { data: invs } = await supabase
-        .from("invoices")
-        .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
-        .in("status", statuses as any)
-        .gte("invoice_date", fromStr)
-        .lte("invoice_date", toStr);
-      const ids = (invs || []).map((i: any) => i.id);
+      const invs = await fetchAll<any>(() =>
+        supabase
+          .from("invoices")
+          .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
+          .in("status", statuses as any)
+          .gte("invoice_date", fromStr)
+          .lte("invoice_date", toStr)
+      );
+      const ids = invs.map((i: any) => i.id);
       if (!ids.length) return [];
-      const { data } = await supabase
-        .from("invoice_items")
-        .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
-        .in("invoice_id", ids);
-      const invMap = new Map<string, any>((invs || []).map((i: any) => [i.id, i]));
-      return (data || []).map((row: any) => ({ ...row, _invoice: invMap.get(row.invoice_id) }));
+      // Chunk the IN() filter and paginate per chunk
+      const chunkSize = 200;
+      const items: any[] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const rows = await fetchAll<any>(() =>
+          supabase
+            .from("invoice_items")
+            .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
+            .in("invoice_id", chunk)
+        );
+        items.push(...rows);
+      }
+      const invMap = new Map<string, any>(invs.map((i: any) => [i.id, i]));
+      return items.map((row: any) => ({ ...row, _invoice: invMap.get(row.invoice_id) }));
     },
   });
+
 
   // Aggregate per item/variation key
   const aggregated = useMemo<ItemAgg[]>(() => {
