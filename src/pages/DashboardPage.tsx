@@ -144,14 +144,6 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Payable Assets"
-            value={peso(stats?.payableAssetsValue || 0)}
-            icon={Wallet}
-            description="Shipped overseas, not yet paid"
-          />
-        )}
-        {isAdmin && (
-          <StatCard
             title="Accounts Payable"
             value={peso(stats?.accountsPayableValue || 0)}
             icon={Banknote}
