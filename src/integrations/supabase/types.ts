@@ -328,6 +328,100 @@ export type Database = {
           },
         ]
       }
+      invoice_financials: {
+        Row: {
+          created_at: string
+          id: string
+          invoice_id: string
+          paid_at: string | null
+          profit_margin: number
+          total_cost: number
+          total_profit: number
+          total_sales: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invoice_id: string
+          paid_at?: string | null
+          profit_margin?: number
+          total_cost?: number
+          total_profit?: number
+          total_sales?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          paid_at?: string | null
+          profit_margin?: number
+          total_cost?: number
+          total_profit?: number
+          total_sales?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_financials_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: true
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_item_financials: {
+        Row: {
+          cost_snapshot: number
+          created_at: string
+          id: string
+          invoice_id: string
+          item_id: string
+          line_profit: number
+          line_total_cost: number
+          quantity: number
+          unit_price: number
+          updated_at: string
+          variation_id: string | null
+        }
+        Insert: {
+          cost_snapshot?: number
+          created_at?: string
+          id?: string
+          invoice_id: string
+          item_id: string
+          line_profit?: number
+          line_total_cost?: number
+          quantity?: number
+          unit_price?: number
+          updated_at?: string
+          variation_id?: string | null
+        }
+        Update: {
+          cost_snapshot?: number
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          item_id?: string
+          line_profit?: number
+          line_total_cost?: number
+          quantity?: number
+          unit_price?: number
+          updated_at?: string
+          variation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_item_financials_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_items: {
         Row: {
           id: string
