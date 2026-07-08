@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, getAllOverseasPOItems, getShipments,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -108,6 +108,7 @@ export default function OverseasPurchaseOrdersPage() {
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
@@ -350,9 +351,33 @@ export default function OverseasPurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
       setReceiveQtys({});
+      setUndoQtys({});
       setReceiveLocations({});
       setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and added to stock");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const undoMut = useMutation({
+    mutationFn: async () => {
+      const itemsToUndo = Object.entries(undoQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const pi = receiveItems.find((i) => i.id === poItemId);
+          return { poItemId, itemId: pi?.item_id || null, quantity: qty };
+        });
+      if (itemsToUndo.length === 0) throw new Error("Enter quantities to undo");
+      await unreceiveOverseasPO(receiveOpen!, itemsToUndo);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setUndoQtys({});
+      toast.success("Receipt reversed and inventory deducted");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -946,19 +971,19 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {/* Receive Dialog */}
-      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle className="text-lg">Receive Items</DialogTitle></DialogHeader>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Date Received</Label>
-            <DateField value={receiveDate} onChange={setReceiveDate} />
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Enter the quantity that just arrived and choose where to store it.</p>
+      <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
+          <div className="flex items-end gap-3">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Date Received</Label>
+              <DateField value={receiveDate} onChange={setReceiveDate} />
+            </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="h-9"
               onClick={() => {
                 const next: Record<string, number> = {};
                 receiveItems.forEach((pi: any) => {
@@ -967,38 +992,46 @@ export default function OverseasPurchaseOrdersPage() {
                 });
                 setReceiveQtys(next);
               }}
-              className="h-7 text-xs"
             >
               Fill Remaining
             </Button>
           </div>
-          <div className="space-y-3 pt-2 max-h-[60vh] overflow-y-auto">
+          <p className="text-xs text-muted-foreground">Enter a quantity in <span className="font-medium text-foreground">Receive</span> to add to inventory, or in <span className="font-medium text-foreground">Undo</span> to reverse a prior receipt (deducts inventory). Every action is recorded as an inventory transaction.</p>
+          <div className="grid grid-cols-[1fr_120px_80px_80px] gap-2 px-3 pb-1 text-[10px] font-medium uppercase text-muted-foreground">
+            <span>Item</span>
+            <span className="text-center">Location</span>
+            <span className="text-center">Receive</span>
+            <span className="text-center">Undo</span>
+          </div>
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto">
             {receiveItems.length === 0 && (
-              <p className="text-xs text-muted-foreground italic">No line items on this PO.</p>
+              <p className="text-xs text-muted-foreground italic px-3">No line items on this PO.</p>
             )}
             {receiveItems.map((pi: any) => {
               const remaining = pi.quantity - (pi.received_quantity || 0);
               const isCustom = !pi.item_id;
               const isFull = remaining <= 0;
+              const receivedQty = Number(pi.received_quantity || 0);
               const location = receiveLocations[pi.id] || "warehouse";
               return (
-                <div key={pi.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                  <div className="flex-1 min-w-0">
+                <div key={pi.id} className="grid grid-cols-[1fr_120px_80px_80px] items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{pi.items?.name || pi.item_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {isCustom
-                        ? `Custom item — not tracked in inventory · Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0}`
-                        : `Ordered: ${pi.quantity} · Received: ${pi.received_quantity || 0} · Remaining: ${remaining}`}
+                        ? `Custom item — not tracked in inventory · Ordered: ${pi.quantity} · Received: ${receivedQty}`
+                        : `Ordered: ${pi.quantity} · Received: ${receivedQty} · Remaining: ${remaining}`}
                     </p>
+                    {pi.received_date && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Last received: {new Date(pi.received_date).toLocaleDateString("en-US")}</p>
+                    )}
                   </div>
                   <Select
                     value={location}
                     onValueChange={(v) => setReceiveLocations({ ...receiveLocations, [pi.id]: v as "warehouse" | "store" })}
                     disabled={isCustom || isFull}
                   >
-                    <SelectTrigger className="w-32 h-9 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="warehouse">Warehouse</SelectItem>
                       <SelectItem value="store">Store</SelectItem>
@@ -1016,15 +1049,30 @@ export default function OverseasPurchaseOrdersPage() {
                       const clamped = isNaN(v) ? 0 : Math.max(0, Math.min(v, remaining));
                       setReceiveQtys({ ...receiveQtys, [pi.id]: clamped });
                     }}
-                    className="w-20 h-9 text-sm"
+                    className="h-9 text-sm text-center"
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    max={receivedQty}
+                    value={undoQtys[pi.id] || 0}
+                    disabled={receivedQty <= 0 || isCustom}
+                    placeholder="0"
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      const clamped = isNaN(v) ? 0 : Math.max(0, Math.min(v, receivedQty));
+                      setUndoQtys({ ...undoQtys, [pi.id]: clamped });
+                    }}
+                    className="h-9 text-sm text-center"
                   />
                 </div>
               );
             })}
           </div>
-          <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending} className="mt-2 rounded-lg h-9">
-            Confirm Receipt
-          </Button>
+          <div className="flex gap-2 mt-2">
+            <Button onClick={() => receiveMut.mutate()} disabled={receiveMut.isPending || Object.values(receiveQtys).every((v) => !v)} className="flex-1 rounded-lg h-9">Confirm Receipt</Button>
+            <Button variant="outline" onClick={() => undoMut.mutate()} disabled={undoMut.isPending || Object.values(undoQtys).every((v) => !v)} className="flex-1 rounded-lg h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">Undo Receipt</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
