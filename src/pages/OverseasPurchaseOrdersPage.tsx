@@ -351,9 +351,33 @@ export default function OverseasPurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
       setReceiveQtys({});
+      setUndoQtys({});
       setReceiveLocations({});
       setReceiveDate(new Date().toISOString().split("T")[0]);
       toast.success("Items received and added to stock");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const undoMut = useMutation({
+    mutationFn: async () => {
+      const itemsToUndo = Object.entries(undoQtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([poItemId, qty]) => {
+          const pi = receiveItems.find((i) => i.id === poItemId);
+          return { poItemId, itemId: pi?.item_id || null, quantity: qty };
+        });
+      if (itemsToUndo.length === 0) throw new Error("Enter quantities to undo");
+      await unreceiveOverseasPO(receiveOpen!, itemsToUndo);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setUndoQtys({});
+      toast.success("Receipt reversed and inventory deducted");
     },
     onError: (e: any) => toast.error(e.message),
   });
