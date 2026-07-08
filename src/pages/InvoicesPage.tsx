@@ -75,6 +75,21 @@ export default function InvoicesPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
+  const { data: invItemFinancials = [] } = useQuery({
+    queryKey: ["invoice_item_financials", viewInv],
+    queryFn: () => getInvoiceItemFinancials(viewInv!),
+    enabled: !!viewInv && isAdmin,
+  });
+  const { data: invFinancial = null } = useQuery({
+    queryKey: ["invoice_financial", viewInv],
+    queryFn: () => getInvoiceFinancial(viewInv!),
+    enabled: !!viewInv && isAdmin,
+  });
+  const finByItem = useMemo(() => {
+    const m = new Map<string, typeof invItemFinancials[number]>();
+    for (const f of invItemFinancials) m.set(`${f.item_id}::${f.variation_id || ""}`, f);
+    return m;
+  }, [invItemFinancials]);
   const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
   const [newAgentName, setNewAgentName] = useState("");
   const [addingAgent, setAddingAgent] = useState(false);
