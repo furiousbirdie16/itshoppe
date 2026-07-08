@@ -1278,3 +1278,51 @@ export const getSalesTrend = async (
     .map(([date, v]) => ({ date, online: v.online, invoice: v.invoice, total: v.online + v.invoice }))
     .sort((a, b) => a.date.localeCompare(b.date));
 };
+
+// ==============================
+// Admin-only invoice financials
+// ==============================
+// These reads are gated by RLS on the server — non-admins get an empty
+// array back from Supabase and never see cost or profit values.
+
+export interface InvoiceItemFinancial {
+  id: string;
+  invoice_id: string;
+  item_id: string;
+  variation_id: string | null;
+  cost_snapshot: number;
+  quantity: number;
+  unit_price: number;
+  line_total_cost: number;
+  line_profit: number;
+}
+
+export interface InvoiceFinancial {
+  id: string;
+  invoice_id: string;
+  total_sales: number;
+  total_cost: number;
+  total_profit: number;
+  profit_margin: number;
+  paid_at: string | null;
+}
+
+export const getInvoiceItemFinancials = async (invoiceId: string): Promise<InvoiceItemFinancial[]> => {
+  const { data, error } = await (supabase as any)
+    .from("invoice_item_financials")
+    .select("*")
+    .eq("invoice_id", invoiceId);
+  if (error) return [];
+  return (data as InvoiceItemFinancial[]) || [];
+};
+
+export const getInvoiceFinancial = async (invoiceId: string): Promise<InvoiceFinancial | null> => {
+  const { data, error } = await (supabase as any)
+    .from("invoice_financials")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .maybeSingle();
+  if (error) return null;
+  return (data as InvoiceFinancial) || null;
+};
+
