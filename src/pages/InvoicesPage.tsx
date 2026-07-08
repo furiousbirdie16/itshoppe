@@ -966,20 +966,71 @@ export default function InvoicesPage() {
           })()}
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow>
+                <TableHead className="text-xs">SKU</TableHead>
+                <TableHead className="text-xs">Item</TableHead>
+                <TableHead className="text-xs">Qty</TableHead>
+                <TableHead className="text-xs text-right">Price</TableHead>
+                {isAdmin && <TableHead className="text-xs text-right">Cost</TableHead>}
+                {isAdmin && <TableHead className="text-xs text-right">Profit</TableHead>}
+                <TableHead className="text-xs text-right">Total</TableHead>
+              </TableRow></TableHeader>
               <TableBody>
-                {invItems.map(ii => (
-                  <TableRow key={ii.id}>
-                     <TableCell className="font-mono text-xs text-primary font-medium">{(ii as any).item_variations?.sku || ii.items?.sku || "—"}</TableCell>
-                     <TableCell className="text-sm font-medium">{(ii as any).item_variations?.name || (ii as any).item_name || ii.items?.name || "—"}</TableCell>
-                    <TableCell className="text-sm">{ii.quantity}</TableCell>
-                    <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
-                    <TableCell className="text-sm text-right font-medium">{peso(ii.quantity * Number(ii.unit_price))}</TableCell>
-                  </TableRow>
-                ))}
+                {invItems.map(ii => {
+                  const fin = isAdmin ? finByItem.get(`${(ii as any).item_id}::${(ii as any).variation_id || ""}`) : undefined;
+                  return (
+                    <TableRow key={ii.id}>
+                       <TableCell className="font-mono text-xs text-primary font-medium">{(ii as any).item_variations?.sku || ii.items?.sku || "—"}</TableCell>
+                       <TableCell className="text-sm font-medium">{(ii as any).item_variations?.name || (ii as any).item_name || ii.items?.name || "—"}</TableCell>
+                      <TableCell className="text-sm">{ii.quantity}</TableCell>
+                      <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
+                      {isAdmin && (
+                        <TableCell className="text-sm text-right text-muted-foreground">
+                          {fin ? peso(Number(fin.cost_snapshot)) : "—"}
+                        </TableCell>
+                      )}
+                      {isAdmin && (
+                        <TableCell className={`text-sm text-right font-medium ${fin && Number(fin.line_profit) < 0 ? "text-destructive" : "text-success"}`}>
+                          {fin ? peso(Number(fin.line_profit)) : "—"}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-sm text-right font-medium">{peso(ii.quantity * Number(ii.unit_price))}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
+          {isAdmin && invFinancial && (
+            <div className="mt-3 rounded-lg border bg-primary/5 p-3 space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial Summary (Admin only)</p>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-muted-foreground">Total Sales</div>
+                <div className="text-right font-medium tabular-nums">{peso(Number(invFinancial.total_sales))}</div>
+                <div className="text-muted-foreground">Total Cost</div>
+                <div className="text-right font-medium tabular-nums">{peso(Number(invFinancial.total_cost))}</div>
+                <div className="text-muted-foreground">Gross Profit</div>
+                <div className={`text-right font-semibold tabular-nums ${Number(invFinancial.total_profit) < 0 ? "text-destructive" : "text-success"}`}>
+                  {peso(Number(invFinancial.total_profit))}
+                </div>
+                <div className="text-muted-foreground">Profit Margin</div>
+                <div className={`text-right font-semibold tabular-nums ${Number(invFinancial.profit_margin) < 0 ? "text-destructive" : "text-success"}`}>
+                  {Number(invFinancial.profit_margin).toFixed(2)}%
+                </div>
+              </div>
+            </div>
+          )}
+          {isAdmin && !invFinancial && viewInv && (() => {
+            const inv: any = invoices.find((i: any) => i.id === viewInv);
+            if (!inv) return null;
+            if (inv.status === "paid" || inv.status === "completed") return null;
+            return (
+              <div className="mt-3 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                Financial summary will appear once this invoice is marked Paid.
+              </div>
+            );
+          })()}
+
         </DialogContent>
       </Dialog>
 
