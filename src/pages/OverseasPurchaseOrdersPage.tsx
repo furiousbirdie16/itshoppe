@@ -108,6 +108,7 @@ export default function OverseasPurchaseOrdersPage() {
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
+  const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
   const [receiveDate, setReceiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
