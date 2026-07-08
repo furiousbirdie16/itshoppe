@@ -1100,6 +1100,73 @@ export const receiveOverseasPO = async (
   await logActivity("received_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus, received_date: rcvDate });
 };
 
+// Undo Receive for Overseas PO — reverses received quantities per line item and deducts inventory.
+// Throws if the reversal would exceed current on-hand inventory.
+export const unreceiveOverseasPO = async (
+  poId: string,
+  itemsToUnreceive: { poItemId: string; itemId: string | null; quantity: number }[],
+) => {
+  for (const item of itemsToUnreceive) {
+    if (item.quantity <= 0) continue;
+    const { data: poItem } = await from("overseas_purchase_order_items")
+      .select("received_quantity")
+      .eq("id", item.poItemId)
+      .single();
+    const currentReceived = Number((poItem as any)?.received_quantity || 0);
+    const undoQty = Math.min(item.quantity, currentReceived);
+    if (undoQty <= 0) continue;
+
+    if (item.itemId) {
+      const { data: currentItem } = await from("items")
+        .select("warehouse_quantity, store_quantity, name")
+        .eq("id", item.itemId)
+        .single();
+      const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
+      const curSt = Number((currentItem as any)?.store_quantity || 0);
+      const onHand = curWh + curSt;
+      if (onHand < undoQty) {
+        throw new Error(
+          `Cannot undo this receipt for "${(currentItem as any)?.name || "item"}" because the inventory has already been consumed (on hand: ${onHand}, needed: ${undoQty}). Please perform a manual inventory adjustment instead.`,
+        );
+      }
+      // Deduct from warehouse first, then store
+      const fromWh = Math.min(curWh, undoQty);
+      const fromSt = undoQty - fromWh;
+      await from("items").update({
+        warehouse_quantity: curWh - fromWh,
+        store_quantity: curSt - fromSt,
+        updated_at: new Date().toISOString(),
+      }).eq("id", item.itemId);
+
+      await from("inventory_movements").insert({
+        item_id: item.itemId,
+        type: "in_po",
+        quantity: -undoQty,
+        reference_id: poId,
+        reference_type: "overseas_purchase_order",
+        notes: `Undo receive from overseas PO`,
+      });
+    }
+
+    const newReceived = currentReceived - undoQty;
+    await from("overseas_purchase_order_items")
+      .update({ received_quantity: newReceived, received_date: newReceived === 0 ? null : undefined })
+      .eq("id", item.poItemId);
+  }
+
+  const { data: allItems } = await from("overseas_purchase_order_items")
+    .select("quantity, received_quantity")
+    .eq("po_id", poId);
+  const list = (allItems as any[]) || [];
+  const allReceived = list.length > 0 && list.every((i) => (i.received_quantity || 0) >= i.quantity);
+  const someReceived = list.some((i) => (i.received_quantity || 0) > 0);
+  const newStatus = allReceived ? "received" : someReceived ? "partially_received" : "shipped";
+  await from("overseas_purchase_orders")
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq("id", poId);
+  await logActivity("undo_receive_overseas_purchase_order", "overseas_purchase_order", poId, { status: newStatus });
+};
+
 // Shipment Tracking
 export const getShipments = async (): Promise<ShipmentTracking[]> => {
   const { data, error } = await from("shipment_tracking").select("*, overseas_purchase_orders(*, overseas_suppliers(*))").order("created_at", { ascending: false });
