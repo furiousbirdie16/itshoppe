@@ -555,6 +555,7 @@ export default function BusinessInsightsPage() {
 
   const fmtDays = (d: number) => (d === Infinity ? "∞" : d > 999 ? ">999" : Math.round(d).toString());
 
+  return (
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Business Insights</h1>
