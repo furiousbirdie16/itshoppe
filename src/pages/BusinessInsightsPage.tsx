@@ -726,48 +726,58 @@ export default function BusinessInsightsPage() {
 
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
-          {isAdmin && (
+          {isAdmin && (() => {
+            const pSort = useSort(filteredProducts, {
+              name: (r) => r.name,
+              stock: (r) => r.stock,
+              qtySold: (r) => r.qtySold,
+              revenue: (r) => r.revenue,
+              grossProfit: (r) => r.grossProfit,
+              margin: (r) => r.margin,
+              gmroi: (r) => r.gmroi,
+            }, { key: "revenue", dir: "desc" });
+            return (
             <div className="rounded-xl border bg-card overflow-hidden">
               <div className="p-3 border-b">
                 <h2 className="text-sm font-semibold">Product Performance</h2>
-                <p className="text-xs text-muted-foreground">Stock · sales velocity · margin · GMROI · suggested action</p>
+                <p className="text-xs text-muted-foreground">Stock · sales · margin · GMROI</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40">
-                    <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Item</th>
-                      <th className="px-3 py-2 font-medium text-right">Stock</th>
-                      <th className="px-3 py-2 font-medium text-right">Sold</th>
-                      <th className="px-3 py-2 font-medium text-right">Revenue</th>
-                      <th className="px-3 py-2 font-medium text-right">Gross Profit</th>
-                      <th className="px-3 py-2 font-medium text-right">Margin</th>
-                      <th className="px-3 py-2 font-medium text-right">Days Left</th>
-                      <th className="px-3 py-2 font-medium text-right">GMROI</th>
-                      <th className="px-3 py-2 font-medium text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProducts.length === 0 ? (
-                      <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">No items.</td></tr>
-                    ) : [...filteredProducts].sort((a, b) => b.revenue - a.revenue).slice(0, 200).map((p) => (
-                      <tr key={p.itemId} className="border-t hover:bg-muted/30">
-                        <td className="px-3 py-1.5">
-                          <div className="font-medium">{p.name}</div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <SortableHeader sortKey="name" label="Item" sort={pSort.sort} onToggle={pSort.toggle} />
+                      <SortableHeader sortKey="stock" label="Stock" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                      <SortableHeader sortKey="qtySold" label="Sold" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                      <SortableHeader sortKey="revenue" label="Revenue" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                      <SortableHeader sortKey="grossProfit" label="Gross Profit" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                      <SortableHeader sortKey="margin" label="Margin" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                      <SortableHeader sortKey="gmroi" label="GMROI" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pSort.sorted.length === 0 ? (
+                      <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-6">No items.</TableCell></TableRow>
+                    ) : pSort.sorted.slice(0, 200).map((p) => (
+                      <TableRow key={p.itemId} className="hover:bg-muted/30">
+                        <TableCell>
+                          <div className="font-medium text-sm">{p.name}</div>
                           <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
-                        </td>
-                        <td className="px-3 py-1.5 text-right">{p.stock}</td>
-                        <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
-                        <td className="px-3 py-1.5 text-right">{money(p.revenue)}</td>
-                        <td className="px-3 py-1.5 text-right text-green-600">{money(p.grossProfit)}</td>
-                        <td className="px-3 py-1.5 text-right">{p.margin.toFixed(1)}%</td>
-                        <td className="px-3 py-1.5 text-right">{fmtDays(p.daysRemaining)}</td>
-                        <td className="px-3 py-1.5 text-right">{p.gmroi.toFixed(2)}×</td>
-                        <td className="px-3 py-1.5 text-center">{actionBadge(p.action)}</td>
-                      </tr>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">{p.stock}</TableCell>
+                        <TableCell className="text-right text-sm">{p.qtySold}</TableCell>
+                        <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>
+                        <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>
+                        <TableCell className="text-right text-sm">{p.margin.toFixed(1)}%</TableCell>
+                        <TableCell className="text-right text-sm">{p.gmroi.toFixed(2)}×</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+            );
+          })()}
               </div>
             </div>
           )}
