@@ -165,8 +165,8 @@ export default function BusinessInsightsPage() {
 
   // Invoice item cost snapshots (admin only) for GP/margin per line
   const { data: financialsRows = [] } = useQuery({
-    queryKey: ["bi_financials", fromStr, toStr, payment],
-    enabled: isAdmin,
+    queryKey: ["bi_financials", fromStr, toStr, payment, (invoiceRows as any[]).length],
+    enabled: isAdmin && (invoiceRows as any[]).length > 0,
     queryFn: async () => {
       const ids = Array.from(new Set((invoiceRows as any[]).map((r) => r.invoice_id).filter(Boolean)));
       if (!ids.length) return [];
