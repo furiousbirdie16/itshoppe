@@ -952,30 +952,23 @@ export default function BusinessInsightsPage() {
                       <th className="px-3 py-2 font-medium">Customer</th>
                       <th className="px-3 py-2 font-medium text-right">Orders</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Gross Profit</th>}
+                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Avg/Order</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {customerStats.invoiceList.length === 0 ? (
                       <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
-                    ) : customerStats.invoiceList.map((c, i) => {
-                      // Map name back to id via customerProfit — we grouped by id in the source, so lookup by name is imprecise;
-                      // for a reasonably-scoped list we display revenue only when admin.
-                      return (
-                        <tr key={i} className="border-t">
-                          <td className="px-3 py-1.5">{c.name}</td>
-                          <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                          {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
-                          {isAdmin && <td className="px-3 py-1.5 text-right text-green-600">{money(c.avg * (c.orders > 0 ? 1 : 0) * 0 + (Array.from(customerProfit.values()).length ? 0 : 0))}—</td>}
-                        </tr>
-                      );
-                    })}
+                    ) : customerStats.invoiceList.map((c, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-3 py-1.5">{c.name}</td>
+                        <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                        {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
+                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
-              {isAdmin && customerProfit.size > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-2">Gross profit per customer available in exports; totals reflect cost snapshots on paid invoices.</p>
-              )}
             </div>
           </div>
         </TabsContent>
