@@ -555,6 +555,17 @@ export default function BusinessInsightsPage() {
 
   const fmtDays = (d: number) => (d === Infinity ? "∞" : d > 999 ? ">999" : Math.round(d).toString());
 
+  const productSort = useSort(filteredProducts, {
+    name: (r) => r.name,
+    stock: (r) => r.stock,
+    qtySold: (r) => r.qtySold,
+    revenue: (r) => r.revenue,
+    grossProfit: (r) => r.grossProfit,
+    margin: (r) => r.margin,
+    gmroi: (r) => r.gmroi,
+  }, { key: "revenue", dir: "desc" });
+
+
   return (
     <div className="space-y-6">
       <div className="page-header">
