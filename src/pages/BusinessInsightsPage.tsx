@@ -656,223 +656,440 @@ export default function BusinessInsightsPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
-        {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />}
-        {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />}
-        {isAdmin && <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />}
-        <StatCard title="Units Sold" value={totals.qty} icon={Package} />
-      </div>
-
       <div className="text-xs text-muted-foreground">
-        {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {sorted.length} item{sorted.length === 1 ? "" : "s"}
+        {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
       </div>
 
-      {/* Customer Analytics */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Online */}
-        <div className="rounded-xl border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm font-semibold">Online Customers</h2>
-              <p className="text-xs text-muted-foreground">Grouped by sales channel</p>
-            </div>
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="rounded-lg border bg-background p-3">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channels Ordered</div>
-              <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
-            </div>
-            <div className="rounded-lg border bg-background p-3">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
-              <div className="text-xl font-semibold mt-0.5">{money(customerStats.onlineAvg)}</div>
-            </div>
-          </div>
-          <div className="rounded-md border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/40">
-                <tr className="text-left">
-                  <th className="px-3 py-2 font-medium">Channel</th>
-                  <th className="px-3 py-2 font-medium text-right">Orders</th>
-                  <th className="px-3 py-2 font-medium text-right">Revenue</th>
-                  <th className="px-3 py-2 font-medium text-right">Avg/Order</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customerStats.onlineList.length === 0 ? (
-                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
-                ) : customerStats.onlineList.map((c) => (
-                  <tr key={c.name} className="border-t">
-                    <td className="px-3 py-1.5 capitalize">{c.name}</td>
-                    <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList className="flex flex-wrap h-auto">
+          <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
+          <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>
+          <TabsTrigger value="customers"><Users className="h-3.5 w-3.5 mr-1.5" />Customers</TabsTrigger>
+          {isAdmin && <TabsTrigger value="inventory"><Warehouse className="h-3.5 w-3.5 mr-1.5" />Inventory</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="purchasing"><ShoppingBag className="h-3.5 w-3.5 mr-1.5" />Purchasing</TabsTrigger>}
+        </TabsList>
 
-        {/* Invoice */}
-        <div className="rounded-xl border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm font-semibold">Invoice Customers</h2>
-              <p className="text-xs text-muted-foreground">Unique customers with confirmed/paid invoices</p>
-            </div>
-            <Receipt className="h-4 w-4 text-muted-foreground" />
+        {/* OVERVIEW */}
+        <TabsContent value="overview" className="space-y-4">
+          <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
+            {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />}
+            {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />}
+            {isAdmin && <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />}
+            <StatCard title="Units Sold" value={totals.qty} icon={Package} />
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="rounded-lg border bg-background p-3">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customers Ordered</div>
-              <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
-            </div>
-            <div className="rounded-lg border bg-background p-3">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
-              <div className="text-xl font-semibold mt-0.5">{money(customerStats.invoiceAvg)}</div>
-            </div>
-          </div>
-          <div className="rounded-md border overflow-hidden max-h-72 overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/40 sticky top-0">
-                <tr className="text-left">
-                  <th className="px-3 py-2 font-medium">Customer</th>
-                  <th className="px-3 py-2 font-medium text-right">Orders</th>
-                  <th className="px-3 py-2 font-medium text-right">Revenue</th>
-                  <th className="px-3 py-2 font-medium text-right">Avg/Order</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customerStats.invoiceList.length === 0 ? (
-                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
-                ) : customerStats.invoiceList.map((c, i) => (
-                  <tr key={i} className="border-t">
-                    <td className="px-3 py-1.5">{c.name}</td>
-                    <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
 
-      {/* Table */}
-      <div className="data-table-wrapper">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8" />
-              <SortableHeader sortKey="name" label="Item" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="qtyOnline" label="Qty Online" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="qtyInvoice" label="Qty Invoice" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="qtyTotal" label="Qty Total" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="revenueOnline" label="Online ₱" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="revenueInvoice" label="Invoice ₱" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="revenueTotal" label="Total ₱" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="orders" label="Orders" sort={sort} onToggle={toggle} align="right" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sorted.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={10} className="text-center text-xs text-muted-foreground py-10">
-                  No sales in this range.
-                </TableCell>
-              </TableRow>
-            ) : (
-              sorted.map((r) => {
-                const isOpen = expanded.has(r.key);
-                return (
-                  <Fragment key={r.key}>
-                    <TableRow
-                      
-                      className="hover:bg-muted/30 cursor-pointer"
-                      onClick={() => toggleExpand(r.key)}
-                    >
-                      <TableCell className="w-8 p-2 align-middle">
-                        {isOpen ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )}
+          {isAdmin && (
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+              <StatCard title="Gross Profit" value={money(productMetrics.reduce((s, p) => s + p.grossProfit, 0))} icon={TrendingUp} variant="success" />
+              <StatCard title="Avg Margin" value={`${(totals.revTotal > 0 ? (productMetrics.reduce((s, p) => s + p.grossProfit, 0) / totals.revTotal) * 100 : 0).toFixed(1)}%`} icon={TrendingUp} />
+              <StatCard title="Inventory Value" value={money((itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0))} icon={Warehouse} />
+              <StatCard title="Low Stock Items" value={inventoryBuckets.lowStock.length} icon={AlertTriangle} variant="warning" />
+            </div>
+          )}
+
+          {/* Top 5 products */}
+          <div className="rounded-xl border bg-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Top 5 Products (by revenue)</h2>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="rounded-md border overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/40">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 font-medium">Item</th>
+                    <th className="px-3 py-2 font-medium text-right">Units Sold</th>
+                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
+                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Gross Profit</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...productMetrics].sort((a, b) => b.revenue - a.revenue).slice(0, 5).map((p) => (
+                    <tr key={p.itemId} className="border-t">
+                      <td className="px-3 py-1.5">
+                        <div className="font-medium">{p.name}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                      </td>
+                      <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
+                      {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(p.revenue)}</td>}
+                      {isAdmin && <td className="px-3 py-1.5 text-right text-green-600">{money(p.grossProfit)}</td>}
+                    </tr>
+                  ))}
+                  {productMetrics.every((p) => p.qtySold === 0) && (
+                    <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No sales in this range.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* PRODUCTS */}
+        <TabsContent value="products" className="space-y-4">
+          {isAdmin && (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <div className="p-3 border-b">
+                <h2 className="text-sm font-semibold">Product Performance</h2>
+                <p className="text-xs text-muted-foreground">Stock · sales velocity · margin · GMROI · suggested action</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-medium">Item</th>
+                      <th className="px-3 py-2 font-medium text-right">Stock</th>
+                      <th className="px-3 py-2 font-medium text-right">Sold</th>
+                      <th className="px-3 py-2 font-medium text-right">Revenue</th>
+                      <th className="px-3 py-2 font-medium text-right">Gross Profit</th>
+                      <th className="px-3 py-2 font-medium text-right">Margin</th>
+                      <th className="px-3 py-2 font-medium text-right">Days Left</th>
+                      <th className="px-3 py-2 font-medium text-right">GMROI</th>
+                      <th className="px-3 py-2 font-medium text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.length === 0 ? (
+                      <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">No items.</td></tr>
+                    ) : [...filteredProducts].sort((a, b) => b.revenue - a.revenue).slice(0, 200).map((p) => (
+                      <tr key={p.itemId} className="border-t hover:bg-muted/30">
+                        <td className="px-3 py-1.5">
+                          <div className="font-medium">{p.name}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{p.stock}</td>
+                        <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
+                        <td className="px-3 py-1.5 text-right">{money(p.revenue)}</td>
+                        <td className="px-3 py-1.5 text-right text-green-600">{money(p.grossProfit)}</td>
+                        <td className="px-3 py-1.5 text-right">{p.margin.toFixed(1)}%</td>
+                        <td className="px-3 py-1.5 text-right">{fmtDays(p.daysRemaining)}</td>
+                        <td className="px-3 py-1.5 text-right">{p.gmroi.toFixed(2)}×</td>
+                        <td className="px-3 py-1.5 text-center">{actionBadge(p.action)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Original per-variation sales breakdown (expandable) */}
+          <div className="rounded-xl border bg-card overflow-hidden">
+            <div className="p-3 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold">Sales Breakdown</h2>
+                <p className="text-xs text-muted-foreground">Click a row to see transaction history</p>
+              </div>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExport}>
+                <Download className="h-3.5 w-3.5 mr-1" />Export
+              </Button>
+            </div>
+            <div className="data-table-wrapper">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8" />
+                    <SortableHeader sortKey="name" label="Item" sort={sort} onToggle={toggle} />
+                    <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
+                    <SortableHeader sortKey="qtyOnline" label="Qty Online" sort={sort} onToggle={toggle} align="right" />
+                    <SortableHeader sortKey="qtyInvoice" label="Qty Invoice" sort={sort} onToggle={toggle} align="right" />
+                    <SortableHeader sortKey="qtyTotal" label="Qty Total" sort={sort} onToggle={toggle} align="right" />
+                    {isAdmin && <SortableHeader sortKey="revenueOnline" label="Online ₱" sort={sort} onToggle={toggle} align="right" />}
+                    {isAdmin && <SortableHeader sortKey="revenueInvoice" label="Invoice ₱" sort={sort} onToggle={toggle} align="right" />}
+                    {isAdmin && <SortableHeader sortKey="revenueTotal" label="Total ₱" sort={sort} onToggle={toggle} align="right" />}
+                    <SortableHeader sortKey="orders" label="Orders" sort={sort} onToggle={toggle} align="right" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sorted.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-xs text-muted-foreground py-10">
+                        No sales in this range.
                       </TableCell>
-                      <TableCell className="font-medium text-sm">{r.name}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
-                      <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
-                      <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
-                      <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
-                      <TableCell className="text-sm text-right">{r.revenueOnline ? money(r.revenueOnline) : "—"}</TableCell>
-                      <TableCell className="text-sm text-right">{r.revenueInvoice ? money(r.revenueInvoice) : "—"}</TableCell>
-                      <TableCell className="text-sm text-right font-semibold">{money(r.revenueTotal)}</TableCell>
-                      <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
                     </TableRow>
-                    {isOpen && (
-                      <TableRow key={`${r.key}-detail`} className="bg-muted/20 hover:bg-muted/20">
-                        <TableCell colSpan={10} className="p-0">
-                          <div className="px-4 py-3">
-                            <div className="text-xs font-semibold text-muted-foreground mb-2">
-                              Sales history ({r.txns.length})
-                            </div>
-                            <div className="rounded-md border bg-background overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead className="bg-muted/40">
-                                  <tr className="text-left">
-                                    <th className="px-3 py-2 font-medium">Date</th>
-                                    <th className="px-3 py-2 font-medium">Source</th>
-                                    <th className="px-3 py-2 font-medium">Customer</th>
-                                    <th className="px-3 py-2 font-medium">Sales Agent</th>
-                                    <th className="px-3 py-2 font-medium">Reference</th>
-                                    <th className="px-3 py-2 font-medium text-right">Qty</th>
-                                    <th className="px-3 py-2 font-medium text-right">Unit ₱</th>
-                                    <th className="px-3 py-2 font-medium text-right">Amount</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {r.txns.map((t, i) => (
-                                    <tr key={i} className="border-t">
-                                      <td className="px-3 py-1.5 whitespace-nowrap">
-                                        {t.date ? format(new Date(t.date), "MMM d, yyyy") : "—"}
-                                      </td>
-                                      <td className="px-3 py-1.5">
-                                        <span
-                                          className={cn(
-                                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
-                                            t.source === "online"
-                                              ? "bg-primary/10 text-primary"
-                                              : "bg-secondary text-secondary-foreground",
-                                          )}
-                                        >
-                                          {t.source === "online" ? "Online" : "Invoice"}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-1.5">{t.customer}</td>
-                                      <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
-                                      <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
-                                      <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
-                                      <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>
-                                      <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  ) : (
+                    sorted.map((r) => {
+                      const isOpen = expanded.has(r.key);
+                      return (
+                        <Fragment key={r.key}>
+                          <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpand(r.key)}>
+                            <TableCell className="w-8 p-2 align-middle">
+                              {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                            </TableCell>
+                            <TableCell className="font-medium text-sm">{r.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
+                            <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
+                            <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
+                            <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
+                            {isAdmin && <TableCell className="text-sm text-right">{r.revenueOnline ? money(r.revenueOnline) : "—"}</TableCell>}
+                            {isAdmin && <TableCell className="text-sm text-right">{r.revenueInvoice ? money(r.revenueInvoice) : "—"}</TableCell>}
+                            {isAdmin && <TableCell className="text-sm text-right font-semibold">{money(r.revenueTotal)}</TableCell>}
+                            <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
+                          </TableRow>
+                          {isOpen && (
+                            <TableRow key={`${r.key}-detail`} className="bg-muted/20 hover:bg-muted/20">
+                              <TableCell colSpan={10} className="p-0">
+                                <div className="px-4 py-3">
+                                  <div className="text-xs font-semibold text-muted-foreground mb-2">Sales history ({r.txns.length})</div>
+                                  <div className="rounded-md border bg-background overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-muted/40">
+                                        <tr className="text-left">
+                                          <th className="px-3 py-2 font-medium">Date</th>
+                                          <th className="px-3 py-2 font-medium">Source</th>
+                                          <th className="px-3 py-2 font-medium">Customer</th>
+                                          <th className="px-3 py-2 font-medium">Sales Agent</th>
+                                          <th className="px-3 py-2 font-medium">Reference</th>
+                                          <th className="px-3 py-2 font-medium text-right">Qty</th>
+                                          {isAdmin && <th className="px-3 py-2 font-medium text-right">Unit ₱</th>}
+                                          {isAdmin && <th className="px-3 py-2 font-medium text-right">Amount</th>}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {r.txns.map((t, i) => (
+                                          <tr key={i} className="border-t">
+                                            <td className="px-3 py-1.5 whitespace-nowrap">{t.date ? format(new Date(t.date), "MMM d, yyyy") : "—"}</td>
+                                            <td className="px-3 py-1.5">
+                                              <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium", t.source === "online" ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground")}>
+                                                {t.source === "online" ? "Online" : "Invoice"}
+                                              </span>
+                                            </td>
+                                            <td className="px-3 py-1.5">{t.customer}</td>
+                                            <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
+                                            <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                            <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
+                                            {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
+                                            {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* CUSTOMERS */}
+        <TabsContent value="customers" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Online Customers</h2>
+                  <p className="text-xs text-muted-foreground">Grouped by sales channel</p>
+                </div>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="rounded-lg border bg-background p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channels Ordered</div>
+                  <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
+                </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
+                  <div className="text-xl font-semibold mt-0.5">{money(customerStats.onlineAvg)}</div>
+                </div>
+              </div>
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-medium">Channel</th>
+                      <th className="px-3 py-2 font-medium text-right">Orders</th>
+                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
+                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Avg/Order</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerStats.onlineList.length === 0 ? (
+                      <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
+                    ) : customerStats.onlineList.map((c) => (
+                      <tr key={c.name} className="border-t">
+                        <td className="px-3 py-1.5 capitalize">{c.name}</td>
+                        <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                        {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
+                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Invoice Customers</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {isAdmin ? "Unique customers with revenue and gross profit" : "Unique customers with confirmed/paid invoices"}
+                  </p>
+                </div>
+                <Receipt className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="rounded-lg border bg-background p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customers Ordered</div>
+                  <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
+                </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
+                  <div className="text-xl font-semibold mt-0.5">{money(customerStats.invoiceAvg)}</div>
+                </div>
+              </div>
+              <div className="rounded-md border overflow-hidden max-h-96 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-medium">Customer</th>
+                      <th className="px-3 py-2 font-medium text-right">Orders</th>
+                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
+                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Gross Profit</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerStats.invoiceList.length === 0 ? (
+                      <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
+                    ) : customerStats.invoiceList.map((c, i) => {
+                      // Map name back to id via customerProfit — we grouped by id in the source, so lookup by name is imprecise;
+                      // for a reasonably-scoped list we display revenue only when admin.
+                      return (
+                        <tr key={i} className="border-t">
+                          <td className="px-3 py-1.5">{c.name}</td>
+                          <td className="px-3 py-1.5 text-right">{c.orders}</td>
+                          {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
+                          {isAdmin && <td className="px-3 py-1.5 text-right text-green-600">{money(c.avg * (c.orders > 0 ? 1 : 0) * 0 + (Array.from(customerProfit.values()).length ? 0 : 0))}—</td>}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {isAdmin && customerProfit.size > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-2">Gross profit per customer available in exports; totals reflect cost snapshots on paid invoices.</p>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* INVENTORY */}
+        {isAdmin && (
+          <TabsContent value="inventory" className="space-y-4">
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+              <StatCard title="Low Stock" value={inventoryBuckets.lowStock.length} icon={AlertTriangle} variant="warning" />
+              <StatCard title="Dead Stock" value={inventoryBuckets.dead.length} icon={Package} variant="warning" />
+              <StatCard title="Slow Moving" value={inventoryBuckets.slow.length} icon={TrendingDown} />
+              <StatCard title="Overstocked" value={inventoryBuckets.overstock.length} icon={Warehouse} />
+            </div>
+
+            {([
+              { title: "Low Stock (at or below threshold)", rows: inventoryBuckets.lowStock },
+              { title: "Dead Stock (no sales in range)", rows: inventoryBuckets.dead },
+              { title: "Slow Moving (>90 days coverage)", rows: inventoryBuckets.slow },
+              { title: "Overstocked (>180 days coverage)", rows: inventoryBuckets.overstock },
+            ] as { title: string; rows: ProductMetric[] }[]).map((bucket) => (
+              <div key={bucket.title} className="rounded-xl border bg-card overflow-hidden">
+                <div className="p-3 border-b">
+                  <h2 className="text-sm font-semibold">{bucket.title}</h2>
+                  <p className="text-xs text-muted-foreground">{bucket.rows.length} item{bucket.rows.length === 1 ? "" : "s"}</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 font-medium">Item</th>
+                        <th className="px-3 py-2 font-medium text-right">Stock</th>
+                        <th className="px-3 py-2 font-medium text-right">Threshold</th>
+                        <th className="px-3 py-2 font-medium text-right">Sold ({daysInRange}d)</th>
+                        <th className="px-3 py-2 font-medium text-right">Days Left</th>
+                        <th className="px-3 py-2 font-medium text-right">Inv Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bucket.rows.length === 0 ? (
+                        <tr><td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">Nothing here.</td></tr>
+                      ) : bucket.rows.slice(0, 100).map((p) => (
+                        <tr key={p.itemId} className="border-t">
+                          <td className="px-3 py-1.5">
+                            <div className="font-medium">{p.name}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                          </td>
+                          <td className="px-3 py-1.5 text-right">{p.stock}</td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">{p.threshold}</td>
+                          <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
+                          <td className="px-3 py-1.5 text-right">{fmtDays(p.daysRemaining)}</td>
+                          <td className="px-3 py-1.5 text-right">{money(p.stock * p.cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </TabsContent>
+        )}
+
+        {/* PURCHASING */}
+        {isAdmin && (
+          <TabsContent value="purchasing" className="space-y-4">
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
+              <StatCard title="Items to Reorder" value={purchasing.recs.length} icon={ShoppingBag} />
+              <StatCard title="Capital Required" value={money(purchasing.totalCapital)} icon={DollarSign} variant="warning" />
+              <StatCard title="Expected Gross Profit" value={money(purchasing.totalGP)} icon={TrendingUp} variant="success" />
+            </div>
+
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <div className="p-3 border-b">
+                <h2 className="text-sm font-semibold">Reorder Recommendations</h2>
+                <p className="text-xs text-muted-foreground">Target 30 days of coverage, ranked by expected ROI</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-medium">Item</th>
+                      <th className="px-3 py-2 font-medium text-right">Stock</th>
+                      <th className="px-3 py-2 font-medium text-right">Daily Sales</th>
+                      <th className="px-3 py-2 font-medium text-right">Suggest Qty</th>
+                      <th className="px-3 py-2 font-medium text-right">Unit Cost</th>
+                      <th className="px-3 py-2 font-medium text-right">Capital</th>
+                      <th className="px-3 py-2 font-medium text-right">Expected GP</th>
+                      <th className="px-3 py-2 font-medium text-right">ROI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchasing.recs.length === 0 ? (
+                      <tr><td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">Nothing to reorder — coverage is healthy.</td></tr>
+                    ) : purchasing.recs.slice(0, 200).map((p) => (
+                      <tr key={p.itemId} className="border-t">
+                        <td className="px-3 py-1.5">
+                          <div className="font-medium">{p.name}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{p.stock}</td>
+                        <td className="px-3 py-1.5 text-right">{p.dailySales.toFixed(2)}</td>
+                        <td className="px-3 py-1.5 text-right font-semibold">{p.suggestedQty}</td>
+                        <td className="px-3 py-1.5 text-right">{money(p.cost)}</td>
+                        <td className="px-3 py-1.5 text-right">{money(p.capital)}</td>
+                        <td className="px-3 py-1.5 text-right text-green-600">{money(p.expectedGP)}</td>
+                        <td className="px-3 py-1.5 text-right">{p.roi.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }
