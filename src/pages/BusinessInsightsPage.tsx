@@ -402,7 +402,159 @@ export default function BusinessInsightsPage() {
     toast.success(`Exported ${summaryRows.length} item${summaryRows.length === 1 ? "" : "s"}`);
   };
 
-  return (
+  // Days in range (for daily-sales calc)
+  const daysInRange = Math.max(1, Math.round((dateTo.getTime() - dateFrom.getTime()) / 86400000) + 1);
+
+  // Per-item aggregated sales (parent items only — variations rolled up into parent)
+  const perItemSales = useMemo(() => {
+    const m = new Map<string, { qty: number; revenue: number; orders: number }>();
+    for (const r of aggregated) {
+      if (!r.itemId) continue;
+      const e = m.get(r.itemId) || { qty: 0, revenue: 0, orders: 0 };
+      e.qty += r.qtyTotal;
+      e.revenue += r.revenueTotal;
+      e.orders += r.orders;
+      m.set(r.itemId, e);
+    }
+    return m;
+  }, [aggregated]);
+
+  // Per-item gross profit (from cost snapshots)
+  const perItemProfit = useMemo(() => {
+    const m = new Map<string, { cost: number; profit: number }>();
+    for (const f of financialsRows as any[]) {
+      if (!f.item_id) continue;
+      const e = m.get(f.item_id) || { cost: 0, profit: 0 };
+      e.cost += Number(f.line_total_cost || 0);
+      e.profit += Number(f.line_profit || 0);
+      m.set(f.item_id, e);
+    }
+    return m;
+  }, [financialsRows]);
+
+  // Enhanced product metrics — one row per parent item
+  interface ProductMetric {
+    itemId: string;
+    name: string;
+    sku: string;
+    source: string;
+    stock: number;
+    cost: number;
+    sellingPrice: number;
+    threshold: number;
+    qtySold: number;
+    revenue: number;
+    totalCost: number;
+    grossProfit: number;
+    margin: number;
+    dailySales: number;
+    daysRemaining: number;
+    gmroi: number; // gross profit / avg inventory value
+    action: "Buy" | "Maintain" | "Reduce" | "Dead" | "Overstock";
+  }
+
+  const productMetrics = useMemo<ProductMetric[]>(() => {
+    return (itemsAll as any[]).map((it) => {
+      const sale = perItemSales.get(it.id) || { qty: 0, revenue: 0, orders: 0 };
+      const prof = perItemProfit.get(it.id) || { cost: 0, profit: 0 };
+      const stock = Number(it.quantity || 0);
+      const cost = Number(it.cost_price || 0);
+      const sellingPrice = Number(it.selling_price || 0);
+      const dailySales = sale.qty / daysInRange;
+      const daysRemaining = dailySales > 0 ? stock / dailySales : (stock > 0 ? Infinity : 0);
+      const invValue = stock * cost;
+      const gmroi = invValue > 0 ? prof.profit / invValue : 0;
+      const margin = sale.revenue > 0 ? (prof.profit / sale.revenue) * 100 : 0;
+      let action: ProductMetric["action"] = "Maintain";
+      if (sale.qty === 0 && stock > 0) action = "Dead";
+      else if (daysRemaining < 14) action = "Buy";
+      else if (daysRemaining > 180) action = "Overstock";
+      else if (daysRemaining > 90) action = "Reduce";
+      return {
+        itemId: it.id,
+        name: it.name,
+        sku: it.sku,
+        source: it.source || "local",
+        stock,
+        cost,
+        sellingPrice,
+        threshold: Number(it.low_stock_threshold || 0),
+        qtySold: sale.qty,
+        revenue: sale.revenue,
+        totalCost: prof.cost,
+        grossProfit: prof.profit,
+        margin,
+        dailySales,
+        daysRemaining,
+        gmroi,
+        action,
+      };
+    });
+  }, [itemsAll, perItemSales, perItemProfit, daysInRange]);
+
+  const productSearch = search.trim().toLowerCase();
+  const filteredProducts = productSearch
+    ? productMetrics.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch))
+    : productMetrics;
+
+  // Inventory categorized lists
+  const inventoryBuckets = useMemo(() => {
+    const lowStock = productMetrics.filter((p) => p.stock <= p.threshold && p.threshold > 0);
+    const dead = productMetrics.filter((p) => p.action === "Dead");
+    const slow = productMetrics.filter((p) => p.action === "Reduce");
+    const overstock = productMetrics.filter((p) => p.action === "Overstock");
+    return { lowStock, dead, slow, overstock };
+  }, [productMetrics]);
+
+  // Purchasing recommendations (target 30 days coverage)
+  const purchasing = useMemo(() => {
+    const TARGET = 30;
+    const recs = productMetrics
+      .filter((p) => p.dailySales > 0)
+      .map((p) => {
+        const suggestedQty = Math.max(0, Math.ceil(p.dailySales * TARGET - p.stock));
+        const capital = suggestedQty * p.cost;
+        const expectedGP = suggestedQty * Math.max(0, p.sellingPrice - p.cost);
+        const roi = capital > 0 ? (expectedGP / capital) * 100 : 0;
+        return { ...p, suggestedQty, capital, expectedGP, roi };
+      })
+      .filter((p) => p.suggestedQty > 0)
+      .sort((a, b) => b.roi - a.roi);
+    const totalCapital = recs.reduce((s, r) => s + r.capital, 0);
+    const totalGP = recs.reduce((s, r) => s + r.expectedGP, 0);
+    return { recs, totalCapital, totalGP };
+  }, [productMetrics]);
+
+  // Customer lifetime value (admin, per invoice customer) — profit by customer via financials
+  const customerProfit = useMemo(() => {
+    if (!isAdmin) return new Map<string, number>();
+    const invoiceMap = new Map<string, string>();
+    for (const r of invoiceRows as any[]) {
+      const inv = r._invoice || {};
+      if (inv.id && inv.customer_id) invoiceMap.set(inv.id, inv.customer_id);
+    }
+    const m = new Map<string, number>();
+    for (const f of financialsRows as any[]) {
+      const cid = invoiceMap.get(f.invoice_id);
+      if (!cid) continue;
+      m.set(cid, (m.get(cid) || 0) + Number(f.line_profit || 0));
+    }
+    return m;
+  }, [isAdmin, invoiceRows, financialsRows]);
+
+  const actionBadge = (a: ProductMetric["action"]) => {
+    const map: Record<ProductMetric["action"], string> = {
+      Buy: "bg-red-500/10 text-red-600 border-red-500/30",
+      Maintain: "bg-green-500/10 text-green-600 border-green-500/30",
+      Reduce: "bg-amber-500/10 text-amber-600 border-amber-500/30",
+      Overstock: "bg-orange-500/10 text-orange-600 border-orange-500/30",
+      Dead: "bg-muted text-muted-foreground border-border",
+    };
+    return <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium", map[a])}>{a}</span>;
+  };
+
+  const fmtDays = (d: number) => (d === Infinity ? "∞" : d > 999 ? ">999" : Math.round(d).toString());
+
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">Business Insights</h1>
