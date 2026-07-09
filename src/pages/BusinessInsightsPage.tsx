@@ -737,17 +737,7 @@ export default function BusinessInsightsPage() {
 
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
-          {isAdmin && (() => {
-            const pSort = useSort(filteredProducts, {
-              name: (r) => r.name,
-              stock: (r) => r.stock,
-              qtySold: (r) => r.qtySold,
-              revenue: (r) => r.revenue,
-              grossProfit: (r) => r.grossProfit,
-              margin: (r) => r.margin,
-              gmroi: (r) => r.gmroi,
-            }, { key: "revenue", dir: "desc" });
-            return (
+          {isAdmin && (
             <div className="rounded-xl border bg-card overflow-hidden">
               <div className="p-3 border-b">
                 <h2 className="text-sm font-semibold">Product Performance</h2>
@@ -757,19 +747,19 @@ export default function BusinessInsightsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <SortableHeader sortKey="name" label="Item" sort={pSort.sort} onToggle={pSort.toggle} />
-                      <SortableHeader sortKey="stock" label="Stock" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
-                      <SortableHeader sortKey="qtySold" label="Sold" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
-                      <SortableHeader sortKey="revenue" label="Revenue" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
-                      <SortableHeader sortKey="grossProfit" label="Gross Profit" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
-                      <SortableHeader sortKey="margin" label="Margin" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
-                      <SortableHeader sortKey="gmroi" label="GMROI" sort={pSort.sort} onToggle={pSort.toggle} align="right" />
+                      <SortableHeader sortKey="name" label="Item" sort={productSort.sort} onToggle={productSort.toggle} />
+                      <SortableHeader sortKey="stock" label="Stock" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                      <SortableHeader sortKey="qtySold" label="Sold" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                      <SortableHeader sortKey="revenue" label="Revenue" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                      <SortableHeader sortKey="grossProfit" label="Gross Profit" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                      <SortableHeader sortKey="margin" label="Margin" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                      <SortableHeader sortKey="gmroi" label="GMROI" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pSort.sorted.length === 0 ? (
+                    {productSort.sorted.length === 0 ? (
                       <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-6">No items.</TableCell></TableRow>
-                    ) : pSort.sorted.slice(0, 200).map((p) => (
+                    ) : productSort.sorted.slice(0, 200).map((p) => (
                       <TableRow key={p.itemId} className="hover:bg-muted/30">
                         <TableCell>
                           <div className="font-medium text-sm">{p.name}</div>
@@ -787,8 +777,7 @@ export default function BusinessInsightsPage() {
                 </Table>
               </div>
             </div>
-            );
-          })()}
+          )}
 
 
           {/* Original per-variation sales breakdown (expandable) */}
