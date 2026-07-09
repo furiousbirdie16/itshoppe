@@ -778,9 +778,7 @@ export default function BusinessInsightsPage() {
             </div>
             );
           })()}
-              </div>
-            </div>
-          )}
+
 
           {/* Original per-variation sales breakdown (expandable) */}
           <div className="rounded-xl border bg-card overflow-hidden">
