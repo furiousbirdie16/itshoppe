@@ -155,8 +155,37 @@ export default function BusinessInsightsPage() {
     },
   });
 
+  // All items (for inventory / purchasing metrics)
+  const { data: itemsAll = [] } = useQuery({
+    queryKey: ["bi_items_all"],
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source")
+    ),
+  });
 
-  // Aggregate per item/variation key
+  // Invoice item cost snapshots (admin only) for GP/margin per line
+  const { data: financialsRows = [] } = useQuery({
+    queryKey: ["bi_financials", fromStr, toStr, payment],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const ids = Array.from(new Set((invoiceRows as any[]).map((r) => r.invoice_id).filter(Boolean)));
+      if (!ids.length) return [];
+      const chunkSize = 200;
+      const out: any[] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const rows = await fetchAll<any>(() =>
+          supabase
+            .from("invoice_item_financials")
+            .select("invoice_id, item_id, variation_id, cost_snapshot, quantity, unit_price, line_total_cost, line_profit")
+            .in("invoice_id", chunk)
+        );
+        out.push(...rows);
+      }
+      return out;
+    },
+  });
+
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
     const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders" | "txns">) => {
