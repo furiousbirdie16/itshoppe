@@ -156,6 +156,19 @@ export const applyStockChange = async (params: {
     next.store_quantity = locationResult.store_quantity;
   }
 
+  // eslint-disable-next-line no-console
+  console.debug("[applyStockChange]", {
+    itemId,
+    variationId: variationId || null,
+    lineQty: qty,
+    baseUnitsMoved,
+    before: { quantity: cur.quantity, store_quantity: cur.store_quantity, warehouse_quantity: cur.warehouse_quantity, open_roll_remaining: cur.open_roll_remaining },
+    after: next,
+    movementType,
+    referenceType,
+    referenceId,
+  });
+
   await from("items").update({
     quantity: next.quantity,
     warehouse_quantity: next.warehouse_quantity,
