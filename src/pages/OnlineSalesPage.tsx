@@ -634,6 +634,7 @@ export default function OnlineSalesPage() {
     qc.invalidateQueries({ queryKey: ["online_sales"] });
     setPayDialogOpen(false);
     setPayTarget(null);
+    setSelected(new Set());
   };
 
   const markUnpaid = async (ids: string[]) => {
