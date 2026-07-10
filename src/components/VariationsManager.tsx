@@ -28,7 +28,7 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
   });
 
   const [editing, setEditing] = useState<ItemVariation | null>(null);
-  const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0" });
+  const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0", cost_price: "" });
   const [showForm, setShowForm] = useState(false);
 
   // Parent stock settings
