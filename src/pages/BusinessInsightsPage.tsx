@@ -542,10 +542,26 @@ export default function BusinessInsightsPage() {
     });
   }, [itemsAll, perItemSales, perItemProfit, daysInRange]);
 
+  // Per-item txns rollup (parent items — all variation txns collected under itemId)
+  const perItemTxns = useMemo(() => {
+    const m = new Map<string, SaleTxn[]>();
+    for (const r of aggregated) {
+      if (!r.itemId) continue;
+      const arr = m.get(r.itemId) || [];
+      for (const t of r.txns) arr.push(t);
+      m.set(r.itemId, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return m;
+  }, [aggregated]);
+
   const productSearch = search.trim().toLowerCase();
-  const filteredProducts = productSearch
-    ? productMetrics.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch))
-    : productMetrics;
+  const filteredProducts = useMemo(() => {
+    let list = productMetrics;
+    if (productSource !== "all") list = list.filter((p) => (p.source || "local") === productSource);
+    if (productSearch) list = list.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch));
+    return list;
+  }, [productMetrics, productSource, productSearch]);
 
   // Inventory categorized lists
   const inventoryBuckets = useMemo(() => {
