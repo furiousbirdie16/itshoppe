@@ -200,16 +200,25 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                   <TableHead className="text-xs">Type</TableHead>
                   <TableHead className="text-xs text-right">Factor</TableHead>
                   <TableHead className="text-xs text-right">Price</TableHead>
+                  <TableHead className="text-xs text-right">Cost</TableHead>
                   <TableHead className="text-xs text-right w-20"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {variations.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-4">No variations yet</TableCell></TableRow>
-                ) : variations.map(v => (
-                  <TableRow key={v.id}>
+                  <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">No variations yet</TableCell></TableRow>
+                ) : variations.map(v => {
+                  const hasCost = v.cost_price != null;
+                  const margin = hasCost && Number(v.selling_price) > 0
+                    ? ((Number(v.selling_price) - Number(v.cost_price)) / Number(v.selling_price)) * 100
+                    : null;
+                  return (
+                  <TableRow key={v.id} className={!hasCost ? "bg-amber-50 dark:bg-amber-950/20" : undefined}>
                     <TableCell className="text-sm">
-                      <div className="font-medium">{v.name}</div>
+                      <div className="font-medium flex items-center gap-1.5">
+                        {v.name}
+                        {!hasCost && <Badge variant="outline" className="text-[9px] border-amber-500 text-amber-700 dark:text-amber-300">No cost</Badge>}
+                      </div>
                       {v.sku && <div className="text-[10px] font-mono text-muted-foreground">{v.sku}</div>}
                     </TableCell>
                     <TableCell><Badge variant={v.type === 'pack' ? 'outline' : 'secondary'} className="text-[10px] uppercase">{v.type}</Badge></TableCell>
@@ -217,6 +226,16 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                       {v.factor} {v.type === 'pack' ? (item.base_unit || 'pcs') : 'm'}
                     </TableCell>
                     <TableCell className="text-right text-sm">{peso(Number(v.selling_price))}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {hasCost ? (
+                        <div>
+                          <div>{peso(Number(v.cost_price))}</div>
+                          {margin != null && <div className="text-[10px] text-muted-foreground">{margin.toFixed(1)}% margin</div>}
+                        </div>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 text-xs">— set cost</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-0.5">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(v)}><Pencil className="h-3 w-3" /></Button>
@@ -224,7 +243,8 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
