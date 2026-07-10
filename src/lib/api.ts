@@ -875,9 +875,21 @@ export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order"
 
 // Online Sales
 export const getOnlineSales = async (): Promise<OnlineSale[]> => {
-  const { data, error } = await from("online_sales").select("*, items(*), item_variations(*)").order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
+  const pageSize = 1000;
+  const all: any[] = [];
+  for (let page = 0; ; page++) {
+    const fromIdx = page * pageSize;
+    const toIdx = fromIdx + pageSize - 1;
+    const { data, error } = await from("online_sales")
+      .select("*, items(*), item_variations(*)")
+      .order("created_at", { ascending: false })
+      .range(fromIdx, toIdx);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return all as OnlineSale[];
 };
 
 export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
