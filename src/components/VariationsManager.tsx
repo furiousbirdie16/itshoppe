@@ -28,7 +28,7 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
   });
 
   const [editing, setEditing] = useState<ItemVariation | null>(null);
-  const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0" });
+  const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0", cost_price: "" });
   const [showForm, setShowForm] = useState(false);
 
   // Parent stock settings
@@ -49,10 +49,11 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ name: "", sku: "", type: "pack", factor: "1", selling_price: "0" }); setEditing(null); setShowForm(false); };
+  const resetForm = () => { setForm({ name: "", sku: "", type: "pack", factor: "1", selling_price: "0", cost_price: "" }); setEditing(null); setShowForm(false); };
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      const trimmedCost = form.cost_price.trim();
       const payload = {
         item_id: item.id,
         name: form.name.trim(),
@@ -60,6 +61,8 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
         type: form.type,
         factor: parseFloat(form.factor) || 1,
         selling_price: parseFloat(form.selling_price) || 0,
+        // Empty cost = intentional "not set" — do NOT inherit parent cost.
+        cost_price: trimmedCost === "" ? null : parseFloat(trimmedCost),
       };
       if (editing) await updateItemVariation(editing.id, payload as any);
       else await createItemVariation(payload as any);
@@ -84,7 +87,7 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
 
   const startEdit = (v: ItemVariation) => {
     setEditing(v);
-    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price) });
+    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_price == null ? "" : String(v.cost_price) });
     setShowForm(true);
   };
 
@@ -168,9 +171,16 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                   <Label className="text-[10px] uppercase">{form.type === "pack" ? "Pcs / Pack" : "Meters / Cut"}</Label>
                   <Input type="number" value={form.factor} onChange={e => setForm({ ...form, factor: e.target.value })} className="h-8 text-sm" />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase">Selling Price</Label>
                   <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase">Cost Price</Label>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} placeholder="Leave blank if unknown" className="h-8 text-sm" />
+                  <p className="text-[10px] text-muted-foreground">Each variation has its own cost. Blank = no cost (profit will not be calculated).</p>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -190,16 +200,25 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                   <TableHead className="text-xs">Type</TableHead>
                   <TableHead className="text-xs text-right">Factor</TableHead>
                   <TableHead className="text-xs text-right">Price</TableHead>
+                  <TableHead className="text-xs text-right">Cost</TableHead>
                   <TableHead className="text-xs text-right w-20"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {variations.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-4">No variations yet</TableCell></TableRow>
-                ) : variations.map(v => (
-                  <TableRow key={v.id}>
+                  <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">No variations yet</TableCell></TableRow>
+                ) : variations.map(v => {
+                  const hasCost = v.cost_price != null;
+                  const margin = hasCost && Number(v.selling_price) > 0
+                    ? ((Number(v.selling_price) - Number(v.cost_price)) / Number(v.selling_price)) * 100
+                    : null;
+                  return (
+                  <TableRow key={v.id} className={!hasCost ? "bg-amber-50 dark:bg-amber-950/20" : undefined}>
                     <TableCell className="text-sm">
-                      <div className="font-medium">{v.name}</div>
+                      <div className="font-medium flex items-center gap-1.5">
+                        {v.name}
+                        {!hasCost && <Badge variant="outline" className="text-[9px] border-amber-500 text-amber-700 dark:text-amber-300">No cost</Badge>}
+                      </div>
                       {v.sku && <div className="text-[10px] font-mono text-muted-foreground">{v.sku}</div>}
                     </TableCell>
                     <TableCell><Badge variant={v.type === 'pack' ? 'outline' : 'secondary'} className="text-[10px] uppercase">{v.type}</Badge></TableCell>
@@ -207,6 +226,16 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                       {v.factor} {v.type === 'pack' ? (item.base_unit || 'pcs') : 'm'}
                     </TableCell>
                     <TableCell className="text-right text-sm">{peso(Number(v.selling_price))}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {hasCost ? (
+                        <div>
+                          <div>{peso(Number(v.cost_price))}</div>
+                          {margin != null && <div className="text-[10px] text-muted-foreground">{margin.toFixed(1)}% margin</div>}
+                        </div>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 text-xs">— set cost</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-0.5">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(v)}><Pencil className="h-3 w-3" /></Button>
@@ -214,7 +243,8 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

@@ -28,6 +28,8 @@ export interface ItemVariation {
   /** For pack: pieces per pack. For cut: meters per cut. */
   factor: number;
   selling_price: number;
+  /** Independent per-variation cost. NULL = not set (do NOT inherit parent cost). */
+  cost_price: number | null;
   created_at: string;
   updated_at: string;
   items?: Item;

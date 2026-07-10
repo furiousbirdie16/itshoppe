@@ -215,17 +215,27 @@ export default function BusinessInsightsPage() {
     },
   });
 
-  // Financials lookup by invoice_id|item_id|variation_id (admin only)
+  // Financials lookup by invoice_id|item_id|variation_id (admin only).
+  // Lines with NULL cost_snapshot (variation has no cost assigned) are counted
+  // separately so we can warn admins and exclude them from profit rollups.
   const financialsMap = useMemo(() => {
-    const m = new Map<string, { cost: number; profit: number }>();
+    const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
     for (const f of financialsRows as any[]) {
       const key = `${f.invoice_id}|${f.item_id || ""}|${f.variation_id || ""}`;
-      const e = m.get(key) || { cost: 0, profit: 0 };
-      e.cost += Number(f.line_total_cost || 0);
-      e.profit += Number(f.line_profit || 0);
+      const e = m.get(key) || { cost: 0, profit: 0, hasCost: false };
+      if (f.cost_snapshot != null) {
+        e.cost += Number(f.line_total_cost || 0);
+        e.profit += Number(f.line_profit || 0);
+        e.hasCost = true;
+      }
       m.set(key, e);
     }
     return m;
+  }, [financialsRows]);
+
+  // Count of invoice lines excluded from profit calcs due to missing variation cost.
+  const missingCostCount = useMemo(() => {
+    return (financialsRows as any[]).filter(f => f.cost_snapshot == null).length;
   }, [financialsRows]);
 
   const aggregated = useMemo<ItemAgg[]>(() => {
@@ -857,6 +867,11 @@ export default function BusinessInsightsPage() {
 
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
+          {isAdmin && missingCostCount > 0 && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              <strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned. Revenue is still counted. Set the missing variation costs in Inventory → Variations to include them.
+            </div>
+          )}
           <div className="rounded-xl border bg-card overflow-hidden">
             <div className="p-3 border-b flex flex-wrap items-center gap-2">
               <div className="flex-1 min-w-[200px]">
