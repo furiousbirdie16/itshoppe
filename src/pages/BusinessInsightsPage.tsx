@@ -1094,32 +1094,32 @@ export default function BusinessInsightsPage() {
             </div>
 
             {([
-              { title: "Low Stock (at or below threshold)", rows: inventoryBuckets.lowStock },
-              { title: "Dead Stock (no sales in range)", rows: inventoryBuckets.dead },
-              { title: "Slow Moving (>90 days coverage)", rows: inventoryBuckets.slow },
-              { title: "Overstocked (>180 days coverage)", rows: inventoryBuckets.overstock },
-            ] as { title: string; rows: ProductMetric[] }[]).map((bucket) => (
+              { title: "Low Stock (at or below threshold)", s: lowStockSort },
+              { title: "Dead Stock (no sales in range)", s: deadSort },
+              { title: "Slow Moving (>90 days coverage)", s: slowSort },
+              { title: "Overstocked (>180 days coverage)", s: overstockSort },
+            ] as { title: string; s: ReturnType<typeof useSort<ProductMetric>> }[]).map((bucket) => (
               <div key={bucket.title} className="rounded-xl border bg-card overflow-hidden">
                 <div className="p-3 border-b">
                   <h2 className="text-sm font-semibold">{bucket.title}</h2>
-                  <p className="text-xs text-muted-foreground">{bucket.rows.length} item{bucket.rows.length === 1 ? "" : "s"}</p>
+                  <p className="text-xs text-muted-foreground">{bucket.s.sorted.length} item{bucket.s.sorted.length === 1 ? "" : "s"}</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/40">
                       <tr className="text-left">
-                        <th className="px-3 py-2 font-medium">Item</th>
-                        <th className="px-3 py-2 font-medium text-right">Stock</th>
-                        <th className="px-3 py-2 font-medium text-right">Threshold</th>
-                        <th className="px-3 py-2 font-medium text-right">Sold ({daysInRange}d)</th>
-                        <th className="px-3 py-2 font-medium text-right">Days Left</th>
-                        <th className="px-3 py-2 font-medium text-right">Inv Value</th>
+                        <SortableTh sortKey="name" label="Item" sort={bucket.s.sort} onToggle={bucket.s.toggle} />
+                        <SortableTh sortKey="stock" label="Stock" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="threshold" label="Threshold" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="qtySold" label={`Sold (${daysInRange}d)`} sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="daysRemaining" label="Days Left" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="invValue" label="Inv Value" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
                       </tr>
                     </thead>
                     <tbody>
-                      {bucket.rows.length === 0 ? (
+                      {bucket.s.sorted.length === 0 ? (
                         <tr><td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">Nothing here.</td></tr>
-                      ) : bucket.rows.slice(0, 100).map((p) => (
+                      ) : bucket.s.sorted.slice(0, 100).map((p) => (
                         <tr key={p.itemId} className="border-t">
                           <td className="px-3 py-1.5">
                             <div className="font-medium">{p.name}</div>
@@ -1137,6 +1137,7 @@ export default function BusinessInsightsPage() {
                 </div>
               </div>
             ))}
+
           </TabsContent>
         )}
 
