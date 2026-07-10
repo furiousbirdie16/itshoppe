@@ -623,13 +623,65 @@ export default function BusinessInsightsPage() {
 
   const productSort = useSort(filteredProducts, {
     name: (r) => r.name,
+    sku: (r) => r.sku,
+    source: (r) => r.source,
     stock: (r) => r.stock,
     qtySold: (r) => r.qtySold,
     revenue: (r) => r.revenue,
+    cost: (r) => r.totalCost,
     grossProfit: (r) => r.grossProfit,
     margin: (r) => r.margin,
     gmroi: (r) => r.gmroi,
   }, { key: "revenue", dir: "desc" });
+
+  // Top 5 (Overview): sort against full productMetrics
+  const top5Sort = useSort(productMetrics, {
+    name: (r) => r.name,
+    qtySold: (r) => r.qtySold,
+    revenue: (r) => r.revenue,
+    grossProfit: (r) => r.grossProfit,
+  }, { key: "revenue", dir: "desc" });
+  const top5 = useMemo(() => top5Sort.sorted.slice(0, 5), [top5Sort.sorted]);
+
+  // Customers tab sorts
+  const onlineCustSort = useSort(customerStats.onlineList, {
+    name: (r) => r.name,
+    orders: (r) => r.orders,
+    revenue: (r) => r.revenue,
+    avg: (r) => r.avg,
+  }, { key: "revenue", dir: "desc" });
+  const invoiceCustSort = useSort(customerStats.invoiceList, {
+    name: (r) => r.name,
+    orders: (r) => r.orders,
+    revenue: (r) => r.revenue,
+    avg: (r) => r.avg,
+  }, { key: "revenue", dir: "desc" });
+
+  // Inventory bucket sort (one shared sort state applied per-bucket via useSort factory would create a hook loop — use per-bucket sorts)
+  const bucketAccessors = {
+    name: (r: ProductMetric) => r.name,
+    stock: (r: ProductMetric) => r.stock,
+    threshold: (r: ProductMetric) => r.threshold,
+    qtySold: (r: ProductMetric) => r.qtySold,
+    daysRemaining: (r: ProductMetric) => (r.daysRemaining === Infinity ? Number.MAX_SAFE_INTEGER : r.daysRemaining),
+    invValue: (r: ProductMetric) => r.stock * r.cost,
+  };
+  const lowStockSort = useSort(inventoryBuckets.lowStock, bucketAccessors, { key: "stock", dir: "asc" });
+  const deadSort = useSort(inventoryBuckets.dead, bucketAccessors, { key: "invValue", dir: "desc" });
+  const slowSort = useSort(inventoryBuckets.slow, bucketAccessors, { key: "daysRemaining", dir: "desc" });
+  const overstockSort = useSort(inventoryBuckets.overstock, bucketAccessors, { key: "daysRemaining", dir: "desc" });
+
+  // Purchasing sort
+  const purchaseSort = useSort(purchasing.recs, {
+    name: (r) => r.name,
+    stock: (r) => r.stock,
+    dailySales: (r) => r.dailySales,
+    suggestedQty: (r) => r.suggestedQty,
+    cost: (r) => r.cost,
+    capital: (r) => r.capital,
+    expectedGP: (r) => r.expectedGP,
+    roi: (r) => r.roi,
+  }, { key: "roi", dir: "desc" });
 
 
   return (
