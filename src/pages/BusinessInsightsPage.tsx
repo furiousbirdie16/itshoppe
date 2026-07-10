@@ -215,6 +215,19 @@ export default function BusinessInsightsPage() {
     },
   });
 
+  // Financials lookup by invoice_id|item_id|variation_id (admin only)
+  const financialsMap = useMemo(() => {
+    const m = new Map<string, { cost: number; profit: number }>();
+    for (const f of financialsRows as any[]) {
+      const key = `${f.invoice_id}|${f.item_id || ""}|${f.variation_id || ""}`;
+      const e = m.get(key) || { cost: 0, profit: 0 };
+      e.cost += Number(f.line_total_cost || 0);
+      e.profit += Number(f.line_profit || 0);
+      m.set(key, e);
+    }
+    return m;
+  }, [financialsRows]);
+
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
     const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders" | "txns">) => {
@@ -250,6 +263,8 @@ export default function BusinessInsightsPage() {
           quantity: qty,
           unitPrice: unit,
           amount: rev,
+          itemId,
+          variationId,
         });
       }
     }
@@ -269,6 +284,7 @@ export default function BusinessInsightsPage() {
         row.revenueInvoice += rev;
         row.orders += 1;
         const inv = r._invoice || {};
+        const fin = financialsMap.get(`${r.invoice_id}|${itemId || ""}|${variationId || ""}`);
         row.txns.push({
           date: inv.invoice_date || "",
           customer: inv.customers?.name || "Walk-in",
@@ -278,6 +294,11 @@ export default function BusinessInsightsPage() {
           quantity: qty,
           unitPrice: unit,
           amount: rev,
+          invoiceId: r.invoice_id,
+          itemId,
+          variationId,
+          cost: fin?.cost,
+          profit: fin?.profit,
         });
       }
     }
