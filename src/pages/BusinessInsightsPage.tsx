@@ -13,7 +13,7 @@ import { StatCard } from "@/components/StatCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 type RangePreset = "today" | "7d" | "30d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
 type PaymentFilter = "all" | "paid" | "unpaid";
+type ProductSourceFilter = "all" | "local" | "import";
 
 interface SaleTxn {
   date: string;
@@ -31,6 +32,11 @@ interface SaleTxn {
   quantity: number;
   unitPrice: number;
   amount: number;
+  invoiceId?: string | null;
+  itemId?: string | null;
+  variationId?: string | null;
+  cost?: number;
+  profit?: number;
 }
 
 interface ItemAgg {
@@ -49,6 +55,20 @@ interface ItemAgg {
   txns: SaleTxn[];
 }
 
+// Sortable <th> for plain HTML tables
+function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKey: string; label: string; sort: { key: string | null; dir: "asc" | "desc" }; onToggle: (k: string) => void; align?: "left" | "right" }) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={cn("px-3 py-2 font-medium select-none", align === "right" && "text-right")}>
+      <button type="button" onClick={() => onToggle(sortKey)} className={cn("inline-flex items-center gap-1 hover:text-foreground transition-colors", align === "right" && "ml-auto flex-row-reverse", active ? "text-foreground" : "text-muted-foreground")}>
+        <span>{label}</span>
+        <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-50")} />
+      </button>
+    </th>
+  );
+}
+
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
@@ -59,7 +79,16 @@ export default function BusinessInsightsPage() {
   const [source, setSource] = useState<SourceFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
+  const [productSource, setProductSource] = useState<ProductSourceFilter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedProduct, setExpandedProduct] = useState<Set<string>>(new Set());
+  const toggleExpandProduct = (id: string) => {
+    setExpandedProduct((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const toggleExpand = (key: string) => {
     setExpanded((prev) => {
@@ -186,6 +215,19 @@ export default function BusinessInsightsPage() {
     },
   });
 
+  // Financials lookup by invoice_id|item_id|variation_id (admin only)
+  const financialsMap = useMemo(() => {
+    const m = new Map<string, { cost: number; profit: number }>();
+    for (const f of financialsRows as any[]) {
+      const key = `${f.invoice_id}|${f.item_id || ""}|${f.variation_id || ""}`;
+      const e = m.get(key) || { cost: 0, profit: 0 };
+      e.cost += Number(f.line_total_cost || 0);
+      e.profit += Number(f.line_profit || 0);
+      m.set(key, e);
+    }
+    return m;
+  }, [financialsRows]);
+
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
     const get = (key: string, init: Omit<ItemAgg, "qtyOnline" | "qtyInvoice" | "qtyTotal" | "revenueOnline" | "revenueInvoice" | "revenueTotal" | "orders" | "txns">) => {
@@ -221,6 +263,8 @@ export default function BusinessInsightsPage() {
           quantity: qty,
           unitPrice: unit,
           amount: rev,
+          itemId,
+          variationId,
         });
       }
     }
@@ -240,6 +284,7 @@ export default function BusinessInsightsPage() {
         row.revenueInvoice += rev;
         row.orders += 1;
         const inv = r._invoice || {};
+        const fin = financialsMap.get(`${r.invoice_id}|${itemId || ""}|${variationId || ""}`);
         row.txns.push({
           date: inv.invoice_date || "",
           customer: inv.customers?.name || "Walk-in",
@@ -249,6 +294,11 @@ export default function BusinessInsightsPage() {
           quantity: qty,
           unitPrice: unit,
           amount: rev,
+          invoiceId: r.invoice_id,
+          itemId,
+          variationId,
+          cost: fin?.cost,
+          profit: fin?.profit,
         });
       }
     }
@@ -264,7 +314,7 @@ export default function BusinessInsightsPage() {
     return q
       ? arr.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q))
       : arr;
-  }, [onlineRows, invoiceRows, source, search]);
+  }, [onlineRows, invoiceRows, source, search, financialsMap]);
 
   const { sort, toggle, sorted } = useSort<ItemAgg>(
     aggregated,
@@ -492,10 +542,26 @@ export default function BusinessInsightsPage() {
     });
   }, [itemsAll, perItemSales, perItemProfit, daysInRange]);
 
+  // Per-item txns rollup (parent items — all variation txns collected under itemId)
+  const perItemTxns = useMemo(() => {
+    const m = new Map<string, SaleTxn[]>();
+    for (const r of aggregated) {
+      if (!r.itemId) continue;
+      const arr = m.get(r.itemId) || [];
+      for (const t of r.txns) arr.push(t);
+      m.set(r.itemId, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return m;
+  }, [aggregated]);
+
   const productSearch = search.trim().toLowerCase();
-  const filteredProducts = productSearch
-    ? productMetrics.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch))
-    : productMetrics;
+  const filteredProducts = useMemo(() => {
+    let list = productMetrics;
+    if (productSource !== "all") list = list.filter((p) => (p.source || "local") === productSource);
+    if (productSearch) list = list.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch));
+    return list;
+  }, [productMetrics, productSource, productSearch]);
 
   // Inventory categorized lists
   const inventoryBuckets = useMemo(() => {
@@ -557,13 +623,65 @@ export default function BusinessInsightsPage() {
 
   const productSort = useSort(filteredProducts, {
     name: (r) => r.name,
+    sku: (r) => r.sku,
+    source: (r) => r.source,
     stock: (r) => r.stock,
     qtySold: (r) => r.qtySold,
     revenue: (r) => r.revenue,
+    cost: (r) => r.totalCost,
     grossProfit: (r) => r.grossProfit,
     margin: (r) => r.margin,
     gmroi: (r) => r.gmroi,
   }, { key: "revenue", dir: "desc" });
+
+  // Top 5 (Overview): sort against full productMetrics
+  const top5Sort = useSort(productMetrics, {
+    name: (r) => r.name,
+    qtySold: (r) => r.qtySold,
+    revenue: (r) => r.revenue,
+    grossProfit: (r) => r.grossProfit,
+  }, { key: "revenue", dir: "desc" });
+  const top5 = useMemo(() => top5Sort.sorted.slice(0, 5), [top5Sort.sorted]);
+
+  // Customers tab sorts
+  const onlineCustSort = useSort(customerStats.onlineList, {
+    name: (r) => r.name,
+    orders: (r) => r.orders,
+    revenue: (r) => r.revenue,
+    avg: (r) => r.avg,
+  }, { key: "revenue", dir: "desc" });
+  const invoiceCustSort = useSort(customerStats.invoiceList, {
+    name: (r) => r.name,
+    orders: (r) => r.orders,
+    revenue: (r) => r.revenue,
+    avg: (r) => r.avg,
+  }, { key: "revenue", dir: "desc" });
+
+  // Inventory bucket sort (one shared sort state applied per-bucket via useSort factory would create a hook loop — use per-bucket sorts)
+  const bucketAccessors = {
+    name: (r: ProductMetric) => r.name,
+    stock: (r: ProductMetric) => r.stock,
+    threshold: (r: ProductMetric) => r.threshold,
+    qtySold: (r: ProductMetric) => r.qtySold,
+    daysRemaining: (r: ProductMetric) => (r.daysRemaining === Infinity ? Number.MAX_SAFE_INTEGER : r.daysRemaining),
+    invValue: (r: ProductMetric) => r.stock * r.cost,
+  };
+  const lowStockSort = useSort(inventoryBuckets.lowStock, bucketAccessors, { key: "stock", dir: "asc" });
+  const deadSort = useSort(inventoryBuckets.dead, bucketAccessors, { key: "invValue", dir: "desc" });
+  const slowSort = useSort(inventoryBuckets.slow, bucketAccessors, { key: "daysRemaining", dir: "desc" });
+  const overstockSort = useSort(inventoryBuckets.overstock, bucketAccessors, { key: "daysRemaining", dir: "desc" });
+
+  // Purchasing sort
+  const purchaseSort = useSort(purchasing.recs, {
+    name: (r) => r.name,
+    stock: (r) => r.stock,
+    dailySales: (r) => r.dailySales,
+    suggestedQty: (r) => r.suggestedQty,
+    cost: (r) => r.cost,
+    capital: (r) => r.capital,
+    expectedGP: (r) => r.expectedGP,
+    roi: (r) => r.roi,
+  }, { key: "roi", dir: "desc" });
 
 
   return (
@@ -701,21 +819,21 @@ export default function BusinessInsightsPage() {
           {/* Top 5 products */}
           <div className="rounded-xl border bg-card p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Top 5 Products (by revenue)</h2>
+              <h2 className="text-sm font-semibold">Top Products</h2>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </div>
             <div className="rounded-md border overflow-hidden">
               <table className="w-full text-xs">
                 <thead className="bg-muted/40">
                   <tr className="text-left">
-                    <th className="px-3 py-2 font-medium">Item</th>
-                    <th className="px-3 py-2 font-medium text-right">Units Sold</th>
-                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Gross Profit</th>}
+                    <SortableTh sortKey="name" label="Item" sort={top5Sort.sort} onToggle={top5Sort.toggle} />
+                    <SortableTh sortKey="qtySold" label="Units Sold" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />
+                    {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
+                    {isAdmin && <SortableTh sortKey="grossProfit" label="Gross Profit" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
                   </tr>
                 </thead>
                 <tbody>
-                  {[...productMetrics].sort((a, b) => b.revenue - a.revenue).slice(0, 5).map((p) => (
+                  {top5.map((p) => (
                     <tr key={p.itemId} className="border-t">
                       <td className="px-3 py-1.5">
                         <div className="font-medium">{p.name}</div>
@@ -735,156 +853,138 @@ export default function BusinessInsightsPage() {
           </div>
         </TabsContent>
 
+
+
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
-          {isAdmin && (
-            <div className="rounded-xl border bg-card overflow-hidden">
-              <div className="p-3 border-b">
-                <h2 className="text-sm font-semibold">Product Performance</h2>
-                <p className="text-xs text-muted-foreground">Stock · sales · margin · GMROI</p>
-              </div>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <SortableHeader sortKey="name" label="Item" sort={productSort.sort} onToggle={productSort.toggle} />
-                      <SortableHeader sortKey="stock" label="Stock" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
-                      <SortableHeader sortKey="qtySold" label="Sold" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
-                      <SortableHeader sortKey="revenue" label="Revenue" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
-                      <SortableHeader sortKey="grossProfit" label="Gross Profit" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
-                      <SortableHeader sortKey="margin" label="Margin" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
-                      <SortableHeader sortKey="gmroi" label="GMROI" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {productSort.sorted.length === 0 ? (
-                      <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-6">No items.</TableCell></TableRow>
-                    ) : productSort.sorted.slice(0, 200).map((p) => (
-                      <TableRow key={p.itemId} className="hover:bg-muted/30">
-                        <TableCell>
-                          <div className="font-medium text-sm">{p.name}</div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
-                        </TableCell>
-                        <TableCell className="text-right text-sm">{p.stock}</TableCell>
-                        <TableCell className="text-right text-sm">{p.qtySold}</TableCell>
-                        <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>
-                        <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>
-                        <TableCell className="text-right text-sm">{p.margin.toFixed(1)}%</TableCell>
-                        <TableCell className="text-right text-sm">{p.gmroi.toFixed(2)}×</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-
-
-          {/* Original per-variation sales breakdown (expandable) */}
           <div className="rounded-xl border bg-card overflow-hidden">
-            <div className="p-3 border-b flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold">Sales Breakdown</h2>
-                <p className="text-xs text-muted-foreground">Click a row to see transaction history</p>
+            <div className="p-3 border-b flex flex-wrap items-center gap-2">
+              <div className="flex-1 min-w-[200px]">
+                <h2 className="text-sm font-semibold">Product Performance</h2>
+                <p className="text-xs text-muted-foreground">One row per product. Click a row to see per-order sales{isAdmin ? " and gross profit" : ""}.</p>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {(["all", "local", "import"] as ProductSourceFilter[]).map((s) => (
+                  <Button
+                    key={s}
+                    variant={productSource === s ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs capitalize"
+                    onClick={() => setProductSource(s)}
+                  >
+                    {s === "all" ? "All types" : s}
+                  </Button>
+                ))}
               </div>
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExport}>
                 <Download className="h-3.5 w-3.5 mr-1" />Export
               </Button>
             </div>
-            <div className="data-table-wrapper">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8" />
-                    <SortableHeader sortKey="name" label="Item" sort={sort} onToggle={toggle} />
-                    <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggle} />
-                    <SortableHeader sortKey="qtyOnline" label="Qty Online" sort={sort} onToggle={toggle} align="right" />
-                    <SortableHeader sortKey="qtyInvoice" label="Qty Invoice" sort={sort} onToggle={toggle} align="right" />
-                    <SortableHeader sortKey="qtyTotal" label="Qty Total" sort={sort} onToggle={toggle} align="right" />
-                    {isAdmin && <SortableHeader sortKey="revenueOnline" label="Online ₱" sort={sort} onToggle={toggle} align="right" />}
-                    {isAdmin && <SortableHeader sortKey="revenueInvoice" label="Invoice ₱" sort={sort} onToggle={toggle} align="right" />}
-                    {isAdmin && <SortableHeader sortKey="revenueTotal" label="Total ₱" sort={sort} onToggle={toggle} align="right" />}
-                    <SortableHeader sortKey="orders" label="Orders" sort={sort} onToggle={toggle} align="right" />
+                    <SortableHeader sortKey="name" label="Item" sort={productSort.sort} onToggle={productSort.toggle} />
+                    <SortableHeader sortKey="source" label="Type" sort={productSort.sort} onToggle={productSort.toggle} />
+                    <SortableHeader sortKey="stock" label="Stock" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                    <SortableHeader sortKey="qtySold" label="Sold" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
+                    {isAdmin && <SortableHeader sortKey="revenue" label="Revenue" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    {isAdmin && <SortableHeader sortKey="cost" label="Cost" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    {isAdmin && <SortableHeader sortKey="grossProfit" label="Gross Profit" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    {isAdmin && <SortableHeader sortKey="margin" label="Margin" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    {isAdmin && <SortableHeader sortKey="gmroi" label="GMROI" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sorted.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center text-xs text-muted-foreground py-10">
-                        No sales in this range.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    sorted.map((r) => {
-                      const isOpen = expanded.has(r.key);
-                      return (
-                        <Fragment key={r.key}>
-                          <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpand(r.key)}>
-                            <TableCell className="w-8 p-2 align-middle">
-                              {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                            </TableCell>
-                            <TableCell className="font-medium text-sm">{r.name}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground font-mono">{r.sku}</TableCell>
-                            <TableCell className="text-sm text-right">{r.qtyOnline || "—"}</TableCell>
-                            <TableCell className="text-sm text-right">{r.qtyInvoice || "—"}</TableCell>
-                            <TableCell className="text-sm text-right font-semibold">{r.qtyTotal}</TableCell>
-                            {isAdmin && <TableCell className="text-sm text-right">{r.revenueOnline ? money(r.revenueOnline) : "—"}</TableCell>}
-                            {isAdmin && <TableCell className="text-sm text-right">{r.revenueInvoice ? money(r.revenueInvoice) : "—"}</TableCell>}
-                            {isAdmin && <TableCell className="text-sm text-right font-semibold">{money(r.revenueTotal)}</TableCell>}
-                            <TableCell className="text-sm text-right text-muted-foreground">{r.orders}</TableCell>
-                          </TableRow>
-                          {isOpen && (
-                            <TableRow key={`${r.key}-detail`} className="bg-muted/20 hover:bg-muted/20">
-                              <TableCell colSpan={10} className="p-0">
-                                <div className="px-4 py-3">
-                                  <div className="text-xs font-semibold text-muted-foreground mb-2">Sales history ({r.txns.length})</div>
-                                  <div className="rounded-md border bg-background overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead className="bg-muted/40">
-                                        <tr className="text-left">
-                                          <th className="px-3 py-2 font-medium">Date</th>
-                                          <th className="px-3 py-2 font-medium">Source</th>
-                                          <th className="px-3 py-2 font-medium">Customer</th>
-                                          <th className="px-3 py-2 font-medium">Sales Agent</th>
-                                          <th className="px-3 py-2 font-medium">Reference</th>
-                                          <th className="px-3 py-2 font-medium text-right">Qty</th>
-                                          {isAdmin && <th className="px-3 py-2 font-medium text-right">Unit ₱</th>}
-                                          {isAdmin && <th className="px-3 py-2 font-medium text-right">Amount</th>}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {r.txns.map((t, i) => (
-                                          <tr key={i} className="border-t">
-                                            <td className="px-3 py-1.5 whitespace-nowrap">{t.date ? format(new Date(t.date), "MMM d, yyyy") : "—"}</td>
-                                            <td className="px-3 py-1.5">
-                                              <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium", t.source === "online" ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground")}>
-                                                {t.source === "online" ? "Online" : "Invoice"}
-                                              </span>
-                                            </td>
-                                            <td className="px-3 py-1.5">{t.customer}</td>
-                                            <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
-                                            <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
-                                            <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
-                                            {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
-                                            {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
+                  {productSort.sorted.length === 0 ? (
+                    <TableRow><TableCell colSpan={isAdmin ? 10 : 5} className="text-center text-xs text-muted-foreground py-10">No items.</TableCell></TableRow>
+                  ) : productSort.sorted.slice(0, 500).map((p) => {
+                    const isOpen = expandedProduct.has(p.itemId);
+                    const txns = perItemTxns.get(p.itemId) || [];
+                    return (
+                      <Fragment key={p.itemId}>
+                        <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpandProduct(p.itemId)}>
+                          <TableCell className="w-8 p-2 align-middle">
+                            {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-sm">{p.name}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                          </TableCell>
+                          <TableCell>
+                            <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium capitalize", p.source === "import" ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-secondary-foreground")}>
+                              {p.source || "local"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right text-sm">{p.stock}</TableCell>
+                          <TableCell className="text-right text-sm">{p.qtySold}</TableCell>
+                          {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
+                          {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
+                          {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
+                          {isAdmin && <TableCell className="text-right text-sm">{p.qtySold ? `${p.margin.toFixed(1)}%` : "—"}</TableCell>}
+                          {isAdmin && <TableCell className="text-right text-sm">{p.gmroi.toFixed(2)}×</TableCell>}
+                        </TableRow>
+                        {isOpen && (
+                          <TableRow className="bg-muted/20 hover:bg-muted/20">
+                            <TableCell colSpan={isAdmin ? 10 : 5} className="p-0">
+                              <div className="px-4 py-3">
+                                <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                  Sales history ({txns.length}){isAdmin ? " — with per-order gross profit" : ""}
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </Fragment>
-                      );
-                    })
-                  )}
+                                <div className="rounded-md border bg-background overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-muted/40">
+                                      <tr className="text-left">
+                                        <th className="px-3 py-2 font-medium">Date</th>
+                                        <th className="px-3 py-2 font-medium">Source</th>
+                                        <th className="px-3 py-2 font-medium">Customer</th>
+                                        <th className="px-3 py-2 font-medium">Sales Agent</th>
+                                        <th className="px-3 py-2 font-medium">Reference</th>
+                                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                                        {isAdmin && <th className="px-3 py-2 font-medium text-right">Unit ₱</th>}
+                                        {isAdmin && <th className="px-3 py-2 font-medium text-right">Amount</th>}
+                                        {isAdmin && <th className="px-3 py-2 font-medium text-right">Cost</th>}
+                                        {isAdmin && <th className="px-3 py-2 font-medium text-right">Gross Profit</th>}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {txns.length === 0 ? (
+                                        <tr><td colSpan={isAdmin ? 10 : 6} className="px-3 py-4 text-center text-muted-foreground">No sales in this range.</td></tr>
+                                      ) : txns.map((t, i) => (
+                                        <tr key={i} className="border-t">
+                                          <td className="px-3 py-1.5 whitespace-nowrap">{t.date ? format(new Date(t.date), "MMM d, yyyy") : "—"}</td>
+                                          <td className="px-3 py-1.5">
+                                            <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium", t.source === "online" ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground")}>
+                                              {t.source === "online" ? "Online" : "Invoice"}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-1.5">{t.customer}</td>
+                                          <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
+                                          <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                          <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
+                                          {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
+                                          {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
+                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{t.cost != null ? money(t.cost) : "—"}</td>}
+                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : "text-red-600")}>{t.profit != null ? money(t.profit) : "—"}</td>}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
           </div>
         </TabsContent>
+
 
         {/* CUSTOMERS */}
         <TabsContent value="customers" className="space-y-4">
@@ -911,16 +1011,16 @@ export default function BusinessInsightsPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40">
                     <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Channel</th>
-                      <th className="px-3 py-2 font-medium text-right">Orders</th>
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Avg/Order</th>}
+                      <SortableTh sortKey="name" label="Channel" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} />
+                      <SortableTh sortKey="orders" label="Orders" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />
+                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
+                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
                     </tr>
                   </thead>
                   <tbody>
-                    {customerStats.onlineList.length === 0 ? (
+                    {onlineCustSort.sorted.length === 0 ? (
                       <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
-                    ) : customerStats.onlineList.map((c) => (
+                    ) : onlineCustSort.sorted.map((c) => (
                       <tr key={c.name} className="border-t">
                         <td className="px-3 py-1.5 capitalize">{c.name}</td>
                         <td className="px-3 py-1.5 text-right">{c.orders}</td>
@@ -931,6 +1031,7 @@ export default function BusinessInsightsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
 
             <div className="rounded-xl border bg-card p-4">
@@ -957,16 +1058,16 @@ export default function BusinessInsightsPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40 sticky top-0">
                     <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Customer</th>
-                      <th className="px-3 py-2 font-medium text-right">Orders</th>
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Avg/Order</th>}
+                      <SortableTh sortKey="name" label="Customer" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} />
+                      <SortableTh sortKey="orders" label="Orders" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />
+                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
+                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
                     </tr>
                   </thead>
                   <tbody>
-                    {customerStats.invoiceList.length === 0 ? (
+                    {invoiceCustSort.sorted.length === 0 ? (
                       <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
-                    ) : customerStats.invoiceList.map((c, i) => (
+                    ) : invoiceCustSort.sorted.map((c, i) => (
                       <tr key={i} className="border-t">
                         <td className="px-3 py-1.5">{c.name}</td>
                         <td className="px-3 py-1.5 text-right">{c.orders}</td>
@@ -977,6 +1078,7 @@ export default function BusinessInsightsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
           </div>
         </TabsContent>
@@ -992,32 +1094,32 @@ export default function BusinessInsightsPage() {
             </div>
 
             {([
-              { title: "Low Stock (at or below threshold)", rows: inventoryBuckets.lowStock },
-              { title: "Dead Stock (no sales in range)", rows: inventoryBuckets.dead },
-              { title: "Slow Moving (>90 days coverage)", rows: inventoryBuckets.slow },
-              { title: "Overstocked (>180 days coverage)", rows: inventoryBuckets.overstock },
-            ] as { title: string; rows: ProductMetric[] }[]).map((bucket) => (
+              { title: "Low Stock (at or below threshold)", s: lowStockSort },
+              { title: "Dead Stock (no sales in range)", s: deadSort },
+              { title: "Slow Moving (>90 days coverage)", s: slowSort },
+              { title: "Overstocked (>180 days coverage)", s: overstockSort },
+            ] as { title: string; s: { sort: any; toggle: (k: string) => void; sorted: ProductMetric[] } }[]).map((bucket) => (
               <div key={bucket.title} className="rounded-xl border bg-card overflow-hidden">
                 <div className="p-3 border-b">
                   <h2 className="text-sm font-semibold">{bucket.title}</h2>
-                  <p className="text-xs text-muted-foreground">{bucket.rows.length} item{bucket.rows.length === 1 ? "" : "s"}</p>
+                  <p className="text-xs text-muted-foreground">{bucket.s.sorted.length} item{bucket.s.sorted.length === 1 ? "" : "s"}</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/40">
                       <tr className="text-left">
-                        <th className="px-3 py-2 font-medium">Item</th>
-                        <th className="px-3 py-2 font-medium text-right">Stock</th>
-                        <th className="px-3 py-2 font-medium text-right">Threshold</th>
-                        <th className="px-3 py-2 font-medium text-right">Sold ({daysInRange}d)</th>
-                        <th className="px-3 py-2 font-medium text-right">Days Left</th>
-                        <th className="px-3 py-2 font-medium text-right">Inv Value</th>
+                        <SortableTh sortKey="name" label="Item" sort={bucket.s.sort} onToggle={bucket.s.toggle} />
+                        <SortableTh sortKey="stock" label="Stock" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="threshold" label="Threshold" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="qtySold" label={`Sold (${daysInRange}d)`} sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="daysRemaining" label="Days Left" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
+                        <SortableTh sortKey="invValue" label="Inv Value" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
                       </tr>
                     </thead>
                     <tbody>
-                      {bucket.rows.length === 0 ? (
+                      {bucket.s.sorted.length === 0 ? (
                         <tr><td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">Nothing here.</td></tr>
-                      ) : bucket.rows.slice(0, 100).map((p) => (
+                      ) : bucket.s.sorted.slice(0, 100).map((p) => (
                         <tr key={p.itemId} className="border-t">
                           <td className="px-3 py-1.5">
                             <div className="font-medium">{p.name}</div>
@@ -1035,6 +1137,7 @@ export default function BusinessInsightsPage() {
                 </div>
               </div>
             ))}
+
           </TabsContent>
         )}
 
@@ -1056,20 +1159,20 @@ export default function BusinessInsightsPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40">
                     <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Item</th>
-                      <th className="px-3 py-2 font-medium text-right">Stock</th>
-                      <th className="px-3 py-2 font-medium text-right">Daily Sales</th>
-                      <th className="px-3 py-2 font-medium text-right">Suggest Qty</th>
-                      <th className="px-3 py-2 font-medium text-right">Unit Cost</th>
-                      <th className="px-3 py-2 font-medium text-right">Capital</th>
-                      <th className="px-3 py-2 font-medium text-right">Expected GP</th>
-                      <th className="px-3 py-2 font-medium text-right">ROI</th>
+                      <SortableTh sortKey="name" label="Item" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} />
+                      <SortableTh sortKey="stock" label="Stock" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="dailySales" label="Daily Sales" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="suggestedQty" label="Suggest Qty" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="cost" label="Unit Cost" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="capital" label="Capital" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="expectedGP" label="Expected GP" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="roi" label="ROI" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {purchasing.recs.length === 0 ? (
+                    {purchaseSort.sorted.length === 0 ? (
                       <tr><td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">Nothing to reorder — coverage is healthy.</td></tr>
-                    ) : purchasing.recs.slice(0, 200).map((p) => (
+                    ) : purchaseSort.sorted.slice(0, 200).map((p) => (
                       <tr key={p.itemId} className="border-t">
                         <td className="px-3 py-1.5">
                           <div className="font-medium">{p.name}</div>
@@ -1087,6 +1190,7 @@ export default function BusinessInsightsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
           </TabsContent>
         )}
