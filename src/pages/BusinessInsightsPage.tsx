@@ -1011,16 +1011,16 @@ export default function BusinessInsightsPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40">
                     <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Channel</th>
-                      <th className="px-3 py-2 font-medium text-right">Orders</th>
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Avg/Order</th>}
+                      <SortableTh sortKey="name" label="Channel" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} />
+                      <SortableTh sortKey="orders" label="Orders" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />
+                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
+                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
                     </tr>
                   </thead>
                   <tbody>
-                    {customerStats.onlineList.length === 0 ? (
+                    {onlineCustSort.sorted.length === 0 ? (
                       <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
-                    ) : customerStats.onlineList.map((c) => (
+                    ) : onlineCustSort.sorted.map((c) => (
                       <tr key={c.name} className="border-t">
                         <td className="px-3 py-1.5 capitalize">{c.name}</td>
                         <td className="px-3 py-1.5 text-right">{c.orders}</td>
@@ -1031,6 +1031,7 @@ export default function BusinessInsightsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
 
             <div className="rounded-xl border bg-card p-4">
