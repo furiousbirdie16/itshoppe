@@ -832,14 +832,7 @@ export default function OnlineSalesPage() {
             <Input
               type="date"
               value={filterDateFrom}
-              onChange={(e) => {
-                setFilterDateFrom(e.target.value);
-                if (!e.target.value) return;
-                requestAnimationFrame(() => {
-                  filterDateToRef.current?.focus();
-                  filterDateToRef.current?.showPicker?.();
-                });
-              }}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
               className="h-9 sm:h-8 sm:w-36 text-sm"
             />
           </div>
