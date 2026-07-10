@@ -374,39 +374,39 @@ export type Database = {
       }
       invoice_item_financials: {
         Row: {
-          cost_snapshot: number
+          cost_snapshot: number | null
           created_at: string
           id: string
           invoice_id: string
           item_id: string
-          line_profit: number
-          line_total_cost: number
+          line_profit: number | null
+          line_total_cost: number | null
           quantity: number
           unit_price: number
           updated_at: string
           variation_id: string | null
         }
         Insert: {
-          cost_snapshot?: number
+          cost_snapshot?: number | null
           created_at?: string
           id?: string
           invoice_id: string
           item_id: string
-          line_profit?: number
-          line_total_cost?: number
+          line_profit?: number | null
+          line_total_cost?: number | null
           quantity?: number
           unit_price?: number
           updated_at?: string
           variation_id?: string | null
         }
         Update: {
-          cost_snapshot?: number
+          cost_snapshot?: number | null
           created_at?: string
           id?: string
           invoice_id?: string
           item_id?: string
-          line_profit?: number
-          line_total_cost?: number
+          line_profit?: number | null
+          line_total_cost?: number | null
           quantity?: number
           unit_price?: number
           updated_at?: string
@@ -673,6 +673,7 @@ export type Database = {
       }
       item_variations: {
         Row: {
+          cost_price: number | null
           created_at: string
           factor: number
           id: string
@@ -684,6 +685,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cost_price?: number | null
           created_at?: string
           factor?: number
           id?: string
@@ -695,6 +697,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cost_price?: number | null
           created_at?: string
           factor?: number
           id?: string
