@@ -980,9 +980,9 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : groupedFiltered.length === 0 ? (
+                ) : totalGroups === 0 ? (
                   <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
-                ) : groupedFiltered.flatMap((group) => {
+                ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
@@ -1161,9 +1161,9 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : groupedFiltered.length === 0 ? (
+                ) : totalGroups === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No returned / cancelled orders</TableCell></TableRow>
-                ) : groupedFiltered.flatMap((group) => {
+                ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
