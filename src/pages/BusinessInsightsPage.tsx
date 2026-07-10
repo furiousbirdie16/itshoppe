@@ -79,7 +79,16 @@ export default function BusinessInsightsPage() {
   const [source, setSource] = useState<SourceFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
+  const [productSource, setProductSource] = useState<ProductSourceFilter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedProduct, setExpandedProduct] = useState<Set<string>>(new Set());
+  const toggleExpandProduct = (id: string) => {
+    setExpandedProduct((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const toggleExpand = (key: string) => {
     setExpanded((prev) => {
