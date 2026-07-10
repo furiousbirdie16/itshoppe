@@ -13,7 +13,7 @@ import { StatCard } from "@/components/StatCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
