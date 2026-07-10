@@ -1098,7 +1098,7 @@ export default function BusinessInsightsPage() {
               { title: "Dead Stock (no sales in range)", s: deadSort },
               { title: "Slow Moving (>90 days coverage)", s: slowSort },
               { title: "Overstocked (>180 days coverage)", s: overstockSort },
-            ] as { title: string; s: ReturnType<typeof useSort<ProductMetric>> }[]).map((bucket) => (
+            ] as { title: string; s: { sort: any; toggle: (k: string) => void; sorted: ProductMetric[] } }[]).map((bucket) => (
               <div key={bucket.title} className="rounded-xl border bg-card overflow-hidden">
                 <div className="p-3 border-b">
                   <h2 className="text-sm font-semibold">{bucket.title}</h2>
