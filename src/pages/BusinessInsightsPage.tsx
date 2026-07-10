@@ -1058,16 +1058,16 @@ export default function BusinessInsightsPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40 sticky top-0">
                     <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Customer</th>
-                      <th className="px-3 py-2 font-medium text-right">Orders</th>
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Avg/Order</th>}
+                      <SortableTh sortKey="name" label="Customer" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} />
+                      <SortableTh sortKey="orders" label="Orders" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />
+                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
+                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
                     </tr>
                   </thead>
                   <tbody>
-                    {customerStats.invoiceList.length === 0 ? (
+                    {invoiceCustSort.sorted.length === 0 ? (
                       <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
-                    ) : customerStats.invoiceList.map((c, i) => (
+                    ) : invoiceCustSort.sorted.map((c, i) => (
                       <tr key={i} className="border-t">
                         <td className="px-3 py-1.5">{c.name}</td>
                         <td className="px-3 py-1.5 text-right">{c.orders}</td>
@@ -1078,6 +1078,7 @@ export default function BusinessInsightsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
           </div>
         </TabsContent>
