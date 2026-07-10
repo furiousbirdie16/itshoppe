@@ -415,6 +415,7 @@ export default function OnlineSalesPage() {
 
   const handleBulkDelete = async () => {
     if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} selected sales? This cannot be undone.`)) return;
     setBulkDeleting(true);
     let success = 0;
     for (const id of selected) {
@@ -425,6 +426,37 @@ export default function OnlineSalesPage() {
     qc.invalidateQueries({ queryKey: ["online_sales"] });
     qc.invalidateQueries({ queryKey: ["items"] });
     toast.success(`Deleted ${success} records`);
+  };
+
+  const [bulkStatusBusy, setBulkStatusBusy] = useState(false);
+  const handleBulkStatus = async (status: 'returned' | 'cancelled') => {
+    if (selected.size === 0) return;
+    const label = status === 'returned' ? 'returned' : 'cancelled';
+    if (!window.confirm(`Mark ${selected.size} selected item(s) as ${label}? Inventory will be restored where applicable.`)) return;
+    setBulkStatusBusy(true);
+    let ok = 0, fail = 0;
+    for (const id of selected) {
+      try { await returnOnlineSale(id, status); ok++; } catch { fail++; }
+    }
+    setBulkStatusBusy(false);
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+    qc.invalidateQueries({ queryKey: ["items"] });
+    if (ok) toast.success(`${ok} item(s) marked as ${label}${fail ? ` (${fail} failed)` : ""}`);
+    else toast.error(`Failed to update items`);
+  };
+
+  const handleBulkMarkPaid = () => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    const lineSales = sales.filter((s: any) => ids.includes(s.id));
+    const expected = lineSales.reduce((sum: number, s: any) => sum + Number(s.posted_price || 0) * Number(s.quantity || 1), 0);
+    const currentPaid = lineSales.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
+    const orderNums = Array.from(new Set(lineSales.map((s: any) => s.order_number))).filter(Boolean);
+    const label = orderNums.length === 1 ? orderNums[0] : `${ids.length} selected items`;
+    setPayTarget({ ids, orderNumber: label, expected });
+    setPayAmount(currentPaid > 0 ? String(currentPaid) : String(expected));
+    setPayDialogOpen(true);
   };
 
   // Bulk upload
@@ -602,6 +634,7 @@ export default function OnlineSalesPage() {
     qc.invalidateQueries({ queryKey: ["online_sales"] });
     setPayDialogOpen(false);
     setPayTarget(null);
+    setSelected(new Set());
   };
 
   const markUnpaid = async (ids: string[]) => {
@@ -794,6 +827,15 @@ export default function OnlineSalesPage() {
                 updateOne={async (id, patch) => { await updateOnlineSale(id, patch as any); }}
                 onSuccess={() => { qc.invalidateQueries({ queryKey: ["online_sales"] }); setSelected(new Set()); }}
               />
+              <Button variant="outline" size="sm" onClick={handleBulkMarkPaid} disabled={bulkStatusBusy}>
+                <CircleDollarSign className="h-4 w-4 mr-1" /> Mark Paid
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkStatus('returned')} disabled={bulkStatusBusy}>
+                <Undo2 className="h-4 w-4 mr-1" /> Return
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkStatus('cancelled')} disabled={bulkStatusBusy}>
+                <XCircle className="h-4 w-4 mr-1" /> Cancel
+              </Button>
               <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
                 <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
               </Button>
