@@ -952,10 +952,36 @@ export default function OnlineSalesPage() {
           <TabsTrigger value="returns">Returns / Cancelled ({returnsCount})</TabsTrigger>
         </TabsList>
 
-        <div className="mt-4 relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Search by product, order ID..." value={filter} onChange={e => setFilter(e.target.value)} className="pl-9 h-9 rounded-lg text-sm" />
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Search by product, order ID..." value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }} className="pl-9 h-9 rounded-lg text-sm" />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Label className="text-xs text-muted-foreground">Show</Label>
+            <Select value={pageSize} onValueChange={(v) => { setPageSize(v as any); setPage(1); }}>
+              <SelectTrigger className="h-9 w-[110px] text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="100">100 / page</SelectItem>
+                <SelectItem value="1000">1000 / page</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+            {pageSize !== "all" && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage <= 1} onClick={() => setPage(1)}>«</Button>
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>‹</Button>
+                <span className="text-xs text-muted-foreground px-2 tabular-nums">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>›</Button>
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage >= totalPages} onClick={() => setPage(totalPages)}>»</Button>
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {totalGroups === 0 ? "0 orders" : `${((currentPage - 1) * perPage) + 1}-${Math.min(currentPage * perPage, totalGroups)} of ${totalGroups} orders`}
+            </span>
+          </div>
         </div>
+
 
         <TabsContent value="completed">
           <div className="border rounded-lg overflow-hidden">
