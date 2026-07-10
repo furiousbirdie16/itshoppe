@@ -170,10 +170,16 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase">{form.type === "pack" ? "Pcs / Pack" : "Meters / Cut"}</Label>
                   <Input type="number" value={form.factor} onChange={e => setForm({ ...form, factor: e.target.value })} className="h-8 text-sm" />
-                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase">Selling Price</Label>
                   <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase">Cost Price</Label>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} placeholder="Leave blank if unknown" className="h-8 text-sm" />
+                  <p className="text-[10px] text-muted-foreground">Each variation has its own cost. Blank = no cost (profit will not be calculated).</p>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
