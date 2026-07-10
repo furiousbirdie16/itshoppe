@@ -21,6 +21,7 @@ import { toast } from "sonner";
 type RangePreset = "today" | "7d" | "30d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
 type PaymentFilter = "all" | "paid" | "unpaid";
+type ProductSourceFilter = "all" | "local" | "import";
 
 interface SaleTxn {
   date: string;
@@ -31,6 +32,11 @@ interface SaleTxn {
   quantity: number;
   unitPrice: number;
   amount: number;
+  invoiceId?: string | null;
+  itemId?: string | null;
+  variationId?: string | null;
+  cost?: number;
+  profit?: number;
 }
 
 interface ItemAgg {
@@ -47,6 +53,20 @@ interface ItemAgg {
   revenueTotal: number;
   orders: number;
   txns: SaleTxn[];
+}
+
+// Sortable <th> for plain HTML tables
+function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKey: string; label: string; sort: { key: string | null; dir: "asc" | "desc" }; onToggle: (k: string) => void; align?: "left" | "right" }) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={cn("px-3 py-2 font-medium select-none", align === "right" && "text-right")}>
+      <button type="button" onClick={() => onToggle(sortKey)} className={cn("inline-flex items-center gap-1 hover:text-foreground transition-colors", align === "right" && "ml-auto flex-row-reverse", active ? "text-foreground" : "text-muted-foreground")}>
+        <span>{label}</span>
+        <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-50")} />
+      </button>
+    </th>
+  );
 }
 
 export default function BusinessInsightsPage() {
