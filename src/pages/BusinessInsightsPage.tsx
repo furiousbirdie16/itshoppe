@@ -1159,20 +1159,20 @@ export default function BusinessInsightsPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40">
                     <tr className="text-left">
-                      <th className="px-3 py-2 font-medium">Item</th>
-                      <th className="px-3 py-2 font-medium text-right">Stock</th>
-                      <th className="px-3 py-2 font-medium text-right">Daily Sales</th>
-                      <th className="px-3 py-2 font-medium text-right">Suggest Qty</th>
-                      <th className="px-3 py-2 font-medium text-right">Unit Cost</th>
-                      <th className="px-3 py-2 font-medium text-right">Capital</th>
-                      <th className="px-3 py-2 font-medium text-right">Expected GP</th>
-                      <th className="px-3 py-2 font-medium text-right">ROI</th>
+                      <SortableTh sortKey="name" label="Item" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} />
+                      <SortableTh sortKey="stock" label="Stock" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="dailySales" label="Daily Sales" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="suggestedQty" label="Suggest Qty" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="cost" label="Unit Cost" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="capital" label="Capital" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="expectedGP" label="Expected GP" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
+                      <SortableTh sortKey="roi" label="ROI" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {purchasing.recs.length === 0 ? (
+                    {purchaseSort.sorted.length === 0 ? (
                       <tr><td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">Nothing to reorder — coverage is healthy.</td></tr>
-                    ) : purchasing.recs.slice(0, 200).map((p) => (
+                    ) : purchaseSort.sorted.slice(0, 200).map((p) => (
                       <tr key={p.itemId} className="border-t">
                         <td className="px-3 py-1.5">
                           <div className="font-medium">{p.name}</div>
@@ -1190,6 +1190,7 @@ export default function BusinessInsightsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
           </TabsContent>
         )}
