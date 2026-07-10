@@ -819,21 +819,21 @@ export default function BusinessInsightsPage() {
           {/* Top 5 products */}
           <div className="rounded-xl border bg-card p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Top 5 Products (by revenue)</h2>
+              <h2 className="text-sm font-semibold">Top Products</h2>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </div>
             <div className="rounded-md border overflow-hidden">
               <table className="w-full text-xs">
                 <thead className="bg-muted/40">
                   <tr className="text-left">
-                    <th className="px-3 py-2 font-medium">Item</th>
-                    <th className="px-3 py-2 font-medium text-right">Units Sold</th>
-                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Revenue</th>}
-                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Gross Profit</th>}
+                    <SortableTh sortKey="name" label="Item" sort={top5Sort.sort} onToggle={top5Sort.toggle} />
+                    <SortableTh sortKey="qtySold" label="Units Sold" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />
+                    {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
+                    {isAdmin && <SortableTh sortKey="grossProfit" label="Gross Profit" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
                   </tr>
                 </thead>
                 <tbody>
-                  {[...productMetrics].sort((a, b) => b.revenue - a.revenue).slice(0, 5).map((p) => (
+                  {top5.map((p) => (
                     <tr key={p.itemId} className="border-t">
                       <td className="px-3 py-1.5">
                         <div className="font-medium">{p.name}</div>
@@ -852,6 +852,8 @@ export default function BusinessInsightsPage() {
             </div>
           </div>
         </TabsContent>
+
+
 
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
