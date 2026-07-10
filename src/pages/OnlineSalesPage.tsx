@@ -826,12 +826,18 @@ export default function OnlineSalesPage() {
                 updateOne={async (id, patch) => { await updateOnlineSale(id, patch as any); }}
                 onSuccess={() => { qc.invalidateQueries({ queryKey: ["online_sales"] }); setSelected(new Set()); }}
               />
+              <Button variant="outline" size="sm" onClick={handleBulkMarkPaid} disabled={bulkStatusBusy}>
+                <CircleDollarSign className="h-4 w-4 mr-1" /> Mark Paid
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkStatus('returned')} disabled={bulkStatusBusy}>
+                <Undo2 className="h-4 w-4 mr-1" /> Return
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkStatus('cancelled')} disabled={bulkStatusBusy}>
+                <XCircle className="h-4 w-4 mr-1" /> Cancel
+              </Button>
               <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
                 <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
               </Button>
-            </>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
           <ExportButton
