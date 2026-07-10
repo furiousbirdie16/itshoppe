@@ -838,6 +838,9 @@ export default function OnlineSalesPage() {
               <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
                 <Trash2 className="h-4 w-4 mr-1" /> {bulkDeleting ? "Deleting..." : `Delete ${selected.size} Selected`}
               </Button>
+            </>
+          )}
+          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
           <ExportButton
