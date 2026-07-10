@@ -314,7 +314,7 @@ export default function BusinessInsightsPage() {
     return q
       ? arr.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q))
       : arr;
-  }, [onlineRows, invoiceRows, source, search]);
+  }, [onlineRows, invoiceRows, source, search, financialsMap]);
 
   const { sort, toggle, sorted } = useSort<ItemAgg>(
     aggregated,
