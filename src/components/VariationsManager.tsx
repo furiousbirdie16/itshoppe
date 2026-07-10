@@ -49,10 +49,11 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ name: "", sku: "", type: "pack", factor: "1", selling_price: "0" }); setEditing(null); setShowForm(false); };
+  const resetForm = () => { setForm({ name: "", sku: "", type: "pack", factor: "1", selling_price: "0", cost_price: "" }); setEditing(null); setShowForm(false); };
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      const trimmedCost = form.cost_price.trim();
       const payload = {
         item_id: item.id,
         name: form.name.trim(),
@@ -60,6 +61,8 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
         type: form.type,
         factor: parseFloat(form.factor) || 1,
         selling_price: parseFloat(form.selling_price) || 0,
+        // Empty cost = intentional "not set" — do NOT inherit parent cost.
+        cost_price: trimmedCost === "" ? null : parseFloat(trimmedCost),
       };
       if (editing) await updateItemVariation(editing.id, payload as any);
       else await createItemVariation(payload as any);
@@ -84,7 +87,7 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
 
   const startEdit = (v: ItemVariation) => {
     setEditing(v);
-    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price) });
+    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_price == null ? "" : String(v.cost_price) });
     setShowForm(true);
   };
 
