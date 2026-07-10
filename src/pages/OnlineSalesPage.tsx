@@ -376,6 +376,19 @@ export default function OnlineSalesPage() {
     return next;
   });
 
+  // Pagination (per-order groups)
+  const [pageSize, setPageSize] = useState<"100" | "1000" | "all">("100");
+  const [page, setPage] = useState(1);
+  const totalGroups = groupedFiltered.length;
+  const perPage = pageSize === "all" ? totalGroups || 1 : parseInt(pageSize, 10);
+  const totalPages = Math.max(1, Math.ceil(totalGroups / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const pagedGroups = useMemo(() => {
+    if (pageSize === "all") return groupedFiltered;
+    const start = (currentPage - 1) * perPage;
+    return groupedFiltered.slice(start, start + perPage);
+  }, [groupedFiltered, currentPage, perPage, pageSize]);
+
   // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
   const totalSales = useMemo(() => {
     return filtered
@@ -939,10 +952,36 @@ export default function OnlineSalesPage() {
           <TabsTrigger value="returns">Returns / Cancelled ({returnsCount})</TabsTrigger>
         </TabsList>
 
-        <div className="mt-4 relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Search by product, order ID..." value={filter} onChange={e => setFilter(e.target.value)} className="pl-9 h-9 rounded-lg text-sm" />
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Search by product, order ID..." value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }} className="pl-9 h-9 rounded-lg text-sm" />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Label className="text-xs text-muted-foreground">Show</Label>
+            <Select value={pageSize} onValueChange={(v) => { setPageSize(v as any); setPage(1); }}>
+              <SelectTrigger className="h-9 w-[110px] text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="100">100 / page</SelectItem>
+                <SelectItem value="1000">1000 / page</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+            {pageSize !== "all" && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage <= 1} onClick={() => setPage(1)}>«</Button>
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>‹</Button>
+                <span className="text-xs text-muted-foreground px-2 tabular-nums">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>›</Button>
+                <Button variant="outline" size="sm" className="h-9 px-2" disabled={currentPage >= totalPages} onClick={() => setPage(totalPages)}>»</Button>
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {totalGroups === 0 ? "0 orders" : `${((currentPage - 1) * perPage) + 1}-${Math.min(currentPage * perPage, totalGroups)} of ${totalGroups} orders`}
+            </span>
+          </div>
         </div>
+
 
         <TabsContent value="completed">
           <div className="border rounded-lg overflow-hidden">
@@ -967,9 +1006,9 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : groupedFiltered.length === 0 ? (
+                ) : totalGroups === 0 ? (
                   <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
-                ) : groupedFiltered.flatMap((group) => {
+                ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
@@ -1148,9 +1187,9 @@ export default function OnlineSalesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
-                ) : groupedFiltered.length === 0 ? (
+                ) : totalGroups === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No returned / cancelled orders</TableCell></TableRow>
-                ) : groupedFiltered.flatMap((group) => {
+                ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
