@@ -376,6 +376,19 @@ export default function OnlineSalesPage() {
     return next;
   });
 
+  // Pagination (per-order groups)
+  const [pageSize, setPageSize] = useState<"100" | "1000" | "all">("100");
+  const [page, setPage] = useState(1);
+  const totalGroups = groupedFiltered.length;
+  const perPage = pageSize === "all" ? totalGroups || 1 : parseInt(pageSize, 10);
+  const totalPages = Math.max(1, Math.ceil(totalGroups / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const pagedGroups = useMemo(() => {
+    if (pageSize === "all") return groupedFiltered;
+    const start = (currentPage - 1) * perPage;
+    return groupedFiltered.slice(start, start + perPage);
+  }, [groupedFiltered, currentPage, perPage, pageSize]);
+
   // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
   const totalSales = useMemo(() => {
     return filtered
