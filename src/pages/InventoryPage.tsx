@@ -28,7 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
-import { getItemSuppliers } from "@/lib/itemSuppliers";
+import { supabase } from "@/integrations/supabase/client";
 
 type StockStatusFilter = "all" | "in_stock" | "low_stock" | "out_of_stock" | "overstocked";
 type QtyOp = "any" | "eq" | "gt" | "lt" | "range";
