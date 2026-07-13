@@ -1,17 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getItems, createItem, updateItem, deleteItem } from "@/lib/api";
+import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore } from "lucide-react";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
@@ -27,28 +28,114 @@ import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { getItemSuppliers } from "@/lib/itemSuppliers";
+
+type StockStatusFilter = "all" | "in_stock" | "low_stock" | "out_of_stock" | "overstocked";
+type QtyOp = "any" | "eq" | "gt" | "lt" | "range";
+type LocationFilter = "any" | "warehouse" | "store";
+type ProductStatusFilter = "any" | "active" | "inactive" | "discontinued";
+
+interface FilterState {
+  search: string;
+  stockStatus: StockStatusFilter;
+  qtyOp: QtyOp;
+  qtyValue: string;
+  qtyMin: string;
+  qtyMax: string;
+  source: "all" | "local" | "import";
+  category: string;
+  supplierId: string;
+  location: LocationFilter;
+  productStatus: ProductStatusFilter;
+}
+
+const DEFAULT_FILTERS: FilterState = {
+  search: "",
+  stockStatus: "all",
+  qtyOp: "any",
+  qtyValue: "",
+  qtyMin: "",
+  qtyMax: "",
+  source: "all",
+  category: "all",
+  supplierId: "all",
+  location: "any",
+  productStatus: "any",
+};
+
+const FILTER_STORAGE_KEY = "inventory:filters:v1";
 
 export default function InventoryPage() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
-  const [filter, setFilter] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [viewArchived, setViewArchived] = useState(false);
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
   const [transferItem, setTransferItem] = useState<Item | null>(null);
   const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
   const [costHistoryItem, setCostHistoryItem] = useState<Item | null>(null);
   const [suppliersItem, setSuppliersItem] = useState<Item | null>(null);
-  const [form, setForm] = useState({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" as "local" | "import" });
+  const [archiveConfirm, setArchiveConfirm] = useState<{ ids: string[]; label: string } | null>(null);
+  const [form, setForm] = useState({
+    name: "", sku: "", description: "",
+    warehouse_quantity: "0", store_quantity: "0",
+    cost_price: "0", cost_price_rmb: "0", selling_price: "0",
+    low_stock_threshold: "10", source: "local" as "local" | "import",
+    category: "", brand: "", barcode: "", supplier_sku: "",
+    status: "active" as "active" | "inactive" | "discontinued",
+  });
 
-  const { data: items = [], isLoading } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  // Filters (persisted per-user localStorage)
+  const [filters, setFilters] = useState<FilterState>(() => {
+    try {
+      const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+      if (raw) return { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return DEFAULT_FILTERS;
+  });
+  useEffect(() => {
+    try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters)); } catch { /* ignore */ }
+  }, [filters]);
+
+  const setF = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
+    setFilters(prev => ({ ...prev, [key]: value }));
+
+  const { data: activeItems = [], isLoading: loadingActive } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  const { data: archivedItemsData = [], isLoading: loadingArchived } = useQuery({
+    queryKey: ["items", "archived"],
+    queryFn: getArchivedItems,
+    enabled: viewArchived,
+  });
+  const items = viewArchived ? archivedItemsData : activeItems;
+  const isLoading = viewArchived ? loadingArchived : loadingActive;
+
+  const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
+
+  // For supplier filter: map item -> supplier IDs via item_suppliers (lazy: only when a supplier filter is active)
+  const supplierFilterActive = filters.supplierId !== "all";
+  const { data: itemSupplierMap = new Map<string, Set<string>>() } = useQuery({
+    queryKey: ["item_suppliers_index"],
+    enabled: supplierFilterActive,
+    queryFn: async () => {
+      const rows = await getItemSuppliers();
+      const m = new Map<string, Set<string>>();
+      for (const r of rows as any[]) {
+        const sid = r.supplier_id || r.overseas_supplier_id;
+        if (!sid) continue;
+        if (!m.has(r.item_id)) m.set(r.item_id, new Set());
+        m.get(r.item_id)!.add(sid);
+      }
+      return m;
+    },
+  });
 
   const createMut = useMutation({
     mutationFn: (data: Partial<Item>) => createItem(data),
@@ -67,46 +154,156 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); toast.success("Item deleted"); },
   });
 
-  const openCreate = () => { setEditing(null); setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local" }); setOpen(true); };
+  const archiveMut = useMutation({
+    mutationFn: (ids: string[]) => archiveItems(ids, user?.email),
+    onSuccess: (_d, ids) => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      setSelectedIds(new Set());
+      setArchiveConfirm(null);
+      toast.success(`Archived ${ids.length} item${ids.length > 1 ? "s" : ""}`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const unarchiveMut = useMutation({
+    mutationFn: (ids: string[]) => unarchiveItems(ids),
+    onSuccess: (_d, ids) => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      setSelectedIds(new Set());
+      toast.success(`Restored ${ids.length} item${ids.length > 1 ? "s" : ""}`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local", category: "", brand: "", barcode: "", supplier_sku: "", status: "active" });
+    setOpen(true);
+  };
   const openEdit = (item: Item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku, description: item.description, warehouse_quantity: String((item as any).warehouse_quantity ?? 0), store_quantity: String((item as any).store_quantity ?? 0), cost_price: String(item.cost_price), cost_price_rmb: String((item as any).cost_price_rmb ?? 0), selling_price: String(item.selling_price), low_stock_threshold: String(item.low_stock_threshold), source: ((item.source as "local" | "import") || "local") });
+    setForm({
+      name: item.name, sku: item.sku, description: item.description,
+      warehouse_quantity: String((item as any).warehouse_quantity ?? 0),
+      store_quantity: String((item as any).store_quantity ?? 0),
+      cost_price: String(item.cost_price),
+      cost_price_rmb: String((item as any).cost_price_rmb ?? 0),
+      selling_price: String(item.selling_price),
+      low_stock_threshold: String(item.low_stock_threshold),
+      source: ((item.source as "local" | "import") || "local"),
+      category: item.category || "",
+      brand: item.brand || "",
+      barcode: item.barcode || "",
+      supplier_sku: item.supplier_sku || "",
+      status: ((item.status as any) === "archived" ? "active" : (item.status as any) || "active"),
+    });
     setOpen(true);
   };
 
-  // Non-admins can edit cost_price ONLY for local items
   const canEditCost = isAdmin || form.source === "local";
 
   const handleSubmit = () => {
     const wh = parseInt(form.warehouse_quantity) || 0;
     const st = parseInt(form.store_quantity) || 0;
+    const base: any = {
+      name: form.name, sku: form.sku, description: form.description,
+      selling_price: parseFloat(form.selling_price),
+      warehouse_quantity: wh, store_quantity: st,
+      category: form.category || null,
+      brand: form.brand || null,
+      barcode: form.barcode || null,
+      supplier_sku: form.supplier_sku || null,
+    };
+    if (isAdmin) base.status = form.status;
     if (!editing) {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), low_stock_threshold: parseInt(form.low_stock_threshold), warehouse_quantity: wh, store_quantity: st };
-      if (isAdmin) data.source = form.source;
-      else data.source = "local"; // non-admin new items default to local
-      if (canEditCost) data.cost_price = parseFloat(form.cost_price);
-      if (isAdmin) data.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
-      createMut.mutate(data);
+      base.low_stock_threshold = parseInt(form.low_stock_threshold);
+      base.source = isAdmin ? form.source : "local";
+      if (canEditCost) base.cost_price = parseFloat(form.cost_price);
+      if (isAdmin) base.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
+      createMut.mutate(base);
     } else {
-      const data: any = { name: form.name, sku: form.sku, description: form.description, selling_price: parseFloat(form.selling_price), warehouse_quantity: wh, store_quantity: st };
-      if (isAdmin) data.source = form.source; // non-admins cannot change source
-      if (canEditCost) data.cost_price = parseFloat(form.cost_price);
+      if (isAdmin) base.source = form.source;
+      if (canEditCost) base.cost_price = parseFloat(form.cost_price);
       if (isAdmin) {
-        data.low_stock_threshold = parseInt(form.low_stock_threshold);
-        data.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
+        base.low_stock_threshold = parseInt(form.low_stock_threshold);
+        base.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
       }
-      updateMut.mutate({ id: editing.id, data });
+      updateMut.mutate({ id: editing.id, data: base });
     }
   };
 
-  const textMatched = items.filter(i =>
-    i.name.toLowerCase().includes(filter.toLowerCase()) || i.sku.toLowerCase().includes(filter.toLowerCase())
+  // --- Filtering pipeline ---
+  const filtered = useMemo(() => {
+    const q = filters.search.trim().toLowerCase();
+    return items.filter(i => {
+      const src = ((i as any).source as string) || "local";
+      const qty = Number(i.quantity ?? 0);
+      const threshold = Number(i.low_stock_threshold ?? 0);
+      const status = (i.status as string) || "active";
+
+      // Search across many fields
+      if (q) {
+        const hay = [
+          i.name, i.sku, i.description,
+          (i as any).barcode, (i as any).supplier_sku, (i as any).brand, (i as any).category,
+        ].filter(Boolean).map(v => String(v).toLowerCase());
+        if (!hay.some(h => h.includes(q))) return false;
+      }
+
+      // Stock status
+      if (filters.stockStatus === "in_stock" && qty <= 0) return false;
+      if (filters.stockStatus === "out_of_stock" && qty !== 0) return false;
+      if (filters.stockStatus === "low_stock" && !(threshold > 0 && qty <= threshold && qty > 0)) return false;
+      if (filters.stockStatus === "overstocked" && !(threshold > 0 && qty > threshold * 3)) return false;
+
+      // Quantity op
+      const n = Number(filters.qtyValue);
+      const nMin = Number(filters.qtyMin);
+      const nMax = Number(filters.qtyMax);
+      if (filters.qtyOp === "eq" && filters.qtyValue !== "" && qty !== n) return false;
+      if (filters.qtyOp === "gt" && filters.qtyValue !== "" && !(qty > n)) return false;
+      if (filters.qtyOp === "lt" && filters.qtyValue !== "" && !(qty < n)) return false;
+      if (filters.qtyOp === "range") {
+        if (filters.qtyMin !== "" && qty < nMin) return false;
+        if (filters.qtyMax !== "" && qty > nMax) return false;
+      }
+
+      // Source
+      if (filters.source !== "all" && src !== filters.source) return false;
+
+      // Category
+      if (filters.category !== "all" && (i.category || "") !== filters.category) return false;
+
+      // Product status (only for active view; archived view is separate)
+      if (!viewArchived && filters.productStatus !== "any" && status !== filters.productStatus) return false;
+
+      // Location (stock present in specific location)
+      const wh = Number((i as any).warehouse_quantity ?? 0);
+      const st = Number((i as any).store_quantity ?? 0);
+      if (filters.location === "warehouse" && wh <= 0) return false;
+      if (filters.location === "store" && st <= 0) return false;
+
+      // Supplier
+      if (supplierFilterActive) {
+        const set = itemSupplierMap.get(i.id);
+        if (!set || !set.has(filters.supplierId)) return false;
+      }
+
+      return true;
+    });
+  }, [items, filters, viewArchived, supplierFilterActive, itemSupplierMap]);
+
+  // Category options from active items
+  const categoryOptions = useMemo(() => {
+    const s = new Set<string>();
+    items.forEach(i => { if (i.category) s.add(i.category); });
+    return Array.from(s).sort();
+  }, [items]);
+
+  const totalFilteredValue = useMemo(
+    () => filtered.reduce((sum, i) => sum + (Number(i.quantity) * Number(i.cost_price || 0)), 0),
+    [filtered]
   );
-  const availableSources = new Set<string>(textMatched.map(i => ((i as any).source as string) || "local"));
-  const filtered = textMatched.filter(i => {
-    const itemSource = ((i as any).source as string) || "local";
-    return sourceFilter === "all" || itemSource === sourceFilter;
-  });
 
   const { sort, toggle, sorted: sortedFiltered } = useSort<typeof filtered[number]>(filtered, {
     name: (r) => r.name,
@@ -121,16 +318,7 @@ export default function InventoryPage() {
   });
 
   const allSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
-  const someSelected = filtered.some(i => selectedIds.has(i.id));
-
-  const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map(i => i.id)));
-    }
-  };
-
+  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(filtered.map(i => i.id)));
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -138,27 +326,61 @@ export default function InventoryPage() {
   };
 
   const bulkDeleteMut = useMutation({
-    mutationFn: async () => {
-      for (const id of selectedIds) await deleteItem(id);
-    },
+    mutationFn: async () => { for (const id of selectedIds) await deleteItem(id); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
+      const n = selectedIds.size;
       setSelectedIds(new Set());
-      toast.success(`Deleted ${selectedIds.size} items`);
+      toast.success(`Deleted ${n} items`);
     },
   });
 
-  const colCount = 10; // checkbox + name + source + qty + warehouse + store + cost + sell + threshold + actions
+  const resetFilters = () => setFilters(DEFAULT_FILTERS);
+
+  // Active filter chips
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (filters.search) chips.push({ key: "search", label: `Search: "${filters.search}"`, clear: () => setF("search", "") });
+  if (filters.stockStatus !== "all") chips.push({ key: "stock", label: `Stock: ${filters.stockStatus.replace("_", " ")}`, clear: () => setF("stockStatus", "all") });
+  if (filters.qtyOp !== "any") {
+    let lbl = "Qty: ";
+    if (filters.qtyOp === "eq") lbl += `= ${filters.qtyValue}`;
+    else if (filters.qtyOp === "gt") lbl += `> ${filters.qtyValue}`;
+    else if (filters.qtyOp === "lt") lbl += `< ${filters.qtyValue}`;
+    else if (filters.qtyOp === "range") lbl += `${filters.qtyMin || 0}–${filters.qtyMax || "∞"}`;
+    chips.push({ key: "qty", label: lbl, clear: () => setFilters(f => ({ ...f, qtyOp: "any", qtyValue: "", qtyMin: "", qtyMax: "" })) });
+  }
+  if (filters.source !== "all") chips.push({ key: "source", label: `Source: ${filters.source}`, clear: () => setF("source", "all") });
+  if (filters.category !== "all") chips.push({ key: "cat", label: `Category: ${filters.category}`, clear: () => setF("category", "all") });
+  if (filters.supplierId !== "all") {
+    const s = suppliers.find(s => s.id === filters.supplierId);
+    chips.push({ key: "sup", label: `Supplier: ${s?.name || "…"}`, clear: () => setF("supplierId", "all") });
+  }
+  if (filters.location !== "any") chips.push({ key: "loc", label: `Location: ${filters.location}`, clear: () => setF("location", "any") });
+  if (filters.productStatus !== "any") chips.push({ key: "ps", label: `Status: ${filters.productStatus}`, clear: () => setF("productStatus", "any") });
+
+  const colCount = 10;
 
   return (
     <div className="space-y-6">
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Inventory</h1>
-          <p className="page-description">{items.length} items in stock</p>
+          <p className="page-description">
+            {viewArchived ? `${items.length} archived` : `${items.length} items in stock`}
+          </p>
         </div>
         <div className="toolbar-actions">
-          {selectedIds.size > 0 && (() => {
+          <Button
+            variant={viewArchived ? "default" : "outline"}
+            onClick={() => { setViewArchived(v => !v); setSelectedIds(new Set()); }}
+            className="rounded-lg h-9 px-4 text-sm font-medium"
+            title="Toggle archived view"
+          >
+            {viewArchived ? <ArchiveRestore className="h-4 w-4 mr-1.5" /> : <Archive className="h-4 w-4 mr-1.5" />}
+            {viewArchived ? "Viewing Archived" : "View Archived"}
+          </Button>
+
+          {selectedIds.size > 0 && !viewArchived && (() => {
             const selectedItems = items.filter(i => selectedIds.has(i.id));
             const allLocal = selectedItems.every(i => (((i as any).source as string) || 'local') === 'local');
             const canBulkEditCost = isAdmin || allLocal;
@@ -170,8 +392,13 @@ export default function InventoryPage() {
                   { key: "name", label: "Name", type: "text" },
                   { key: "sku", label: "SKU", type: "text" },
                   { key: "description", label: "Description", type: "textarea" },
+                  { key: "category", label: "Category", type: "text" },
+                  { key: "brand", label: "Brand", type: "text" },
+                  { key: "barcode", label: "Barcode", type: "text" },
+                  { key: "supplier_sku", label: "Supplier SKU", type: "text" },
                   ...(isAdmin ? [
                     { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                    { key: "status", label: "Status", type: "select", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }, { value: "discontinued", label: "Discontinued" }] },
                   ] : []),
                   { key: "base_unit", label: "Base Unit (e.g. pcs, m, kg)", type: "text" },
                   { key: "units_per_stock", label: "Units Per Stock", type: "number", transform: (v) => parseFloat(v) || 1 },
@@ -193,17 +420,34 @@ export default function InventoryPage() {
               />
             );
           })()}
-          {selectedIds.size > 0 && isAdmin && (
-            <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
-              <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size} selected
+
+          {selectedIds.size > 0 && !viewArchived && (
+            <Button variant="outline" onClick={() => setArchiveConfirm({ ids: Array.from(selectedIds), label: `${selectedIds.size} selected item${selectedIds.size > 1 ? "s" : ""}` })} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Archive className="h-4 w-4 mr-1.5" /> Archive {selectedIds.size}
             </Button>
           )}
+          {selectedIds.size > 0 && viewArchived && isAdmin && (
+            <Button variant="outline" onClick={() => unarchiveMut.mutate(Array.from(selectedIds))} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <ArchiveRestore className="h-4 w-4 mr-1.5" /> Restore {selectedIds.size}
+            </Button>
+          )}
+          {selectedIds.size > 0 && isAdmin && (
+            <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size}
+            </Button>
+          )}
+
           <ExportButton
             data={items}
             columns={{
               "Name": (r: any) => r.name,
               "SKU": (r: any) => r.sku,
               "Source": (r: any) => r.source || "local",
+              "Category": (r: any) => r.category || "",
+              "Brand": (r: any) => r.brand || "",
+              "Barcode": (r: any) => r.barcode || "",
+              "Supplier SKU": (r: any) => r.supplier_sku || "",
+              "Status": (r: any) => r.status || "active",
               "Description": (r: any) => r.description || "",
               "Base Unit": (r: any) => r.base_unit || "",
               "Units Per Stock": (r: any) => r.units_per_stock || 1,
@@ -216,6 +460,8 @@ export default function InventoryPage() {
                 ? { "Cost Price": (r: any) => r.cost_price }
                 : { "Cost Price": (r: any) => ((r.source ?? "local") === "local" ? r.cost_price : "") }),
               "Selling Price": (r: any) => r.selling_price,
+              "Archived At": (r: any) => r.archived_at || "",
+              "Archived By": (r: any) => r.archived_by_email || "",
               "Created": (r: any) => r.created_at || "",
               "Updated": (r: any) => r.updated_at || "",
             }}
@@ -242,7 +488,7 @@ export default function InventoryPage() {
               },
             }}
             dateField={(r: any) => r.created_at?.split("T")[0] || ""}
-            fileName="Inventory"
+            fileName={viewArchived ? "Inventory-Archived" : "Inventory"}
           />
           <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
@@ -256,8 +502,179 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* Search + filter trigger */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative max-w-md flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search name, SKU, barcode, supplier SKU, brand, description…"
+            value={filters.search}
+            onChange={e => setF("search", e.target.value)}
+            className="pl-9 h-9 rounded-lg text-sm"
+          />
+        </div>
+        <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-lg text-sm">
+              <Filter className="h-4 w-4 mr-1.5" /> Filters
+              {chips.length > 0 && (
+                <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5">{chips.length}</Badge>
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Filter Inventory</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-5 py-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Stock Status</Label>
+                <Select value={filters.stockStatus} onValueChange={v => setF("stockStatus", v as StockStatusFilter)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Products</SelectItem>
+                    <SelectItem value="in_stock">In Stock</SelectItem>
+                    <SelectItem value="low_stock">Low Stock</SelectItem>
+                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                    <SelectItem value="overstocked">Overstocked (&gt; 3× threshold)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Quantity</Label>
+                <div className="flex gap-2">
+                  <Select value={filters.qtyOp} onValueChange={v => setF("qtyOp", v as QtyOp)}>
+                    <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="eq">= Exactly</SelectItem>
+                      <SelectItem value="gt">&gt; Greater than</SelectItem>
+                      <SelectItem value="lt">&lt; Less than</SelectItem>
+                      <SelectItem value="range">Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {filters.qtyOp === "range" ? (
+                    <div className="flex gap-1 flex-1">
+                      <Input type="number" placeholder="Min" value={filters.qtyMin} onChange={e => setF("qtyMin", e.target.value)} className="h-9" />
+                      <Input type="number" placeholder="Max" value={filters.qtyMax} onChange={e => setF("qtyMax", e.target.value)} className="h-9" />
+                    </div>
+                  ) : filters.qtyOp !== "any" ? (
+                    <Input type="number" placeholder="Qty" value={filters.qtyValue} onChange={e => setF("qtyValue", e.target.value)} className="h-9 flex-1" />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Source</Label>
+                <Select value={filters.source} onValueChange={v => setF("source", v as any)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Both</SelectItem>
+                    <SelectItem value="local">Local</SelectItem>
+                    <SelectItem value="import">Import</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Category</Label>
+                <Select value={filters.category} onValueChange={v => setF("category", v)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categoryOptions.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {categoryOptions.length === 0 && (
+                  <p className="text-[10px] text-muted-foreground">No categories yet. Assign one when creating/editing an item.</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Supplier</Label>
+                <Select value={filters.supplierId} onValueChange={v => setF("supplierId", v)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Suppliers</SelectItem>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Warehouse / Branch</Label>
+                <Select value={filters.location} onValueChange={v => setF("location", v as LocationFilter)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Location</SelectItem>
+                    <SelectItem value="warehouse">Warehouse (has stock)</SelectItem>
+                    <SelectItem value="store">Store (has stock)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {!viewArchived && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Product Status</Label>
+                  <Select value={filters.productStatus} onValueChange={v => setF("productStatus", v as ProductStatusFilter)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="discontinued">Discontinued</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">Archived items are in a separate view.</p>
+                </div>
+              )}
+            </div>
+            <SheetFooter className="flex-row justify-between gap-2">
+              <Button variant="ghost" onClick={resetFilters}>Clear All</Button>
+              <Button onClick={() => setFilterDrawerOpen(false)}>Apply</Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+        {chips.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={resetFilters} className="h-9 text-xs">
+            <X className="h-3 w-3 mr-1" /> Clear all
+          </Button>
+        )}
+      </div>
+
+      {/* Active filter chips */}
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map(c => (
+            <Badge key={c.key} variant="secondary" className="gap-1 pl-2 pr-1 py-1 text-xs">
+              {c.label}
+              <button onClick={c.clear} className="hover:bg-background rounded-sm p-0.5">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {/* Result summary */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          Showing <span className="font-semibold text-foreground">{filtered.length}</span> of {items.length} {viewArchived ? "archived " : ""}products
+        </span>
+        {isAdmin && (
+          <span>
+            Total value: <span className="font-semibold text-foreground">{peso(totalFilteredValue)}</span>
+          </span>
+        )}
+      </div>
+
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg">{editing ? "Edit Item" : "New Item"}</DialogTitle>
           </DialogHeader>
@@ -274,20 +691,55 @@ export default function InventoryPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Category</Label>
+                <Input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="h-9" list="inv-cat-list" placeholder="e.g. CCTV, Networking" />
+                <datalist id="inv-cat-list">
+                  {categoryOptions.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Brand</Label>
+                <Input value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} className="h-9" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Barcode</Label>
+                <Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Supplier SKU</Label>
+                <Input value={form.supplier_sku} onChange={e => setForm({ ...form, supplier_sku: e.target.value })} className="h-9" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Description</Label>
                 <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Source</Label>
-                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })} disabled={!isAdmin}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local">Local</SelectItem>
-                    <SelectItem value="import">Import</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!isAdmin && (
-                  <p className="text-[10px] text-muted-foreground">Only admins can change source.</p>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Source</Label>
+                  <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })} disabled={!isAdmin}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="local">Local</SelectItem>
+                      <SelectItem value="import">Import</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isAdmin && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Product Status</Label>
+                    <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as any })}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                        <SelectItem value="discontinued">Discontinued</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
               </div>
             </div>
@@ -332,28 +784,26 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Archive confirmation */}
+      <Dialog open={!!archiveConfirm} onOpenChange={(o) => { if (!o) setArchiveConfirm(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Archive {archiveConfirm?.label}?</DialogTitle>
+            <DialogDescription>
+              Archived products are hidden from new quotations, invoices, and purchase orders. All historical records remain intact. You can restore them at any time from the Archived view.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setArchiveConfirm(null)}>Cancel</Button>
+            <Button onClick={() => archiveConfirm && archiveMut.mutate(archiveConfirm.ids)} disabled={archiveMut.isPending}>
+              <Archive className="h-4 w-4 mr-1.5" /> Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_variations"] }); }} />
       <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative max-w-xs flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Filter by name or SKU..."
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            className="pl-9 h-9 rounded-lg text-sm"
-          />
-        </div>
-        <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as "all" | "local" | "import")}>
-          <SelectTrigger className="h-9 w-[140px] rounded-lg text-sm"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Sources</SelectItem>
-            {availableSources.has("local") && <SelectItem value="local">Local Only</SelectItem>}
-            {availableSources.has("import") && <SelectItem value="import">Import Only</SelectItem>}
-          </SelectContent>
-        </Select>
-      </div>
 
       <div className="data-table-wrapper">
         <Table>
@@ -374,7 +824,7 @@ export default function InventoryPage() {
               <SortableHeader sortKey="cost_price" label="Cost" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="selling_price" label="Sell" sort={sort} onToggle={toggle} align="right" />
               <SortableHeader sortKey="low_stock_threshold" label="Threshold" sort={sort} onToggle={toggle} align="right" />
-              <TableHead className="text-xs text-right w-28">Actions</TableHead>
+              <TableHead className="text-xs text-right w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -389,7 +839,7 @@ export default function InventoryPage() {
                 <TableCell colSpan={colCount}>
                   <div className="empty-state">
                     <Package className="empty-state-icon" />
-                    <p className="text-sm">No items found</p>
+                    <p className="text-sm">No items match your filters</p>
                   </div>
                 </TableCell>
               </TableRow>
@@ -404,8 +854,16 @@ export default function InventoryPage() {
                 </TableCell>
                 <TableCell className="font-medium text-sm">
                   <div className="flex flex-col">
-                    <span>{item.name}</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">{item.sku}</span>
+                    <span className="flex items-center gap-1.5">
+                      {item.name}
+                      {item.status && item.status !== "active" && (
+                        <Badge variant="outline" className="text-[9px] uppercase h-4 px-1">{item.status}</Badge>
+                      )}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {item.sku}
+                      {item.category && <> · <span className="text-muted-foreground/80">{item.category}</span></>}
+                    </span>
                   </div>
                 </TableCell>
                 <TableCell>
@@ -428,37 +886,22 @@ export default function InventoryPage() {
                 </TableCell>
                 <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
                 <TableCell className="text-right text-sm">
-                  <div className="flex items-center justify-end gap-1">
-                    <span className={item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                      {item.low_stock_threshold ?? 0}
-                    </span>
-                    {isAdmin && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 rounded-md"
-                        title="Edit threshold"
-                        onClick={() => {
-                          const raw = window.prompt(`Set low stock threshold for "${item.name}":`, String(item.low_stock_threshold ?? 0));
-                          if (raw === null) return;
-                          const n = parseInt(raw);
-                          if (Number.isNaN(n) || n < 0) { toast.error("Enter a non-negative number"); return; }
-                          updateMut.mutate({ id: item.id, data: { low_stock_threshold: n } as Partial<Item> });
-                        }}
-                      >
-                        <Pencil className="h-3 w-3 text-muted-foreground" />
-                      </Button>
-                    )}
-                  </div>
+                  <span className={item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                    {item.low_stock_threshold ?? 0}
+                  </span>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => setTransferItem(item)} className="h-7 w-7 rounded-md" title="Transfer stock">
-                      <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setAdjustItem(item)} className="h-7 w-7 rounded-md" title="Adjust stock (missing/surplus)">
-                      <ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
+                    {!viewArchived && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => setTransferItem(item)} className="h-7 w-7 rounded-md" title="Transfer stock">
+                          <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setAdjustItem(item)} className="h-7 w-7 rounded-md" title="Adjust stock">
+                          <ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setHistoryItem(item)} className="h-7 w-7 rounded-md" title="Stock history">
                       <History className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -468,18 +911,28 @@ export default function InventoryPage() {
                     <Button variant="ghost" size="icon" onClick={() => setSuppliersItem(item)} className="h-7 w-7 rounded-md" title="Suppliers">
                       <Truck className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
-                      <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                    {isAdmin && (
+                    {!viewArchived && (
+                      <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
+                        <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
+                    {isAdmin && !viewArchived && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md" title="Edit">
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(item.id)} className="h-7 w-7 rounded-md">
+                        <Button variant="ghost" size="icon" onClick={() => setArchiveConfirm({ ids: [item.id], label: `"${item.name}"` })} className="h-7 w-7 rounded-md" title="Archive">
+                          <Archive className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) deleteMut.mutate(item.id); }} className="h-7 w-7 rounded-md" title="Delete">
                           <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
                         </Button>
                       </>
+                    )}
+                    {isAdmin && viewArchived && (
+                      <Button variant="ghost" size="icon" onClick={() => unarchiveMut.mutate([item.id])} className="h-7 w-7 rounded-md" title="Restore">
+                        <ArchiveRestore className="h-3.5 w-3.5 text-primary" />
+                      </Button>
                     )}
                   </div>
                 </TableCell>
@@ -497,32 +950,11 @@ export default function InventoryPage() {
         />
       )}
 
-      <TransferStockDialog
-        item={transferItem}
-        open={!!transferItem}
-        onOpenChange={(o) => { if (!o) setTransferItem(null); }}
-      />
-
-      <AdjustStockDialog
-        item={adjustItem}
-        open={!!adjustItem}
-        onOpenChange={(o) => { if (!o) setAdjustItem(null); }}
-      />
-      <ItemHistoryDialog
-        item={historyItem}
-        open={!!historyItem}
-        onOpenChange={(o) => { if (!o) setHistoryItem(null); }}
-      />
-      <CostHistoryDialog
-        item={costHistoryItem}
-        open={!!costHistoryItem}
-        onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }}
-      />
-      <ItemSuppliersDialog
-        item={suppliersItem}
-        open={!!suppliersItem}
-        onOpenChange={(o) => { if (!o) setSuppliersItem(null); }}
-      />
+      <TransferStockDialog item={transferItem} open={!!transferItem} onOpenChange={(o) => { if (!o) setTransferItem(null); }} />
+      <AdjustStockDialog item={adjustItem} open={!!adjustItem} onOpenChange={(o) => { if (!o) setAdjustItem(null); }} />
+      <ItemHistoryDialog item={historyItem} open={!!historyItem} onOpenChange={(o) => { if (!o) setHistoryItem(null); }} />
+      <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }} />
+      <ItemSuppliersDialog item={suppliersItem} open={!!suppliersItem} onOpenChange={(o) => { if (!o) setSuppliersItem(null); }} />
     </div>
   );
 }
