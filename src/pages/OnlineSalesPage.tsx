@@ -1021,6 +1021,13 @@ export default function OnlineSalesPage() {
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
         </div>
       )}
+      {isAdmin && missingCostCount > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span><strong>{missingCostCount}</strong> online sale{missingCostCount === 1 ? "" : "s"} missing product cost — gross profit / margin cannot be calculated for them. Set the item/variation cost in Inventory to include them in analytics.</span>
+        </div>
+      )}
+
 
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelected(new Set()); }}>
         <TabsList>
