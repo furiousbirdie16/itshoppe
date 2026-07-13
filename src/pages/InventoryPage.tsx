@@ -125,9 +125,12 @@ export default function InventoryPage() {
     queryKey: ["item_suppliers_index"],
     enabled: supplierFilterActive,
     queryFn: async () => {
-      const rows = await getItemSuppliers();
+      const { data, error } = await (supabase as any)
+        .from("item_suppliers")
+        .select("item_id, supplier_id, overseas_supplier_id");
+      if (error) throw error;
       const m = new Map<string, Set<string>>();
-      for (const r of rows as any[]) {
+      for (const r of (data || []) as any[]) {
         const sid = r.supplier_id || r.overseas_supplier_id;
         if (!sid) continue;
         if (!m.has(r.item_id)) m.set(r.item_id, new Set());
