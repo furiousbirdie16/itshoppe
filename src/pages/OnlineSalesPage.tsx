@@ -125,7 +125,7 @@ export default function OnlineSalesPage() {
 
   // Admin-only: cost snapshots & gross profit per online sale (mirrors invoice financials).
   const { data: onlineFinancials = [] } = useQuery({
-    queryKey: ["online_sale_financials"],
+    queryKey: ["online_sales", "financials"],
     enabled: isAdmin,
     queryFn: async () => {
       const { supabase } = await import("@/integrations/supabase/client");
