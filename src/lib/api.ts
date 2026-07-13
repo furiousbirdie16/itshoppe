@@ -193,9 +193,43 @@ const from = (table: string) => db.from(table);
 
 // Items
 export const getItems = async (): Promise<Item[]> => {
+  const { data, error } = await from("items").select("*").neq("status", "archived").order("name");
+  if (error) throw error;
+  return data;
+};
+
+export const getArchivedItems = async (): Promise<Item[]> => {
+  const { data, error } = await from("items").select("*").eq("status", "archived").order("name");
+  if (error) throw error;
+  return data;
+};
+
+export const getAllItems = async (): Promise<Item[]> => {
   const { data, error } = await from("items").select("*").order("name");
   if (error) throw error;
   return data;
+};
+
+export const archiveItems = async (ids: string[], email?: string | null) => {
+  const { error } = await from("items").update({
+    status: "archived",
+    archived_at: new Date().toISOString(),
+    archived_by_email: email || null,
+    updated_at: new Date().toISOString(),
+  }).in("id", ids);
+  if (error) throw error;
+  for (const id of ids) await logActivity("archived_item", "inventory", id);
+};
+
+export const unarchiveItems = async (ids: string[]) => {
+  const { error } = await from("items").update({
+    status: "active",
+    archived_at: null,
+    archived_by_email: null,
+    updated_at: new Date().toISOString(),
+  }).in("id", ids);
+  if (error) throw error;
+  for (const id of ids) await logActivity("unarchived_item", "inventory", id);
 };
 
 export const createItem = async (item: Partial<Item>) => {

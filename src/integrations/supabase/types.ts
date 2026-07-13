@@ -720,7 +720,12 @@ export type Database = {
       }
       items: {
         Row: {
+          archived_at: string | null
+          archived_by_email: string | null
+          barcode: string | null
           base_unit: string
+          brand: string | null
+          category: string | null
           cost_price: number
           cost_price_rmb: number
           created_at: string | null
@@ -733,13 +738,20 @@ export type Database = {
           selling_price: number
           sku: string
           source: string
+          status: string
           store_quantity: number
+          supplier_sku: string | null
           units_per_stock: number
           updated_at: string | null
           warehouse_quantity: number
         }
         Insert: {
+          archived_at?: string | null
+          archived_by_email?: string | null
+          barcode?: string | null
           base_unit?: string
+          brand?: string | null
+          category?: string | null
           cost_price?: number
           cost_price_rmb?: number
           created_at?: string | null
@@ -752,13 +764,20 @@ export type Database = {
           selling_price?: number
           sku: string
           source?: string
+          status?: string
           store_quantity?: number
+          supplier_sku?: string | null
           units_per_stock?: number
           updated_at?: string | null
           warehouse_quantity?: number
         }
         Update: {
+          archived_at?: string | null
+          archived_by_email?: string | null
+          barcode?: string | null
           base_unit?: string
+          brand?: string | null
+          category?: string | null
           cost_price?: number
           cost_price_rmb?: number
           created_at?: string | null
@@ -771,7 +790,9 @@ export type Database = {
           selling_price?: number
           sku?: string
           source?: string
+          status?: string
           store_quantity?: number
+          supplier_sku?: string | null
           units_per_stock?: number
           updated_at?: string | null
           warehouse_quantity?: number
