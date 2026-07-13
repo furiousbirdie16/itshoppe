@@ -911,11 +911,18 @@ export default function BusinessInsightsPage() {
 
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
-          {isAdmin && missingCostCount > 0 && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-              <strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned. Revenue is still counted. Set the missing variation costs in Inventory → Variations to include them.
+          {isAdmin && (missingCostCount > 0 || missingOnlineCostCount > 0) && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 space-y-1">
+              {missingCostCount > 0 && (
+                <div><strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned.</div>
+              )}
+              {missingOnlineCostCount > 0 && (
+                <div><strong>{missingOnlineCostCount}</strong> paid online sale{missingOnlineCostCount === 1 ? "" : "s"} excluded from gross profit / margin because the product had no cost at time of upload.</div>
+              )}
+              <div className="opacity-80">Revenue is still counted. Set costs in Inventory → Variations to include them.</div>
             </div>
           )}
+
           <div className="rounded-xl border bg-card overflow-hidden">
             <div className="p-3 border-b flex flex-wrap items-center gap-2">
               <div className="flex-1 min-w-[200px]">
