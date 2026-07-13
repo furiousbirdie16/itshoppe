@@ -936,6 +936,71 @@ export type Database = {
           },
         ]
       }
+      online_sale_financials: {
+        Row: {
+          amount_paid: number
+          cost_snapshot: number | null
+          created_at: string
+          gross_margin: number | null
+          has_cost: boolean
+          id: string
+          is_paid: boolean
+          item_id: string | null
+          line_profit: number | null
+          line_total_cost: number | null
+          online_sale_id: string
+          paid_at: string | null
+          quantity: number
+          unit_price: number
+          updated_at: string
+          variation_id: string | null
+        }
+        Insert: {
+          amount_paid?: number
+          cost_snapshot?: number | null
+          created_at?: string
+          gross_margin?: number | null
+          has_cost?: boolean
+          id?: string
+          is_paid?: boolean
+          item_id?: string | null
+          line_profit?: number | null
+          line_total_cost?: number | null
+          online_sale_id: string
+          paid_at?: string | null
+          quantity?: number
+          unit_price?: number
+          updated_at?: string
+          variation_id?: string | null
+        }
+        Update: {
+          amount_paid?: number
+          cost_snapshot?: number | null
+          created_at?: string
+          gross_margin?: number | null
+          has_cost?: boolean
+          id?: string
+          is_paid?: boolean
+          item_id?: string | null
+          line_profit?: number | null
+          line_total_cost?: number | null
+          online_sale_id?: string
+          paid_at?: string | null
+          quantity?: number
+          unit_price?: number
+          updated_at?: string
+          variation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_sale_financials_online_sale_id_fkey"
+            columns: ["online_sale_id"]
+            isOneToOne: true
+            referencedRelation: "online_sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       online_sales: {
         Row: {
           amount_paid: number
