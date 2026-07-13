@@ -123,6 +123,40 @@ export default function OnlineSalesPage() {
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
 
+  // Admin-only: cost snapshots & gross profit per online sale (mirrors invoice financials).
+  const { data: onlineFinancials = [] } = useQuery({
+    queryKey: ["online_sale_financials"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const out: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("online_sale_financials")
+          .select("online_sale_id, cost_snapshot, line_total_cost, line_profit, gross_margin, has_cost, is_paid")
+          .range(from, from + pageSize - 1);
+        if (error) break;
+        if (!data || data.length === 0) break;
+        out.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return out;
+    },
+  });
+  const finBySaleId = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const f of onlineFinancials as any[]) m.set(f.online_sale_id, f);
+    return m;
+  }, [onlineFinancials]);
+  const missingCostCount = useMemo(
+    () => (onlineFinancials as any[]).filter((f) => !f.has_cost).length,
+    [onlineFinancials],
+  );
+
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<OnlineSale | null>(null);
   const [form, setForm] = useState<SaleForm>(emptyForm);
