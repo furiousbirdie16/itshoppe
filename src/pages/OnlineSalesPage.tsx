@@ -1125,6 +1125,8 @@ export default function OnlineSalesPage() {
                             </div>
                           ) : <span className="text-muted-foreground">—</span>}
                         </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+
 
                         <TableCell>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
