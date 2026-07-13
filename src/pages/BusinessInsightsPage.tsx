@@ -304,6 +304,7 @@ export default function BusinessInsightsPage() {
         row.revenueOnline += rev;
         row.orders += 1;
         const channel = String(r.sales_channel || "online");
+        const fin = onlineFinMap.get(r.id);
         row.txns.push({
           date: r.order_date || "",
           customer: channel.charAt(0).toUpperCase() + channel.slice(1),
@@ -315,7 +316,10 @@ export default function BusinessInsightsPage() {
           amount: rev,
           itemId,
           variationId,
+          cost: fin?.cost,
+          profit: fin?.profit,
         });
+
       }
     }
 
