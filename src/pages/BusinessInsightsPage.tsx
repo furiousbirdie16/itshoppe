@@ -132,22 +132,62 @@ export default function BusinessInsightsPage() {
     return out;
   }
 
-  // Online sales (qty from quantity column, price posted_price)
+  // Online sales — only paid orders contribute to analytics
   const { data: onlineRows = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
       return fetchAll(() => {
         let q = supabase
           .from("online_sales")
-          .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
+          .select("id, order_number, order_date, sales_channel, quantity, posted_price, amount_paid, item_id, variation_id, product_name, payment_status, paid_at, items(name, sku), item_variations(name, sku)")
           .eq("status", "completed")
+          .eq("payment_status", "paid")
           .gte("order_date", fromStr)
           .lte("order_date", toStr);
-        if (payment !== "all") q = q.eq("payment_status", payment);
         return q;
       });
     },
   });
+
+  // Online sale cost snapshots (admin only)
+  const { data: onlineFinancialsRows = [] } = useQuery({
+    queryKey: ["bi_online_financials", (onlineRows as any[]).length, fromStr, toStr],
+    enabled: isAdmin && (onlineRows as any[]).length > 0,
+    queryFn: async () => {
+      const ids = (onlineRows as any[]).map((r) => r.id);
+      const chunkSize = 200;
+      const out: any[] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const rows = await fetchAll<any>(() =>
+          supabase
+            .from("online_sale_financials")
+            .select("online_sale_id, cost_snapshot, line_total_cost, line_profit")
+            .in("online_sale_id", chunk)
+        );
+        out.push(...rows);
+      }
+      return out;
+    },
+  });
+  const onlineFinMap = useMemo(() => {
+    const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
+    for (const f of onlineFinancialsRows as any[]) {
+      if (f.cost_snapshot != null) {
+        m.set(f.online_sale_id, {
+          cost: Number(f.line_total_cost || 0),
+          profit: Number(f.line_profit || 0),
+          hasCost: true,
+        });
+      }
+    }
+    return m;
+  }, [onlineFinancialsRows]);
+  const missingOnlineCostCount = useMemo(
+    () => (onlineFinancialsRows as any[]).filter((f) => f.cost_snapshot == null).length,
+    [onlineFinancialsRows],
+  );
+
 
   // Invoice items (only for confirmed/paid invoices in date range)
   const { data: invoiceRows = [] } = useQuery({
