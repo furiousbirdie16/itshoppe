@@ -1201,6 +1201,20 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums font-semibold">{allPaid ? peso(totalPaid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{allPaid ? <span className={groupFees > 0 ? "text-amber-600" : groupFees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(groupFees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right text-sm tabular-nums font-semibold">
+                            {allPaid ? (
+                              !groupHasAnyCost
+                                ? <span className="text-[11px] text-amber-600">No cost</span>
+                                : <div className={groupTotalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                    {peso(groupTotalProfit)}
+                                    <div className="text-[10px] opacity-80">
+                                      {groupMargin.toFixed(1)}%{!groupAllHaveCost && <span className="text-amber-600"> *</span>}
+                                    </div>
+                                  </div>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{allPaid ? 'Paid' : 'Unpaid'}</span>
                         </TableCell>
