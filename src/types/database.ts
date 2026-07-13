@@ -15,6 +15,13 @@ export interface Item {
   base_unit: string;
   units_per_stock: number;
   open_roll_remaining: number;
+  category?: string | null;
+  brand?: string | null;
+  barcode?: string | null;
+  supplier_sku?: string | null;
+  status?: 'active' | 'inactive' | 'discontinued' | 'archived';
+  archived_at?: string | null;
+  archived_by_email?: string | null;
   created_at: string;
   updated_at: string;
 }
