@@ -132,22 +132,62 @@ export default function BusinessInsightsPage() {
     return out;
   }
 
-  // Online sales (qty from quantity column, price posted_price)
+  // Online sales — only paid orders contribute to analytics
   const { data: onlineRows = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
       return fetchAll(() => {
         let q = supabase
           .from("online_sales")
-          .select("id, order_number, order_date, sales_channel, quantity, posted_price, item_id, variation_id, product_name, payment_status, items(name, sku), item_variations(name, sku)")
+          .select("id, order_number, order_date, sales_channel, quantity, posted_price, amount_paid, item_id, variation_id, product_name, payment_status, paid_at, items(name, sku), item_variations(name, sku)")
           .eq("status", "completed")
+          .eq("payment_status", "paid")
           .gte("order_date", fromStr)
           .lte("order_date", toStr);
-        if (payment !== "all") q = q.eq("payment_status", payment);
         return q;
       });
     },
   });
+
+  // Online sale cost snapshots (admin only)
+  const { data: onlineFinancialsRows = [] } = useQuery({
+    queryKey: ["bi_online_financials", (onlineRows as any[]).length, fromStr, toStr],
+    enabled: isAdmin && (onlineRows as any[]).length > 0,
+    queryFn: async () => {
+      const ids = (onlineRows as any[]).map((r) => r.id);
+      const chunkSize = 200;
+      const out: any[] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const rows = await fetchAll<any>(() =>
+          supabase
+            .from("online_sale_financials")
+            .select("online_sale_id, cost_snapshot, line_total_cost, line_profit")
+            .in("online_sale_id", chunk)
+        );
+        out.push(...rows);
+      }
+      return out;
+    },
+  });
+  const onlineFinMap = useMemo(() => {
+    const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
+    for (const f of onlineFinancialsRows as any[]) {
+      if (f.cost_snapshot != null) {
+        m.set(f.online_sale_id, {
+          cost: Number(f.line_total_cost || 0),
+          profit: Number(f.line_profit || 0),
+          hasCost: true,
+        });
+      }
+    }
+    return m;
+  }, [onlineFinancialsRows]);
+  const missingOnlineCostCount = useMemo(
+    () => (onlineFinancialsRows as any[]).filter((f) => f.cost_snapshot == null).length,
+    [onlineFinancialsRows],
+  );
+
 
   // Invoice items (only for confirmed/paid invoices in date range)
   const { data: invoiceRows = [] } = useQuery({
@@ -264,6 +304,7 @@ export default function BusinessInsightsPage() {
         row.revenueOnline += rev;
         row.orders += 1;
         const channel = String(r.sales_channel || "online");
+        const fin = onlineFinMap.get(r.id);
         row.txns.push({
           date: r.order_date || "",
           customer: channel.charAt(0).toUpperCase() + channel.slice(1),
@@ -275,7 +316,10 @@ export default function BusinessInsightsPage() {
           amount: rev,
           itemId,
           variationId,
+          cost: fin?.cost,
+          profit: fin?.profit,
         });
+
       }
     }
 
@@ -324,7 +368,7 @@ export default function BusinessInsightsPage() {
     return q
       ? arr.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q))
       : arr;
-  }, [onlineRows, invoiceRows, source, search, financialsMap]);
+  }, [onlineRows, invoiceRows, source, search, financialsMap, onlineFinMap]);
 
   const { sort, toggle, sorted } = useSort<ItemAgg>(
     aggregated,
@@ -867,11 +911,18 @@ export default function BusinessInsightsPage() {
 
         {/* PRODUCTS */}
         <TabsContent value="products" className="space-y-4">
-          {isAdmin && missingCostCount > 0 && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-              <strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned. Revenue is still counted. Set the missing variation costs in Inventory → Variations to include them.
+          {isAdmin && (missingCostCount > 0 || missingOnlineCostCount > 0) && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 space-y-1">
+              {missingCostCount > 0 && (
+                <div><strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned.</div>
+              )}
+              {missingOnlineCostCount > 0 && (
+                <div><strong>{missingOnlineCostCount}</strong> paid online sale{missingOnlineCostCount === 1 ? "" : "s"} excluded from gross profit / margin because the product had no cost at time of upload.</div>
+              )}
+              <div className="opacity-80">Revenue is still counted. Set costs in Inventory → Variations to include them.</div>
             </div>
           )}
+
           <div className="rounded-xl border bg-card overflow-hidden">
             <div className="p-3 border-b flex flex-wrap items-center gap-2">
               <div className="flex-1 min-w-[200px]">

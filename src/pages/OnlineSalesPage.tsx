@@ -123,6 +123,40 @@ export default function OnlineSalesPage() {
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
 
+  // Admin-only: cost snapshots & gross profit per online sale (mirrors invoice financials).
+  const { data: onlineFinancials = [] } = useQuery({
+    queryKey: ["online_sales", "financials"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const out: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("online_sale_financials")
+          .select("online_sale_id, cost_snapshot, line_total_cost, line_profit, gross_margin, has_cost, is_paid")
+          .range(from, from + pageSize - 1);
+        if (error) break;
+        if (!data || data.length === 0) break;
+        out.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return out;
+    },
+  });
+  const finBySaleId = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const f of onlineFinancials as any[]) m.set(f.online_sale_id, f);
+    return m;
+  }, [onlineFinancials]);
+  const missingCostCount = useMemo(
+    () => (onlineFinancials as any[]).filter((f) => !f.has_cost).length,
+    [onlineFinancials],
+  );
+
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<OnlineSale | null>(null);
   const [form, setForm] = useState<SaleForm>(emptyForm);
@@ -987,6 +1021,13 @@ export default function OnlineSalesPage() {
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
         </div>
       )}
+      {isAdmin && missingCostCount > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span><strong>{missingCostCount}</strong> online sale{missingCostCount === 1 ? "" : "s"} missing product cost — gross profit / margin cannot be calculated for them. Set the item/variation cost in Inventory to include them in analytics.</span>
+        </div>
+      )}
+
 
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelected(new Set()); }}>
         <TabsList>
@@ -1069,8 +1110,24 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(Number(s.posted_price || 0) * Number(s.quantity || 1))}</TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">
+                          {isPaid ? (
+                            <div>
+                              <div>{peso(paid)}</div>
+                              {isAdmin && (() => {
+                                const f = finBySaleId.get(s.id);
+                                if (!f) return null;
+                                if (!f.has_cost) return <div className="text-[10px] text-amber-600">No cost</div>;
+                                const profit = Number(f.line_profit || 0);
+                                const margin = Number(f.gross_margin || 0);
+                                return <div className={`text-[10px] ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>GP {peso(profit)} · {margin.toFixed(1)}%</div>;
+                              })()}
+                            </div>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+
+
                         <TableCell>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
                         </TableCell>
@@ -1180,7 +1237,21 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">
+                          {isPaid ? (
+                            <div>
+                              <div>{peso(paid)}</div>
+                              {isAdmin && (() => {
+                                const f = finBySaleId.get(s.id);
+                                if (!f) return null;
+                                if (!f.has_cost) return <div className="text-[10px] text-amber-600">No cost</div>;
+                                const profit = Number(f.line_profit || 0);
+                                const margin = Number(f.gross_margin || 0);
+                                return <div className={`text-[10px] ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>GP {peso(profit)} · {margin.toFixed(1)}%</div>;
+                              })()}
+                            </div>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
