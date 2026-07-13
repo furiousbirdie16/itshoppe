@@ -1082,15 +1082,16 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="posted_price" label="Total Sales" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="amount_paid" label="Amount Paid" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="fees" label="Fees" sort={sort} onToggle={toggle} align="right" />
+                  {isAdmin && <TableHead className="text-right">Gross Profit</TableHead>}
                   <SortableHeader sortKey="payment_status" label="Payment" sort={sort} onToggle={toggle} />
                   <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 12 : 11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
                 ) : totalGroups === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 12 : 11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
                 ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
@@ -1110,22 +1111,20 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(Number(s.posted_price || 0) * Number(s.quantity || 1))}</TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
-                          {isPaid ? (
-                            <div>
-                              <div>{peso(paid)}</div>
-                              {isAdmin && (() => {
-                                const f = finBySaleId.get(s.id);
-                                if (!f) return null;
-                                if (!f.has_cost) return <div className="text-[10px] text-amber-600">No cost</div>;
-                                const profit = Number(f.line_profit || 0);
-                                const margin = Number(f.gross_margin || 0);
-                                return <div className={`text-[10px] ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>GP {peso(profit)} · {margin.toFixed(1)}%</div>;
-                              })()}
-                            </div>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {isPaid ? (() => {
+                              const f = finBySaleId.get(s.id);
+                              if (!f) return <span className="text-muted-foreground">—</span>;
+                              if (!f.has_cost) return <span className="text-[11px] text-amber-600">No cost</span>;
+                              const profit = Number(f.line_profit || 0);
+                              const margin = Number(f.gross_margin || 0);
+                              return <div className={profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{peso(profit)}<div className="text-[10px] opacity-80">{margin.toFixed(1)}%</div></div>;
+                            })() : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        )}
 
 
                         <TableCell>
@@ -1154,6 +1153,15 @@ export default function OnlineSalesPage() {
                   const totalPaid = group.items.reduce((sum, x) => sum + Number(x.amount_paid || 0), 0);
                   const allPaid = group.items.every(x => x.payment_status === 'paid');
                   const groupFees = allPaid ? totalAmount - totalPaid : 0;
+                  const groupFin = group.items.map(x => finBySaleId.get(x.id));
+                  const groupHasAnyCost = groupFin.some(f => f && f.has_cost);
+                  const groupAllHaveCost = groupFin.every(f => f && f.has_cost);
+                  const groupTotalProfit = groupFin.reduce((sum, f) => sum + (f && f.has_cost ? Number(f.line_profit || 0) : 0), 0);
+                  const groupCostedPaid = group.items.reduce((sum, x) => {
+                    const f = finBySaleId.get(x.id);
+                    return sum + (f && f.has_cost ? Number(x.amount_paid || 0) : 0);
+                  }, 0);
+                  const groupMargin = groupCostedPaid > 0 ? (groupTotalProfit / groupCostedPaid) * 100 : 0;
                   const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
                   const groupSelected = group.items.every(x => selected.has(x.id));
                   const groupIds = group.items.map(x => x.id);
@@ -1193,6 +1201,20 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm font-semibold">{peso(totalAmount)}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums font-semibold">{allPaid ? peso(totalPaid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{allPaid ? <span className={groupFees > 0 ? "text-amber-600" : groupFees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(groupFees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right text-sm tabular-nums font-semibold">
+                            {allPaid ? (
+                              !groupHasAnyCost
+                                ? <span className="text-[11px] text-amber-600">No cost</span>
+                                : <div className={groupTotalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                    {peso(groupTotalProfit)}
+                                    <div className="text-[10px] opacity-80">
+                                      {groupMargin.toFixed(1)}%{!groupAllHaveCost && <span className="text-amber-600"> *</span>}
+                                    </div>
+                                  </div>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{allPaid ? 'Paid' : 'Unpaid'}</span>
                         </TableCell>
@@ -1237,22 +1259,20 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
                         <TableCell className="text-right text-sm">{peso(s.posted_price)}</TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
-                          {isPaid ? (
-                            <div>
-                              <div>{peso(paid)}</div>
-                              {isAdmin && (() => {
-                                const f = finBySaleId.get(s.id);
-                                if (!f) return null;
-                                if (!f.has_cost) return <div className="text-[10px] text-amber-600">No cost</div>;
-                                const profit = Number(f.line_profit || 0);
-                                const margin = Number(f.gross_margin || 0);
-                                return <div className={`text-[10px] ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>GP {peso(profit)} · {margin.toFixed(1)}%</div>;
-                              })()}
-                            </div>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {isPaid ? (() => {
+                              const f = finBySaleId.get(s.id);
+                              if (!f) return <span className="text-muted-foreground">—</span>;
+                              if (!f.has_cost) return <span className="text-[11px] text-amber-600">No cost</span>;
+                              const profit = Number(f.line_profit || 0);
+                              const margin = Number(f.gross_margin || 0);
+                              return <div className={profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{peso(profit)}<div className="text-[10px] opacity-80">{margin.toFixed(1)}%</div></div>;
+                            })() : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{isPaid ? 'Paid' : 'Unpaid'}</span>
                         </TableCell>
