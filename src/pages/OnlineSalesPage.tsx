@@ -1153,6 +1153,15 @@ export default function OnlineSalesPage() {
                   const totalPaid = group.items.reduce((sum, x) => sum + Number(x.amount_paid || 0), 0);
                   const allPaid = group.items.every(x => x.payment_status === 'paid');
                   const groupFees = allPaid ? totalAmount - totalPaid : 0;
+                  const groupFin = group.items.map(x => finBySaleId.get(x.id));
+                  const groupHasAnyCost = groupFin.some(f => f && f.has_cost);
+                  const groupAllHaveCost = groupFin.every(f => f && f.has_cost);
+                  const groupTotalProfit = groupFin.reduce((sum, f) => sum + (f && f.has_cost ? Number(f.line_profit || 0) : 0), 0);
+                  const groupCostedPaid = group.items.reduce((sum, x) => {
+                    const f = finBySaleId.get(x.id);
+                    return sum + (f && f.has_cost ? Number(x.amount_paid || 0) : 0);
+                  }, 0);
+                  const groupMargin = groupCostedPaid > 0 ? (groupTotalProfit / groupCostedPaid) * 100 : 0;
                   const allChannelsSame = group.items.every(x => x.sales_channel === group.items[0].sales_channel);
                   const groupSelected = group.items.every(x => selected.has(x.id));
                   const groupIds = group.items.map(x => x.id);
