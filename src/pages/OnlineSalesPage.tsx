@@ -1082,15 +1082,16 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="posted_price" label="Total Sales" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="amount_paid" label="Amount Paid" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="fees" label="Fees" sort={sort} onToggle={toggle} align="right" />
+                  {isAdmin && <TableHead className="text-right">Gross Profit</TableHead>}
                   <SortableHeader sortKey="payment_status" label="Payment" sort={sort} onToggle={toggle} />
                   <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 12 : 11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
                 ) : totalGroups === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 12 : 11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
                 ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
