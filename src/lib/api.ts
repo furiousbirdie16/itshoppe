@@ -979,21 +979,8 @@ export const returnOnlineSale = async (id: string, status: 'returned' | 'cancell
 };
 
 export const deleteOnlineSale = async (id: string) => {
-  // Restore inventory if linked to an item (variation-aware)
-  const { data: sale } = await from("online_sales").select("item_id, variation_id, order_number, sales_channel, quantity, status").eq("id", id).single();
-  if (sale && (sale as any).item_id && (sale as any).status === 'completed') {
-    const s = sale as any;
-    await applyStockChange({
-      itemId: s.item_id,
-      variationId: s.variation_id || null,
-      qty: -(s.quantity || 1),
-      referenceId: id,
-      referenceType: "online_sale_delete",
-      movementType: "in_po",
-      notes: `Restored from deleted online sale`,
-    });
-  }
-
+  // Note: deleting an online sale does NOT restore inventory.
+  // Use the Return action if stock needs to be replenished.
   const { error } = await from("online_sales").delete().eq("id", id);
   if (error) throw error;
 };
