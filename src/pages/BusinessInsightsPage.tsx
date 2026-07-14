@@ -1168,8 +1168,8 @@ export default function BusinessInsightsPage() {
                                           <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
-                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{t.cost != null ? money(t.cost) : "—"}</td>}
-                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : "text-red-600")}>{t.profit != null ? money(t.profit) : "—"}</td>}
+                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground" title={t.source === "online" && t.paymentStatus === "unpaid" ? "Gross profit will be calculated once the sale is marked as Paid." : undefined}>{t.cost != null ? money(t.cost) : (t.source === "online" && t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
+                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : t.profit != null ? "text-red-600" : "text-muted-foreground")} title={t.source === "online" && t.paymentStatus === "unpaid" ? "Gross profit will be calculated once the sale is marked as Paid." : undefined}>{t.profit != null ? money(t.profit) : (t.source === "online" && t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
                                         </tr>
                                       ))}
                                     </tbody>
