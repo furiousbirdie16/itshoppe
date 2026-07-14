@@ -607,16 +607,16 @@ export default function LowStockAlertsPage() {
                   />
                 </TableHead>
                 <TableHead className="w-8" />
-                <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead className="text-right">Stock</TableHead>
-                <TableHead className="text-right">Min</TableHead>
-                <TableHead>Supplier</TableHead>
-                <TableHead className="text-right">Sold (30d)</TableHead>
-                <TableHead className="text-right">Last Cost</TableHead>
-                <TableHead className="text-right">Days Left</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Recommendation</TableHead>
+                <SortableHeader sortKey="product" label="Product" sort={sort} onToggle={toggleSort} />
+                <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggleSort} />
+                <SortableHeader sortKey="stock" label="Stock" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="min" label="Min" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggleSort} />
+                <SortableHeader sortKey="sold30" label="Sold (30d)" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="lastCost" label="Last Cost" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="daysLeft" label="Days Left" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggleSort} />
+                <SortableHeader sortKey="recommendation" label="Recommendation" sort={sort} onToggle={toggleSort} />
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
