@@ -783,7 +783,7 @@ export default function BusinessInsightsPage() {
     cost: (r) => r.totalCost,
     grossProfit: (r) => r.grossProfit,
     margin: (r) => r.margin,
-    gmroi: (r) => r.gmroi,
+    gmroi: (r) => r.gmroi ?? -Infinity,
   }, { key: "revenue", dir: "desc" });
 
   // Top 5 (Overview): sort against full productMetrics
