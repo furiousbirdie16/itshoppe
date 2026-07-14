@@ -314,8 +314,19 @@ export default function CustomersPage() {
   const handleSubmit = () => {
     const composedLegacy = [address.full_address, address.barangay_village, address.district_area, address.city_municipality, address.province_state, address.country, address.postal_code]
       .filter(Boolean).join(", ");
+    // Dedupe tags by key while preserving user-entered casing
+    const seen = new Set<string>();
+    const cleanTags: string[] = [];
+    for (const t of form.tags) {
+      const c = normalizeTag(t);
+      const k = tagKey(c);
+      if (!c || seen.has(k)) continue;
+      seen.add(k);
+      cleanTags.push(c);
+    }
     const payload: Partial<Customer> = {
       ...form,
+      tags: cleanTags,
       country: address.country || null,
       province_state: address.province_state || null,
       city_municipality: address.city_municipality || null,
