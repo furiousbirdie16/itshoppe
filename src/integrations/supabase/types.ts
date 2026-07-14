@@ -223,6 +223,7 @@ export type Database = {
           phone: string | null
           postal_code: string | null
           province_state: string | null
+          tags: string[]
         }
         Insert: {
           address?: string | null
@@ -243,6 +244,7 @@ export type Database = {
           phone?: string | null
           postal_code?: string | null
           province_state?: string | null
+          tags?: string[]
         }
         Update: {
           address?: string | null
@@ -263,6 +265,7 @@ export type Database = {
           phone?: string | null
           postal_code?: string | null
           province_state?: string | null
+          tags?: string[]
         }
         Relationships: []
       }

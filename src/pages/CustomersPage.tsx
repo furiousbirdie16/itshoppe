@@ -27,10 +27,13 @@ import { AddressSelector, emptyAddress, type AddressValue } from "@/components/A
 import { formatLocationChip } from "@/lib/locations";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
+import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
+import { Tag as TagIcon } from "lucide-react";
 
 const CUSTOMER_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Customer Name", required: true },
   { key: "type", label: "Type", defaultVisible: true },
+  { key: "tags", label: "Tags", defaultVisible: true },
   { key: "location", label: "Location", defaultVisible: true },
   { key: "agent", label: "Sales Agent", defaultVisible: true },
   { key: "lastOrder", label: "Last Order", defaultVisible: true },
@@ -47,10 +50,10 @@ type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
 function activityFromDays(days: number | null): { bucket: ActivityBucket; label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   if (days === null) return { bucket: "never", label: "No orders", variant: "outline", className: "text-muted-foreground" };
-  if (days <= 7) return { bucket: "7", label: "≤ 7 days", variant: "default", className: "bg-success/15 text-success border-success/30" };
-  if (days <= 14) return { bucket: "14", label: "≤ 14 days", variant: "secondary", className: "bg-primary/15 text-primary border-primary/30" };
-  if (days <= 21) return { bucket: "21", label: "≤ 21 days", variant: "secondary", className: "bg-accent/20 text-accent-foreground border-accent/40" };
-  if (days <= 30) return { bucket: "30", label: "≤ 30 days", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30" };
+  if (days <= 7) return { bucket: "7", label: "< 7", variant: "default", className: "bg-success/15 text-success border-success/30" };
+  if (days <= 14) return { bucket: "14", label: "< 14", variant: "secondary", className: "bg-primary/15 text-primary border-primary/30" };
+  if (days <= 21) return { bucket: "21", label: "< 21", variant: "secondary", className: "bg-accent/20 text-accent-foreground border-accent/40" };
+  if (days <= 30) return { bucket: "30", label: "< 30", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30" };
   return { bucket: "dormant", label: "Dormant", variant: "destructive", className: "bg-destructive/15 text-destructive border-destructive/30" };
 }
 
@@ -64,7 +67,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; classification: ClassificationValue }>({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
+  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; classification: ClassificationValue; tags: string[] }>({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -77,6 +80,7 @@ export default function CustomersPage() {
   const [cityFilter, setCityFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
 
   // Follow-up dialog state
   const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
@@ -168,6 +172,20 @@ export default function CustomersPage() {
     return Array.from(set).sort().map((v) => ({ value: v, label: v }));
   }, [enriched, countryFilter, provinceFilter]);
 
+  const tagOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customers) {
+      const tags = Array.isArray(c.tags) ? c.tags : [];
+      for (const t of tags) {
+        const clean = normalizeTag(t);
+        if (!clean) continue;
+        const k = tagKey(clean);
+        if (!map.has(k)) map.set(k, clean);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [customers]);
+
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
@@ -191,6 +209,11 @@ export default function CustomersPage() {
     if (countryFilter !== "all" && customer.country !== countryFilter) return false;
     if (provinceFilter !== "all" && customer.province_state !== provinceFilter) return false;
     if (cityFilter !== "all" && customer.city_municipality !== cityFilter) return false;
+    if (tagFilter.length > 0) {
+      const custTagKeys = new Set((customer.tags || []).map((t) => tagKey(t)));
+      const hasAll = tagFilter.every((t) => custTagKeys.has(tagKey(t)));
+      if (!hasAll) return false;
+    }
     return true;
   });
 
@@ -269,13 +292,13 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
+    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
     setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, classification: (c.classification as ClassificationValue) || "retail" });
+    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [] });
     setAddress({
       country: c.country || "Philippines",
       province_state: c.province_state || "",
@@ -291,8 +314,19 @@ export default function CustomersPage() {
   const handleSubmit = () => {
     const composedLegacy = [address.full_address, address.barangay_village, address.district_area, address.city_municipality, address.province_state, address.country, address.postal_code]
       .filter(Boolean).join(", ");
+    // Dedupe tags by key while preserving user-entered casing
+    const seen = new Set<string>();
+    const cleanTags: string[] = [];
+    for (const t of form.tags) {
+      const c = normalizeTag(t);
+      const k = tagKey(c);
+      if (!c || seen.has(k)) continue;
+      seen.add(k);
+      cleanTags.push(c);
+    }
     const payload: Partial<Customer> = {
       ...form,
+      tags: cleanTags,
       country: address.country || null,
       province_state: address.province_state || null,
       city_municipality: address.city_municipality || null,
@@ -406,14 +440,15 @@ export default function CustomersPage() {
           <SelectContent>
             <SelectItem value="all">All follow-ups</SelectItem>
             <SelectItem value="active">Active (≤14d)</SelectItem>
-            <SelectItem value="needs">Needs follow up</SelectItem>
-            <SelectItem value="never">Never followed up</SelectItem>
+            <SelectItem value="needs">Pending</SelectItem>
+            <SelectItem value="never">Missed</SelectItem>
           </SelectContent>
         </Select>
 
         <FilterCombobox value={countryFilter} onChange={(v) => { setCountryFilter(v); setProvinceFilter("all"); setCityFilter("all"); }} options={countryOptions} allLabel="All countries" placeholder="Search country..." className="h-8 text-xs w-[160px]" emptyText="No countries" />
         <FilterCombobox value={provinceFilter} onChange={(v) => { setProvinceFilter(v); setCityFilter("all"); }} options={provinceOptions} allLabel="All provinces" placeholder="Search province..." className="h-8 text-xs w-[170px]" emptyText="No provinces" />
         <FilterCombobox value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="All cities" placeholder="Search city..." className="h-8 text-xs w-[160px]" emptyText="No cities" />
+        <TagsFilter value={tagFilter} onChange={setTagFilter} options={tagOptions} />
 
         <div className="flex items-center gap-1">
           <Popover>
@@ -502,6 +537,17 @@ export default function CustomersPage() {
 
             <AddressSelector value={address} onChange={setAddress} />
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Tags</Label>
+              <TagsInput
+                value={form.tags}
+                onChange={(tags) => setForm({ ...form, tags })}
+                suggestions={tagOptions}
+                placeholder="Add tag (e.g. VIP, Cat6, Reseller)"
+              />
+              <p className="text-[10px] text-muted-foreground">Tags are reusable across customers. Case and extra spaces are normalized automatically.</p>
+            </div>
+
             <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">
               {editing ? "Update" : "Create Customer"}
             </Button>
@@ -519,6 +565,7 @@ export default function CustomersPage() {
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} className="w-[180px]" />
               {showCol("type") && <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />}
+              {showCol("tags") && <TableHead className="text-xs">Tags</TableHead>}
               {showCol("contact") && <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />}
               {showCol("email") && <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />}
               {showCol("phone") && <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />}
@@ -575,7 +622,26 @@ export default function CustomersPage() {
                     </TableCell>
                     {showCol("type") && (
                       <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", cls.className)}>{cls.label}</Badge>
+                      </TableCell>
+                    )}
+                    {showCol("tags") && (
+                      <TableCell className="text-sm">
+                        {(c.tags && c.tags.length > 0) ? (
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {c.tags.slice(0, 3).map((t) => (
+                              <Badge key={tagKey(t)} variant="secondary" className="text-[10px] font-medium gap-1 whitespace-nowrap">
+                                <TagIcon className="h-2.5 w-2.5" />
+                                {t}
+                              </Badge>
+                            ))}
+                            {c.tags.length > 3 && (
+                              <span className="text-[10px] text-muted-foreground">+{c.tags.length - 3}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </TableCell>
                     )}
                     {showCol("contact") && (
@@ -616,7 +682,7 @@ export default function CustomersPage() {
                     )}
                     {showCol("activity") && (
                       <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium", activity.className)}>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", activity.className)}>
                           {activity.label}
                         </Badge>
                       </TableCell>
@@ -624,7 +690,7 @@ export default function CustomersPage() {
                     {showCol("followUp") && (
                       <TableCell className="text-sm">
                         <div className="flex flex-col gap-0.5">
-                          <Badge variant="outline" className={cn("text-[10px] font-medium w-fit", fu.className)}>{fu.label}</Badge>
+                          <Badge variant="outline" className={cn("text-[10px] font-medium w-fit whitespace-nowrap", fu.className)}>{fu.label}</Badge>
                           {c.last_follow_up_at && (
                             <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
                           )}
@@ -694,7 +760,7 @@ export default function CustomersPage() {
                       )}
                     </div>
                   </div>
-                  <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0", activity.className)}>{activity.label}</Badge>
+                  <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0 whitespace-nowrap", activity.className)}>{activity.label}</Badge>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
@@ -712,7 +778,7 @@ export default function CustomersPage() {
                   </div>
                   <div>
                     <div className="text-[10px] uppercase text-muted-foreground">Follow-up</div>
-                    <Badge variant="outline" className={cn("text-[10px] font-medium", fu.className)}>{fu.label}</Badge>
+                    <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", fu.className)}>{fu.label}</Badge>
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] uppercase text-muted-foreground">Total</div>
