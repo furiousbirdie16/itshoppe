@@ -35,6 +35,7 @@ interface SaleTxn {
   invoiceId?: string | null;
   itemId?: string | null;
   variationId?: string | null;
+  variationName?: string | null;
   cost?: number;
   profit?: number;
   paymentStatus?: "paid" | "unpaid";
@@ -44,6 +45,7 @@ interface ItemAgg {
   key: string;
   itemId: string | null;
   variationId: string | null;
+  variationName: string | null;
   name: string;
   sku: string;
   qtyOnline: number;
