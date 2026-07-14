@@ -80,6 +80,7 @@ export default function CustomersPage() {
   const [cityFilter, setCityFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
 
   // Follow-up dialog state
   const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
