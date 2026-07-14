@@ -565,6 +565,7 @@ export default function CustomersPage() {
               </TableHead>
               <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} className="w-[180px]" />
               {showCol("type") && <SortableHeader sortKey="classification" label="Type" sort={sort} onToggle={toggle} />}
+              {showCol("tags") && <TableHead className="text-xs">Tags</TableHead>}
               {showCol("contact") && <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />}
               {showCol("email") && <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />}
               {showCol("phone") && <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />}
