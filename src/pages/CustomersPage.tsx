@@ -622,7 +622,26 @@ export default function CustomersPage() {
                     </TableCell>
                     {showCol("type") && (
                       <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", cls.className)}>{cls.label}</Badge>
+                      </TableCell>
+                    )}
+                    {showCol("tags") && (
+                      <TableCell className="text-sm">
+                        {(c.tags && c.tags.length > 0) ? (
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {c.tags.slice(0, 3).map((t) => (
+                              <Badge key={tagKey(t)} variant="secondary" className="text-[10px] font-medium gap-1 whitespace-nowrap">
+                                <TagIcon className="h-2.5 w-2.5" />
+                                {t}
+                              </Badge>
+                            ))}
+                            {c.tags.length > 3 && (
+                              <span className="text-[10px] text-muted-foreground">+{c.tags.length - 3}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </TableCell>
                     )}
                     {showCol("contact") && (
