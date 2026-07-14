@@ -133,7 +133,8 @@ export default function BusinessInsightsPage() {
     return out;
   }
 
-  // Online sales — only paid orders contribute to analytics
+  // Online sales — include ALL sales regardless of payment status so units/revenue
+  // reflect actual sales volume. Cost & profit are only recognized for PAID sales.
   const { data: onlineRows = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
@@ -142,13 +143,23 @@ export default function BusinessInsightsPage() {
           .from("online_sales")
           .select("id, order_number, order_date, sales_channel, quantity, posted_price, amount_paid, item_id, variation_id, product_name, payment_status, paid_at, items(name, sku), item_variations(name, sku)")
           .eq("status", "completed")
-          .eq("payment_status", "paid")
           .gte("order_date", fromStr)
           .lte("order_date", toStr);
+        if (payment === "paid") q = q.eq("payment_status", "paid");
+        else if (payment === "unpaid") q = q.eq("payment_status", "unpaid");
         return q;
       });
     },
   });
+
+  // Set of paid online sale IDs — profit/cost only apply to these.
+  const paidOnlineIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status === "paid") s.add(r.id);
+    }
+    return s;
+  }, [onlineRows]);
 
   // Online sale cost snapshots (admin only)
   const { data: onlineFinancialsRows = [] } = useQuery({
@@ -174,7 +185,8 @@ export default function BusinessInsightsPage() {
   const onlineFinMap = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
     for (const f of onlineFinancialsRows as any[]) {
-      if (f.cost_snapshot != null) {
+      // Only recognize profit/cost for paid sales.
+      if (f.cost_snapshot != null && paidOnlineIds.has(f.online_sale_id)) {
         m.set(f.online_sale_id, {
           cost: Number(f.line_total_cost || 0),
           profit: Number(f.line_profit || 0),
@@ -183,11 +195,12 @@ export default function BusinessInsightsPage() {
       }
     }
     return m;
-  }, [onlineFinancialsRows]);
+  }, [onlineFinancialsRows, paidOnlineIds]);
   const missingOnlineCostCount = useMemo(
-    () => (onlineFinancialsRows as any[]).filter((f) => f.cost_snapshot == null).length,
-    [onlineFinancialsRows],
+    () => (onlineFinancialsRows as any[]).filter((f) => f.cost_snapshot == null && paidOnlineIds.has(f.online_sale_id)).length,
+    [onlineFinancialsRows, paidOnlineIds],
   );
+
 
 
   // Invoice items (only for confirmed/paid invoices in date range)
