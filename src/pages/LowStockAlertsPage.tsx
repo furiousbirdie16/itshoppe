@@ -392,7 +392,7 @@ export default function LowStockAlertsPage() {
     return Array.from(set).sort();
   }, [lowStock]);
 
-  const filtered = useMemo(() => {
+  const preFiltered = useMemo(() => {
     let rows = lowStock;
     if (search) {
       const q = search.toLowerCase();
@@ -409,9 +409,31 @@ export default function LowStockAlertsPage() {
     if (supplierFilter !== "all") {
       rows = rows.filter((r) => (r.lastCost?.supplier || r.orderSupplier || r.latestSupplier?.name) === supplierFilter);
     }
+    return rows;
+  }, [lowStock, search, statusFilter, sourceFilter, supplierFilter, recentlyCreatedPoItems]);
 
-    const sorted = [...rows];
-    sorted.sort((a, b) => {
+  const sortAccessors = useMemo(
+    () => ({
+      product: (r: typeof preFiltered[number]) => r.item.name,
+      sku: (r: typeof preFiltered[number]) => r.item.sku,
+      stock: (r: typeof preFiltered[number]) => r.item.quantity,
+      min: (r: typeof preFiltered[number]) => r.threshold,
+      supplier: (r: typeof preFiltered[number]) => r.lastCost?.supplier || r.orderSupplier || r.latestSupplier?.name || "",
+      sold30: (r: typeof preFiltered[number]) => r.q30,
+      lastCost: (r: typeof preFiltered[number]) => r.lastCost?.cost ?? r.item.cost_price ?? 0,
+      daysLeft: (r: typeof preFiltered[number]) => (isFinite(r.daysToOut) ? r.daysToOut : Number.MAX_SAFE_INTEGER),
+      status: (r: typeof preFiltered[number]) => (recentlyCreatedPoItems.has(r.item.id) ? "1_po" : r.ordered ? "2_ordered" : "3_not"),
+      recommendation: (r: typeof preFiltered[number]) => r.recommendation,
+    }),
+    [recentlyCreatedPoItems],
+  );
+
+  const { sort, toggle: toggleSort, sorted: columnSorted } = useSort(preFiltered, sortAccessors);
+
+  const filtered = useMemo(() => {
+    if (sort.key) return columnSorted;
+    const rows = [...preFiltered];
+    rows.sort((a, b) => {
       if (sortKey === "lowest") return a.item.quantity - b.item.quantity;
       if (sortKey === "highest_sales") return b.a90 - a.a90;
       if (sortKey === "fastest") return b.avgDaily - a.avgDaily;
@@ -420,8 +442,20 @@ export default function LowStockAlertsPage() {
       const db = isFinite(b.daysToOut) ? b.daysToOut : 1e9;
       return da - db;
     });
-    return sorted;
-  }, [lowStock, search, statusFilter, sourceFilter, supplierFilter, sortKey, recentlyCreatedPoItems]);
+    return rows;
+  }, [preFiltered, columnSorted, sort.key, sortKey]);
+
+  const updateThreshold = useMutation({
+    mutationFn: async ({ id, value }: { id: string; value: number }) => {
+      const { error } = await supabase.from("items").update({ low_stock_threshold: value }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lowstock-items"] });
+      toast.success("Threshold updated");
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to update threshold"),
+  });
 
   const summary = useMemo(() => {
     const total = lowStock.length;
