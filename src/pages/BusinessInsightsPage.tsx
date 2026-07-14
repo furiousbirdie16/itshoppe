@@ -1228,6 +1228,7 @@ export default function BusinessInsightsPage() {
                                           <td className="px-3 py-1.5">{t.customer}</td>
                                           <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
                                           <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                          <td className="px-3 py-1.5 text-muted-foreground">{t.variationName || <span className="text-muted-foreground/60">—</span>}</td>
                                           <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
