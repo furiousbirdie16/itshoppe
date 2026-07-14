@@ -1087,7 +1087,20 @@ export default function BusinessInsightsPage() {
                           {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm">{p.qtySold ? `${p.margin.toFixed(1)}%` : "—"}</TableCell>}
-                          {isAdmin && <TableCell className="text-right text-sm">{p.gmroi.toFixed(2)}×</TableCell>}
+                          {isAdmin && (
+                            <TableCell className="text-right text-sm">
+                              {p.gmroi === null ? (
+                                <span
+                                  className="text-muted-foreground cursor-help"
+                                  title="GMROI cannot be calculated because there is insufficient inventory history."
+                                >
+                                  N/A
+                                </span>
+                              ) : (
+                                `${p.gmroi.toFixed(2)}×`
+                              )}
+                            </TableCell>
+                          )}
                         </TableRow>
                         {isOpen && (
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
