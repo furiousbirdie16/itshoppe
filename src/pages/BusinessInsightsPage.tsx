@@ -1134,8 +1134,30 @@ export default function BusinessInsightsPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-right text-sm">{p.stock}</TableCell>
-                          <TableCell className="text-right text-sm">{p.qtySold}</TableCell>
-                          {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
+                          <TableCell className="text-right text-sm">
+                            {variations.length === 0 ? (
+                              <span className="text-muted-foreground">0</span>
+                            ) : multiVariation ? (
+                              <div className="flex flex-col items-end gap-0.5 leading-tight">
+                                {variations.slice(0, 3).map((v) => (
+                                  <span key={v.variationId || "base"} className="text-[11px]">
+                                    <span className="text-muted-foreground">{v.label}:</span>{" "}
+                                    <span className="font-semibold tabular-nums">{v.qty}</span>
+                                  </span>
+                                ))}
+                                {variations.length > 3 && (
+                                  <span className="text-[10px] text-muted-foreground">+{variations.length - 3} more</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="tabular-nums">
+                                {variations[0].qty}
+                                {variations[0].variationId && (
+                                  <span className="text-[10px] text-muted-foreground ml-1">{variations[0].label}</span>
+                                )}
+                              </span>
+                            )}
+                          </TableCell>
                           {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm">{p.qtySold ? `${p.margin.toFixed(1)}%` : "—"}</TableCell>}
