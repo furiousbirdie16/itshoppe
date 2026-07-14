@@ -32,17 +32,18 @@ export function getFollowUpInfo(lastAt: string | null | undefined): FollowUpInfo
     return {
       status: "never",
       days: null,
-      label: "Never followed up",
+      label: "Missed",
       className: "bg-destructive/15 text-destructive border-destructive/30",
       dotClass: "bg-destructive",
     };
   }
   const days = differenceInCalendarDays(new Date(), new Date(lastAt));
+  const compact = `${days}d`;
   if (days <= 10) {
     return {
       status: "active",
       days,
-      label: `Active · ${days}d ago`,
+      label: compact,
       className: "bg-success/15 text-success border-success/30",
       dotClass: "bg-success",
     };
@@ -51,7 +52,7 @@ export function getFollowUpInfo(lastAt: string | null | undefined): FollowUpInfo
     return {
       status: "active",
       days,
-      label: `Due soon · ${days}d ago`,
+      label: compact,
       className: "bg-warning/15 text-warning border-warning/30",
       dotClass: "bg-warning",
     };
@@ -59,7 +60,7 @@ export function getFollowUpInfo(lastAt: string | null | undefined): FollowUpInfo
   return {
     status: "needs",
     days,
-    label: `Needs follow up · ${days}d`,
+    label: `Pending · ${compact}`,
     className: "bg-destructive/15 text-destructive border-destructive/30",
     dotClass: "bg-destructive",
   };
