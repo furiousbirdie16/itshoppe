@@ -228,7 +228,25 @@ export default function BusinessInsightsPage() {
   const { data: itemsAll = [] } = useQuery({
     queryKey: ["bi_items_all"],
     queryFn: async () => fetchAll<any>(() =>
-      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source")
+      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at")
+    ),
+  });
+
+  // All inventory movements — used to reconstruct historical stock levels for GMROI.
+  const { data: movementsAll = [] } = useQuery({
+    queryKey: ["bi_movements_all"],
+    enabled: isAdmin,
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("inventory_movements").select("item_id, type, quantity, created_at")
+    ),
+  });
+
+  // All item cost history — used to reconstruct historical unit cost for GMROI.
+  const { data: costHistoryAll = [] } = useQuery({
+    queryKey: ["bi_cost_history_all"],
+    enabled: isAdmin,
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("item_cost_history").select("item_id, new_cost, created_at")
     ),
   });
 
@@ -553,11 +571,41 @@ export default function BusinessInsightsPage() {
     margin: number;
     dailySales: number;
     daysRemaining: number;
-    gmroi: number; // gross profit / avg inventory value
+    gmroi: number | null; // gross profit / avg inventory value; null = insufficient data
+    avgInventoryValue: number | null;
     action: "Buy" | "Maintain" | "Reduce" | "Dead" | "Overstock";
   }
 
+  // Build per-item indices for movements (signed) and cost history (sorted asc).
+  const { movementsByItem, costHistoryByItem } = useMemo(() => {
+    const outSet = new Set(["out_invoice", "out_online_sale", "adjust_missing"]);
+    const inSet = new Set(["in_po", "adjust_surplus"]);
+    const mv = new Map<string, { at: number; signed: number }[]>();
+    for (const m of movementsAll as any[]) {
+      if (!m.item_id || !m.created_at) continue;
+      const qty = Number(m.quantity || 0);
+      let signed = 0;
+      if (inSet.has(m.type)) signed = qty;
+      else if (outSet.has(m.type)) signed = -qty;
+      else continue; // transfers are neutral for total stock
+      const arr = mv.get(m.item_id) || [];
+      arr.push({ at: new Date(m.created_at).getTime(), signed });
+      mv.set(m.item_id, arr);
+    }
+    const ch = new Map<string, { at: number; cost: number }[]>();
+    for (const h of costHistoryAll as any[]) {
+      if (!h.item_id || !h.created_at) continue;
+      const arr = ch.get(h.item_id) || [];
+      arr.push({ at: new Date(h.created_at).getTime(), cost: Number(h.new_cost || 0) });
+      ch.set(h.item_id, arr);
+    }
+    for (const arr of ch.values()) arr.sort((a, b) => a.at - b.at);
+    return { movementsByItem: mv, costHistoryByItem: ch };
+  }, [movementsAll, costHistoryAll]);
+
   const productMetrics = useMemo<ProductMetric[]>(() => {
+    const fromMs = dateFrom.getTime();
+    const toMs = dateTo.getTime();
     return (itemsAll as any[]).map((it) => {
       const sale = perItemSales.get(it.id) || { qty: 0, revenue: 0, orders: 0 };
       const prof = perItemProfit.get(it.id) || { cost: 0, profit: 0 };
@@ -566,9 +614,58 @@ export default function BusinessInsightsPage() {
       const sellingPrice = Number(it.selling_price || 0);
       const dailySales = sale.qty / daysInRange;
       const daysRemaining = dailySales > 0 ? stock / dailySales : (stock > 0 ? Infinity : 0);
-      const invValue = stock * cost;
-      const gmroi = invValue > 0 ? prof.profit / invValue : 0;
       const margin = sale.revenue > 0 ? (prof.profit / sale.revenue) * 100 : 0;
+
+      // Reconstruct historical inventory value at beginning and end of the range.
+      const itemCreatedMs = it.created_at ? new Date(it.created_at).getTime() : 0;
+      const movements = movementsByItem.get(it.id) || [];
+      const history = costHistoryByItem.get(it.id) || [];
+
+      // Walk backward from current stock to derive endQty (at dateTo) and beginQty (just before dateFrom).
+      let afterTo = 0;
+      let afterFrom = 0; // includes movements on or after dateFrom
+      for (const m of movements) {
+        if (m.at > toMs) afterTo += m.signed;
+        if (m.at >= fromMs) afterFrom += m.signed;
+      }
+      const endQty = stock - afterTo;
+      const beginQty = stock - afterFrom;
+
+      const costAt = (ms: number): number | null => {
+        // Latest cost snapshot at or before ms.
+        let picked: number | null = null;
+        for (const h of history) {
+          if (h.at <= ms) picked = h.cost;
+          else break;
+        }
+        return picked;
+      };
+
+      let avgInventoryValue: number | null = null;
+      let gmroi: number | null = null;
+      const itemExistedAtStart = itemCreatedMs > 0 && itemCreatedMs <= fromMs;
+      const itemExistsInRange = itemCreatedMs === 0 || itemCreatedMs <= toMs;
+
+      if (itemExistsInRange) {
+        // End cost: latest snapshot ≤ dateTo, else current cost (still historical anchor).
+        const endCost = costAt(toMs) ?? (cost > 0 ? cost : null);
+        // Begin cost: latest snapshot < dateFrom.
+        let beginCost: number | null = costAt(fromMs - 1);
+        if (beginCost === null && itemExistedAtStart) {
+          // No snapshot before start, but item existed — assume current cost is representative.
+          beginCost = cost > 0 ? cost : null;
+        }
+        // If item didn't exist at start, begin inventory is 0 (not "insufficient data").
+        const beginValue = itemExistedAtStart
+          ? (beginCost !== null ? Math.max(0, beginQty) * beginCost : null)
+          : 0;
+        const endValue = endCost !== null ? Math.max(0, endQty) * endCost : null;
+        if (beginValue !== null && endValue !== null) {
+          avgInventoryValue = (beginValue + endValue) / 2;
+          if (avgInventoryValue > 0) gmroi = prof.profit / avgInventoryValue;
+        }
+      }
+
       let action: ProductMetric["action"] = "Maintain";
       if (sale.qty === 0 && stock > 0) action = "Dead";
       else if (daysRemaining < 14) action = "Buy";
@@ -591,10 +688,11 @@ export default function BusinessInsightsPage() {
         dailySales,
         daysRemaining,
         gmroi,
+        avgInventoryValue,
         action,
       };
     });
-  }, [itemsAll, perItemSales, perItemProfit, daysInRange]);
+  }, [itemsAll, perItemSales, perItemProfit, daysInRange, movementsByItem, costHistoryByItem, dateFrom, dateTo]);
 
   // Per-item txns rollup (parent items — all variation txns collected under itemId)
   const perItemTxns = useMemo(() => {
@@ -685,7 +783,7 @@ export default function BusinessInsightsPage() {
     cost: (r) => r.totalCost,
     grossProfit: (r) => r.grossProfit,
     margin: (r) => r.margin,
-    gmroi: (r) => r.gmroi,
+    gmroi: (r) => r.gmroi ?? -Infinity,
   }, { key: "revenue", dir: "desc" });
 
   // Top 5 (Overview): sort against full productMetrics
@@ -989,7 +1087,20 @@ export default function BusinessInsightsPage() {
                           {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm">{p.qtySold ? `${p.margin.toFixed(1)}%` : "—"}</TableCell>}
-                          {isAdmin && <TableCell className="text-right text-sm">{p.gmroi.toFixed(2)}×</TableCell>}
+                          {isAdmin && (
+                            <TableCell className="text-right text-sm">
+                              {p.gmroi === null ? (
+                                <span
+                                  className="text-muted-foreground cursor-help"
+                                  title="GMROI cannot be calculated because there is insufficient inventory history."
+                                >
+                                  N/A
+                                </span>
+                              ) : (
+                                `${p.gmroi.toFixed(2)}×`
+                              )}
+                            </TableCell>
+                          )}
                         </TableRow>
                         {isOpen && (
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
