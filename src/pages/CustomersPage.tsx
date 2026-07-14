@@ -682,7 +682,7 @@ export default function CustomersPage() {
                     )}
                     {showCol("activity") && (
                       <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium", activity.className)}>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", activity.className)}>
                           {activity.label}
                         </Badge>
                       </TableCell>
