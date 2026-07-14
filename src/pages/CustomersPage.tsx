@@ -760,7 +760,7 @@ export default function CustomersPage() {
                       )}
                     </div>
                   </div>
-                  <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0", activity.className)}>{activity.label}</Badge>
+                  <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0 whitespace-nowrap", activity.className)}>{activity.label}</Badge>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
