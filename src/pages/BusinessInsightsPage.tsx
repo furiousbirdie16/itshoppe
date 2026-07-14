@@ -1206,6 +1206,7 @@ export default function BusinessInsightsPage() {
                                         <th className="px-3 py-2 font-medium">Customer</th>
                                         <th className="px-3 py-2 font-medium">Sales Agent</th>
                                         <th className="px-3 py-2 font-medium">Reference</th>
+                                        <th className="px-3 py-2 font-medium">Variation</th>
                                         <th className="px-3 py-2 font-medium text-right">Qty</th>
                                         {isAdmin && <th className="px-3 py-2 font-medium text-right">Unit ₱</th>}
                                         {isAdmin && <th className="px-3 py-2 font-medium text-right">Amount</th>}
