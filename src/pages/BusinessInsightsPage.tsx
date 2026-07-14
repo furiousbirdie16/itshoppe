@@ -1158,6 +1158,7 @@ export default function BusinessInsightsPage() {
                               </span>
                             )}
                           </TableCell>
+                          {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm">{p.qtySold ? `${p.margin.toFixed(1)}%` : "—"}</TableCell>}
