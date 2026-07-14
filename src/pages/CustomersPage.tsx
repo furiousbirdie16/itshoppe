@@ -440,8 +440,8 @@ export default function CustomersPage() {
           <SelectContent>
             <SelectItem value="all">All follow-ups</SelectItem>
             <SelectItem value="active">Active (≤14d)</SelectItem>
-            <SelectItem value="needs">Needs follow up</SelectItem>
-            <SelectItem value="never">Never followed up</SelectItem>
+            <SelectItem value="needs">Pending</SelectItem>
+            <SelectItem value="never">Missed</SelectItem>
           </SelectContent>
         </Select>
 
