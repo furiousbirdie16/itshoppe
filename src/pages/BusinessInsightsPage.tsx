@@ -1116,6 +1116,8 @@ export default function BusinessInsightsPage() {
                   ) : productSort.sorted.slice(0, 500).map((p) => {
                     const isOpen = expandedProduct.has(p.itemId);
                     const txns = perItemTxns.get(p.itemId) || [];
+                    const variations = perItemVariations.get(p.itemId) || [];
+                    const multiVariation = variations.length > 1;
                     return (
                       <Fragment key={p.itemId}>
                         <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpandProduct(p.itemId)}>
