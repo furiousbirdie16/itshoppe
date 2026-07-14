@@ -37,6 +37,7 @@ interface SaleTxn {
   variationId?: string | null;
   cost?: number;
   profit?: number;
+  paymentStatus?: "paid" | "unpaid";
 }
 
 interface ItemAgg {
@@ -132,7 +133,8 @@ export default function BusinessInsightsPage() {
     return out;
   }
 
-  // Online sales — only paid orders contribute to analytics
+  // Online sales — include ALL sales regardless of payment status so units/revenue
+  // reflect actual sales volume. Cost & profit are only recognized for PAID sales.
   const { data: onlineRows = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment],
     queryFn: async () => {
@@ -141,13 +143,23 @@ export default function BusinessInsightsPage() {
           .from("online_sales")
           .select("id, order_number, order_date, sales_channel, quantity, posted_price, amount_paid, item_id, variation_id, product_name, payment_status, paid_at, items(name, sku), item_variations(name, sku)")
           .eq("status", "completed")
-          .eq("payment_status", "paid")
           .gte("order_date", fromStr)
           .lte("order_date", toStr);
+        if (payment === "paid") q = q.eq("payment_status", "paid");
+        else if (payment === "unpaid") q = q.eq("payment_status", "unpaid");
         return q;
       });
     },
   });
+
+  // Set of paid online sale IDs — profit/cost only apply to these.
+  const paidOnlineIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status === "paid") s.add(r.id);
+    }
+    return s;
+  }, [onlineRows]);
 
   // Online sale cost snapshots (admin only)
   const { data: onlineFinancialsRows = [] } = useQuery({
@@ -173,7 +185,8 @@ export default function BusinessInsightsPage() {
   const onlineFinMap = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
     for (const f of onlineFinancialsRows as any[]) {
-      if (f.cost_snapshot != null) {
+      // Only recognize profit/cost for paid sales.
+      if (f.cost_snapshot != null && paidOnlineIds.has(f.online_sale_id)) {
         m.set(f.online_sale_id, {
           cost: Number(f.line_total_cost || 0),
           profit: Number(f.line_profit || 0),
@@ -182,11 +195,12 @@ export default function BusinessInsightsPage() {
       }
     }
     return m;
-  }, [onlineFinancialsRows]);
+  }, [onlineFinancialsRows, paidOnlineIds]);
   const missingOnlineCostCount = useMemo(
-    () => (onlineFinancialsRows as any[]).filter((f) => f.cost_snapshot == null).length,
-    [onlineFinancialsRows],
+    () => (onlineFinancialsRows as any[]).filter((f) => f.cost_snapshot == null && paidOnlineIds.has(f.online_sale_id)).length,
+    [onlineFinancialsRows, paidOnlineIds],
   );
+
 
 
   // Invoice items (only for confirmed/paid invoices in date range)
@@ -336,6 +350,7 @@ export default function BusinessInsightsPage() {
           variationId,
           cost: fin?.cost,
           profit: fin?.profit,
+          paymentStatus: r.payment_status === "paid" ? "paid" : "unpaid",
         });
 
       }
@@ -541,7 +556,7 @@ export default function BusinessInsightsPage() {
     return m;
   }, [aggregated]);
 
-  // Per-item gross profit (from cost snapshots)
+  // Per-item gross profit (from cost snapshots). Includes invoices + paid online sales.
   const perItemProfit = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number }>();
     for (const f of financialsRows as any[]) {
@@ -551,8 +566,19 @@ export default function BusinessInsightsPage() {
       e.profit += Number(f.line_profit || 0);
       m.set(f.item_id, e);
     }
+    // Add paid online sales profit (unpaid online sales excluded per spec).
+    for (const r of onlineRows as any[]) {
+      if (!r.item_id || r.payment_status !== "paid") continue;
+      const fin = onlineFinMap.get(r.id);
+      if (!fin) continue;
+      const e = m.get(r.item_id) || { cost: 0, profit: 0 };
+      e.cost += fin.cost;
+      e.profit += fin.profit;
+      m.set(r.item_id, e);
+    }
     return m;
-  }, [financialsRows]);
+  }, [financialsRows, onlineRows, onlineFinMap]);
+
 
   // Enhanced product metrics — one row per parent item
   interface ProductMetric {
@@ -1142,8 +1168,8 @@ export default function BusinessInsightsPage() {
                                           <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
-                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{t.cost != null ? money(t.cost) : "—"}</td>}
-                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : "text-red-600")}>{t.profit != null ? money(t.profit) : "—"}</td>}
+                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground" title={t.source === "online" && t.paymentStatus === "unpaid" ? "Gross profit will be calculated once the sale is marked as Paid." : undefined}>{t.cost != null ? money(t.cost) : (t.source === "online" && t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
+                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : t.profit != null ? "text-red-600" : "text-muted-foreground")} title={t.source === "online" && t.paymentStatus === "unpaid" ? "Gross profit will be calculated once the sale is marked as Paid." : undefined}>{t.profit != null ? money(t.profit) : (t.source === "online" && t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
                                         </tr>
                                       ))}
                                     </tbody>
