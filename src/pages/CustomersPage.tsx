@@ -272,13 +272,13 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail" });
+    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
     setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, classification: (c.classification as ClassificationValue) || "retail" });
+    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [] });
     setAddress({
       country: c.country || "Philippines",
       province_state: c.province_state || "",
