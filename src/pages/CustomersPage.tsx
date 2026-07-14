@@ -27,10 +27,13 @@ import { AddressSelector, emptyAddress, type AddressValue } from "@/components/A
 import { formatLocationChip } from "@/lib/locations";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
+import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
+import { Tag as TagIcon } from "lucide-react";
 
 const CUSTOMER_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Customer Name", required: true },
   { key: "type", label: "Type", defaultVisible: true },
+  { key: "tags", label: "Tags", defaultVisible: true },
   { key: "location", label: "Location", defaultVisible: true },
   { key: "agent", label: "Sales Agent", defaultVisible: true },
   { key: "lastOrder", label: "Last Order", defaultVisible: true },
