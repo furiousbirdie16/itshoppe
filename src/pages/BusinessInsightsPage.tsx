@@ -556,7 +556,7 @@ export default function BusinessInsightsPage() {
     return m;
   }, [aggregated]);
 
-  // Per-item gross profit (from cost snapshots)
+  // Per-item gross profit (from cost snapshots). Includes invoices + paid online sales.
   const perItemProfit = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number }>();
     for (const f of financialsRows as any[]) {
@@ -566,8 +566,19 @@ export default function BusinessInsightsPage() {
       e.profit += Number(f.line_profit || 0);
       m.set(f.item_id, e);
     }
+    // Add paid online sales profit (unpaid online sales excluded per spec).
+    for (const r of onlineRows as any[]) {
+      if (!r.item_id || r.payment_status !== "paid") continue;
+      const fin = onlineFinMap.get(r.id);
+      if (!fin) continue;
+      const e = m.get(r.item_id) || { cost: 0, profit: 0 };
+      e.cost += fin.cost;
+      e.profit += fin.profit;
+      m.set(r.item_id, e);
+    }
     return m;
-  }, [financialsRows]);
+  }, [financialsRows, onlineRows, onlineFinMap]);
+
 
   // Enhanced product metrics — one row per parent item
   interface ProductMetric {
