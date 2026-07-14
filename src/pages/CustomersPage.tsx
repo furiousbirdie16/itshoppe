@@ -47,10 +47,10 @@ type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
 
 function activityFromDays(days: number | null): { bucket: ActivityBucket; label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   if (days === null) return { bucket: "never", label: "No orders", variant: "outline", className: "text-muted-foreground" };
-  if (days <= 7) return { bucket: "7", label: "≤ 7 days", variant: "default", className: "bg-success/15 text-success border-success/30" };
-  if (days <= 14) return { bucket: "14", label: "≤ 14 days", variant: "secondary", className: "bg-primary/15 text-primary border-primary/30" };
-  if (days <= 21) return { bucket: "21", label: "≤ 21 days", variant: "secondary", className: "bg-accent/20 text-accent-foreground border-accent/40" };
-  if (days <= 30) return { bucket: "30", label: "≤ 30 days", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30" };
+  if (days <= 7) return { bucket: "7", label: "< 7", variant: "default", className: "bg-success/15 text-success border-success/30" };
+  if (days <= 14) return { bucket: "14", label: "< 14", variant: "secondary", className: "bg-primary/15 text-primary border-primary/30" };
+  if (days <= 21) return { bucket: "21", label: "< 21", variant: "secondary", className: "bg-accent/20 text-accent-foreground border-accent/40" };
+  if (days <= 30) return { bucket: "30", label: "< 30", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30" };
   return { bucket: "dormant", label: "Dormant", variant: "destructive", className: "bg-destructive/15 text-destructive border-destructive/30" };
 }
 
