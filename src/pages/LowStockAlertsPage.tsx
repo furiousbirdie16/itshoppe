@@ -487,8 +487,6 @@ export default function LowStockAlertsPage() {
               { k: "all", label: "All Low Stock" },
               { k: "critical", label: "Critical" },
               { k: "not_ordered", label: "Not Ordered" },
-              { k: "ordered", label: "Ordered" },
-              { k: "po_created", label: "PO Created" },
               { k: "fast", label: "Fast Moving" },
               { k: "slow", label: "Slow Moving" },
             ] as { k: StatusFilter; label: string }[]).map((f) => (
