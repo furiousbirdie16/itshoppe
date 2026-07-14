@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { StatCard } from "@/components/StatCard";
+import { SortableHeader } from "@/components/SortableHeader";
+import { useSort } from "@/hooks/use-sort";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
