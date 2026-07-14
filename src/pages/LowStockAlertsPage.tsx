@@ -662,7 +662,22 @@ export default function LowStockAlertsPage() {
                       <TableCell className="text-right font-semibold">
                         {r.item.quantity} <span className="text-[10px] text-muted-foreground font-normal">{baseUnit}</span>
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">{r.threshold}</TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <Input
+                          type="number"
+                          min={0}
+                          defaultValue={r.threshold}
+                          key={`${r.item.id}-${r.threshold}`}
+                          className="h-7 w-16 text-right text-xs ml-auto"
+                          onBlur={(e) => {
+                            const v = parseInt(e.target.value);
+                            if (!isNaN(v) && v !== r.threshold) {
+                              updateThreshold.mutate({ id: r.item.id, value: v });
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        />
+                      </TableCell>
                       <TableCell className="text-xs">{supplier}</TableCell>
                       <TableCell className="text-right text-xs">
                         {fmtBase(r.q30)} <span className="text-[10px] text-muted-foreground">{baseUnit}</span>
