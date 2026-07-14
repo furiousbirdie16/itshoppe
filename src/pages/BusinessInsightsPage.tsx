@@ -35,6 +35,7 @@ interface SaleTxn {
   invoiceId?: string | null;
   itemId?: string | null;
   variationId?: string | null;
+  variationName?: string | null;
   cost?: number;
   profit?: number;
   paymentStatus?: "paid" | "unpaid";
@@ -44,6 +45,7 @@ interface ItemAgg {
   key: string;
   itemId: string | null;
   variationId: string | null;
+  variationName: string | null;
   name: string;
   sku: string;
   qtyOnline: number;
@@ -325,10 +327,11 @@ export default function BusinessInsightsPage() {
       for (const r of onlineRows as any[]) {
         const itemId = r.item_id || null;
         const variationId = r.variation_id || null;
-        const name = r.item_variations?.name ? `${r.items?.name || r.product_name} — ${r.item_variations.name}` : (r.items?.name || r.product_name || "Unknown");
+        const variationName = r.item_variations?.name || null;
+        const name = variationName ? `${r.items?.name || r.product_name} — ${variationName}` : (r.items?.name || r.product_name || "Unknown");
         const sku = r.item_variations?.sku || r.items?.sku || "—";
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
-        const row = get(key, { key, itemId, variationId, name, sku });
+        const row = get(key, { key, itemId, variationId, variationName, name, sku });
         const qty = Number(r.quantity || 0);
         const unit = Number(r.posted_price || 0);
         const rev = unit * qty;
@@ -348,6 +351,7 @@ export default function BusinessInsightsPage() {
           amount: rev,
           itemId,
           variationId,
+          variationName,
           cost: fin?.cost,
           profit: fin?.profit,
           paymentStatus: r.payment_status === "paid" ? "paid" : "unpaid",
@@ -360,10 +364,11 @@ export default function BusinessInsightsPage() {
       for (const r of invoiceRows as any[]) {
         const itemId = r.item_id || null;
         const variationId = r.variation_id || null;
-        const name = r.item_variations?.name ? `${r.items?.name || r.item_name} — ${r.item_variations.name}` : (r.items?.name || r.item_name || "Unknown");
+        const variationName = r.item_variations?.name || null;
+        const name = variationName ? `${r.items?.name || r.item_name} — ${variationName}` : (r.items?.name || r.item_name || "Unknown");
         const sku = r.item_variations?.sku || r.items?.sku || "—";
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
-        const row = get(key, { key, itemId, variationId, name, sku });
+        const row = get(key, { key, itemId, variationId, variationName, name, sku });
         const qty = Number(r.quantity || 0);
         const unit = Number(r.unit_price || 0);
         const rev = unit * qty;
@@ -384,6 +389,7 @@ export default function BusinessInsightsPage() {
           invoiceId: r.invoice_id,
           itemId,
           variationId,
+          variationName,
           cost: fin?.cost,
           profit: fin?.profit,
         });
@@ -732,6 +738,24 @@ export default function BusinessInsightsPage() {
     for (const arr of m.values()) arr.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     return m;
   }, [aggregated]);
+
+  // Per-item variation breakdown: itemId -> [{ label, qty, variationId }]
+  // Sales quantities must NEVER be summed across variations with different units.
+  const perItemVariations = useMemo(() => {
+    const m = new Map<string, { variationId: string | null; label: string; qty: number }[]>();
+    for (const r of aggregated) {
+      if (!r.itemId) continue;
+      const arr = m.get(r.itemId) || [];
+      const label = r.variationName || "Base unit";
+      const existing = arr.find((v) => (v.variationId || null) === (r.variationId || null));
+      if (existing) existing.qty += r.qtyTotal;
+      else arr.push({ variationId: r.variationId, label, qty: r.qtyTotal });
+      m.set(r.itemId, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => b.qty - a.qty);
+    return m;
+  }, [aggregated]);
+
 
   const productSearch = search.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
@@ -1092,6 +1116,8 @@ export default function BusinessInsightsPage() {
                   ) : productSort.sorted.slice(0, 500).map((p) => {
                     const isOpen = expandedProduct.has(p.itemId);
                     const txns = perItemTxns.get(p.itemId) || [];
+                    const variations = perItemVariations.get(p.itemId) || [];
+                    const multiVariation = variations.length > 1;
                     return (
                       <Fragment key={p.itemId}>
                         <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpandProduct(p.itemId)}>
@@ -1108,7 +1134,30 @@ export default function BusinessInsightsPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-right text-sm">{p.stock}</TableCell>
-                          <TableCell className="text-right text-sm">{p.qtySold}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {variations.length === 0 ? (
+                              <span className="text-muted-foreground">0</span>
+                            ) : multiVariation ? (
+                              <div className="flex flex-col items-end gap-0.5 leading-tight">
+                                {variations.slice(0, 3).map((v) => (
+                                  <span key={v.variationId || "base"} className="text-[11px]">
+                                    <span className="text-muted-foreground">{v.label}:</span>{" "}
+                                    <span className="font-semibold tabular-nums">{v.qty}</span>
+                                  </span>
+                                ))}
+                                {variations.length > 3 && (
+                                  <span className="text-[10px] text-muted-foreground">+{variations.length - 3} more</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="tabular-nums">
+                                {variations[0].qty}
+                                {variations[0].variationId && (
+                                  <span className="text-[10px] text-muted-foreground ml-1">{variations[0].label}</span>
+                                )}
+                              </span>
+                            )}
+                          </TableCell>
                           {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
@@ -1131,8 +1180,21 @@ export default function BusinessInsightsPage() {
                         {isOpen && (
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
                             <TableCell colSpan={isAdmin ? 10 : 5} className="p-0">
-                              <div className="px-4 py-3">
-                                <div className="text-xs font-semibold text-muted-foreground mb-2">
+                              <div className="px-4 py-3 space-y-3">
+                                {variations.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-muted-foreground mb-1.5">Sales by variation</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {variations.map((v) => (
+                                        <span key={v.variationId || "base"} className="inline-flex items-center gap-1 rounded border bg-background px-2 py-1 text-[11px]">
+                                          <span className="text-muted-foreground">{v.label}</span>
+                                          <span className="font-semibold tabular-nums">{v.qty}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="text-xs font-semibold text-muted-foreground">
                                   Sales history ({txns.length}){isAdmin ? " — with per-order gross profit" : ""}
                                 </div>
                                 <div className="rounded-md border bg-background overflow-x-auto">
@@ -1144,6 +1206,7 @@ export default function BusinessInsightsPage() {
                                         <th className="px-3 py-2 font-medium">Customer</th>
                                         <th className="px-3 py-2 font-medium">Sales Agent</th>
                                         <th className="px-3 py-2 font-medium">Reference</th>
+                                        <th className="px-3 py-2 font-medium">Variation</th>
                                         <th className="px-3 py-2 font-medium text-right">Qty</th>
                                         {isAdmin && <th className="px-3 py-2 font-medium text-right">Unit ₱</th>}
                                         {isAdmin && <th className="px-3 py-2 font-medium text-right">Amount</th>}
@@ -1165,6 +1228,7 @@ export default function BusinessInsightsPage() {
                                           <td className="px-3 py-1.5">{t.customer}</td>
                                           <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
                                           <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                          <td className="px-3 py-1.5 text-muted-foreground">{t.variationName || <span className="text-muted-foreground/60">—</span>}</td>
                                           <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
