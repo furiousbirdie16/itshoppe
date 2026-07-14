@@ -778,7 +778,7 @@ export default function CustomersPage() {
                   </div>
                   <div>
                     <div className="text-[10px] uppercase text-muted-foreground">Follow-up</div>
-                    <Badge variant="outline" className={cn("text-[10px] font-medium", fu.className)}>{fu.label}</Badge>
+                    <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", fu.className)}>{fu.label}</Badge>
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] uppercase text-muted-foreground">Total</div>
