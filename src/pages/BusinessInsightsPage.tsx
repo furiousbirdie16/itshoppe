@@ -350,6 +350,7 @@ export default function BusinessInsightsPage() {
           variationId,
           cost: fin?.cost,
           profit: fin?.profit,
+          paymentStatus: r.payment_status === "paid" ? "paid" : "unpaid",
         });
 
       }
