@@ -228,7 +228,25 @@ export default function BusinessInsightsPage() {
   const { data: itemsAll = [] } = useQuery({
     queryKey: ["bi_items_all"],
     queryFn: async () => fetchAll<any>(() =>
-      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source")
+      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at")
+    ),
+  });
+
+  // All inventory movements — used to reconstruct historical stock levels for GMROI.
+  const { data: movementsAll = [] } = useQuery({
+    queryKey: ["bi_movements_all"],
+    enabled: isAdmin,
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("inventory_movements").select("item_id, type, quantity, created_at")
+    ),
+  });
+
+  // All item cost history — used to reconstruct historical unit cost for GMROI.
+  const { data: costHistoryAll = [] } = useQuery({
+    queryKey: ["bi_cost_history_all"],
+    enabled: isAdmin,
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("item_cost_history").select("item_id, new_cost, created_at")
     ),
   });
 
