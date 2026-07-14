@@ -37,6 +37,7 @@ interface SaleTxn {
   variationId?: string | null;
   cost?: number;
   profit?: number;
+  paymentStatus?: "paid" | "unpaid";
 }
 
 interface ItemAgg {
