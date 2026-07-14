@@ -327,10 +327,11 @@ export default function BusinessInsightsPage() {
       for (const r of onlineRows as any[]) {
         const itemId = r.item_id || null;
         const variationId = r.variation_id || null;
-        const name = r.item_variations?.name ? `${r.items?.name || r.product_name} — ${r.item_variations.name}` : (r.items?.name || r.product_name || "Unknown");
+        const variationName = r.item_variations?.name || null;
+        const name = variationName ? `${r.items?.name || r.product_name} — ${variationName}` : (r.items?.name || r.product_name || "Unknown");
         const sku = r.item_variations?.sku || r.items?.sku || "—";
         const key = variationId ? `v:${variationId}` : itemId ? `i:${itemId}` : `n:${name}`;
-        const row = get(key, { key, itemId, variationId, name, sku });
+        const row = get(key, { key, itemId, variationId, variationName, name, sku });
         const qty = Number(r.quantity || 0);
         const unit = Number(r.posted_price || 0);
         const rev = unit * qty;
@@ -350,6 +351,7 @@ export default function BusinessInsightsPage() {
           amount: rev,
           itemId,
           variationId,
+          variationName,
           cost: fin?.cost,
           profit: fin?.profit,
           paymentStatus: r.payment_status === "paid" ? "paid" : "unpaid",
