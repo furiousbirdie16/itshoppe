@@ -172,6 +172,20 @@ export default function CustomersPage() {
     return Array.from(set).sort().map((v) => ({ value: v, label: v }));
   }, [enriched, countryFilter, provinceFilter]);
 
+  const tagOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customers) {
+      const tags = Array.isArray(c.tags) ? c.tags : [];
+      for (const t of tags) {
+        const clean = normalizeTag(t);
+        if (!clean) continue;
+        const k = tagKey(clean);
+        if (!map.has(k)) map.set(k, clean);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [customers]);
+
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
