@@ -690,7 +690,7 @@ export default function CustomersPage() {
                     {showCol("followUp") && (
                       <TableCell className="text-sm">
                         <div className="flex flex-col gap-0.5">
-                          <Badge variant="outline" className={cn("text-[10px] font-medium w-fit", fu.className)}>{fu.label}</Badge>
+                          <Badge variant="outline" className={cn("text-[10px] font-medium w-fit whitespace-nowrap", fu.className)}>{fu.label}</Badge>
                           {c.last_follow_up_at && (
                             <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
                           )}
