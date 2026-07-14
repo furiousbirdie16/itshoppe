@@ -1180,8 +1180,21 @@ export default function BusinessInsightsPage() {
                         {isOpen && (
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
                             <TableCell colSpan={isAdmin ? 10 : 5} className="p-0">
-                              <div className="px-4 py-3">
-                                <div className="text-xs font-semibold text-muted-foreground mb-2">
+                              <div className="px-4 py-3 space-y-3">
+                                {variations.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-muted-foreground mb-1.5">Sales by variation</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {variations.map((v) => (
+                                        <span key={v.variationId || "base"} className="inline-flex items-center gap-1 rounded border bg-background px-2 py-1 text-[11px]">
+                                          <span className="text-muted-foreground">{v.label}</span>
+                                          <span className="font-semibold tabular-nums">{v.qty}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="text-xs font-semibold text-muted-foreground">
                                   Sales history ({txns.length}){isAdmin ? " — with per-order gross profit" : ""}
                                 </div>
                                 <div className="rounded-md border bg-background overflow-x-auto">
