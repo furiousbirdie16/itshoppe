@@ -537,6 +537,17 @@ export default function CustomersPage() {
 
             <AddressSelector value={address} onChange={setAddress} />
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Tags</Label>
+              <TagsInput
+                value={form.tags}
+                onChange={(tags) => setForm({ ...form, tags })}
+                suggestions={tagOptions}
+                placeholder="Add tag (e.g. VIP, Cat6, Reseller)"
+              />
+              <p className="text-[10px] text-muted-foreground">Tags are reusable across customers. Case and extra spaces are normalized automatically.</p>
+            </div>
+
             <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">
               {editing ? "Update" : "Create Customer"}
             </Button>
