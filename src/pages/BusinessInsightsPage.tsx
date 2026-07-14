@@ -739,6 +739,24 @@ export default function BusinessInsightsPage() {
     return m;
   }, [aggregated]);
 
+  // Per-item variation breakdown: itemId -> [{ label, qty, variationId }]
+  // Sales quantities must NEVER be summed across variations with different units.
+  const perItemVariations = useMemo(() => {
+    const m = new Map<string, { variationId: string | null; label: string; qty: number }[]>();
+    for (const r of aggregated) {
+      if (!r.itemId) continue;
+      const arr = m.get(r.itemId) || [];
+      const label = r.variationName || "Base unit";
+      const existing = arr.find((v) => (v.variationId || null) === (r.variationId || null));
+      if (existing) existing.qty += r.qtyTotal;
+      else arr.push({ variationId: r.variationId, label, qty: r.qtyTotal });
+      m.set(r.itemId, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => b.qty - a.qty);
+    return m;
+  }, [aggregated]);
+
+
   const productSearch = search.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
     let list = productMetrics;
