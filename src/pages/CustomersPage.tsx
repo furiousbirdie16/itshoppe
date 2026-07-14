@@ -209,6 +209,11 @@ export default function CustomersPage() {
     if (countryFilter !== "all" && customer.country !== countryFilter) return false;
     if (provinceFilter !== "all" && customer.province_state !== provinceFilter) return false;
     if (cityFilter !== "all" && customer.city_municipality !== cityFilter) return false;
+    if (tagFilter.length > 0) {
+      const custTagKeys = new Set((customer.tags || []).map((t) => tagKey(t)));
+      const hasAll = tagFilter.every((t) => custTagKeys.has(tagKey(t)));
+      if (!hasAll) return false;
+    }
     return true;
   });
 
