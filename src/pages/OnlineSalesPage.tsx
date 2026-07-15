@@ -116,6 +116,36 @@ const resolveBulkColumns = (rows: BulkCell[][]) => {
   return null;
 };
 
+function CostCell({ saleId, current, onSave }: { saleId: string; current: number | null; onSave: (id: string, n: number) => Promise<void> }) {
+  const [val, setVal] = useState<string>(current == null ? "" : String(current));
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setVal(current == null ? "" : String(current)); }, [current, saleId]);
+  const commit = async () => {
+    const n = parseFloat(val);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a cost of 0 or more"); setVal(current == null ? "" : String(current)); return; }
+    if (current != null && Math.abs(n - Number(current)) < 0.0001) return;
+    setBusy(true);
+    try { await onSave(saleId, n); toast.success("Cost updated"); }
+    catch (e: any) { toast.error(e.message || "Failed"); setVal(current == null ? "" : String(current)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Input
+      type="number"
+      inputMode="decimal"
+      step="0.01"
+      value={val}
+      disabled={busy}
+      placeholder="—"
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className="h-7 text-xs text-right tabular-nums w-24 ml-auto"
+    />
+  );
+}
+
+
 export default function OnlineSalesPage() {
   const qc = useQueryClient();
   const { role } = useAuth();
