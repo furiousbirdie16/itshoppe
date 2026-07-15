@@ -942,6 +942,24 @@ export default function OnlineSalesPage() {
               "Total Selling": (r: any) => Number(r.posted_price || 0) * Number(r.quantity || 1),
               "Amount Paid": (r: any) => r.amount_paid || 0,
               "Fees": (r: any) => r.payment_status === 'paid' ? (Number(r.posted_price || 0) * Number(r.quantity || 1)) - Number(r.amount_paid || 0) : 0,
+              ...(isAdmin ? {
+                "Unit Cost": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost ? Number(f.cost_snapshot || 0) : "";
+                },
+                "Total Cost": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost ? Number(f.line_total_cost || 0) : "";
+                },
+                "Gross Profit": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost && f.is_paid ? Number(f.line_profit || 0) : "";
+                },
+                "Margin %": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost && f.is_paid ? Number(f.gross_margin || 0) : "";
+                },
+              } : {}),
               "Payment Status": (r: any) => r.payment_status || 'unpaid',
               "Paid At": (r: any) => r.paid_at || "",
               "Status": (r: any) => r.status || 'completed',
