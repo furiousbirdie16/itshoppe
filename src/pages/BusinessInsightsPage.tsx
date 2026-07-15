@@ -462,7 +462,8 @@ export default function BusinessInsightsPage() {
     [aggregated],
   );
 
-  // Customer analytics: separate online vs invoice
+  // Customer analytics: separate online vs invoice.
+  // Revenue excludes unpaid orders so it matches the totals shown elsewhere.
   const customerStats = useMemo(() => {
     // Online: group by sales_channel as "customer proxy" (no real customer on online)
     const onlineChannels = new Map<string, { revenue: number; orders: Set<string> }>();
@@ -470,8 +471,9 @@ export default function BusinessInsightsPage() {
       const channel = String(r.sales_channel || "others");
       const orderNum = String(r.order_number || r.id);
       const rev = Number(r.posted_price || 0) * Number(r.quantity || 0);
+      const isPaid = r.payment_status === "paid";
       const e = onlineChannels.get(channel) || { revenue: 0, orders: new Set() };
-      e.revenue += rev;
+      if (isPaid) e.revenue += rev;
       e.orders.add(orderNum);
       onlineChannels.set(channel, e);
     }
@@ -479,7 +481,9 @@ export default function BusinessInsightsPage() {
     let onlineRevenue = 0;
     for (const r of onlineRows as any[]) {
       onlineUniqueOrders.add(String(r.order_number || r.id));
-      onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+      if (r.payment_status === "paid") {
+        onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+      }
     }
 
     // Invoice: group by customer
@@ -490,12 +494,14 @@ export default function BusinessInsightsPage() {
       const custId = inv.customer_id || `walkin:${inv.id}`;
       const name = inv.customers?.name || "Walk-in";
       const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
-      invoiceRevenue += rev;
+      const isPaid = inv.status === "paid" || inv.status === "completed";
+      if (isPaid) invoiceRevenue += rev;
       const e = invoiceCustomers.get(custId) || { name, revenue: 0, orders: new Set() };
-      e.revenue += rev;
+      if (isPaid) e.revenue += rev;
       e.orders.add(inv.id);
       invoiceCustomers.set(custId, e);
     }
+
 
     const onlineCustomerCount = onlineChannels.size;
     const invoiceCustomerCount = invoiceCustomers.size;
