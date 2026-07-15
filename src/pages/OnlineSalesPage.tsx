@@ -1315,6 +1315,14 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm tabular-nums font-semibold">{allPaid ? peso(totalPaid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{allPaid ? <span className={groupFees > 0 ? "text-amber-600" : groupFees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(groupFees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                         {isAdmin && (
+                          <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                            {(() => {
+                              const totalCost = groupFin.reduce((sum, f) => sum + (f && f.has_cost ? Number(f.line_total_cost || 0) : 0), 0);
+                              return groupHasAnyCost ? peso(totalCost) : "—";
+                            })()}
+                          </TableCell>
+                        )}
+                        {isAdmin && (
                           <TableCell className="text-right text-sm tabular-nums font-semibold">
                             {allPaid ? (
                               !groupHasAnyCost
