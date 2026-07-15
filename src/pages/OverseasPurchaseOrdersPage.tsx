@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
-import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
+
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -564,7 +564,7 @@ export default function OverseasPurchaseOrdersPage() {
       <Tabs defaultValue="orders" className="space-y-6">
         <TabsList>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
-          {isAdmin && <TabsTrigger value="shipments">Shipment Tracking</TabsTrigger>}
+          <TabsTrigger value="incoming">Incoming Stock</TabsTrigger>
         </TabsList>
         <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
@@ -1190,6 +1190,9 @@ export default function OverseasPurchaseOrdersPage() {
         </Table>
       </div>
 
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+        </TabsContent>
+        <TabsContent value="incoming" className="mt-0">
       <section className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1323,11 +1326,6 @@ export default function OverseasPurchaseOrdersPage() {
           </Table>
         </div>
       </section>
-
-      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
-        </TabsContent>
-        <TabsContent value="shipments" className="mt-0">
-          <ShipmentTrackingPage />
         </TabsContent>
       </Tabs>
     </div>
