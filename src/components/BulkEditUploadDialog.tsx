@@ -19,7 +19,7 @@ interface BulkEditUploadDialogProps {
 }
 
 type ItemField = "name" | "sku" | "description" | "warehouse_quantity" | "store_quantity" | "cost_price" | "cost_price_rmb" | "selling_price" | "low_stock_threshold" | "source";
-type VarField = "name" | "sku" | "type" | "factor" | "selling_price";
+type VarField = "name" | "sku" | "type" | "factor" | "selling_price" | "cost_price";
 
 interface DiffRow {
   kind: "item" | "variation";
@@ -54,6 +54,7 @@ const VAR_HEADER_MAP: Record<string, VarField> = {
   "variation type": "type", "type": "type",
   "factor": "factor", "pieces per pack": "factor", "meters per cut": "factor",
   "variation selling price": "selling_price", "selling price": "selling_price", "price": "selling_price",
+  "variation cost price": "cost_price", "variation cost": "cost_price", "cost price": "cost_price", "cost": "cost_price", "cost_price": "cost_price",
 };
 
 const normalize = (v: unknown) => String(v ?? "").trim().toLowerCase();
@@ -115,6 +116,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         "Variation Type": v.type,
         "Factor": Number(v.factor),
         "Variation Selling Price": Number(v.selling_price),
+        ...(isAdmin ? { "Variation Cost Price": v.cost_price === null || v.cost_price === undefined ? "" : Number(v.cost_price) } : {}),
         "Parent Warehouse Qty": (parent as any)?.warehouse_quantity ?? 0,
         "Parent Store Qty": (parent as any)?.store_quantity ?? 0,
         "Total Available (parent)": parent?.quantity ?? 0,
@@ -288,6 +290,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
               const patch: Record<string, unknown> = {};
 
               for (const [col, field] of Object.entries(colToField)) {
+                if (!isAdmin && field === "cost_price") continue;
                 const raw = row[col];
                 const oldVal = (existing as any)[field];
                 if (field === "factor" || field === "selling_price") {
@@ -296,6 +299,15 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
                   if (Number(newNum) !== Number(oldVal)) {
                     changes.push({ field, from: oldVal, to: newNum });
                     patch[field] = newNum;
+                  }
+                } else if (field === "cost_price") {
+                  const isBlank = raw === "" || raw === null || raw === undefined;
+                  const newVal = isBlank ? null : numOrNull(raw);
+                  if (!isBlank && newVal === null) continue;
+                  const oldNum = oldVal === null || oldVal === undefined ? null : Number(oldVal);
+                  if (newVal !== oldNum) {
+                    changes.push({ field, from: oldVal, to: newVal });
+                    patch[field] = newVal;
                   }
                 } else if (field === "type") {
                   const v = normalize(raw);
