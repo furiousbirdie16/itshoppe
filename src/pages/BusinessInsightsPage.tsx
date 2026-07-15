@@ -388,9 +388,13 @@ export default function BusinessInsightsPage() {
         const qty = Number(r.quantity || 0);
         const unit = Number(r.unit_price || 0);
         const rev = unit * qty;
+        const invStatus = r._invoice?.status;
+        const isPaid = invStatus === "paid" || invStatus === "completed";
         row.qtyInvoice += qty;
-        row.revenueInvoice += rev;
+        // Only paid/completed invoices contribute to revenue totals.
+        if (isPaid) row.revenueInvoice += rev;
         row.orders += 1;
+
         const inv = r._invoice || {};
         const fin = financialsMap.get(`${r.invoice_id}|${itemId || ""}|${variationId || ""}`);
         row.txns.push({
