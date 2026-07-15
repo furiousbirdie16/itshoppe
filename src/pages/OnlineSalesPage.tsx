@@ -1075,6 +1075,15 @@ export default function OnlineSalesPage() {
             <Label className="text-xs font-medium">Fees Max</Label>
             <Input type="number" value={filterFeesMax} onChange={e => setFilterFeesMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
           </div>
+          {isAdmin && (
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Cost</Label>
+              <label className="flex items-center gap-2 h-9 sm:h-8 text-xs cursor-pointer">
+                <Checkbox checked={filterNoCost} onCheckedChange={(v) => setFilterNoCost(!!v)} />
+                <span>No cost only</span>
+              </label>
+            </div>
+          )}
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
         </div>
       )}
