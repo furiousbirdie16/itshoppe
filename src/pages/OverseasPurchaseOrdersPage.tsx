@@ -1190,6 +1190,9 @@ export default function OverseasPurchaseOrdersPage() {
         </Table>
       </div>
 
+      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+        </TabsContent>
+        <TabsContent value="incoming" className="mt-0">
       <section className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1323,11 +1326,6 @@ export default function OverseasPurchaseOrdersPage() {
           </Table>
         </div>
       </section>
-
-      <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
-        </TabsContent>
-        <TabsContent value="shipments" className="mt-0">
-          <ShipmentTrackingPage />
         </TabsContent>
       </Tabs>
     </div>
