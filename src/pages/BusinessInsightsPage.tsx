@@ -410,8 +410,10 @@ export default function BusinessInsightsPage() {
           itemId,
           variationId,
           variationName,
-          cost: fin?.cost,
-          profit: fin?.profit,
+          cost: isPaid ? fin?.cost : undefined,
+          profit: isPaid ? fin?.profit : undefined,
+          paymentStatus: isPaid ? "paid" : "unpaid",
+
         });
       }
     }
