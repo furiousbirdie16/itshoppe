@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems, getItemVariations } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
@@ -22,6 +22,8 @@ import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
+import { supabase } from "@/integrations/supabase/client";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -114,6 +116,36 @@ const resolveBulkColumns = (rows: BulkCell[][]) => {
   return null;
 };
 
+function CostCell({ saleId, current, onSave }: { saleId: string; current: number | null; onSave: (id: string, n: number) => Promise<void> }) {
+  const [val, setVal] = useState<string>(current == null ? "" : String(current));
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setVal(current == null ? "" : String(current)); }, [current, saleId]);
+  const commit = async () => {
+    const n = parseFloat(val);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a cost of 0 or more"); setVal(current == null ? "" : String(current)); return; }
+    if (current != null && Math.abs(n - Number(current)) < 0.0001) return;
+    setBusy(true);
+    try { await onSave(saleId, n); toast.success("Cost updated"); }
+    catch (e: any) { toast.error(e.message || "Failed"); setVal(current == null ? "" : String(current)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Input
+      type="number"
+      inputMode="decimal"
+      step="0.01"
+      value={val}
+      disabled={busy}
+      placeholder="—"
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className="h-7 text-xs text-right tabular-nums w-24 ml-auto"
+    />
+  );
+}
+
+
 export default function OnlineSalesPage() {
   const qc = useQueryClient();
   const { role } = useAuth();
@@ -181,12 +213,18 @@ export default function OnlineSalesPage() {
   const [filterFeesMax, setFilterFeesMax] = useState("");
   const [filterQtyMin, setFilterQtyMin] = useState("");
   const [filterQtyMax, setFilterQtyMax] = useState("");
+  const [filterNoCost, setFilterNoCost] = useState(false);
   const clearFilters = () => {
     setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all");
     setFilterPayment("all"); setFilterPriceMin(""); setFilterPriceMax("");
     setFilterPaidMin(""); setFilterPaidMax(""); setFilterFeesMin(""); setFilterFeesMax("");
-    setFilterQtyMin(""); setFilterQtyMax(""); setFilter("");
+    setFilterQtyMin(""); setFilterQtyMax(""); setFilter(""); setFilterNoCost(false);
   };
+
+  // Admin: bulk-set-cost dialog
+  const [bulkCostOpen, setBulkCostOpen] = useState(false);
+  const [bulkCostValue, setBulkCostValue] = useState("");
+  const [bulkCostBusy, setBulkCostBusy] = useState(false);
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -375,6 +413,10 @@ export default function OnlineSalesPage() {
     if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
     if (filterStatus !== "all" && status !== filterStatus) return false;
     if (filterPayment !== "all" && (s.payment_status || 'unpaid') !== filterPayment) return false;
+    if (filterNoCost) {
+      const f = finBySaleId.get(s.id);
+      if (f && f.has_cost) return false;
+    }
     return true;
   });
 
@@ -681,6 +723,38 @@ export default function OnlineSalesPage() {
     } catch (e: any) { toast.error(e.message || "Failed"); }
   };
 
+  // ── Admin cost management ────────────────────────────────────────────
+  const invalidateFinancials = () => {
+    qc.invalidateQueries({ queryKey: ["online_sales", "financials"] });
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+  };
+  const saveCost = async (id: string, cost: number) => {
+    const { error } = await (supabase as any).rpc("set_online_sale_cost", { _online_sale_id: id, _new_cost: cost });
+    if (error) throw error;
+  };
+  const submitBulkCost = async () => {
+    if (!isAdmin) return;
+    const n = parseFloat(bulkCostValue);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a cost of 0 or more"); return; }
+    const ids = Array.from(selected);
+    if (ids.length === 0) { toast.error("No sales selected"); return; }
+    setBulkCostBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc("bulk_set_online_sale_cost", { _ids: ids, _new_cost: n });
+      if (error) throw error;
+      toast.success(`Cost set on ${ids.length} sale${ids.length === 1 ? "" : "s"}`);
+      setBulkCostOpen(false);
+      setBulkCostValue("");
+      setSelected(new Set());
+      invalidateFinancials();
+    } catch (e: any) {
+      toast.error(e.message || "Failed");
+    } finally {
+      setBulkCostBusy(false);
+    }
+  };
+
+
   // ── Bulk payment upload ─────────────────────────────────────────────
   const handleBulkPayFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -864,6 +938,11 @@ export default function OnlineSalesPage() {
               <Button variant="outline" size="sm" onClick={handleBulkMarkPaid} disabled={bulkStatusBusy}>
                 <CircleDollarSign className="h-4 w-4 mr-1" /> Mark Paid
               </Button>
+              {isAdmin && (
+                <Button variant="outline" size="sm" onClick={() => { setBulkCostValue(""); setBulkCostOpen(true); }}>
+                  <Coins className="h-4 w-4 mr-1" /> Set Cost
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => handleBulkStatus('returned')} disabled={bulkStatusBusy}>
                 <Undo2 className="h-4 w-4 mr-1" /> Return
               </Button>
@@ -893,6 +972,24 @@ export default function OnlineSalesPage() {
               "Total Selling": (r: any) => Number(r.posted_price || 0) * Number(r.quantity || 1),
               "Amount Paid": (r: any) => r.amount_paid || 0,
               "Fees": (r: any) => r.payment_status === 'paid' ? (Number(r.posted_price || 0) * Number(r.quantity || 1)) - Number(r.amount_paid || 0) : 0,
+              ...(isAdmin ? {
+                "Unit Cost": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost ? Number(f.cost_snapshot || 0) : "";
+                },
+                "Total Cost": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost ? Number(f.line_total_cost || 0) : "";
+                },
+                "Gross Profit": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost && f.is_paid ? Number(f.line_profit || 0) : "";
+                },
+                "Margin %": (r: any) => {
+                  const f = finBySaleId.get(r.id);
+                  return f && f.has_cost && f.is_paid ? Number(f.gross_margin || 0) : "";
+                },
+              } : {}),
               "Payment Status": (r: any) => r.payment_status || 'unpaid',
               "Paid At": (r: any) => r.paid_at || "",
               "Status": (r: any) => r.status || 'completed',
@@ -1008,6 +1105,15 @@ export default function OnlineSalesPage() {
             <Label className="text-xs font-medium">Fees Max</Label>
             <Input type="number" value={filterFeesMax} onChange={e => setFilterFeesMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
           </div>
+          {isAdmin && (
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Cost</Label>
+              <label className="flex items-center gap-2 h-9 sm:h-8 text-xs cursor-pointer">
+                <Checkbox checked={filterNoCost} onCheckedChange={(v) => setFilterNoCost(!!v)} />
+                <span>No cost only</span>
+              </label>
+            </div>
+          )}
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
         </div>
       )}
@@ -1067,7 +1173,7 @@ export default function OnlineSalesPage() {
 
 
         <TabsContent value="completed">
-          <div className="border rounded-lg overflow-hidden">
+          <HorizontalScrollSync className="border rounded-lg">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1082,6 +1188,7 @@ export default function OnlineSalesPage() {
                   <SortableHeader sortKey="posted_price" label="Total Sales" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="amount_paid" label="Amount Paid" sort={sort} onToggle={toggle} align="right" />
                   <SortableHeader sortKey="fees" label="Fees" sort={sort} onToggle={toggle} align="right" />
+                  {isAdmin && <TableHead className="text-right">Cost</TableHead>}
                   {isAdmin && <TableHead className="text-right">Gross Profit</TableHead>}
                   <SortableHeader sortKey="payment_status" label="Payment" sort={sort} onToggle={toggle} />
                   <TableHead className="w-32"></TableHead>
@@ -1089,9 +1196,10 @@ export default function OnlineSalesPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 12 : 11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 13 : 11} className="text-center text-muted-foreground py-8">Loading...</TableCell></TableRow>
                 ) : totalGroups === 0 ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 12 : 11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 13 : 11} className="text-center text-muted-foreground py-8">No sales records found</TableCell></TableRow>
+
                 ) : pagedGroups.flatMap((group) => {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
@@ -1113,6 +1221,11 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm">{peso(Number(s.posted_price || 0) * Number(s.quantity || 1))}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right">
+                            <CostCell saleId={s.id} current={finBySaleId.get(s.id)?.has_cost ? Number(finBySaleId.get(s.id)?.cost_snapshot || 0) : null} onSave={async (id, n) => { await saveCost(id, n); invalidateFinancials(); }} />
+                          </TableCell>
+                        )}
                         {isAdmin && (
                           <TableCell className="text-right text-sm tabular-nums">
                             {isPaid ? (() => {
@@ -1202,6 +1315,14 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm tabular-nums font-semibold">{allPaid ? peso(totalPaid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{allPaid ? <span className={groupFees > 0 ? "text-amber-600" : groupFees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(groupFees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                         {isAdmin && (
+                          <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                            {(() => {
+                              const totalCost = groupFin.reduce((sum, f) => sum + (f && f.has_cost ? Number(f.line_total_cost || 0) : 0), 0);
+                              return groupHasAnyCost ? peso(totalCost) : "—";
+                            })()}
+                          </TableCell>
+                        )}
+                        {isAdmin && (
                           <TableCell className="text-right text-sm tabular-nums font-semibold">
                             {allPaid ? (
                               !groupHasAnyCost
@@ -1262,6 +1383,11 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                         {isAdmin && (
+                          <TableCell className="text-right">
+                            <CostCell saleId={s.id} current={finBySaleId.get(s.id)?.has_cost ? Number(finBySaleId.get(s.id)?.cost_snapshot || 0) : null} onSave={async (id, n) => { await saveCost(id, n); invalidateFinancials(); }} />
+                          </TableCell>
+                        )}
+                        {isAdmin && (
                           <TableCell className="text-right text-sm tabular-nums">
                             {isPaid ? (() => {
                               const f = finBySaleId.get(s.id);
@@ -1296,7 +1422,7 @@ export default function OnlineSalesPage() {
                 })}
               </TableBody>
             </Table>
-          </div>
+          </HorizontalScrollSync>
         </TabsContent>
 
         <TabsContent value="returns">
@@ -1691,6 +1817,23 @@ export default function OnlineSalesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {isAdmin && (
+        <Dialog open={bulkCostOpen} onOpenChange={(v) => { setBulkCostOpen(v); if (!v) setBulkCostValue(""); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Set cost for {selected.size} sale{selected.size === 1 ? "" : "s"}</DialogTitle></DialogHeader>
+            <div className="space-y-2">
+              <Label>Unit cost (₱)</Label>
+              <Input type="number" step="0.01" min="0" value={bulkCostValue} onChange={(e) => setBulkCostValue(e.target.value)} placeholder="0.00" autoFocus />
+              <p className="text-xs text-muted-foreground">Applies to every selected online sale. Gross profit and margin recalculate automatically.</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkCostOpen(false)} disabled={bulkCostBusy}>Cancel</Button>
+              <Button onClick={submitBulkCost} disabled={bulkCostBusy}>{bulkCostBusy ? "Saving..." : "Apply"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
