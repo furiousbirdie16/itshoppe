@@ -290,6 +290,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
               const patch: Record<string, unknown> = {};
 
               for (const [col, field] of Object.entries(colToField)) {
+                if (!isAdmin && field === "cost_price") continue;
                 const raw = row[col];
                 const oldVal = (existing as any)[field];
                 if (field === "factor" || field === "selling_price") {
@@ -298,6 +299,15 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
                   if (Number(newNum) !== Number(oldVal)) {
                     changes.push({ field, from: oldVal, to: newNum });
                     patch[field] = newNum;
+                  }
+                } else if (field === "cost_price") {
+                  const isBlank = raw === "" || raw === null || raw === undefined;
+                  const newVal = isBlank ? null : numOrNull(raw);
+                  if (!isBlank && newVal === null) continue;
+                  const oldNum = oldVal === null || oldVal === undefined ? null : Number(oldVal);
+                  if (newVal !== oldNum) {
+                    changes.push({ field, from: oldVal, to: newVal });
+                    patch[field] = newVal;
                   }
                 } else if (field === "type") {
                   const v = normalize(raw);
