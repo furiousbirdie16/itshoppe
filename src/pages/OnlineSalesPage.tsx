@@ -1817,6 +1817,23 @@ export default function OnlineSalesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {isAdmin && (
+        <Dialog open={bulkCostOpen} onOpenChange={(v) => { setBulkCostOpen(v); if (!v) setBulkCostValue(""); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Set cost for {selected.size} sale{selected.size === 1 ? "" : "s"}</DialogTitle></DialogHeader>
+            <div className="space-y-2">
+              <Label>Unit cost (₱)</Label>
+              <Input type="number" step="0.01" min="0" value={bulkCostValue} onChange={(e) => setBulkCostValue(e.target.value)} placeholder="0.00" autoFocus />
+              <p className="text-xs text-muted-foreground">Applies to every selected online sale. Gross profit and margin recalculate automatically.</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkCostOpen(false)} disabled={bulkCostBusy}>Cancel</Button>
+              <Button onClick={submitBulkCost} disabled={bulkCostBusy}>{bulkCostBusy ? "Saving..." : "Apply"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
