@@ -1222,6 +1222,11 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? peso(paid) : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{isPaid ? <span className={fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{peso(fees)}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                         {isAdmin && (
+                          <TableCell className="text-right">
+                            <CostCell saleId={s.id} current={finBySaleId.get(s.id)?.has_cost ? Number(finBySaleId.get(s.id)?.cost_snapshot || 0) : null} onSave={async (id, n) => { await saveCost(id, n); invalidateFinancials(); }} />
+                          </TableCell>
+                        )}
+                        {isAdmin && (
                           <TableCell className="text-right text-sm tabular-nums">
                             {isPaid ? (() => {
                               const f = finBySaleId.get(s.id);
