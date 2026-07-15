@@ -116,6 +116,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         "Variation Type": v.type,
         "Factor": Number(v.factor),
         "Variation Selling Price": Number(v.selling_price),
+        ...(isAdmin ? { "Variation Cost Price": v.cost_price === null || v.cost_price === undefined ? "" : Number(v.cost_price) } : {}),
         "Parent Warehouse Qty": (parent as any)?.warehouse_quantity ?? 0,
         "Parent Store Qty": (parent as any)?.store_quantity ?? 0,
         "Total Available (parent)": parent?.quantity ?? 0,
