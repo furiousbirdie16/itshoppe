@@ -348,9 +348,12 @@ export default function BusinessInsightsPage() {
         const qty = Number(r.quantity || 0);
         const unit = Number(r.posted_price || 0);
         const rev = unit * qty;
+        const isPaid = r.payment_status === "paid";
         row.qtyOnline += qty;
-        row.revenueOnline += rev;
+        // Only paid online sales contribute to revenue totals.
+        if (isPaid) row.revenueOnline += rev;
         row.orders += 1;
+
         const channel = String(r.sales_channel || "online");
         const fin = onlineFinMap.get(r.id);
         row.txns.push({
