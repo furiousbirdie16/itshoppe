@@ -289,12 +289,24 @@ export default function BusinessInsightsPage() {
     },
   });
 
+  // Set of paid invoice IDs — profit/cost/revenue only count for these.
+  // "Paid" = invoice status is "paid" or "completed".
+  const paidInvoiceIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of invoiceRows as any[]) {
+      const st = r._invoice?.status;
+      if (st === "paid" || st === "completed") s.add(r.invoice_id);
+    }
+    return s;
+  }, [invoiceRows]);
+
   // Financials lookup by invoice_id|item_id|variation_id (admin only).
-  // Lines with NULL cost_snapshot (variation has no cost assigned) are counted
-  // separately so we can warn admins and exclude them from profit rollups.
+  // Only sums lines from PAID invoices — matches the revenue rule so that
+  // revenue - cost = gross profit stays consistent.
   const financialsMap = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
     for (const f of financialsRows as any[]) {
+      if (!paidInvoiceIds.has(f.invoice_id)) continue;
       const key = `${f.invoice_id}|${f.item_id || ""}|${f.variation_id || ""}`;
       const e = m.get(key) || { cost: 0, profit: 0, hasCost: false };
       if (f.cost_snapshot != null) {
@@ -305,12 +317,13 @@ export default function BusinessInsightsPage() {
       m.set(key, e);
     }
     return m;
-  }, [financialsRows]);
+  }, [financialsRows, paidInvoiceIds]);
 
-  // Count of invoice lines excluded from profit calcs due to missing variation cost.
+  // Count of PAID invoice lines excluded from profit calcs due to missing variation cost.
   const missingCostCount = useMemo(() => {
-    return (financialsRows as any[]).filter(f => f.cost_snapshot == null).length;
-  }, [financialsRows]);
+    return (financialsRows as any[]).filter(f => f.cost_snapshot == null && paidInvoiceIds.has(f.invoice_id)).length;
+  }, [financialsRows, paidInvoiceIds]);
+
 
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
@@ -335,9 +348,12 @@ export default function BusinessInsightsPage() {
         const qty = Number(r.quantity || 0);
         const unit = Number(r.posted_price || 0);
         const rev = unit * qty;
+        const isPaid = r.payment_status === "paid";
         row.qtyOnline += qty;
-        row.revenueOnline += rev;
+        // Only paid online sales contribute to revenue totals.
+        if (isPaid) row.revenueOnline += rev;
         row.orders += 1;
+
         const channel = String(r.sales_channel || "online");
         const fin = onlineFinMap.get(r.id);
         row.txns.push({
@@ -372,9 +388,13 @@ export default function BusinessInsightsPage() {
         const qty = Number(r.quantity || 0);
         const unit = Number(r.unit_price || 0);
         const rev = unit * qty;
+        const invStatus = r._invoice?.status;
+        const isPaid = invStatus === "paid" || invStatus === "completed";
         row.qtyInvoice += qty;
-        row.revenueInvoice += rev;
+        // Only paid/completed invoices contribute to revenue totals.
+        if (isPaid) row.revenueInvoice += rev;
         row.orders += 1;
+
         const inv = r._invoice || {};
         const fin = financialsMap.get(`${r.invoice_id}|${itemId || ""}|${variationId || ""}`);
         row.txns.push({
@@ -390,8 +410,10 @@ export default function BusinessInsightsPage() {
           itemId,
           variationId,
           variationName,
-          cost: fin?.cost,
-          profit: fin?.profit,
+          cost: isPaid ? fin?.cost : undefined,
+          profit: isPaid ? fin?.profit : undefined,
+          paymentStatus: isPaid ? "paid" : "unpaid",
+
         });
       }
     }
@@ -440,7 +462,8 @@ export default function BusinessInsightsPage() {
     [aggregated],
   );
 
-  // Customer analytics: separate online vs invoice
+  // Customer analytics: separate online vs invoice.
+  // Revenue excludes unpaid orders so it matches the totals shown elsewhere.
   const customerStats = useMemo(() => {
     // Online: group by sales_channel as "customer proxy" (no real customer on online)
     const onlineChannels = new Map<string, { revenue: number; orders: Set<string> }>();
@@ -448,8 +471,9 @@ export default function BusinessInsightsPage() {
       const channel = String(r.sales_channel || "others");
       const orderNum = String(r.order_number || r.id);
       const rev = Number(r.posted_price || 0) * Number(r.quantity || 0);
+      const isPaid = r.payment_status === "paid";
       const e = onlineChannels.get(channel) || { revenue: 0, orders: new Set() };
-      e.revenue += rev;
+      if (isPaid) e.revenue += rev;
       e.orders.add(orderNum);
       onlineChannels.set(channel, e);
     }
@@ -457,7 +481,9 @@ export default function BusinessInsightsPage() {
     let onlineRevenue = 0;
     for (const r of onlineRows as any[]) {
       onlineUniqueOrders.add(String(r.order_number || r.id));
-      onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+      if (r.payment_status === "paid") {
+        onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+      }
     }
 
     // Invoice: group by customer
@@ -468,12 +494,14 @@ export default function BusinessInsightsPage() {
       const custId = inv.customer_id || `walkin:${inv.id}`;
       const name = inv.customers?.name || "Walk-in";
       const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
-      invoiceRevenue += rev;
+      const isPaid = inv.status === "paid" || inv.status === "completed";
+      if (isPaid) invoiceRevenue += rev;
       const e = invoiceCustomers.get(custId) || { name, revenue: 0, orders: new Set() };
-      e.revenue += rev;
+      if (isPaid) e.revenue += rev;
       e.orders.add(inv.id);
       invoiceCustomers.set(custId, e);
     }
+
 
     const onlineCustomerCount = onlineChannels.size;
     const invoiceCustomerCount = invoiceCustomers.size;
@@ -562,11 +590,13 @@ export default function BusinessInsightsPage() {
     return m;
   }, [aggregated]);
 
-  // Per-item gross profit (from cost snapshots). Includes invoices + paid online sales.
+  // Per-item gross profit (from cost snapshots). Only PAID invoices + PAID online sales
+  // so revenue - cost = gross profit stays consistent with the totals shown.
   const perItemProfit = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number }>();
     for (const f of financialsRows as any[]) {
       if (!f.item_id) continue;
+      if (!paidInvoiceIds.has(f.invoice_id)) continue;
       const e = m.get(f.item_id) || { cost: 0, profit: 0 };
       e.cost += Number(f.line_total_cost || 0);
       e.profit += Number(f.line_profit || 0);
@@ -583,7 +613,9 @@ export default function BusinessInsightsPage() {
       m.set(r.item_id, e);
     }
     return m;
-  }, [financialsRows, onlineRows, onlineFinMap]);
+  }, [financialsRows, onlineRows, onlineFinMap, paidInvoiceIds]);
+
+
 
 
   // Enhanced product metrics — one row per parent item
@@ -1231,10 +1263,11 @@ export default function BusinessInsightsPage() {
                                           <td className="px-3 py-1.5 text-muted-foreground">{t.variationName || <span className="text-muted-foreground/60">—</span>}</td>
                                           <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}
-                                          {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.amount)}</td>}
-                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground" title={t.source === "online" && t.paymentStatus === "unpaid" ? "Gross profit will be calculated once the sale is marked as Paid." : undefined}>{t.cost != null ? money(t.cost) : (t.source === "online" && t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
-                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : t.profit != null ? "text-red-600" : "text-muted-foreground")} title={t.source === "online" && t.paymentStatus === "unpaid" ? "Gross profit will be calculated once the sale is marked as Paid." : undefined}>{t.profit != null ? money(t.profit) : (t.source === "online" && t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
+                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.paymentStatus === "unpaid" && "text-muted-foreground italic")} title={t.paymentStatus === "unpaid" ? "Excluded from revenue totals until marked Paid." : undefined}>{t.paymentStatus === "unpaid" ? <span className="text-amber-600">{money(t.amount)}*</span> : money(t.amount)}</td>}
+                                          {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground" title={t.paymentStatus === "unpaid" ? "Cost is recognized once the order is marked as Paid." : undefined}>{t.cost != null ? money(t.cost) : (t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
+                                          {isAdmin && <td className={cn("px-3 py-1.5 text-right", t.profit != null && t.profit >= 0 ? "text-green-600" : t.profit != null ? "text-red-600" : "text-muted-foreground")} title={t.paymentStatus === "unpaid" ? "Gross profit is recognized once the order is marked as Paid." : undefined}>{t.profit != null ? money(t.profit) : (t.paymentStatus === "unpaid" ? <span className="italic text-amber-600">Pending payment</span> : "—")}</td>}
                                         </tr>
+
                                       ))}
                                     </tbody>
                                   </table>
