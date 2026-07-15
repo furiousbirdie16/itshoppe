@@ -1684,6 +1684,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      bulk_set_online_sale_cost: {
+        Args: { _ids: string[]; _new_cost: number }
+        Returns: number
+      }
       generate_asset_snapshot: {
         Args: never
         Returns: {
@@ -1737,6 +1741,10 @@ export type Database = {
       set_item_cost_manual: {
         Args: { _item_id: string; _new_cost: number; _reason: string }
         Returns: string
+      }
+      set_online_sale_cost: {
+        Args: { _new_cost: number; _online_sale_id: string }
+        Returns: undefined
       }
     }
     Enums: {
