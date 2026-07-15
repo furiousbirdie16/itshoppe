@@ -383,6 +383,10 @@ export default function OnlineSalesPage() {
     if (filterChannel !== "all" && s.sales_channel !== filterChannel) return false;
     if (filterStatus !== "all" && status !== filterStatus) return false;
     if (filterPayment !== "all" && (s.payment_status || 'unpaid') !== filterPayment) return false;
+    if (filterNoCost) {
+      const f = finBySaleId.get(s.id);
+      if (f && f.has_cost) return false;
+    }
     return true;
   });
 
