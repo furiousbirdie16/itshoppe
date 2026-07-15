@@ -1173,7 +1173,7 @@ export default function OnlineSalesPage() {
 
 
         <TabsContent value="completed">
-          <div className="border rounded-lg overflow-hidden">
+          <HorizontalScrollSync className="border rounded-lg">
             <Table>
               <TableHeader>
                 <TableRow>
