@@ -986,9 +986,10 @@ export default function InvoicesPage() {
                       <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
                       {isAdmin && (
                         <TableCell className="text-sm text-right text-muted-foreground">
-                          {fin && fin.cost_snapshot != null ? peso(Number(fin.cost_snapshot)) : <span className="text-amber-600 dark:text-amber-400 text-xs">Cost not set</span>}
+                          <InvoiceCostCell fin={fin} invoiceId={viewInv!} />
                         </TableCell>
                       )}
+
                       {isAdmin && (
                         <TableCell className={`text-sm text-right font-medium ${fin && fin.line_profit != null && Number(fin.line_profit) < 0 ? "text-destructive" : "text-success"}`}>
                           {fin && fin.line_profit != null ? peso(Number(fin.line_profit)) : <span className="text-muted-foreground text-xs">N/A</span>}
