@@ -1422,7 +1422,7 @@ export default function OnlineSalesPage() {
                 })}
               </TableBody>
             </Table>
-          </div>
+          </HorizontalScrollSync>
         </TabsContent>
 
         <TabsContent value="returns">
