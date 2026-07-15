@@ -1214,3 +1214,67 @@ export default function InvoicesPage() {
     </div>
   );
 }
+
+function InvoiceCostCell({ fin, invoiceId }: { fin: any; invoiceId: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState<string>(fin?.cost_snapshot != null ? String(fin.cost_snapshot) : "");
+  const [saving, setSaving] = useState(false);
+
+  if (!fin) {
+    return <span className="text-amber-600 dark:text-amber-400 text-xs">No line record</span>;
+  }
+
+  const save = async () => {
+    const n = parseFloat(val);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a valid cost"); return; }
+    setSaving(true);
+    const { error } = await (supabase as any).rpc("set_invoice_item_cost", {
+      _financial_id: fin.id,
+      _new_cost: n,
+    });
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Cost updated");
+    setEditing(false);
+    qc.invalidateQueries({ queryKey: ["invoice_item_financials", invoiceId] });
+    qc.invalidateQueries({ queryKey: ["invoice_financial", invoiceId] });
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 justify-end">
+        <Input
+          type="number"
+          step="0.01"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          className="h-7 w-24 text-xs text-right"
+          autoFocus
+          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }}
+        />
+        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={save} disabled={saving}>
+          <Check className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditing(false)} disabled={saving}>
+          <XCircle className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => { setVal(fin.cost_snapshot != null ? String(fin.cost_snapshot) : ""); setEditing(true); }}
+      className="inline-flex items-center gap-1 hover:text-foreground group"
+      title="Click to edit cost (admin)"
+    >
+      {fin.cost_snapshot != null
+        ? peso(Number(fin.cost_snapshot))
+        : <span className="text-amber-600 dark:text-amber-400 text-xs">Cost not set</span>}
+      <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+    </button>
+  );
+}
+
