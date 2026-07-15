@@ -609,16 +609,7 @@ export default function BusinessInsightsPage() {
     return m;
   }, [financialsRows, onlineRows, onlineFinMap, paidInvoiceIds]);
 
-      if (!r.item_id || r.payment_status !== "paid") continue;
-      const fin = onlineFinMap.get(r.id);
-      if (!fin) continue;
-      const e = m.get(r.item_id) || { cost: 0, profit: 0 };
-      e.cost += fin.cost;
-      e.profit += fin.profit;
-      m.set(r.item_id, e);
-    }
-    return m;
-  }, [financialsRows, onlineRows, onlineFinMap]);
+
 
 
   // Enhanced product metrics — one row per parent item
