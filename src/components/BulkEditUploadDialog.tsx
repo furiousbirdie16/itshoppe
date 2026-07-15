@@ -19,7 +19,7 @@ interface BulkEditUploadDialogProps {
 }
 
 type ItemField = "name" | "sku" | "description" | "warehouse_quantity" | "store_quantity" | "cost_price" | "cost_price_rmb" | "selling_price" | "low_stock_threshold" | "source";
-type VarField = "name" | "sku" | "type" | "factor" | "selling_price";
+type VarField = "name" | "sku" | "type" | "factor" | "selling_price" | "cost_price";
 
 interface DiffRow {
   kind: "item" | "variation";
