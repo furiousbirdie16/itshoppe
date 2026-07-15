@@ -54,6 +54,7 @@ const VAR_HEADER_MAP: Record<string, VarField> = {
   "variation type": "type", "type": "type",
   "factor": "factor", "pieces per pack": "factor", "meters per cut": "factor",
   "variation selling price": "selling_price", "selling price": "selling_price", "price": "selling_price",
+  "variation cost price": "cost_price", "variation cost": "cost_price", "cost price": "cost_price", "cost": "cost_price", "cost_price": "cost_price",
 };
 
 const normalize = (v: unknown) => String(v ?? "").trim().toLowerCase();
