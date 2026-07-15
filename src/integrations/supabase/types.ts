@@ -1738,6 +1738,10 @@ export type Database = {
         }
         Returns: string
       }
+      set_invoice_item_cost: {
+        Args: { _financial_id: string; _new_cost: number }
+        Returns: undefined
+      }
       set_item_cost_manual: {
         Args: { _item_id: string; _new_cost: number; _reason: string }
         Returns: string
