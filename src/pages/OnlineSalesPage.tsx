@@ -183,12 +183,18 @@ export default function OnlineSalesPage() {
   const [filterFeesMax, setFilterFeesMax] = useState("");
   const [filterQtyMin, setFilterQtyMin] = useState("");
   const [filterQtyMax, setFilterQtyMax] = useState("");
+  const [filterNoCost, setFilterNoCost] = useState(false);
   const clearFilters = () => {
     setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all");
     setFilterPayment("all"); setFilterPriceMin(""); setFilterPriceMax("");
     setFilterPaidMin(""); setFilterPaidMax(""); setFilterFeesMin(""); setFilterFeesMax("");
-    setFilterQtyMin(""); setFilterQtyMax(""); setFilter("");
+    setFilterQtyMin(""); setFilterQtyMax(""); setFilter(""); setFilterNoCost(false);
   };
+
+  // Admin: bulk-set-cost dialog
+  const [bulkCostOpen, setBulkCostOpen] = useState(false);
+  const [bulkCostValue, setBulkCostValue] = useState("");
+  const [bulkCostBusy, setBulkCostBusy] = useState(false);
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
