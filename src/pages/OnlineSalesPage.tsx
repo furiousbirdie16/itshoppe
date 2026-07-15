@@ -908,6 +908,11 @@ export default function OnlineSalesPage() {
               <Button variant="outline" size="sm" onClick={handleBulkMarkPaid} disabled={bulkStatusBusy}>
                 <CircleDollarSign className="h-4 w-4 mr-1" /> Mark Paid
               </Button>
+              {isAdmin && (
+                <Button variant="outline" size="sm" onClick={() => { setBulkCostValue(""); setBulkCostOpen(true); }}>
+                  <Coins className="h-4 w-4 mr-1" /> Set Cost
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => handleBulkStatus('returned')} disabled={bulkStatusBusy}>
                 <Undo2 className="h-4 w-4 mr-1" /> Return
               </Button>
