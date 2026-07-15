@@ -289,12 +289,24 @@ export default function BusinessInsightsPage() {
     },
   });
 
+  // Set of paid invoice IDs — profit/cost/revenue only count for these.
+  // "Paid" = invoice status is "paid" or "completed".
+  const paidInvoiceIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of invoiceRows as any[]) {
+      const st = r._invoice?.status;
+      if (st === "paid" || st === "completed") s.add(r.invoice_id);
+    }
+    return s;
+  }, [invoiceRows]);
+
   // Financials lookup by invoice_id|item_id|variation_id (admin only).
-  // Lines with NULL cost_snapshot (variation has no cost assigned) are counted
-  // separately so we can warn admins and exclude them from profit rollups.
+  // Only sums lines from PAID invoices — matches the revenue rule so that
+  // revenue - cost = gross profit stays consistent.
   const financialsMap = useMemo(() => {
     const m = new Map<string, { cost: number; profit: number; hasCost: boolean }>();
     for (const f of financialsRows as any[]) {
+      if (!paidInvoiceIds.has(f.invoice_id)) continue;
       const key = `${f.invoice_id}|${f.item_id || ""}|${f.variation_id || ""}`;
       const e = m.get(key) || { cost: 0, profit: 0, hasCost: false };
       if (f.cost_snapshot != null) {
@@ -305,12 +317,13 @@ export default function BusinessInsightsPage() {
       m.set(key, e);
     }
     return m;
-  }, [financialsRows]);
+  }, [financialsRows, paidInvoiceIds]);
 
-  // Count of invoice lines excluded from profit calcs due to missing variation cost.
+  // Count of PAID invoice lines excluded from profit calcs due to missing variation cost.
   const missingCostCount = useMemo(() => {
-    return (financialsRows as any[]).filter(f => f.cost_snapshot == null).length;
-  }, [financialsRows]);
+    return (financialsRows as any[]).filter(f => f.cost_snapshot == null && paidInvoiceIds.has(f.invoice_id)).length;
+  }, [financialsRows, paidInvoiceIds]);
+
 
   const aggregated = useMemo<ItemAgg[]>(() => {
     const map = new Map<string, ItemAgg>();
