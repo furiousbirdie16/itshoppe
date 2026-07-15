@@ -693,6 +693,38 @@ export default function OnlineSalesPage() {
     } catch (e: any) { toast.error(e.message || "Failed"); }
   };
 
+  // ── Admin cost management ────────────────────────────────────────────
+  const invalidateFinancials = () => {
+    qc.invalidateQueries({ queryKey: ["online_sales", "financials"] });
+    qc.invalidateQueries({ queryKey: ["online_sales"] });
+  };
+  const saveCost = async (id: string, cost: number) => {
+    const { error } = await (supabase as any).rpc("set_online_sale_cost", { _online_sale_id: id, _new_cost: cost });
+    if (error) throw error;
+  };
+  const submitBulkCost = async () => {
+    if (!isAdmin) return;
+    const n = parseFloat(bulkCostValue);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a cost of 0 or more"); return; }
+    const ids = Array.from(selected);
+    if (ids.length === 0) { toast.error("No sales selected"); return; }
+    setBulkCostBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc("bulk_set_online_sale_cost", { _ids: ids, _new_cost: n });
+      if (error) throw error;
+      toast.success(`Cost set on ${ids.length} sale${ids.length === 1 ? "" : "s"}`);
+      setBulkCostOpen(false);
+      setBulkCostValue("");
+      setSelected(new Set());
+      invalidateFinancials();
+    } catch (e: any) {
+      toast.error(e.message || "Failed");
+    } finally {
+      setBulkCostBusy(false);
+    }
+  };
+
+
   // ── Bulk payment upload ─────────────────────────────────────────────
   const handleBulkPayFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
