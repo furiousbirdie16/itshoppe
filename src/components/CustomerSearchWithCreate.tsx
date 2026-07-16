@@ -110,7 +110,7 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CLASSIFICATIONS.map((c) => (
-                      <SelectItem key={c} value={c}>{classificationMeta(c).label}</SelectItem>
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
