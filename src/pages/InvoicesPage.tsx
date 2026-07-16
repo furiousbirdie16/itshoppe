@@ -1266,6 +1266,202 @@ function invalidateCostQueries(qc: ReturnType<typeof useQueryClient>, invoiceId:
   qc.invalidateQueries({ queryKey: ["invoice_cost_history"] });
 }
 
+function SelectedInvoiceCostBulkEdit({
+  selectedIds,
+  invoices,
+  onSuccess,
+  trigger,
+}: {
+  selectedIds: string[];
+  invoices: any[];
+  onSuccess?: () => void;
+  trigger?: ReactNode;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState("");
+  const [uniformCost, setUniformCost] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const { data: fins = [], isFetching } = useQuery({
+    queryKey: ["selected_invoice_costs", selectedIds],
+    queryFn: async () => {
+      if (selectedIds.length === 0) return [];
+      const { data, error } = await (supabase as any)
+        .from("invoice_item_financials")
+        .select("*")
+        .in("invoice_id", selectedIds)
+        .order("invoice_id", { ascending: true });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    enabled: open && selectedIds.length > 0,
+  });
+
+  const { data: lineNames = [] } = useQuery({
+    queryKey: ["selected_invoice_cost_names", selectedIds],
+    queryFn: async () => {
+      if (selectedIds.length === 0) return [];
+      const { data, error } = await (supabase as any)
+        .from("invoice_items")
+        .select("invoice_id,item_id,variation_id,item_name,items(name,sku),item_variations(name,sku)")
+        .in("invoice_id", selectedIds);
+      if (error) return [];
+      return (data || []) as any[];
+    },
+    enabled: open && selectedIds.length > 0,
+  });
+
+  const invoiceById = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const inv of invoices) m.set(inv.id, inv);
+    return m;
+  }, [invoices]);
+
+  const lineNameByKey = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const li of lineNames) m.set(`${li.invoice_id}::${li.item_id || ""}::${li.variation_id || ""}`, li);
+    return m;
+  }, [lineNames]);
+
+  useEffect(() => {
+    if (!open) return;
+    const init: Record<string, string> = {};
+    for (const f of fins) init[f.id] = f.cost_snapshot != null ? String(f.cost_snapshot) : "";
+    setRows(init);
+  }, [open, fins]);
+
+  const openBulk = () => {
+    setReason("");
+    setUniformCost("");
+    setConfirming(false);
+    setOpen(true);
+  };
+
+  const applyUniform = () => {
+    const n = parseFloat(uniformCost);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a valid uniform cost"); return; }
+    const next: Record<string, string> = {};
+    for (const f of fins) next[f.id] = String(n);
+    setRows(next);
+  };
+
+  const submitBulk = async () => {
+    setSaving(true);
+    let ok = 0, fail = 0;
+    const touchedInvoiceIds = new Set<string>();
+    for (const f of fins) {
+      const raw = rows[f.id];
+      if (raw === "" || raw == null) continue;
+      const n = parseFloat(raw);
+      if (!Number.isFinite(n) || n < 0) { fail++; continue; }
+      const prev = f.cost_snapshot != null ? Number(f.cost_snapshot) : null;
+      if (prev != null && Math.abs(prev - n) < 0.0001) continue;
+      const { error } = await (supabase as any).rpc("set_invoice_item_cost", {
+        _financial_id: f.id,
+        _new_cost: n,
+        _reason: reason || null,
+      });
+      if (error) {
+        fail++;
+        console.error("Selected invoice cost update failed", error);
+      } else {
+        ok++;
+        touchedInvoiceIds.add(f.invoice_id);
+      }
+    }
+    setSaving(false);
+    if (ok > 0) toast.success(`Updated ${ok} line cost${ok === 1 ? "" : "s"}${fail ? ` (${fail} failed)` : ""}`);
+    else if (fail > 0) toast.error(`All ${fail} updates failed`);
+    else toast.info("No changes to apply");
+    if (ok > 0) {
+      setOpen(false);
+      for (const invoiceId of touchedInvoiceIds) invalidateCostQueries(qc, invoiceId);
+      qc.invalidateQueries({ queryKey: ["selected_invoice_costs"] });
+      onSuccess?.();
+    }
+  };
+
+  return (
+    <>
+      <span onClick={openBulk}>
+        {trigger ?? (
+          <Button variant="outline" size="sm" disabled={selectedIds.length === 0}>
+            <Pencil className="h-4 w-4 mr-1" /> Bulk Edit Costs
+          </Button>
+        )}
+      </span>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-base">Bulk Edit Costs — {selectedIds.length} selected invoices</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+              Cost edits are allowed for locked invoices. Invoice totals, selling prices, payment status, and inventory quantities will not change.
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-xs">Set same cost for all selected lines</Label>
+                <Input type="number" step="0.01" value={uniformCost} onChange={e => setUniformCost(e.target.value)} className="h-9" placeholder="Optional" />
+              </div>
+              <Button size="sm" variant="outline" className="h-9" onClick={applyUniform} disabled={fins.length === 0}>Apply</Button>
+            </div>
+            <div className="rounded-md border divide-y">
+              {isFetching ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">Loading line costs...</div>
+              ) : fins.length === 0 ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">No cost records found for the selected invoices.</div>
+              ) : fins.map((f: any) => {
+                const inv = invoiceById.get(f.invoice_id);
+                const li = lineNameByKey.get(`${f.invoice_id}::${f.item_id || ""}::${f.variation_id || ""}`);
+                const itemName = li?.item_variations?.name || li?.item_name || li?.items?.name || "Item";
+                const sku = li?.item_variations?.sku || li?.items?.sku;
+                return (
+                  <div key={f.id} className="p-2 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium truncate">{inv?.invoice_number || "Invoice"} · {itemName}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        {sku ? `${sku} · ` : ""}Qty {Number(f.quantity || 0)} · Prev {f.cost_snapshot != null ? peso(Number(f.cost_snapshot)) : "—"}
+                      </div>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={rows[f.id] ?? ""}
+                      onChange={e => setRows(r => ({ ...r, [f.id]: e.target.value }))}
+                      className="h-8 w-28 text-right text-xs"
+                      placeholder="Cost"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div>
+              <Label className="text-xs">Reason (optional)</Label>
+              <Textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} className="resize-none" placeholder="e.g. supplier invoice correction" />
+            </div>
+            {!confirming ? (
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => setConfirming(true)} disabled={fins.length === 0}>Continue</Button>
+              </div>
+            ) : (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                <p>Confirm cost-only update for selected line items. This recalculates Gross Profit and Business Insights only.</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={saving}>Back</Button>
+                  <Button size="sm" onClick={submitBulk} disabled={saving}>{saving ? "Saving..." : "Confirm Costs"}</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function InvoiceCostCell({ fin, invoiceId }: { fin: any; invoiceId: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
