@@ -117,7 +117,7 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Tags</Label>
-                <TagsInput value={form.tags} onChange={(tags) => setForm({ ...form, tags })} />
+                <TagsInput value={form.tags} onChange={(tags) => setForm({ ...form, tags })} suggestions={[]} />
               </div>
             </div>
             <div className="space-y-1.5">
