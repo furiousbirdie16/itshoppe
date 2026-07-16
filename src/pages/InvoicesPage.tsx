@@ -343,7 +343,14 @@ export default function InvoicesPage() {
 
   const openEdit = async (inv: any) => {
     if (isInvoiceLocked(inv.status)) {
-      toast.error(INVOICE_LOCK_MESSAGE);
+      // Locked invoices are read-only for line items, but admins can still edit
+      // costs from the view dialog. Route them there instead of blocking.
+      if (isAdmin) {
+        setViewInv(inv.id);
+        toast.info("Invoice is locked. Line items are read-only — you can still edit costs here.");
+      } else {
+        toast.error(INVOICE_LOCK_MESSAGE);
+      }
       return;
     }
     const lineItems = await getInvoiceItems(inv.id);
@@ -1122,8 +1129,16 @@ export default function InvoicesPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    {!locked && (
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(inv)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {(!locked || isAdmin) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEdit(inv)}
+                        title={locked ? "Locked — admins can still edit costs" : "Edit"}
+                        className="h-7 w-7 rounded-md"
+                      >
+                        <Pencil className={`h-3.5 w-3.5 ${locked ? "text-amber-500" : "text-muted-foreground"}`} />
+                      </Button>
                     )}
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
