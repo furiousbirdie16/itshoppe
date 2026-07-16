@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -590,9 +590,16 @@ export default function InvoicesPage() {
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
             <>
+              {isAdmin && (
+                <SelectedInvoiceCostBulkEdit
+                  selectedIds={Array.from(selectedIds)}
+                  invoices={invoices as any[]}
+                  onSuccess={() => queryClient.invalidateQueries({ queryKey: ["invoices"] })}
+                />
+              )}
               {anySelectedLocked ? (
                 <span className="inline-flex items-center gap-1 text-xs text-amber-600 px-2">
-                  <Lock className="h-3.5 w-3.5" /> Selection contains locked invoices — bulk actions disabled
+                  <Lock className="h-3.5 w-3.5" /> Selection contains locked invoices — status/delete bulk actions disabled
                 </span>
               ) : (
                 <>
@@ -1064,6 +1071,18 @@ export default function InvoicesPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-1 ml-auto">
+              {isAdmin && (
+                <SelectedInvoiceCostBulkEdit
+                  selectedIds={Array.from(selectedIds)}
+                  invoices={invoices as any[]}
+                  onSuccess={() => queryClient.invalidateQueries({ queryKey: ["invoices"] })}
+                  trigger={
+                    <Button size="sm" variant="outline" className="h-8" disabled={selectedIds.size === 0}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" /> Bulk Edit Costs
+                    </Button>
+                  }
+                />
+              )}
               <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("reserve")}>
                 <BookmarkPlus className="h-3.5 w-3.5 mr-1 text-amber-600" /> Reserve
               </Button>
