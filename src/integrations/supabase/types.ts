@@ -375,6 +375,72 @@ export type Database = {
           },
         ]
       }
+      invoice_item_cost_history: {
+        Row: {
+          changed_by: string | null
+          changed_by_email: string | null
+          created_at: string
+          financial_id: string | null
+          id: string
+          invoice_id: string
+          invoice_number: string | null
+          item_id: string | null
+          item_name: string | null
+          new_cost: number
+          previous_cost: number | null
+          quantity: number | null
+          reason: string | null
+          variation_id: string | null
+        }
+        Insert: {
+          changed_by?: string | null
+          changed_by_email?: string | null
+          created_at?: string
+          financial_id?: string | null
+          id?: string
+          invoice_id: string
+          invoice_number?: string | null
+          item_id?: string | null
+          item_name?: string | null
+          new_cost: number
+          previous_cost?: number | null
+          quantity?: number | null
+          reason?: string | null
+          variation_id?: string | null
+        }
+        Update: {
+          changed_by?: string | null
+          changed_by_email?: string | null
+          created_at?: string
+          financial_id?: string | null
+          id?: string
+          invoice_id?: string
+          invoice_number?: string | null
+          item_id?: string | null
+          item_name?: string | null
+          new_cost?: number
+          previous_cost?: number | null
+          quantity?: number | null
+          reason?: string | null
+          variation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_item_cost_history_financial_id_fkey"
+            columns: ["financial_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_item_financials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_item_cost_history_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_item_financials: {
         Row: {
           cost_snapshot: number | null
@@ -1738,10 +1804,15 @@ export type Database = {
         }
         Returns: string
       }
-      set_invoice_item_cost: {
-        Args: { _financial_id: string; _new_cost: number }
-        Returns: undefined
-      }
+      set_invoice_item_cost:
+        | {
+            Args: { _financial_id: string; _new_cost: number }
+            Returns: undefined
+          }
+        | {
+            Args: { _financial_id: string; _new_cost: number; _reason?: string }
+            Returns: undefined
+          }
       set_item_cost_manual: {
         Args: { _item_id: string; _new_cost: number; _reason: string }
         Returns: string

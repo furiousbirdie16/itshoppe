@@ -1031,6 +1031,13 @@ export default function InvoicesPage() {
               </div>
             );
           })()}
+          {isAdmin && viewInv && (
+            <InvoiceCostTools
+              invoiceId={viewInv}
+              fins={invItems.map((ii: any) => finByItem.get(`${ii.item_id}::${ii.variation_id || ""}`)).filter(Boolean)}
+              invoiceNumber={(invoices.find((i: any) => i.id === viewInv) as any)?.invoice_number}
+            />
+          )}
 
         </DialogContent>
       </Dialog>
@@ -1215,66 +1222,265 @@ export default function InvoicesPage() {
   );
 }
 
+function invalidateCostQueries(qc: ReturnType<typeof useQueryClient>, invoiceId: string) {
+  qc.invalidateQueries({ queryKey: ["invoice_item_financials", invoiceId] });
+  qc.invalidateQueries({ queryKey: ["invoice_financial", invoiceId] });
+  // Business Insights caches
+  qc.invalidateQueries({ queryKey: ["bi_financials"] });
+  qc.invalidateQueries({ queryKey: ["bi_invoice"] });
+  qc.invalidateQueries({ queryKey: ["bi_online"] });
+  qc.invalidateQueries({ queryKey: ["invoice_cost_history"] });
+}
+
 function InvoiceCostCell({ fin, invoiceId }: { fin: any; invoiceId: string }) {
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const [val, setVal] = useState<string>(fin?.cost_snapshot != null ? String(fin.cost_snapshot) : "");
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
 
   if (!fin) {
     return <span className="text-amber-600 dark:text-amber-400 text-xs">No line record</span>;
   }
 
-  const save = async () => {
+  const openEdit = () => {
+    setVal(fin.cost_snapshot != null ? String(fin.cost_snapshot) : "");
+    setReason("");
+    setConfirming(false);
+    setOpen(true);
+  };
+
+  const submit = async () => {
     const n = parseFloat(val);
     if (!Number.isFinite(n) || n < 0) { toast.error("Enter a valid cost"); return; }
     setSaving(true);
     const { error } = await (supabase as any).rpc("set_invoice_item_cost", {
       _financial_id: fin.id,
       _new_cost: n,
+      _reason: reason || null,
     });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Cost updated");
-    setEditing(false);
-    qc.invalidateQueries({ queryKey: ["invoice_item_financials", invoiceId] });
-    qc.invalidateQueries({ queryKey: ["invoice_financial", invoiceId] });
+    setOpen(false);
+    invalidateCostQueries(qc, invoiceId);
   };
 
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1 justify-end">
-        <Input
-          type="number"
-          step="0.01"
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          className="h-7 w-24 text-xs text-right"
-          autoFocus
-          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }}
-        />
-        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={save} disabled={saving}>
-          <Check className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditing(false)} disabled={saving}>
-          <XCircle className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    );
-  }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openEdit}
+        className="inline-flex items-center gap-1 hover:text-foreground group"
+        title="Click to edit cost (admin)"
+      >
+        {fin.cost_snapshot != null
+          ? peso(Number(fin.cost_snapshot))
+          : <span className="text-amber-600 dark:text-amber-400 text-xs">Cost not set</span>}
+        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-base">Edit Line Cost</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div>
+              <Label className="text-xs">New Cost (per unit)</Label>
+              <Input type="number" step="0.01" value={val} onChange={e => setVal(e.target.value)} className="h-9" autoFocus />
+              {fin.cost_snapshot != null && (
+                <p className="text-[11px] text-muted-foreground mt-1">Previous: {peso(Number(fin.cost_snapshot))}</p>
+              )}
+            </div>
+            <div>
+              <Label className="text-xs">Reason (optional)</Label>
+              <Textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. supplier invoice correction" className="resize-none" />
+            </div>
+            {!confirming ? (
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => setConfirming(true)}>Continue</Button>
+              </div>
+            ) : (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                <p>Updating costs will recalculate Gross Profit and Business Insights. Invoice totals and payments will remain unchanged.</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={saving}>Back</Button>
+                  <Button size="sm" onClick={submit} disabled={saving}>{saving ? "Saving..." : "Confirm"}</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export function InvoiceCostTools({ invoiceId, fins, invoiceNumber }: { invoiceId: string; fins: any[]; invoiceNumber?: string }) {
+  const qc = useQueryClient();
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [rows, setRows] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uniformCost, setUniformCost] = useState("");
+
+  const openBulk = () => {
+    const init: Record<string, string> = {};
+    for (const f of fins) init[f.id] = f.cost_snapshot != null ? String(f.cost_snapshot) : "";
+    setRows(init);
+    setReason("");
+    setUniformCost("");
+    setConfirming(false);
+    setBulkOpen(true);
+  };
+
+  const applyUniform = () => {
+    const n = parseFloat(uniformCost);
+    if (!Number.isFinite(n) || n < 0) { toast.error("Enter a valid uniform cost"); return; }
+    const next: Record<string, string> = {};
+    for (const f of fins) next[f.id] = String(n);
+    setRows(next);
+  };
+
+  const submitBulk = async () => {
+    setSaving(true);
+    let ok = 0, fail = 0;
+    for (const f of fins) {
+      const raw = rows[f.id];
+      if (raw === "" || raw == null) continue;
+      const n = parseFloat(raw);
+      if (!Number.isFinite(n) || n < 0) { fail++; continue; }
+      const prev = f.cost_snapshot != null ? Number(f.cost_snapshot) : null;
+      if (prev != null && Math.abs(prev - n) < 0.0001) continue;
+      const { error } = await (supabase as any).rpc("set_invoice_item_cost", {
+        _financial_id: f.id,
+        _new_cost: n,
+        _reason: reason || null,
+      });
+      if (error) { fail++; console.error(error); } else { ok++; }
+    }
+    setSaving(false);
+    if (ok > 0) toast.success(`Updated ${ok} line${ok === 1 ? "" : "s"}${fail ? ` (${fail} failed)` : ""}`);
+    else if (fail > 0) toast.error(`All ${fail} updates failed`);
+    else toast.info("No changes to apply");
+    if (ok > 0) {
+      setBulkOpen(false);
+      invalidateCostQueries(qc, invoiceId);
+    }
+  };
+
+  const { data: history = [] } = useQuery({
+    queryKey: ["invoice_cost_history", invoiceId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("invoice_item_cost_history")
+        .select("*")
+        .eq("invoice_id", invoiceId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as any[];
+    },
+    enabled: historyOpen,
+  });
 
   return (
-    <button
-      type="button"
-      onClick={() => { setVal(fin.cost_snapshot != null ? String(fin.cost_snapshot) : ""); setEditing(true); }}
-      className="inline-flex items-center gap-1 hover:text-foreground group"
-      title="Click to edit cost (admin)"
-    >
-      {fin.cost_snapshot != null
-        ? peso(Number(fin.cost_snapshot))
-        : <span className="text-amber-600 dark:text-amber-400 text-xs">Cost not set</span>}
-      <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-    </button>
+    <div className="flex flex-wrap gap-2 mt-3">
+      <Button size="sm" variant="outline" className="h-8" onClick={openBulk} disabled={fins.length === 0}>
+        <Pencil className="h-3.5 w-3.5 mr-1" /> Bulk Edit Costs
+      </Button>
+      <Button size="sm" variant="ghost" className="h-8" onClick={() => setHistoryOpen(true)}>
+        Cost History
+      </Button>
+
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-base">Bulk Edit Line Costs {invoiceNumber ? `— ${invoiceNumber}` : ""}</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-xs">Set same cost for all lines</Label>
+                <Input type="number" step="0.01" value={uniformCost} onChange={e => setUniformCost(e.target.value)} className="h-9" placeholder="Optional" />
+              </div>
+              <Button size="sm" variant="outline" className="h-9" onClick={applyUniform}>Apply</Button>
+            </div>
+            <div className="rounded-md border divide-y">
+              {fins.map((f: any) => (
+                <div key={f.id} className="p-2 flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{f.item_variations?.name || f.items?.name || "Item"}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      Qty {Number(f.quantity || 0)} · Prev {f.cost_snapshot != null ? peso(Number(f.cost_snapshot)) : "—"}
+                    </div>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={rows[f.id] ?? ""}
+                    onChange={e => setRows(r => ({ ...r, [f.id]: e.target.value }))}
+                    className="h-8 w-28 text-right text-xs"
+                    placeholder="Cost"
+                  />
+                </div>
+              ))}
+            </div>
+            <div>
+              <Label className="text-xs">Reason (optional)</Label>
+              <Textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} className="resize-none" />
+            </div>
+            {!confirming ? (
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={() => setBulkOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => setConfirming(true)}>Continue</Button>
+              </div>
+            ) : (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                <p>Updating costs will recalculate Gross Profit and Business Insights. Invoice totals and payments will remain unchanged.</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={saving}>Back</Button>
+                  <Button size="sm" onClick={submitBulk} disabled={saving}>{saving ? "Saving..." : "Confirm All"}</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-base">Cost Change History {invoiceNumber ? `— ${invoiceNumber}` : ""}</DialogTitle></DialogHeader>
+          {history.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">No cost changes recorded.</p>
+          ) : (
+            <div className="data-table-wrapper">
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="text-xs">When</TableHead>
+                  <TableHead className="text-xs">Item</TableHead>
+                  <TableHead className="text-xs text-right">Previous</TableHead>
+                  <TableHead className="text-xs text-right">New</TableHead>
+                  <TableHead className="text-xs">User</TableHead>
+                  <TableHead className="text-xs">Reason</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {history.map((h: any) => (
+                    <TableRow key={h.id}>
+                      <TableCell className="text-xs whitespace-nowrap">{format(new Date(h.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+                      <TableCell className="text-xs">{h.item_name || "—"}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{h.previous_cost != null ? peso(Number(h.previous_cost)) : "—"}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums font-medium">{peso(Number(h.new_cost))}</TableCell>
+                      <TableCell className="text-xs">{h.changed_by_email || "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{h.reason || "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
