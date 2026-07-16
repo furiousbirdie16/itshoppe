@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { createCustomer } from "@/lib/api";
 import type { Customer } from "@/types/database";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
-import { CLASSIFICATIONS, classificationMeta, type ClassificationValue } from "@/lib/followUps";
+import { CLASSIFICATIONS, type ClassificationValue } from "@/lib/followUps";
 import { TagsInput, normalizeTag, tagKey } from "@/components/TagsInput";
 
 interface Props {
