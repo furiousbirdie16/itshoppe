@@ -1031,6 +1031,13 @@ export default function InvoicesPage() {
               </div>
             );
           })()}
+          {isAdmin && viewInv && (
+            <InvoiceCostTools
+              invoiceId={viewInv}
+              fins={invItems.map((ii: any) => finByItem.get(`${ii.item_id}::${ii.variation_id || ""}`)).filter(Boolean)}
+              invoiceNumber={(invoices.find((i: any) => i.id === viewInv) as any)?.invoice_number}
+            />
+          )}
 
         </DialogContent>
       </Dialog>
