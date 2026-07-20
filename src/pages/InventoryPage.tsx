@@ -835,27 +835,23 @@ export default function InventoryPage() {
                   aria-label="Select all"
                 />
               </TableHead>
-              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="source" label="Source" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="quantity" label="Total" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="warehouse_quantity" label="Warehouse" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="store_quantity" label="Store" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="cost_price" label="Cost" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="selling_price" label="Sell" sort={sort} onToggle={toggle} align="right" />
-              <SortableHeader sortKey="low_stock_threshold" label="Threshold" sort={sort} onToggle={toggle} align="right" />
+              {visibleColumns.map((c) => {
+                const align = (c.key === "name" || c.key === "source") ? "left" : "right";
+                return <SortableHeader key={`h-${c.key}`} sortKey={c.key} label={c.label} sort={sort} onToggle={toggle} align={align} />;
+              })}
               <TableHead className="text-xs text-right w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={colCount} className="h-32 text-center">
+                <TableCell colSpan={visibleColCount} className="h-32 text-center">
                   <div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
                 </TableCell>
               </TableRow>
             ) : sortedFiltered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={colCount}>
+                <TableCell colSpan={visibleColCount}>
                   <div className="empty-state">
                     <Package className="empty-state-icon" />
                     <p className="text-sm">No items match your filters</p>
@@ -871,44 +867,68 @@ export default function InventoryPage() {
                     aria-label={`Select ${item.name}`}
                   />
                 </TableCell>
-                <TableCell className="font-medium text-sm">
-                  <div className="flex flex-col">
-                    <span className="flex items-center gap-1.5">
-                      {item.name}
-                      {item.status && item.status !== "active" && (
-                        <Badge variant="outline" className="text-[9px] uppercase h-4 px-1">{item.status}</Badge>
-                      )}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {item.sku}
-                      {item.category && <> · <span className="text-muted-foreground/80">{item.category}</span></>}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={((item as any).source === 'import') ? 'secondary' : 'outline'} className="text-[10px] uppercase">
-                    {((item as any).source as string) || 'local'}
-                  </Badge>
-                </TableCell>
-                <TableCell className={`text-right text-sm font-semibold ${item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
-                  {item.quantity}
-                  {(item.units_per_stock ?? 1) > 1 && (item.open_roll_remaining ?? 0) > 0 && (
-                    <span className="ml-1 text-[10px] font-normal text-muted-foreground">
-                      + {item.open_roll_remaining}{item.base_unit || 'm'} open
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>
-                <TableCell className="text-right text-sm">{(item as any).store_quantity ?? 0}</TableCell>
-                <TableCell className="text-right text-sm text-muted-foreground">
-                  {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
-                </TableCell>
-                <TableCell className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>
-                <TableCell className="text-right text-sm">
-                  <span className={item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                    {item.low_stock_threshold ?? 0}
-                  </span>
-                </TableCell>
+                {visibleColumns.map((c) => {
+                  switch (c.key) {
+                    case "name":
+                      return (
+                        <TableCell key="c-name" className="font-medium text-sm">
+                          <div className="flex flex-col">
+                            <span className="flex items-center gap-1.5">
+                              {item.name}
+                              {item.status && item.status !== "active" && (
+                                <Badge variant="outline" className="text-[9px] uppercase h-4 px-1">{item.status}</Badge>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {item.sku}
+                              {item.category && <> · <span className="text-muted-foreground/80">{item.category}</span></>}
+                            </span>
+                          </div>
+                        </TableCell>
+                      );
+                    case "source":
+                      return (
+                        <TableCell key="c-source">
+                          <Badge variant={((item as any).source === 'import') ? 'secondary' : 'outline'} className="text-[10px] uppercase">
+                            {((item as any).source as string) || 'local'}
+                          </Badge>
+                        </TableCell>
+                      );
+                    case "quantity":
+                      return (
+                        <TableCell key="c-qty" className={`text-right text-sm font-semibold ${item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
+                          {item.quantity}
+                          {(item.units_per_stock ?? 1) > 1 && (item.open_roll_remaining ?? 0) > 0 && (
+                            <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                              + {item.open_roll_remaining}{item.base_unit || 'm'} open
+                            </span>
+                          )}
+                        </TableCell>
+                      );
+                    case "warehouse_quantity":
+                      return <TableCell key="c-wh" className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>;
+                    case "store_quantity":
+                      return <TableCell key="c-st" className="text-right text-sm">{(item as any).store_quantity ?? 0}</TableCell>;
+                    case "cost_price":
+                      return (
+                        <TableCell key="c-cost" className="text-right text-sm text-muted-foreground">
+                          {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
+                        </TableCell>
+                      );
+                    case "selling_price":
+                      return <TableCell key="c-sell" className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>;
+                    case "low_stock_threshold":
+                      return (
+                        <TableCell key="c-th" className="text-right text-sm">
+                          <span className={item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                            {item.low_stock_threshold ?? 0}
+                          </span>
+                        </TableCell>
+                      );
+                    default:
+                      return null;
+                  }
+                })}
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     {!viewArchived && (
