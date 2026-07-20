@@ -514,6 +514,7 @@ export default function InventoryPage() {
           <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit
           </Button>
+          <ColumnVisibilityMenu columns={orderedColumns} visible={colState.visible} onToggle={toggleCol} onMove={moveCol} onReset={resetCols} />
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
           </Button>
