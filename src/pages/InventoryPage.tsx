@@ -373,7 +373,10 @@ export default function InventoryPage() {
   if (filters.location !== "any") chips.push({ key: "loc", label: `Location: ${filters.location}`, clear: () => setF("location", "any") });
   if (filters.productStatus !== "any") chips.push({ key: "ps", label: `Status: ${filters.productStatus}`, clear: () => setF("productStatus", "any") });
 
-  const colCount = 10;
+  const colCount = 2 + INVENTORY_COLUMNS.length; // checkbox + data cols + actions (placeholder; real uses visibleColumns)
+
+  const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("inventory:columns:v1", INVENTORY_COLUMNS);
+  const visibleColCount = 2 + visibleColumns.length;
 
   return (
     <div className="space-y-6">
