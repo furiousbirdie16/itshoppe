@@ -30,6 +30,7 @@ export default function SuppliersPage() {
   const [form, setForm] = useState({ name: "", contact_person: "", email: "", phone: "", address: "" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("cols:suppliers", SUPPLIER_COLUMNS);
 
   const toggleAll = () => {
     if (filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))) setSelectedIds(new Set());
