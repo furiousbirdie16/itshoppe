@@ -172,92 +172,93 @@ export default function UsersPage() {
         </Dialog>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search users..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      {(() => {
+        const { state, orderedColumns, visibleColumns, toggle, move, reset } = useColumnPrefs("cols:users", USER_COLUMNS);
+        const heads: Record<string, JSX.Element> = {
+          user: <TableHead key="h-user" className="text-xs">User</TableHead>,
+          role: <TableHead key="h-role" className="text-xs">Role</TableHead>,
+        };
+        const cells = (u: ManagedUser): Record<string, JSX.Element> => ({
+          user: (
+            <TableCell key="c-user">
+              <div>
+                <p className="text-sm font-medium text-foreground">{u.display_name}</p>
+                <p className="text-xs text-muted-foreground">{u.email}</p>
+              </div>
+            </TableCell>
+          ),
+          role: (
+            <TableCell key="c-role">
+              <Select
+                value={u.role}
+                onValueChange={(role) => updateRoleMutation.mutate({ user_id: u.id, role })}
+                disabled={u.id === user?.id}
+              >
+                <SelectTrigger className="h-7 w-24 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin"><span className="flex items-center gap-1.5"><Shield className="h-3 w-3" /> Admin</span></SelectItem>
+                  <SelectItem value="user"><span className="flex items-center gap-1.5"><User className="h-3 w-3" /> User</span></SelectItem>
+                </SelectContent>
+              </Select>
+            </TableCell>
+          ),
+        });
+        return (
+          <>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="relative max-w-sm flex-1 min-w-[180px]">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search users..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <ColumnVisibilityMenu columns={orderedColumns} visible={state.visible} onToggle={toggle} onMove={move} onReset={reset} />
+            </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-xs">User</TableHead>
-              <TableHead className="text-xs">Role</TableHead>
-              <TableHead className="text-xs text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-8">
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : filteredUsers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-8">
-                  No users found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredUsers.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{u.display_name}</p>
-                      <p className="text-xs text-muted-foreground">{u.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={u.role}
-                      onValueChange={(role) => updateRoleMutation.mutate({ user_id: u.id, role })}
-                      disabled={u.id === user?.id}
-                    >
-                      <SelectTrigger className="h-7 w-24 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">
-                          <span className="flex items-center gap-1.5">
-                            <Shield className="h-3 w-3" /> Admin
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="user">
-                          <span className="flex items-center gap-1.5">
-                            <User className="h-3 w-3" /> User
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {u.id !== user?.id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          if (confirm(`Delete ${u.email}?`)) {
-                            deleteUserMutation.mutate(u.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {visibleColumns.map((c) => heads[c.key])}
+                    <TableHead className="text-xs text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center text-sm text-muted-foreground py-8">Loading...</TableCell></TableRow>
+                  ) : filteredUsers.length === 0 ? (
+                    <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center text-sm text-muted-foreground py-8">No users found</TableCell></TableRow>
+                  ) : (
+                    filteredUsers.map((u) => {
+                      const rc = cells(u);
+                      return (
+                        <TableRow key={u.id}>
+                          {visibleColumns.map((c) => rc[c.key])}
+                          <TableCell className="text-right">
+                            {u.id !== user?.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => { if (confirm(`Delete ${u.email}?`)) deleteUserMutation.mutate(u.id); }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
