@@ -11,6 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { UserPlus, Shield, User, Trash2, Search } from "lucide-react";
+import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
+
+const USER_COLUMNS: ColumnDef[] = [
+  { key: "user", label: "User", defaultVisible: true },
+  { key: "role", label: "Role", defaultVisible: true },
+];
 
 interface ManagedUser {
   id: string;
