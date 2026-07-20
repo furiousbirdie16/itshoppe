@@ -29,6 +29,18 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { supabase } from "@/integrations/supabase/client";
+import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/components/ColumnVisibility";
+
+const INVENTORY_COLUMNS: ColumnDef[] = [
+  { key: "name", label: "Name", required: true },
+  { key: "source", label: "Source", defaultVisible: true },
+  { key: "quantity", label: "Total", defaultVisible: true },
+  { key: "warehouse_quantity", label: "Warehouse", defaultVisible: true },
+  { key: "store_quantity", label: "Store", defaultVisible: true },
+  { key: "cost_price", label: "Cost", defaultVisible: true },
+  { key: "selling_price", label: "Sell", defaultVisible: true },
+  { key: "low_stock_threshold", label: "Threshold", defaultVisible: true },
+];
 
 type StockStatusFilter = "all" | "in_stock" | "low_stock" | "out_of_stock" | "overstocked";
 type QtyOp = "any" | "eq" | "gt" | "lt" | "range";
