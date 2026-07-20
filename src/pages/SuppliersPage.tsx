@@ -167,25 +167,31 @@ export default function SuppliersPage() {
           <TableHeader>
            <TableRow>
               <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && filtered.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAll} /></TableHead>
-              <SortableHeader sortKey="name" label="Name" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="email" label="Email" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />
+              {visibleColumns.map((c) => {
+                if (c.key === "name") return <SortableHeader key="h-name" sortKey="name" label="Name" sort={sort} onToggle={toggle} />;
+                if (c.key === "contact_person") return <SortableHeader key="h-contact" sortKey="contact_person" label="Contact" sort={sort} onToggle={toggle} />;
+                if (c.key === "email") return <SortableHeader key="h-email" sortKey="email" label="Email" sort={sort} onToggle={toggle} />;
+                if (c.key === "phone") return <SortableHeader key="h-phone" sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />;
+                return null;
+              })}
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={visibleColumns.length + 2} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedSuppliers.length === 0 ? (
-              <TableRow><TableCell colSpan={6}><div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No suppliers yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={visibleColumns.length + 2}><div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No suppliers yet</p></div></TableCell></TableRow>
             ) : sortedSuppliers.map(s => (
               <TableRow key={s.id} className={selectedIds.has(s.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(s.id)} onCheckedChange={() => toggleOne(s.id)} /></TableCell>
-                <TableCell className="font-medium text-sm">{s.name}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{s.contact_person}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{s.email}</TableCell>
-                <TableCell className="text-sm">{s.phone}</TableCell>
+                {visibleColumns.map((c) => {
+                  if (c.key === "name") return <TableCell key="c-name" className="font-medium text-sm">{s.name}</TableCell>;
+                  if (c.key === "contact_person") return <TableCell key="c-contact" className="text-sm text-muted-foreground">{s.contact_person}</TableCell>;
+                  if (c.key === "email") return <TableCell key="c-email" className="text-sm text-muted-foreground">{s.email}</TableCell>;
+                  if (c.key === "phone") return <TableCell key="c-phone" className="text-sm">{s.phone}</TableCell>;
+                  return null;
+                })}
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(s)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
