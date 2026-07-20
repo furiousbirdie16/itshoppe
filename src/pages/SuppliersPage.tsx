@@ -14,6 +14,14 @@ import type { Supplier } from "@/types/database";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
+
+const SUPPLIER_COLUMNS: ColumnDef[] = [
+  { key: "name", label: "Name", defaultVisible: true },
+  { key: "contact_person", label: "Contact", defaultVisible: true },
+  { key: "email", label: "Email", defaultVisible: true },
+  { key: "phone", label: "Phone", defaultVisible: true },
+];
 
 export default function SuppliersPage() {
   const queryClient = useQueryClient();
