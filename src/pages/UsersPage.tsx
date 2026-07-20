@@ -44,6 +44,7 @@ export default function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", password: "", display_name: "", role: "user" });
   const [search, setSearch] = useState("");
+  const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("cols:users", USER_COLUMNS);
 
   const { data: users = [], isLoading } = useQuery<ManagedUser[]>({
     queryKey: ["admin-users"],
