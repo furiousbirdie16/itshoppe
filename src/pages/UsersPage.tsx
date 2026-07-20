@@ -11,6 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { UserPlus, Shield, User, Trash2, Search } from "lucide-react";
+import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
+
+const USER_COLUMNS: ColumnDef[] = [
+  { key: "user", label: "User", defaultVisible: true },
+  { key: "role", label: "Role", defaultVisible: true },
+];
 
 interface ManagedUser {
   id: string;
@@ -38,6 +44,7 @@ export default function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", password: "", display_name: "", role: "user" });
   const [search, setSearch] = useState("");
+  const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("cols:users", USER_COLUMNS);
 
   const { data: users = [], isLoading } = useQuery<ManagedUser[]>({
     queryKey: ["admin-users"],
@@ -166,81 +173,72 @@ export default function UsersPage() {
         </Dialog>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search users..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="relative max-w-sm flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search users..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <ColumnVisibilityMenu columns={orderedColumns} visible={colState.visible} onToggle={toggleCol} onMove={moveCol} onReset={resetCols} />
       </div>
 
       <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-xs">User</TableHead>
-              <TableHead className="text-xs">Role</TableHead>
+              {visibleColumns.map((c) => {
+                if (c.key === "user") return <TableHead key="h-user" className="text-xs">User</TableHead>;
+                if (c.key === "role") return <TableHead key="h-role" className="text-xs">Role</TableHead>;
+                return null;
+              })}
               <TableHead className="text-xs text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-8">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center text-sm text-muted-foreground py-8">Loading...</TableCell></TableRow>
             ) : filteredUsers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-8">
-                  No users found
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center text-sm text-muted-foreground py-8">No users found</TableCell></TableRow>
             ) : (
               filteredUsers.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{u.display_name}</p>
-                      <p className="text-xs text-muted-foreground">{u.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={u.role}
-                      onValueChange={(role) => updateRoleMutation.mutate({ user_id: u.id, role })}
-                      disabled={u.id === user?.id}
-                    >
-                      <SelectTrigger className="h-7 w-24 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">
-                          <span className="flex items-center gap-1.5">
-                            <Shield className="h-3 w-3" /> Admin
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="user">
-                          <span className="flex items-center gap-1.5">
-                            <User className="h-3 w-3" /> User
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
+                  {visibleColumns.map((c) => {
+                    if (c.key === "user") return (
+                      <TableCell key="c-user">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{u.display_name}</p>
+                          <p className="text-xs text-muted-foreground">{u.email}</p>
+                        </div>
+                      </TableCell>
+                    );
+                    if (c.key === "role") return (
+                      <TableCell key="c-role">
+                        <Select
+                          value={u.role}
+                          onValueChange={(role) => updateRoleMutation.mutate({ user_id: u.id, role })}
+                          disabled={u.id === user?.id}
+                        >
+                          <SelectTrigger className="h-7 w-24 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin"><span className="flex items-center gap-1.5"><Shield className="h-3 w-3" /> Admin</span></SelectItem>
+                            <SelectItem value="user"><span className="flex items-center gap-1.5"><User className="h-3 w-3" /> User</span></SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    );
+                    return null;
+                  })}
                   <TableCell className="text-right">
                     {u.id !== user?.id && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          if (confirm(`Delete ${u.email}?`)) {
-                            deleteUserMutation.mutate(u.id);
-                          }
-                        }}
+                        onClick={() => { if (confirm(`Delete ${u.email}?`)) deleteUserMutation.mutate(u.id); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

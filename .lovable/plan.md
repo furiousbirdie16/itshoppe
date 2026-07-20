@@ -1,79 +1,48 @@
-## Structured Customer Location System
+# Universal Column Customization
 
-Add cascading address fields (Country → Province → City → District → Barangay) plus optional Full Address, with PH-first data and international fallback.
+Add per-user column **visibility** and **drag-to-reorder** to every list/table page, with preferences remembered per page.
 
-### 1. Database (migration)
+## What you'll get
 
-Add columns to `customers`:
-- `country` (text, default 'Philippines')
-- `province_state` (text)
-- `city_municipality` (text)
-- `district_area` (text)
-- `barangay_village` (text)
-- `full_address` (text) — manual override / extra detail
-- `postal_code` (text)
-- `latitude` (numeric)
-- `longitude` (numeric)
+On every table page (Inventory, Customers, Invoices, Quotations, Online Sales, Purchase Orders, Overseas POs, Suppliers, Overseas Suppliers, Users, Activity Log, Pending Payments, Low Stock, Shipment Tracking, Customer Pricing):
 
-Keep existing `address` field as legacy / display fallback. Add indexes on country, province_state, city_municipality for filter performance.
+- A **Columns** button in the toolbar next to filters.
+- Dropdown lets you:
+  - Toggle each column on/off (checkbox).
+  - Drag column names up/down to reorder.
+  - Reset to default.
+- Some columns stay pinned (checkbox / actions / row selector) and can't be hidden or moved.
+- Choices are saved per-page in your browser (localStorage) and survive refresh.
 
-Reference tables (lightweight, seeded for PH; free-text for other countries):
-- `locations_country` (code, name)
-- `locations_region` (country_code, name) — for PH provinces/regions
-- `locations_city` (region_name, country_code, name)
-- `locations_barangay` (city_name, region_name, name) — optional, only where curated
+## How it works (technical)
 
-Seed PH with ~17 regions, top ~50 major cities, and a handful of well-known barangays. For unknown values, the form falls back to free-text input ("Add custom…"). Admin-only override allowed; all users may type custom values (per request: "Make available for all users").
+1. **Extend `useColumnVisibility`** (`src/components/ColumnVisibility.tsx`) into `useColumnPrefs`:
+   - Stores `{ visible: Record<key,boolean>, order: string[] }` under one localStorage key per page (e.g. `cols:invoices`).
+   - Exposes `orderedColumns`, `isVisible`, `toggle`, `move(key, dir)`, `reset`.
+   - Backwards compatible: if only the old `Record<key,boolean>` is stored, migrate on read.
 
-### 2. Reusable component
+2. **Rewrite `ColumnVisibilityMenu`** to render columns in current order with:
+   - Checkbox on the left.
+   - Up/Down arrow buttons on the right (simple, reliable, no dnd lib).
+   - Required columns show a lock icon and skip both controls.
+   - "Reset to default" at the bottom.
 
-`src/components/AddressSelector.tsx`:
-- Five searchable comboboxes (using existing `FilterCombobox` pattern + Command).
-- Cascading: changing a higher level clears lower levels.
-- Each combobox supports "Add custom…" free-text entry.
-- Country defaults to Philippines; switching country hides PH cascade and shows generic text inputs for province/city.
-- Includes `Full Address` textarea + `Postal Code` input.
-- Province and City rendered larger / emphasized.
-- Mobile-friendly: stacked layout under `sm:`, two-column above.
-- Caches reference data via React Query (`staleTime: Infinity`).
+3. **Refactor each list page** to:
+   - Declare a `COLUMNS: ColumnDef[]` array (key, label, required?, defaultVisible?).
+   - Call `useColumnPrefs("cols:<page>", COLUMNS)`.
+   - Render `<TableHead>` and `<TableCell>` by mapping over `orderedColumns.filter(isVisible)`, using a `renderers` map `{ key: { head: ..., cell: (row) => ... } }`.
+   - Drop the Columns button into the existing toolbar.
 
-### 3. Customer form integration
+4. Pinned columns (selection checkbox, sticky actions column) render outside the map so they always stay in place.
 
-Update `CustomersPage.tsx` dialog:
-- Replace single `address` textarea with `<AddressSelector />`.
-- Persist all structured fields on create/update.
-- Show a small location chip in the table: `City, Province` (or country if non-PH).
+5. No backend changes. No new deps.
 
-### 4. Filtering on Customers page
+## Scope
 
-Add filter comboboxes for Country, Province, City. Reuse `FilterCombobox`. Options derived from current customer dataset (only show values that exist), matching existing agent filter pattern.
+All 15 list pages listed above. Card-style mobile layouts (e.g. Customers mobile view) are unaffected — this applies to the desktop table view only, matching the current `ColumnVisibility` pattern already used in a few places.
 
-### 5. Geographic analytics (admin only)
+## Out of scope
 
-In `DashboardAnalytics.tsx` add two cards:
-- **Customers per Province** (bar chart, top 10)
-- **Customers per City** (bar chart, top 10)
-- **Sales by Location** (table: city, # customers, total sales) using existing invoice aggregation.
-
-Gated to admin via existing `useAdmin` check.
-
-### 6. Export
-
-Add "Export Locations" button on Customers page that downloads CSV with all structured fields. Use existing `ExportButton` pattern.
-
-### 7. API layer
-
-`src/lib/api.ts` additions:
-- `getCountries()`, `getRegions(country)`, `getCities(country, region)`, `getBarangays(city, region)` — cached.
-- `getCustomersByLocation()` aggregator for analytics.
-
-### Technical notes
-
-- All location reference tables: public SELECT, admin-only write. Custom typed values are stored directly on the customer record (no write to reference tables required from non-admins).
-- Validation: if structured fields are partially filled, that's fine. Full Address is always optional. No hard province↔city validation enforced server-side beyond the seeded reference (since users can type custom).
-- Existing `address` column kept; populated from `full_address` on save for backward compatibility with current views/PDF.
-
-### Out of scope (not requested explicitly)
-
-- Geocoding / map picker for lat/lng (columns added but left null; future enhancement).
-- SMS/shipping rate integrations.
+- Cross-device sync (would need a `user_table_prefs` table — say the word if you want it).
+- Column resizing / pinning to left-right edges.
+- Reordering via mouse drag (using up/down buttons instead for reliability; can upgrade to dnd-kit later if you prefer).
