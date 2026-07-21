@@ -462,6 +462,38 @@ export default function BusinessInsightsPage() {
     [aggregated],
   );
 
+  // Outstanding revenue: unpaid invoices + unpaid online sales (does NOT affect
+  // Revenue, COGS, GP, Margin, or Inventory calcs — display only).
+  const outstanding = useMemo(() => {
+    let inv = 0;
+    for (const r of invoiceRows as any[]) {
+      const st = r._invoice?.status;
+      if (st !== "paid" && st !== "completed") {
+        inv += Number(r.unit_price || 0) * Number(r.quantity || 0);
+      }
+    }
+    let onl = 0;
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status !== "paid") {
+        onl += Number(r.posted_price || 0) * Number(r.quantity || 0);
+      }
+    }
+    return { invoice: inv, online: onl, total: inv + onl };
+  }, [invoiceRows, onlineRows]);
+
+  // Count of PAID orders (unique invoices + unique paid online orders) for AOV.
+  const paidOrderCount = useMemo(() => {
+    const invSet = new Set<string>();
+    for (const r of invoiceRows as any[]) {
+      if (paidInvoiceIds.has(r.invoice_id)) invSet.add(r.invoice_id);
+    }
+    const onlSet = new Set<string>();
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status === "paid") onlSet.add(String(r.order_number || r.id));
+    }
+    return invSet.size + onlSet.size;
+  }, [invoiceRows, onlineRows, paidInvoiceIds]);
+
   // Customer analytics: separate online vs invoice.
   // Revenue excludes unpaid orders so it matches the totals shown elsewhere.
   const customerStats = useMemo(() => {
@@ -1028,27 +1060,65 @@ export default function BusinessInsightsPage() {
           <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>
           <TabsTrigger value="customers"><Users className="h-3.5 w-3.5 mr-1.5" />Customers</TabsTrigger>
-          {isAdmin && <TabsTrigger value="inventory"><Warehouse className="h-3.5 w-3.5 mr-1.5" />Inventory</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="purchasing"><ShoppingBag className="h-3.5 w-3.5 mr-1.5" />Purchasing</TabsTrigger>}
         </TabsList>
 
         {/* OVERVIEW */}
         <TabsContent value="overview" className="space-y-4">
-          <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
-            {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />}
-            {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />}
-            {isAdmin && <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />}
-            <StatCard title="Units Sold" value={totals.qty} icon={Package} />
-          </div>
+          {(() => {
+            const collected = totals.revTotal;
+            const outstandingTotal = outstanding.total;
+            const potential = collected + outstandingTotal;
+            const grossProfitTotal = productMetrics.reduce((s, p) => s + p.grossProfit, 0);
+            const avgMargin = collected > 0 ? (grossProfitTotal / collected) * 100 : 0;
+            const inventoryValue = (itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0);
+            const aov = paidOrderCount > 0 ? collected / paidOrderCount : 0;
+            return (
+              <>
+                {/* First row: revenue breakdown */}
+                <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
+                  {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" description="Paid online orders" />}
+                  {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" description="Paid invoices" />}
+                  {isAdmin && <StatCard title="Collected Revenue" value={money(collected)} icon={DollarSign} variant="success" description="Online + invoice (paid)" />}
+                  {isAdmin && <StatCard title="Outstanding Revenue" value={money(outstandingTotal)} icon={AlertTriangle} variant="warning" description="Unpaid / pending balance" />}
+                  {!isAdmin && <StatCard title="Units Sold" value={totals.qty} icon={Package} />}
+                </div>
 
-          {isAdmin && (
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-              <StatCard title="Gross Profit" value={money(productMetrics.reduce((s, p) => s + p.grossProfit, 0))} icon={TrendingUp} variant="success" />
-              <StatCard title="Avg Margin" value={`${(totals.revTotal > 0 ? (productMetrics.reduce((s, p) => s + p.grossProfit, 0) / totals.revTotal) * 100 : 0).toFixed(1)}%`} icon={TrendingUp} />
-              <StatCard title="Inventory Value" value={money((itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0))} icon={Warehouse} />
-              <StatCard title="Low Stock Items" value={inventoryBuckets.lowStock.length} icon={AlertTriangle} variant="warning" />
-            </div>
-          )}
+                {/* Second row: profitability + operational */}
+                {isAdmin && (
+                  <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                    <StatCard title="Gross Profit" value={money(grossProfitTotal)} icon={TrendingUp} variant="success" description="Paid orders only" />
+                    <StatCard title="Average Margin" value={`${avgMargin.toFixed(1)}%`} icon={TrendingUp} description="Paid orders only" />
+                    <StatCard title="Inventory Value" value={money(inventoryValue)} icon={Warehouse} />
+                    <StatCard title="Average Order Value" value={money(aov)} description={`${paidOrderCount} paid order${paidOrderCount === 1 ? "" : "s"}`} icon={ShoppingBag} />
+                  </div>
+                )}
+
+                {/* Revenue summary */}
+                {isAdmin && (
+                  <div className="rounded-xl border bg-card p-4">
+                    <h2 className="text-sm font-semibold mb-3">Revenue Summary</h2>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between py-1.5 border-b">
+                        <span className="text-muted-foreground">Collected Revenue</span>
+                        <span className="font-semibold tabular-nums text-green-600">{money(collected)}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-1.5 border-b">
+                        <span className="text-muted-foreground">Outstanding Revenue</span>
+                        <span className="font-semibold tabular-nums text-amber-600">{money(outstandingTotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span className="font-medium">Potential Revenue</span>
+                        <span className="font-bold tabular-nums text-base">{money(potential)}</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      Outstanding revenue is display-only — it is excluded from Revenue, COGS, Gross Profit, Margin, and Inventory calculations.
+                    </p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Top 5 products */}
           <div className="rounded-xl border bg-card p-4">
@@ -1383,117 +1453,6 @@ export default function BusinessInsightsPage() {
           </div>
         </TabsContent>
 
-        {/* INVENTORY */}
-        {isAdmin && (
-          <TabsContent value="inventory" className="space-y-4">
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-              <StatCard title="Low Stock" value={inventoryBuckets.lowStock.length} icon={AlertTriangle} variant="warning" />
-              <StatCard title="Dead Stock" value={inventoryBuckets.dead.length} icon={Package} variant="warning" />
-              <StatCard title="Slow Moving" value={inventoryBuckets.slow.length} icon={TrendingDown} />
-              <StatCard title="Overstocked" value={inventoryBuckets.overstock.length} icon={Warehouse} />
-            </div>
-
-            {([
-              { title: "Low Stock (at or below threshold)", s: lowStockSort },
-              { title: "Dead Stock (no sales in range)", s: deadSort },
-              { title: "Slow Moving (>90 days coverage)", s: slowSort },
-              { title: "Overstocked (>180 days coverage)", s: overstockSort },
-            ] as { title: string; s: { sort: any; toggle: (k: string) => void; sorted: ProductMetric[] } }[]).map((bucket) => (
-              <div key={bucket.title} className="rounded-xl border bg-card overflow-hidden">
-                <div className="p-3 border-b">
-                  <h2 className="text-sm font-semibold">{bucket.title}</h2>
-                  <p className="text-xs text-muted-foreground">{bucket.s.sorted.length} item{bucket.s.sorted.length === 1 ? "" : "s"}</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/40">
-                      <tr className="text-left">
-                        <SortableTh sortKey="name" label="Item" sort={bucket.s.sort} onToggle={bucket.s.toggle} />
-                        <SortableTh sortKey="stock" label="Stock" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
-                        <SortableTh sortKey="threshold" label="Threshold" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
-                        <SortableTh sortKey="qtySold" label={`Sold (${daysInRange}d)`} sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
-                        <SortableTh sortKey="daysRemaining" label="Days Left" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
-                        <SortableTh sortKey="invValue" label="Inv Value" sort={bucket.s.sort} onToggle={bucket.s.toggle} align="right" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bucket.s.sorted.length === 0 ? (
-                        <tr><td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">Nothing here.</td></tr>
-                      ) : bucket.s.sorted.slice(0, 100).map((p) => (
-                        <tr key={p.itemId} className="border-t">
-                          <td className="px-3 py-1.5">
-                            <div className="font-medium">{p.name}</div>
-                            <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
-                          </td>
-                          <td className="px-3 py-1.5 text-right">{p.stock}</td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">{p.threshold}</td>
-                          <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
-                          <td className="px-3 py-1.5 text-right">{fmtDays(p.daysRemaining)}</td>
-                          <td className="px-3 py-1.5 text-right">{money(p.stock * p.cost)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-
-          </TabsContent>
-        )}
-
-        {/* PURCHASING */}
-        {isAdmin && (
-          <TabsContent value="purchasing" className="space-y-4">
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
-              <StatCard title="Items to Reorder" value={purchasing.recs.length} icon={ShoppingBag} />
-              <StatCard title="Capital Required" value={money(purchasing.totalCapital)} icon={DollarSign} variant="warning" />
-              <StatCard title="Expected Gross Profit" value={money(purchasing.totalGP)} icon={TrendingUp} variant="success" />
-            </div>
-
-            <div className="rounded-xl border bg-card overflow-hidden">
-              <div className="p-3 border-b">
-                <h2 className="text-sm font-semibold">Reorder Recommendations</h2>
-                <p className="text-xs text-muted-foreground">Target 30 days of coverage, ranked by expected ROI</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40">
-                    <tr className="text-left">
-                      <SortableTh sortKey="name" label="Item" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} />
-                      <SortableTh sortKey="stock" label="Stock" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                      <SortableTh sortKey="dailySales" label="Daily Sales" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                      <SortableTh sortKey="suggestedQty" label="Suggest Qty" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                      <SortableTh sortKey="cost" label="Unit Cost" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                      <SortableTh sortKey="capital" label="Capital" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                      <SortableTh sortKey="expectedGP" label="Expected GP" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                      <SortableTh sortKey="roi" label="ROI" sort={purchaseSort.sort} onToggle={purchaseSort.toggle} align="right" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchaseSort.sorted.length === 0 ? (
-                      <tr><td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">Nothing to reorder — coverage is healthy.</td></tr>
-                    ) : purchaseSort.sorted.slice(0, 200).map((p) => (
-                      <tr key={p.itemId} className="border-t">
-                        <td className="px-3 py-1.5">
-                          <div className="font-medium">{p.name}</div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
-                        </td>
-                        <td className="px-3 py-1.5 text-right">{p.stock}</td>
-                        <td className="px-3 py-1.5 text-right">{p.dailySales.toFixed(2)}</td>
-                        <td className="px-3 py-1.5 text-right font-semibold">{p.suggestedQty}</td>
-                        <td className="px-3 py-1.5 text-right">{money(p.cost)}</td>
-                        <td className="px-3 py-1.5 text-right">{money(p.capital)}</td>
-                        <td className="px-3 py-1.5 text-right text-green-600">{money(p.expectedGP)}</td>
-                        <td className="px-3 py-1.5 text-right">{p.roi.toFixed(1)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-            </div>
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   );
