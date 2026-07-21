@@ -168,6 +168,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [categoryFilter, setCategoryFilter] = useState<"all" | MovementCategory>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
 
   const { data: ledger = [], isLoading } = useQuery({
     queryKey: ["item-ledger", item?.id, item?.quantity],
