@@ -39,6 +39,8 @@ interface LedgerRow {
   new_balance: number;
   reference_no: string;
   reference_link: string | null;
+  reference_kind: "invoice" | "purchase_order" | "overseas_purchase_order" | "online_sale" | null;
+  reference_id: string | null;
   notes: string;
   user: string;
 }
