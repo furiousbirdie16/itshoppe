@@ -9,8 +9,7 @@ import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
 import LowStockAlertsPage from "@/pages/LowStockAlertsPage";
-import SuppliersPage from "@/pages/SuppliersPage";
-import OverseasSuppliersPage from "@/pages/OverseasSuppliersPage";
+import SuppliersHubPage from "@/pages/SuppliersHubPage";
 import OverseasPurchaseOrdersPage from "@/pages/OverseasPurchaseOrdersPage";
 import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
 import CustomersPage from "@/pages/CustomersPage";
@@ -55,8 +54,8 @@ function ProtectedRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
-        <Route path="/suppliers" element={<SuppliersPage />} />
-        <Route path="/overseas-suppliers" element={<AdminRoute><OverseasSuppliersPage /></AdminRoute>} />
+        <Route path="/suppliers" element={<SuppliersHubPage />} />
+        <Route path="/overseas-suppliers" element={<Navigate to="/suppliers" replace />} />
         <Route path="/overseas-purchase-orders" element={<OverseasPurchaseOrdersPage />} />
         <Route path="/shipment-tracking" element={<Navigate to="/overseas-purchase-orders" replace />} />
         <Route path="/customers" element={<CustomersPage />} />
