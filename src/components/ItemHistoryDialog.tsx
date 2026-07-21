@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, History, ExternalLink } from "lucide-react";
 import type { Item } from "@/types/database";
+import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
 
 interface Props {
   item: Item | null;
