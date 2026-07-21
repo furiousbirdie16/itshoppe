@@ -153,6 +153,8 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
       new_balance: newBalance,
       reference_no: e.ref?.number || (e.m.reference_type ? "—" : "—"),
       reference_link: e.ref?.link || null,
+      reference_kind: e.ref?.kind || null,
+      reference_id: e.m.reference_id || null,
       notes: e.m.notes || "",
       user: "—",
     });
