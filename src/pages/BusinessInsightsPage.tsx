@@ -1060,8 +1060,6 @@ export default function BusinessInsightsPage() {
           <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>
           <TabsTrigger value="customers"><Users className="h-3.5 w-3.5 mr-1.5" />Customers</TabsTrigger>
-          {isAdmin && <TabsTrigger value="inventory"><Warehouse className="h-3.5 w-3.5 mr-1.5" />Inventory</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="purchasing"><ShoppingBag className="h-3.5 w-3.5 mr-1.5" />Purchasing</TabsTrigger>}
         </TabsList>
 
         {/* OVERVIEW */}
