@@ -117,11 +117,11 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
     onlineSaleIds.size ? supabase.from("online_sales").select("id, order_number").in("id", Array.from(onlineSaleIds)) : Promise.resolve({ data: [] as any[] }),
   ]);
 
-  const refMap = new Map<string, { number: string; link: string }>();
-  (invRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}` }));
-  (poRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}` }));
-  (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}` }));
-  (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}` }));
+  const refMap = new Map<string, { number: string; link: string; kind: LedgerRow["reference_kind"] }>();
+  (invRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice" }));
+  (poRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order" }));
+  (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
+  (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
 
   // Compute signed deltas
   const enriched = rows.map((m) => {
