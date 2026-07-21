@@ -462,6 +462,38 @@ export default function BusinessInsightsPage() {
     [aggregated],
   );
 
+  // Outstanding revenue: unpaid invoices + unpaid online sales (does NOT affect
+  // Revenue, COGS, GP, Margin, or Inventory calcs — display only).
+  const outstanding = useMemo(() => {
+    let inv = 0;
+    for (const r of invoiceRows as any[]) {
+      const st = r._invoice?.status;
+      if (st !== "paid" && st !== "completed") {
+        inv += Number(r.unit_price || 0) * Number(r.quantity || 0);
+      }
+    }
+    let onl = 0;
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status !== "paid") {
+        onl += Number(r.posted_price || 0) * Number(r.quantity || 0);
+      }
+    }
+    return { invoice: inv, online: onl, total: inv + onl };
+  }, [invoiceRows, onlineRows]);
+
+  // Count of PAID orders (unique invoices + unique paid online orders) for AOV.
+  const paidOrderCount = useMemo(() => {
+    const invSet = new Set<string>();
+    for (const r of invoiceRows as any[]) {
+      if (paidInvoiceIds.has(r.invoice_id)) invSet.add(r.invoice_id);
+    }
+    const onlSet = new Set<string>();
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status === "paid") onlSet.add(String(r.order_number || r.id));
+    }
+    return invSet.size + onlSet.size;
+  }, [invoiceRows, onlineRows, paidInvoiceIds]);
+
   // Customer analytics: separate online vs invoice.
   // Revenue excludes unpaid orders so it matches the totals shown elsewhere.
   const customerStats = useMemo(() => {
