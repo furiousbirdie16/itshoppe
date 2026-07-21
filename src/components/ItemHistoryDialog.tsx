@@ -265,7 +265,16 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
                   </TableCell>
                   <TableCell className="text-xs font-mono">
-                    {r.reference_link && r.reference_no !== "—" ? (
+                    {r.reference_kind === "invoice" && r.reference_id ? (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceDetailId(r.reference_id)}
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                        title="View invoice details"
+                      >
+                        {r.reference_no}<ExternalLink className="h-3 w-3" />
+                      </button>
+                    ) : r.reference_link && r.reference_no !== "—" ? (
                       <Link to={r.reference_link} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => onOpenChange(false)}>
                         {r.reference_no}<ExternalLink className="h-3 w-3" />
                       </Link>
