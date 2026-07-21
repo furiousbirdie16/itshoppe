@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, History, ExternalLink } from "lucide-react";
 import type { Item } from "@/types/database";
+import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
 
 interface Props {
   item: Item | null;
@@ -38,6 +39,8 @@ interface LedgerRow {
   new_balance: number;
   reference_no: string;
   reference_link: string | null;
+  reference_kind: "invoice" | "purchase_order" | "overseas_purchase_order" | "online_sale" | null;
+  reference_id: string | null;
   notes: string;
   user: string;
 }
@@ -114,11 +117,11 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
     onlineSaleIds.size ? supabase.from("online_sales").select("id, order_number").in("id", Array.from(onlineSaleIds)) : Promise.resolve({ data: [] as any[] }),
   ]);
 
-  const refMap = new Map<string, { number: string; link: string }>();
-  (invRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}` }));
-  (poRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}` }));
-  (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}` }));
-  (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}` }));
+  const refMap = new Map<string, { number: string; link: string; kind: LedgerRow["reference_kind"] }>();
+  (invRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice" }));
+  (poRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order" }));
+  (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
+  (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
 
   // Compute signed deltas
   const enriched = rows.map((m) => {
@@ -150,6 +153,8 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
       new_balance: newBalance,
       reference_no: e.ref?.number || (e.m.reference_type ? "—" : "—"),
       reference_link: e.ref?.link || null,
+      reference_kind: e.ref?.kind || null,
+      reference_id: e.m.reference_id || null,
       notes: e.m.notes || "",
       user: "—",
     });
@@ -163,6 +168,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [categoryFilter, setCategoryFilter] = useState<"all" | MovementCategory>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
 
   const { data: ledger = [], isLoading } = useQuery({
     queryKey: ["item-ledger", item?.id, item?.quantity],
@@ -259,7 +265,16 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
                   </TableCell>
                   <TableCell className="text-xs font-mono">
-                    {r.reference_link && r.reference_no !== "—" ? (
+                    {r.reference_kind === "invoice" && r.reference_id ? (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceDetailId(r.reference_id)}
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                        title="View invoice details"
+                      >
+                        {r.reference_no}<ExternalLink className="h-3 w-3" />
+                      </button>
+                    ) : r.reference_link && r.reference_no !== "—" ? (
                       <Link to={r.reference_link} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => onOpenChange(false)}>
                         {r.reference_no}<ExternalLink className="h-3 w-3" />
                       </Link>
@@ -283,6 +298,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           Running balance is calculated from the current stock ({item?.quantity ?? 0}) working backwards through every recorded movement. The newest row's New Balance always matches current inventory.
         </p>
       </DialogContent>
+      <InvoiceDetailsDialog
+        invoiceId={invoiceDetailId}
+        highlightItemId={item?.id || null}
+        open={!!invoiceDetailId}
+        onOpenChange={(o) => { if (!o) setInvoiceDetailId(null); }}
+      />
     </Dialog>
   );
 }
