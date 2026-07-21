@@ -1066,21 +1066,61 @@ export default function BusinessInsightsPage() {
 
         {/* OVERVIEW */}
         <TabsContent value="overview" className="space-y-4">
-          <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
-            {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" />}
-            {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" />}
-            {isAdmin && <StatCard title="Total Revenue" value={money(totals.revTotal)} icon={DollarSign} variant="success" />}
-            <StatCard title="Units Sold" value={totals.qty} icon={Package} />
-          </div>
+          {(() => {
+            const collected = totals.revTotal;
+            const outstandingTotal = outstanding.total;
+            const potential = collected + outstandingTotal;
+            const grossProfitTotal = productMetrics.reduce((s, p) => s + p.grossProfit, 0);
+            const avgMargin = collected > 0 ? (grossProfitTotal / collected) * 100 : 0;
+            const inventoryValue = (itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0);
+            const aov = paidOrderCount > 0 ? collected / paidOrderCount : 0;
+            return (
+              <>
+                {/* First row: revenue breakdown */}
+                <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
+                  {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" description="Paid online orders" />}
+                  {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" description="Paid invoices" />}
+                  {isAdmin && <StatCard title="Collected Revenue" value={money(collected)} icon={DollarSign} variant="success" description="Online + invoice (paid)" />}
+                  {isAdmin && <StatCard title="Outstanding Revenue" value={money(outstandingTotal)} icon={AlertTriangle} variant="warning" description="Unpaid / pending balance" />}
+                  {!isAdmin && <StatCard title="Units Sold" value={totals.qty} icon={Package} />}
+                </div>
 
-          {isAdmin && (
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-              <StatCard title="Gross Profit" value={money(productMetrics.reduce((s, p) => s + p.grossProfit, 0))} icon={TrendingUp} variant="success" />
-              <StatCard title="Avg Margin" value={`${(totals.revTotal > 0 ? (productMetrics.reduce((s, p) => s + p.grossProfit, 0) / totals.revTotal) * 100 : 0).toFixed(1)}%`} icon={TrendingUp} />
-              <StatCard title="Inventory Value" value={money((itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0))} icon={Warehouse} />
-              <StatCard title="Low Stock Items" value={inventoryBuckets.lowStock.length} icon={AlertTriangle} variant="warning" />
-            </div>
-          )}
+                {/* Second row: profitability + operational */}
+                {isAdmin && (
+                  <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                    <StatCard title="Gross Profit" value={money(grossProfitTotal)} icon={TrendingUp} variant="success" description="Paid orders only" />
+                    <StatCard title="Average Margin" value={`${avgMargin.toFixed(1)}%`} icon={TrendingUp} description="Paid orders only" />
+                    <StatCard title="Inventory Value" value={money(inventoryValue)} icon={Warehouse} />
+                    <StatCard title="Average Order Value" value={money(aov)} description={`${paidOrderCount} paid order${paidOrderCount === 1 ? "" : "s"}`} icon={ShoppingBag} />
+                  </div>
+                )}
+
+                {/* Revenue summary */}
+                {isAdmin && (
+                  <div className="rounded-xl border bg-card p-4">
+                    <h2 className="text-sm font-semibold mb-3">Revenue Summary</h2>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between py-1.5 border-b">
+                        <span className="text-muted-foreground">Collected Revenue</span>
+                        <span className="font-semibold tabular-nums text-green-600">{money(collected)}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-1.5 border-b">
+                        <span className="text-muted-foreground">Outstanding Revenue</span>
+                        <span className="font-semibold tabular-nums text-amber-600">{money(outstandingTotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span className="font-medium">Potential Revenue</span>
+                        <span className="font-bold tabular-nums text-base">{money(potential)}</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      Outstanding revenue is display-only — it is excluded from Revenue, COGS, Gross Profit, Margin, and Inventory calculations.
+                    </p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Top 5 products */}
           <div className="rounded-xl border bg-card p-4">
