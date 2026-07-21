@@ -298,6 +298,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           Running balance is calculated from the current stock ({item?.quantity ?? 0}) working backwards through every recorded movement. The newest row's New Balance always matches current inventory.
         </p>
       </DialogContent>
+      <InvoiceDetailsDialog
+        invoiceId={invoiceDetailId}
+        highlightItemId={item?.id || null}
+        open={!!invoiceDetailId}
+        onOpenChange={(o) => { if (!o) setInvoiceDetailId(null); }}
+      />
     </Dialog>
   );
 }
