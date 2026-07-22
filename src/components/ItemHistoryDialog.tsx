@@ -276,6 +276,15 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       >
                         {r.reference_no}<ExternalLink className="h-3 w-3" />
                       </button>
+                    ) : r.reference_kind === "online_sale" && r.reference_id ? (
+                      <button
+                        type="button"
+                        onClick={() => setOnlineSaleDetailId(r.reference_id)}
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                        title="View online sale details"
+                      >
+                        {r.reference_no}<ExternalLink className="h-3 w-3" />
+                      </button>
                     ) : r.reference_link && r.reference_no !== "—" ? (
                       <Link to={r.reference_link} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => onOpenChange(false)}>
                         {r.reference_no}<ExternalLink className="h-3 w-3" />
