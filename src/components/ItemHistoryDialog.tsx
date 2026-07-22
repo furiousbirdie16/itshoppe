@@ -315,6 +315,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
         open={!!invoiceDetailId}
         onOpenChange={(o) => { if (!o) setInvoiceDetailId(null); }}
       />
+      <OnlineSaleDetailsDialog
+        onlineSaleId={onlineSaleDetailId}
+        highlightItemId={item?.id || null}
+        open={!!onlineSaleDetailId}
+        onOpenChange={(o) => { if (!o) setOnlineSaleDetailId(null); }}
+      />
     </Dialog>
   );
 }
