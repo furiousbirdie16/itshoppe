@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Search, History, ExternalLink } from "lucide-react";
 import type { Item } from "@/types/database";
 import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
+import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
 
 interface Props {
   item: Item | null;
@@ -169,6 +170,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
+  const [onlineSaleDetailId, setOnlineSaleDetailId] = useState<string | null>(null);
 
   const { data: ledger = [], isLoading } = useQuery({
     queryKey: ["item-ledger", item?.id, item?.quantity],
@@ -274,6 +276,15 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       >
                         {r.reference_no}<ExternalLink className="h-3 w-3" />
                       </button>
+                    ) : r.reference_kind === "online_sale" && r.reference_id ? (
+                      <button
+                        type="button"
+                        onClick={() => setOnlineSaleDetailId(r.reference_id)}
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                        title="View online sale details"
+                      >
+                        {r.reference_no}<ExternalLink className="h-3 w-3" />
+                      </button>
                     ) : r.reference_link && r.reference_no !== "—" ? (
                       <Link to={r.reference_link} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => onOpenChange(false)}>
                         {r.reference_no}<ExternalLink className="h-3 w-3" />
@@ -303,6 +314,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
         highlightItemId={item?.id || null}
         open={!!invoiceDetailId}
         onOpenChange={(o) => { if (!o) setInvoiceDetailId(null); }}
+      />
+      <OnlineSaleDetailsDialog
+        onlineSaleId={onlineSaleDetailId}
+        highlightItemId={item?.id || null}
+        open={!!onlineSaleDetailId}
+        onOpenChange={(o) => { if (!o) setOnlineSaleDetailId(null); }}
       />
     </Dialog>
   );
