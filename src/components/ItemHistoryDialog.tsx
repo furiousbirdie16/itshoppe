@@ -38,6 +38,13 @@ interface LedgerRow {
   signed_delta: number;
   previous_balance: number;
   new_balance: number;
+  open_before: number | null;
+  open_after: number | null;
+  dest_before: number | null;
+  dest_after: number | null;
+  location: string | null;
+  dest_location: string | null;
+  unit: string | null;
   reference_no: string;
   reference_link: string | null;
   reference_kind: "invoice" | "purchase_order" | "overseas_purchase_order" | "online_sale" | null;
@@ -45,6 +52,7 @@ interface LedgerRow {
   notes: string;
   user: string;
 }
+
 
 const CATEGORY_LABELS: Record<MovementCategory, string> = {
   stock_received: "Stock Received",
