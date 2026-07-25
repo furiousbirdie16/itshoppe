@@ -179,15 +179,25 @@ export const applyStockChange = async (params: {
     updated_at: new Date().toISOString(),
   }).eq("id", itemId);
 
-  await from("inventory_movements").insert({
-    item_id: itemId,
+  // Sales deduct from store; restores add back to store (see applyLocationDelta).
+  const isRestore = qty < 0;
+  await recordMovement({
+    itemId,
+    variationId: variationId || null,
     type: movementType,
     quantity: Math.abs(baseUnitsMoved),
-    reference_id: referenceId,
-    reference_type: referenceType,
-    notes: notes || (qty > 0 ? "Stock deducted" : "Stock restored"),
+    unit: (cur as any).base_unit || (variationId ? "m" : "pcs"),
+    location: "store",
+    referenceId,
+    referenceType,
+    notes: notes || (isRestore ? "Stock restored" : "Stock deducted"),
+    balanceBefore: Number(cur.store_quantity || 0),
+    balanceAfter: Number(next.store_quantity || 0),
+    openBefore: Number(cur.open_roll_remaining || 0),
+    openAfter: Number(next.open_roll_remaining || 0),
   });
 };
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
