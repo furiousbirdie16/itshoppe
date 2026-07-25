@@ -566,10 +566,38 @@ export default function BusinessInsightsPage() {
   }, [onlineRows, invoiceRows]);
 
   const handleExport = () => {
-    if (sorted.length === 0) {
-      toast.error("Nothing to export for the current filter");
-      return;
-    }
+    const wb = XLSX.utils.book_new();
+
+    // === Sheet 1: Product Performance (parent + variation, all metrics) ===
+    const perfRows = filteredProducts.map((p) => {
+      const row: Record<string, unknown> = {
+        Type: p.kind === "variation" ? "Variation" : "Parent",
+        Item: p.name,
+        "Variation Label": p.variationLabel || "",
+        SKU: p.sku,
+        Source: p.source || "local",
+        Stock: p.stock,
+        Threshold: p.threshold,
+        "Selling Price": p.sellingPrice,
+        "Qty Sold": p.qtySold,
+        "Daily Sales": Number(p.dailySales.toFixed(4)),
+        "Days Remaining": Number.isFinite(p.daysRemaining) ? Number(p.daysRemaining.toFixed(1)) : "∞",
+        Action: p.action,
+      };
+      if (isAdmin) {
+        row["Cost"] = p.cost;
+        row["Revenue"] = p.revenue;
+        row["Total Cost (COGS)"] = p.totalCost;
+        row["Gross Profit"] = p.grossProfit;
+        row["Margin %"] = Number(p.margin.toFixed(2));
+        row["Avg Inventory Value"] = p.avgInventoryValue ?? "";
+        row["GMROI"] = p.gmroi === null ? "N/A" : Number(p.gmroi.toFixed(4));
+      }
+      return row;
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(perfRows), "Product Performance");
+
+    // === Sheet 2: Sales Summary (per-unit sold in range) ===
     const summaryRows = sorted.map((r) => {
       const base: Record<string, unknown> = {
         Item: r.name,
@@ -586,6 +614,9 @@ export default function BusinessInsightsPage() {
       }
       return base;
     });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Sales Summary");
+
+    // === Sheet 3: Transactions (per-order line detail) ===
     const txnRows = sorted.flatMap((r) =>
       r.txns.map((t) => {
         const base: Record<string, unknown> = {
@@ -601,17 +632,41 @@ export default function BusinessInsightsPage() {
         if (isAdmin) {
           base["Unit ₱"] = t.unitPrice;
           base["Amount ₱"] = t.amount;
+          base["Cost ₱"] = t.cost ?? "";
+          base["Profit ₱"] = t.profit ?? "";
         }
         return base;
       }),
     );
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Items");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txnRows), "Transactions");
+
+    // === Sheet 4: KPI Summary ===
+    const kpiRows: Record<string, unknown>[] = [
+      { Metric: "Date Range", Value: `${format(dateFrom, "yyyy-MM-dd")} → ${format(dateTo, "yyyy-MM-dd")}` },
+      { Metric: "Source Filter", Value: source },
+      { Metric: "Products (rows)", Value: filteredProducts.length },
+      { Metric: "Parent Products", Value: filteredProducts.filter((p) => p.kind === "parent").length },
+      { Metric: "Variations", Value: filteredProducts.filter((p) => p.kind === "variation").length },
+      { Metric: "Total Qty Sold", Value: filteredProducts.reduce((s, p) => s + p.qtySold, 0) },
+    ];
+    if (isAdmin) {
+      const totalRev = filteredProducts.reduce((s, p) => s + p.revenue, 0);
+      const totalCogs = filteredProducts.reduce((s, p) => s + p.totalCost, 0);
+      const totalProfit = filteredProducts.reduce((s, p) => s + p.grossProfit, 0);
+      kpiRows.push(
+        { Metric: "Total Revenue (Paid)", Value: totalRev },
+        { Metric: "Total COGS", Value: totalCogs },
+        { Metric: "Total Gross Profit", Value: totalProfit },
+        { Metric: "Blended Margin %", Value: totalRev > 0 ? Number(((totalProfit / totalRev) * 100).toFixed(2)) : 0 },
+      );
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiRows), "KPI Summary");
+
     const range = `${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}`;
     XLSX.writeFile(wb, `business-insights_${source}_${range}.xlsx`);
-    toast.success(`Exported ${summaryRows.length} item${summaryRows.length === 1 ? "" : "s"}`);
+    toast.success(`Exported ${perfRows.length} product row${perfRows.length === 1 ? "" : "s"}`);
   };
+
 
   // Days in range (for daily-sales calc)
   const daysInRange = Math.max(1, Math.round((dateTo.getTime() - dateFrom.getTime()) / 86400000) + 1);
