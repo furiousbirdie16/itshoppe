@@ -616,53 +616,38 @@ export default function BusinessInsightsPage() {
   // Days in range (for daily-sales calc)
   const daysInRange = Math.max(1, Math.round((dateTo.getTime() - dateFrom.getTime()) / 86400000) + 1);
 
-  // Per-item aggregated sales (parent items only — variations rolled up into parent)
-  const perItemSales = useMemo(() => {
-    const m = new Map<string, { qty: number; revenue: number; orders: number }>();
+  // Per-unit (parent OR variation) aggregated sales. Key = `${itemId}|${variationId||""}`.
+  // Variations are NEVER rolled into their parent — each row is independent.
+  const unitKey = (itemId: string | null, variationId: string | null) =>
+    `${itemId || ""}|${variationId || ""}`;
+
+  const perUnitSales = useMemo(() => {
+    const m = new Map<string, { qty: number; revenue: number; orders: number; cost: number; profit: number; hasCost: boolean }>();
     for (const r of aggregated) {
       if (!r.itemId) continue;
-      const e = m.get(r.itemId) || { qty: 0, revenue: 0, orders: 0 };
+      const k = unitKey(r.itemId, r.variationId);
+      const e = m.get(k) || { qty: 0, revenue: 0, orders: 0, cost: 0, profit: 0, hasCost: false };
       e.qty += r.qtyTotal;
       e.revenue += r.revenueTotal;
       e.orders += r.orders;
-      m.set(r.itemId, e);
+      for (const t of r.txns) {
+        if (t.cost != null) { e.cost += t.cost; e.hasCost = true; }
+        if (t.profit != null) e.profit += t.profit;
+      }
+      m.set(k, e);
     }
     return m;
   }, [aggregated]);
 
-  // Per-item gross profit (from cost snapshots). Only PAID invoices + PAID online sales
-  // so revenue - cost = gross profit stays consistent with the totals shown.
-  const perItemProfit = useMemo(() => {
-    const m = new Map<string, { cost: number; profit: number }>();
-    for (const f of financialsRows as any[]) {
-      if (!f.item_id) continue;
-      if (!paidInvoiceIds.has(f.invoice_id)) continue;
-      const e = m.get(f.item_id) || { cost: 0, profit: 0 };
-      e.cost += Number(f.line_total_cost || 0);
-      e.profit += Number(f.line_profit || 0);
-      m.set(f.item_id, e);
-    }
-    // Add paid online sales profit (unpaid online sales excluded per spec).
-    for (const r of onlineRows as any[]) {
-      if (!r.item_id || r.payment_status !== "paid") continue;
-      const fin = onlineFinMap.get(r.id);
-      if (!fin) continue;
-      const e = m.get(r.item_id) || { cost: 0, profit: 0 };
-      e.cost += fin.cost;
-      e.profit += fin.profit;
-      m.set(r.item_id, e);
-    }
-    return m;
-  }, [financialsRows, onlineRows, onlineFinMap, paidInvoiceIds]);
-
-
-
-
-  // Enhanced product metrics — one row per parent item
+  // Enhanced product metrics — one row per parent product AND one row per variation.
   interface ProductMetric {
+    key: string;
     itemId: string;
-    name: string;
+    variationId: string | null;
+    kind: "parent" | "variation";
+    name: string;              // parent name, or "parent — variation" for variation rows
     sku: string;
+    variationLabel: string | null;
     source: string;
     stock: number;
     cost: number;
@@ -675,7 +660,7 @@ export default function BusinessInsightsPage() {
     margin: number;
     dailySales: number;
     daysRemaining: number;
-    gmroi: number | null; // gross profit / avg inventory value; null = insufficient data
+    gmroi: number | null;
     avgInventoryValue: number | null;
     action: "Buy" | "Maintain" | "Reduce" | "Dead" | "Overstock";
   }
@@ -691,7 +676,7 @@ export default function BusinessInsightsPage() {
       let signed = 0;
       if (inSet.has(m.type)) signed = qty;
       else if (outSet.has(m.type)) signed = -qty;
-      else continue; // transfers are neutral for total stock
+      else continue;
       const arr = mv.get(m.item_id) || [];
       arr.push({ at: new Date(m.created_at).getTime(), signed });
       mv.set(m.item_id, arr);
@@ -710,84 +695,84 @@ export default function BusinessInsightsPage() {
   const productMetrics = useMemo<ProductMetric[]>(() => {
     const fromMs = dateFrom.getTime();
     const toMs = dateTo.getTime();
-    return (itemsAll as any[]).map((it) => {
-      const sale = perItemSales.get(it.id) || { qty: 0, revenue: 0, orders: 0 };
-      const prof = perItemProfit.get(it.id) || { cost: 0, profit: 0 };
-      const stock = Number(it.quantity || 0);
-      const cost = Number(it.cost_price || 0);
-      const sellingPrice = Number(it.selling_price || 0);
+    const itemsById = new Map<string, any>((itemsAll as any[]).map((it) => [it.id, it]));
+    const out: ProductMetric[] = [];
+
+    const buildRow = (
+      base: {
+        key: string; itemId: string; variationId: string | null; kind: "parent" | "variation";
+        name: string; sku: string; variationLabel: string | null; source: string;
+        stock: number; cost: number; sellingPrice: number; threshold: number;
+        parentCreatedMs: number;
+      },
+    ): ProductMetric => {
+      const sale = perUnitSales.get(base.key) || { qty: 0, revenue: 0, orders: 0, cost: 0, profit: 0, hasCost: false };
       const dailySales = sale.qty / daysInRange;
-      const daysRemaining = dailySales > 0 ? stock / dailySales : (stock > 0 ? Infinity : 0);
-      const margin = sale.revenue > 0 ? (prof.profit / sale.revenue) * 100 : 0;
+      const daysRemaining = dailySales > 0 ? base.stock / dailySales : (base.stock > 0 ? Infinity : 0);
+      const margin = sale.revenue > 0 ? (sale.profit / sale.revenue) * 100 : 0;
 
-      // Reconstruct historical inventory value at beginning and end of the range.
-      const itemCreatedMs = it.created_at ? new Date(it.created_at).getTime() : 0;
-      const movements = movementsByItem.get(it.id) || [];
-      const history = costHistoryByItem.get(it.id) || [];
-
-      // Walk backward from current stock to derive endQty (at dateTo) and beginQty (just before dateFrom).
-      let afterTo = 0;
-      let afterFrom = 0; // includes movements on or after dateFrom
-      for (const m of movements) {
-        if (m.at > toMs) afterTo += m.signed;
-        if (m.at >= fromMs) afterFrom += m.signed;
-      }
-      const endQty = stock - afterTo;
-      const beginQty = stock - afterFrom;
-
-      const costAt = (ms: number): number | null => {
-        // Latest cost snapshot at or before ms.
-        let picked: number | null = null;
-        for (const h of history) {
-          if (h.at <= ms) picked = h.cost;
-          else break;
-        }
-        return picked;
-      };
-
+      // GMROI only for parent rows (variation-level movement history unavailable).
       let avgInventoryValue: number | null = null;
       let gmroi: number | null = null;
-      const itemExistedAtStart = itemCreatedMs > 0 && itemCreatedMs <= fromMs;
-      const itemExistsInRange = itemCreatedMs === 0 || itemCreatedMs <= toMs;
-
-      if (itemExistsInRange) {
-        // End cost: latest snapshot ≤ dateTo, else current cost (still historical anchor).
-        const endCost = costAt(toMs) ?? (cost > 0 ? cost : null);
-        // Begin cost: latest snapshot < dateFrom.
-        let beginCost: number | null = costAt(fromMs - 1);
-        if (beginCost === null && itemExistedAtStart) {
-          // No snapshot before start, but item existed — assume current cost is representative.
-          beginCost = cost > 0 ? cost : null;
+      if (base.kind === "parent") {
+        const movements = movementsByItem.get(base.itemId) || [];
+        const history = costHistoryByItem.get(base.itemId) || [];
+        let afterTo = 0;
+        let afterFrom = 0;
+        for (const mv of movements) {
+          if (mv.at > toMs) afterTo += mv.signed;
+          if (mv.at >= fromMs) afterFrom += mv.signed;
         }
-        // If item didn't exist at start, begin inventory is 0 (not "insufficient data").
-        const beginValue = itemExistedAtStart
-          ? (beginCost !== null ? Math.max(0, beginQty) * beginCost : null)
-          : 0;
-        const endValue = endCost !== null ? Math.max(0, endQty) * endCost : null;
-        if (beginValue !== null && endValue !== null) {
-          avgInventoryValue = (beginValue + endValue) / 2;
-          if (avgInventoryValue > 0) gmroi = prof.profit / avgInventoryValue;
+        const endQty = base.stock - afterTo;
+        const beginQty = base.stock - afterFrom;
+        const costAt = (ms: number): number | null => {
+          let picked: number | null = null;
+          for (const h of history) {
+            if (h.at <= ms) picked = h.cost;
+            else break;
+          }
+          return picked;
+        };
+        const itemExistedAtStart = base.parentCreatedMs > 0 && base.parentCreatedMs <= fromMs;
+        const itemExistsInRange = base.parentCreatedMs === 0 || base.parentCreatedMs <= toMs;
+        if (itemExistsInRange) {
+          const endCost = costAt(toMs) ?? (base.cost > 0 ? base.cost : null);
+          let beginCost: number | null = costAt(fromMs - 1);
+          if (beginCost === null && itemExistedAtStart) beginCost = base.cost > 0 ? base.cost : null;
+          const beginValue = itemExistedAtStart
+            ? (beginCost !== null ? Math.max(0, beginQty) * beginCost : null)
+            : 0;
+          const endValue = endCost !== null ? Math.max(0, endQty) * endCost : null;
+          if (beginValue !== null && endValue !== null) {
+            avgInventoryValue = (beginValue + endValue) / 2;
+            if (avgInventoryValue > 0) gmroi = sale.profit / avgInventoryValue;
+          }
         }
       }
 
       let action: ProductMetric["action"] = "Maintain";
-      if (sale.qty === 0 && stock > 0) action = "Dead";
+      if (sale.qty === 0 && base.stock > 0) action = "Dead";
       else if (daysRemaining < 14) action = "Buy";
       else if (daysRemaining > 180) action = "Overstock";
       else if (daysRemaining > 90) action = "Reduce";
+
       return {
-        itemId: it.id,
-        name: it.name,
-        sku: it.sku,
-        source: it.source || "local",
-        stock,
-        cost,
-        sellingPrice,
-        threshold: Number(it.low_stock_threshold || 0),
+        key: base.key,
+        itemId: base.itemId,
+        variationId: base.variationId,
+        kind: base.kind,
+        name: base.name,
+        sku: base.sku,
+        variationLabel: base.variationLabel,
+        source: base.source,
+        stock: base.stock,
+        cost: base.cost,
+        sellingPrice: base.sellingPrice,
+        threshold: base.threshold,
         qtySold: sale.qty,
         revenue: sale.revenue,
-        totalCost: prof.cost,
-        grossProfit: prof.profit,
+        totalCost: sale.cost,
+        grossProfit: sale.profit,
         margin,
         dailySales,
         daysRemaining,
@@ -795,39 +780,64 @@ export default function BusinessInsightsPage() {
         avgInventoryValue,
         action,
       };
-    });
-  }, [itemsAll, perItemSales, perItemProfit, daysInRange, movementsByItem, costHistoryByItem, dateFrom, dateTo]);
+    };
 
-  // Per-item txns rollup (parent items — all variation txns collected under itemId)
-  const perItemTxns = useMemo(() => {
+    // Parent rows (one per item).
+    for (const it of itemsAll as any[]) {
+      out.push(buildRow({
+        key: unitKey(it.id, null),
+        itemId: it.id,
+        variationId: null,
+        kind: "parent",
+        name: it.name,
+        sku: it.sku || "—",
+        variationLabel: null,
+        source: it.source || "local",
+        stock: Number(it.quantity || 0),
+        cost: Number(it.cost_price || 0),
+        sellingPrice: Number(it.selling_price || 0),
+        threshold: Number(it.low_stock_threshold || 0),
+        parentCreatedMs: it.created_at ? new Date(it.created_at).getTime() : 0,
+      }));
+    }
+
+    // Variation rows (one per variation).
+    for (const v of variationsAll as any[]) {
+      const parent = itemsById.get(v.item_id);
+      if (!parent) continue;
+      out.push(buildRow({
+        key: unitKey(v.item_id, v.id),
+        itemId: v.item_id,
+        variationId: v.id,
+        kind: "variation",
+        name: `${parent.name} — ${v.name}`,
+        sku: v.sku || parent.sku || "—",
+        variationLabel: v.name,
+        source: parent.source || "local",
+        stock: Number(v.quantity || 0),
+        cost: Number(v.cost_price || 0),
+        sellingPrice: Number(v.selling_price || 0),
+        threshold: 0,
+        parentCreatedMs: parent.created_at ? new Date(parent.created_at).getTime() : 0,
+      }));
+    }
+
+    return out;
+  }, [itemsAll, variationsAll, perUnitSales, daysInRange, movementsByItem, costHistoryByItem, dateFrom, dateTo]);
+
+  // Per-unit transactions for expanded row.
+  const perUnitTxns = useMemo(() => {
     const m = new Map<string, SaleTxn[]>();
     for (const r of aggregated) {
       if (!r.itemId) continue;
-      const arr = m.get(r.itemId) || [];
+      const k = unitKey(r.itemId, r.variationId);
+      const arr = m.get(k) || [];
       for (const t of r.txns) arr.push(t);
-      m.set(r.itemId, arr);
+      m.set(k, arr);
     }
     for (const arr of m.values()) arr.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     return m;
   }, [aggregated]);
-
-  // Per-item variation breakdown: itemId -> [{ label, qty, variationId }]
-  // Sales quantities must NEVER be summed across variations with different units.
-  const perItemVariations = useMemo(() => {
-    const m = new Map<string, { variationId: string | null; label: string; qty: number }[]>();
-    for (const r of aggregated) {
-      if (!r.itemId) continue;
-      const arr = m.get(r.itemId) || [];
-      const label = r.variationName || "Base unit";
-      const existing = arr.find((v) => (v.variationId || null) === (r.variationId || null));
-      if (existing) existing.qty += r.qtyTotal;
-      else arr.push({ variationId: r.variationId, label, qty: r.qtyTotal });
-      m.set(r.itemId, arr);
-    }
-    for (const arr of m.values()) arr.sort((a, b) => b.qty - a.qty);
-    return m;
-  }, [aggregated]);
-
 
   const productSearch = search.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
