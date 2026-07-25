@@ -65,9 +65,10 @@ export const applyStockChange = async (params: {
   if (qty === 0) return;
 
   const { data: item } = await from("items")
-    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock")
+    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock, base_unit")
     .eq("id", itemId)
     .single();
+
   if (!item) return;
   const cur = item as any;
 
