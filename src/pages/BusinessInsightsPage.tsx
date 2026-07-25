@@ -248,6 +248,14 @@ export default function BusinessInsightsPage() {
     ),
   });
 
+  // All variations — enable per-variation rows with independent stock/cost.
+  const { data: variationsAll = [] } = useQuery({
+    queryKey: ["bi_variations_all"],
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("item_variations").select("id, item_id, name, sku, quantity, cost_price, selling_price")
+    ),
+  });
+
   // All inventory movements — used to reconstruct historical stock levels for GMROI.
   const { data: movementsAll = [] } = useQuery({
     queryKey: ["bi_movements_all"],
