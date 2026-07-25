@@ -1234,18 +1234,24 @@ export default function BusinessInsightsPage() {
                   {productSort.sorted.length === 0 ? (
                     <TableRow><TableCell colSpan={isAdmin ? 10 : 5} className="text-center text-xs text-muted-foreground py-10">No items.</TableCell></TableRow>
                   ) : productSort.sorted.slice(0, 500).map((p) => {
-                    const isOpen = expandedProduct.has(p.itemId);
-                    const txns = perItemTxns.get(p.itemId) || [];
-                    const variations = perItemVariations.get(p.itemId) || [];
-                    const multiVariation = variations.length > 1;
+                    const isOpen = expandedProduct.has(p.key);
+                    const txns = perUnitTxns.get(p.key) || [];
                     return (
-                      <Fragment key={p.itemId}>
-                        <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpandProduct(p.itemId)}>
+                      <Fragment key={p.key}>
+                        <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpandProduct(p.key)}>
                           <TableCell className="w-8 p-2 align-middle">
                             {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium text-sm">{p.name}</div>
+                            <div className={cn("font-medium text-sm flex items-center gap-1.5", p.kind === "variation" && "pl-3")}>
+                              {p.kind === "variation" && <span className="text-muted-foreground/60">↳</span>}
+                              <span>{p.name}</span>
+                              {p.kind === "variation" && (
+                                <span className="inline-flex items-center rounded bg-accent/40 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                                  Variation
+                                </span>
+                              )}
+                            </div>
                             <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
                           </TableCell>
                           <TableCell>
@@ -1254,30 +1260,7 @@ export default function BusinessInsightsPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-right text-sm">{p.stock}</TableCell>
-                          <TableCell className="text-right text-sm">
-                            {variations.length === 0 ? (
-                              <span className="text-muted-foreground">0</span>
-                            ) : multiVariation ? (
-                              <div className="flex flex-col items-end gap-0.5 leading-tight">
-                                {variations.slice(0, 3).map((v) => (
-                                  <span key={v.variationId || "base"} className="text-[11px]">
-                                    <span className="text-muted-foreground">{v.label}:</span>{" "}
-                                    <span className="font-semibold tabular-nums">{v.qty}</span>
-                                  </span>
-                                ))}
-                                {variations.length > 3 && (
-                                  <span className="text-[10px] text-muted-foreground">+{variations.length - 3} more</span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="tabular-nums">
-                                {variations[0].qty}
-                                {variations[0].variationId && (
-                                  <span className="text-[10px] text-muted-foreground ml-1">{variations[0].label}</span>
-                                )}
-                              </span>
-                            )}
-                          </TableCell>
+                          <TableCell className="text-right text-sm tabular-nums">{p.qtySold}</TableCell>
                           {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
@@ -1287,7 +1270,7 @@ export default function BusinessInsightsPage() {
                               {p.gmroi === null ? (
                                 <span
                                   className="text-muted-foreground cursor-help"
-                                  title="GMROI cannot be calculated because there is insufficient inventory history."
+                                  title={p.kind === "variation" ? "GMROI is tracked at the parent product level." : "GMROI cannot be calculated because there is insufficient inventory history."}
                                 >
                                   N/A
                                 </span>
@@ -1301,19 +1284,6 @@ export default function BusinessInsightsPage() {
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
                             <TableCell colSpan={isAdmin ? 10 : 5} className="p-0">
                               <div className="px-4 py-3 space-y-3">
-                                {variations.length > 0 && (
-                                  <div>
-                                    <div className="text-xs font-semibold text-muted-foreground mb-1.5">Sales by variation</div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {variations.map((v) => (
-                                        <span key={v.variationId || "base"} className="inline-flex items-center gap-1 rounded border bg-background px-2 py-1 text-[11px]">
-                                          <span className="text-muted-foreground">{v.label}</span>
-                                          <span className="font-semibold tabular-nums">{v.qty}</span>
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
                                 <div className="text-xs font-semibold text-muted-foreground">
                                   Sales history ({txns.length}){isAdmin ? " — with per-order gross profit" : ""}
                                 </div>
