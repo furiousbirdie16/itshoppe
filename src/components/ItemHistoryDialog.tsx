@@ -267,20 +267,32 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 <TableHead className="text-xs whitespace-nowrap">Date & Time</TableHead>
                 <TableHead className="text-xs">Transaction</TableHead>
                 <TableHead className="text-xs">Reference</TableHead>
+                <TableHead className="text-xs">Location</TableHead>
                 <TableHead className="text-xs text-right">Qty In</TableHead>
                 <TableHead className="text-xs text-right">Qty Out</TableHead>
-                <TableHead className="text-xs text-right">Previous</TableHead>
-                <TableHead className="text-xs text-right">New Balance</TableHead>
+                <TableHead className="text-xs">Unit</TableHead>
+                <TableHead className="text-xs text-right">Bal Before</TableHead>
+                <TableHead className="text-xs text-right">Bal After</TableHead>
                 <TableHead className="text-xs">User</TableHead>
-                <TableHead className="text-xs">Notes</TableHead>
+                <TableHead className="text-xs">Remarks</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
-              ) : filtered.map((r) => (
+                <TableRow><TableCell colSpan={11} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
+              ) : filtered.map((r) => {
+                const locLabel = r.category === "transfer" && r.dest_location
+                  ? `${r.location || "?"} → ${r.dest_location}`
+                  : (r.location || "—");
+                const transferDetail = r.category === "transfer" && r.dest_before != null && r.dest_after != null
+                  ? ` · dest ${r.dest_before}→${r.dest_after}`
+                  : "";
+                const openDetail = (r.open_before != null && r.open_after != null && (r.open_before !== 0 || r.open_after !== 0))
+                  ? ` · open ${r.open_before}→${r.open_after}${r.unit || "m"}`
+                  : "";
+                return (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</TableCell>
                   <TableCell>
@@ -313,14 +325,20 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       <span className="text-muted-foreground">{r.reference_no}</span>
                     )}
                   </TableCell>
+                  <TableCell className="text-xs capitalize">{locLabel}</TableCell>
                   <TableCell className="text-sm text-right text-emerald-600 font-medium">{r.qty_in > 0 ? `+${r.qty_in}` : ""}</TableCell>
                   <TableCell className="text-sm text-right text-rose-600 font-medium">{r.qty_out > 0 ? `−${r.qty_out}` : ""}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.unit || "—"}</TableCell>
                   <TableCell className="text-sm text-right tabular-nums">{r.previous_balance}</TableCell>
                   <TableCell className="text-sm text-right tabular-nums font-semibold">{r.new_balance}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.user}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={r.notes}>{r.notes}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={r.user}>{r.user}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={`${r.notes}${transferDetail}${openDetail}`}>
+                    {r.notes}{transferDetail || openDetail ? <span className="text-[10px] italic">{transferDetail}{openDetail}</span> : null}
+                  </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
+
             </TableBody>
           </Table>
         </div>
