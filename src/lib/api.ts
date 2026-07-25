@@ -488,19 +488,27 @@ export const unreceivePO = async (
       .eq("id", item.poItemId);
 
     if (item.itemId) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", item.itemId).single();
-      const newQty = Math.max(0, ((currentItem as any)?.quantity || 0) - undoQty);
-      await from("items").update({ quantity: newQty, updated_at: new Date().toISOString() }).eq("id", item.itemId);
+      const { data: currentItem } = await from("items").select("quantity, warehouse_quantity, store_quantity").eq("id", item.itemId).single();
+      const prev = Number((currentItem as any)?.quantity || 0);
+      const prevWh = Number((currentItem as any)?.warehouse_quantity || 0);
+      const newQty = Math.max(0, prev - undoQty);
+      const newWh = Math.max(0, prevWh - undoQty);
+      await from("items").update({ quantity: newQty, warehouse_quantity: newWh, updated_at: new Date().toISOString() }).eq("id", item.itemId);
 
-      await from("inventory_movements").insert({
-        item_id: item.itemId,
+      await recordMovement({
+        itemId: item.itemId,
         type: "in_po",
-        quantity: -undoQty,
-        reference_id: poId,
-        reference_type: "purchase_order",
+        quantity: undoQty,
+        unit: "pcs",
+        location: "warehouse",
+        referenceId: poId,
+        referenceType: "purchase_order_undo",
         notes: `Undo receive from PO`,
+        balanceBefore: prevWh,
+        balanceAfter: newWh,
       });
     }
+
   }
 
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
