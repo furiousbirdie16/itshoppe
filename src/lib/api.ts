@@ -1215,14 +1215,19 @@ export const unreceiveOverseasPO = async (
         updated_at: new Date().toISOString(),
       }).eq("id", item.itemId);
 
-      await from("inventory_movements").insert({
-        item_id: item.itemId,
+      await recordMovement({
+        itemId: item.itemId,
         type: "in_po",
-        quantity: -undoQty,
-        reference_id: poId,
-        reference_type: "overseas_purchase_order",
+        quantity: undoQty,
+        unit: "pcs",
+        location: fromWh > 0 ? "warehouse" : "store",
+        referenceId: poId,
+        referenceType: "overseas_purchase_order_undo",
         notes: `Undo receive from overseas PO`,
+        balanceBefore: fromWh > 0 ? curWh : curSt,
+        balanceAfter: fromWh > 0 ? curWh - fromWh : curSt - fromSt,
       });
+
     }
 
     const newReceived = currentReceived - undoQty;
