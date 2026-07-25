@@ -437,15 +437,20 @@ export const receivePO = async (
     }
     await from("items").update(updates).eq("id", item.itemId);
 
-    await from("inventory_movements").insert({
-      item_id: item.itemId,
+    await recordMovement({
+      itemId: item.itemId,
       type: "in_po",
       quantity: item.quantity,
-      reference_id: poId,
-      reference_type: "purchase_order",
+      unit: "pcs",
+      location,
+      referenceId: poId,
+      referenceType: "purchase_order",
       notes: `Received from PO on ${rcvDate} → ${location}`,
+      balanceBefore: location === "store" ? curSt : curWh,
+      balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
     });
   }
+
 
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
   const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
