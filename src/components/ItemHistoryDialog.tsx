@@ -98,7 +98,7 @@ function classify(type: string, reference_type: string | null): { category: Move
 async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRow[]> {
   const { data: movements } = await supabase
     .from("inventory_movements")
-    .select("id, created_at, type, reference_type, reference_id, quantity, notes")
+    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email")
     .eq("item_id", itemId)
     .order("created_at", { ascending: true });
 
@@ -114,8 +114,8 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
     if (!m.reference_id) continue;
     const rt = m.reference_type || "";
     if (rt.startsWith("invoice")) invoiceIds.add(m.reference_id);
-    else if (rt === "purchase_order") poIds.add(m.reference_id);
-    else if (rt === "overseas_purchase_order") oposIds.add(m.reference_id);
+    else if (rt.startsWith("purchase_order")) poIds.add(m.reference_id);
+    else if (rt.startsWith("overseas_purchase_order")) oposIds.add(m.reference_id);
     else if (rt.startsWith("online_sale")) onlineSaleIds.add(m.reference_id);
   }
 
@@ -133,7 +133,7 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
   (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
 
   // Compute signed deltas
-  const enriched = rows.map((m) => {
+  const enriched = rows.map((m: any) => {
     const info = classify(m.type as string, m.reference_type);
     const qty = Number(m.quantity || 0);
     const qtyIn = info.direction === "in" ? qty : 0;
@@ -143,16 +143,20 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
     return { m, info, qty, qtyIn, qtyOut, signed, ref };
   });
 
-  // Walk backward from current quantity to derive previous/new balances
+  // Walk backward from current quantity to derive previous/new balances (fallback
+  // for legacy rows without snapshots). New rows carry their own balance snapshot.
   let runningNew = currentQty;
   const result: LedgerRow[] = [];
   for (let i = enriched.length - 1; i >= 0; i--) {
     const e = enriched[i];
-    const newBalance = runningNew;
-    const previousBalance = newBalance - e.signed;
+    const m: any = e.m;
+    const snapshotBefore = m.balance_before != null ? Number(m.balance_before) : null;
+    const snapshotAfter = m.balance_after != null ? Number(m.balance_after) : null;
+    const newBalance = snapshotAfter ?? runningNew;
+    const previousBalance = snapshotBefore ?? (newBalance - e.signed);
     result.push({
-      id: e.m.id,
-      created_at: e.m.created_at,
+      id: m.id,
+      created_at: m.created_at,
       category: e.info.category,
       label: e.info.label,
       qty_in: e.qtyIn,
@@ -160,17 +164,25 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
       signed_delta: e.signed,
       previous_balance: previousBalance,
       new_balance: newBalance,
-      reference_no: e.ref?.number || (e.m.reference_type ? "—" : "—"),
+      open_before: m.open_before != null ? Number(m.open_before) : null,
+      open_after: m.open_after != null ? Number(m.open_after) : null,
+      dest_before: m.dest_balance_before != null ? Number(m.dest_balance_before) : null,
+      dest_after: m.dest_balance_after != null ? Number(m.dest_balance_after) : null,
+      location: m.location || null,
+      dest_location: m.dest_location || null,
+      unit: m.unit || null,
+      reference_no: e.ref?.number || "—",
       reference_link: e.ref?.link || null,
       reference_kind: e.ref?.kind || null,
-      reference_id: e.m.reference_id || null,
-      notes: e.m.notes || "",
-      user: "—",
+      reference_id: m.reference_id || null,
+      notes: m.notes || "",
+      user: m.user_email || "—",
     });
     runningNew = previousBalance;
   }
   return result; // newest first
 }
+
 
 export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [search, setSearch] = useState("");
