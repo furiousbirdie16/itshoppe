@@ -1156,7 +1156,7 @@ export default function BusinessInsightsPage() {
                 </thead>
                 <tbody>
                   {top5.map((p) => (
-                    <tr key={p.itemId} className="border-t">
+                    <tr key={p.key} className="border-t">
                       <td className="px-3 py-1.5">
                         <div className="font-medium">{p.name}</div>
                         <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
