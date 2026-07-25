@@ -38,6 +38,13 @@ interface LedgerRow {
   signed_delta: number;
   previous_balance: number;
   new_balance: number;
+  open_before: number | null;
+  open_after: number | null;
+  dest_before: number | null;
+  dest_after: number | null;
+  location: string | null;
+  dest_location: string | null;
+  unit: string | null;
   reference_no: string;
   reference_link: string | null;
   reference_kind: "invoice" | "purchase_order" | "overseas_purchase_order" | "online_sale" | null;
@@ -45,6 +52,7 @@ interface LedgerRow {
   notes: string;
   user: string;
 }
+
 
 const CATEGORY_LABELS: Record<MovementCategory, string> = {
   stock_received: "Stock Received",
@@ -90,7 +98,7 @@ function classify(type: string, reference_type: string | null): { category: Move
 async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRow[]> {
   const { data: movements } = await supabase
     .from("inventory_movements")
-    .select("id, created_at, type, reference_type, reference_id, quantity, notes")
+    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email")
     .eq("item_id", itemId)
     .order("created_at", { ascending: true });
 
@@ -106,8 +114,8 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
     if (!m.reference_id) continue;
     const rt = m.reference_type || "";
     if (rt.startsWith("invoice")) invoiceIds.add(m.reference_id);
-    else if (rt === "purchase_order") poIds.add(m.reference_id);
-    else if (rt === "overseas_purchase_order") oposIds.add(m.reference_id);
+    else if (rt.startsWith("purchase_order")) poIds.add(m.reference_id);
+    else if (rt.startsWith("overseas_purchase_order")) oposIds.add(m.reference_id);
     else if (rt.startsWith("online_sale")) onlineSaleIds.add(m.reference_id);
   }
 
@@ -125,7 +133,7 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
   (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
 
   // Compute signed deltas
-  const enriched = rows.map((m) => {
+  const enriched = rows.map((m: any) => {
     const info = classify(m.type as string, m.reference_type);
     const qty = Number(m.quantity || 0);
     const qtyIn = info.direction === "in" ? qty : 0;
@@ -135,16 +143,20 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
     return { m, info, qty, qtyIn, qtyOut, signed, ref };
   });
 
-  // Walk backward from current quantity to derive previous/new balances
+  // Walk backward from current quantity to derive previous/new balances (fallback
+  // for legacy rows without snapshots). New rows carry their own balance snapshot.
   let runningNew = currentQty;
   const result: LedgerRow[] = [];
   for (let i = enriched.length - 1; i >= 0; i--) {
     const e = enriched[i];
-    const newBalance = runningNew;
-    const previousBalance = newBalance - e.signed;
+    const m: any = e.m;
+    const snapshotBefore = m.balance_before != null ? Number(m.balance_before) : null;
+    const snapshotAfter = m.balance_after != null ? Number(m.balance_after) : null;
+    const newBalance = snapshotAfter ?? runningNew;
+    const previousBalance = snapshotBefore ?? (newBalance - e.signed);
     result.push({
-      id: e.m.id,
-      created_at: e.m.created_at,
+      id: m.id,
+      created_at: m.created_at,
       category: e.info.category,
       label: e.info.label,
       qty_in: e.qtyIn,
@@ -152,17 +164,25 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
       signed_delta: e.signed,
       previous_balance: previousBalance,
       new_balance: newBalance,
-      reference_no: e.ref?.number || (e.m.reference_type ? "—" : "—"),
+      open_before: m.open_before != null ? Number(m.open_before) : null,
+      open_after: m.open_after != null ? Number(m.open_after) : null,
+      dest_before: m.dest_balance_before != null ? Number(m.dest_balance_before) : null,
+      dest_after: m.dest_balance_after != null ? Number(m.dest_balance_after) : null,
+      location: m.location || null,
+      dest_location: m.dest_location || null,
+      unit: m.unit || null,
+      reference_no: e.ref?.number || "—",
       reference_link: e.ref?.link || null,
       reference_kind: e.ref?.kind || null,
-      reference_id: e.m.reference_id || null,
-      notes: e.m.notes || "",
-      user: "—",
+      reference_id: m.reference_id || null,
+      notes: m.notes || "",
+      user: m.user_email || "—",
     });
     runningNew = previousBalance;
   }
   return result; // newest first
 }
+
 
 export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [search, setSearch] = useState("");
@@ -247,20 +267,32 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 <TableHead className="text-xs whitespace-nowrap">Date & Time</TableHead>
                 <TableHead className="text-xs">Transaction</TableHead>
                 <TableHead className="text-xs">Reference</TableHead>
+                <TableHead className="text-xs">Location</TableHead>
                 <TableHead className="text-xs text-right">Qty In</TableHead>
                 <TableHead className="text-xs text-right">Qty Out</TableHead>
-                <TableHead className="text-xs text-right">Previous</TableHead>
-                <TableHead className="text-xs text-right">New Balance</TableHead>
+                <TableHead className="text-xs">Unit</TableHead>
+                <TableHead className="text-xs text-right">Bal Before</TableHead>
+                <TableHead className="text-xs text-right">Bal After</TableHead>
                 <TableHead className="text-xs">User</TableHead>
-                <TableHead className="text-xs">Notes</TableHead>
+                <TableHead className="text-xs">Remarks</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
-              ) : filtered.map((r) => (
+                <TableRow><TableCell colSpan={11} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
+              ) : filtered.map((r) => {
+                const locLabel = r.category === "transfer" && r.dest_location
+                  ? `${r.location || "?"} → ${r.dest_location}`
+                  : (r.location || "—");
+                const transferDetail = r.category === "transfer" && r.dest_before != null && r.dest_after != null
+                  ? ` · dest ${r.dest_before}→${r.dest_after}`
+                  : "";
+                const openDetail = (r.open_before != null && r.open_after != null && (r.open_before !== 0 || r.open_after !== 0))
+                  ? ` · open ${r.open_before}→${r.open_after}${r.unit || "m"}`
+                  : "";
+                return (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</TableCell>
                   <TableCell>
@@ -293,14 +325,20 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       <span className="text-muted-foreground">{r.reference_no}</span>
                     )}
                   </TableCell>
+                  <TableCell className="text-xs capitalize">{locLabel}</TableCell>
                   <TableCell className="text-sm text-right text-emerald-600 font-medium">{r.qty_in > 0 ? `+${r.qty_in}` : ""}</TableCell>
                   <TableCell className="text-sm text-right text-rose-600 font-medium">{r.qty_out > 0 ? `−${r.qty_out}` : ""}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.unit || "—"}</TableCell>
                   <TableCell className="text-sm text-right tabular-nums">{r.previous_balance}</TableCell>
                   <TableCell className="text-sm text-right tabular-nums font-semibold">{r.new_balance}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.user}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={r.notes}>{r.notes}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={r.user}>{r.user}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={`${r.notes}${transferDetail}${openDetail}`}>
+                    {r.notes}{transferDetail || openDetail ? <span className="text-[10px] italic">{transferDetail}{openDetail}</span> : null}
+                  </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
+
             </TableBody>
           </Table>
         </div>

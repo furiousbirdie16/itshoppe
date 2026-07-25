@@ -61,13 +61,25 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
         .eq("id", item.id);
       if (upErr) throw upErr;
 
-      const { error: mvErr } = await supabase.from("inventory_movements").insert({
-        item_id: item.id,
+      const srcBefore = direction === "w2s" ? wh : st;
+      const srcAfter = direction === "w2s" ? newWh : newSt;
+      const dstBefore = direction === "w2s" ? st : wh;
+      const dstAfter = direction === "w2s" ? newSt : newWh;
+      const { recordMovement } = await import("@/lib/inventoryLog");
+      await recordMovement({
+        itemId: item.id,
         type: direction === "w2s" ? "transfer_w2s" : "transfer_s2w",
         quantity: n,
+        unit: item.base_unit || "pcs",
+        location: direction === "w2s" ? "warehouse" : "store",
+        destLocation: direction === "w2s" ? "store" : "warehouse",
         notes: notes || (direction === "w2s" ? "Warehouse → Store" : "Store → Warehouse"),
+        balanceBefore: srcBefore,
+        balanceAfter: srcAfter,
+        destBalanceBefore: dstBefore,
+        destBalanceAfter: dstAfter,
       });
-      if (mvErr) throw mvErr;
+
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });

@@ -292,34 +292,70 @@ export type Database = {
       }
       inventory_movements: {
         Row: {
+          balance_after: number | null
+          balance_before: number | null
           created_at: string | null
+          dest_balance_after: number | null
+          dest_balance_before: number | null
+          dest_location: string | null
           id: string
           item_id: string
+          location: string | null
           notes: string | null
+          open_after: number | null
+          open_before: number | null
           quantity: number
           reference_id: string | null
           reference_type: string | null
           type: Database["public"]["Enums"]["movement_type"]
+          unit: string | null
+          user_email: string | null
+          user_id: string | null
+          variation_id: string | null
         }
         Insert: {
+          balance_after?: number | null
+          balance_before?: number | null
           created_at?: string | null
+          dest_balance_after?: number | null
+          dest_balance_before?: number | null
+          dest_location?: string | null
           id?: string
           item_id: string
+          location?: string | null
           notes?: string | null
+          open_after?: number | null
+          open_before?: number | null
           quantity: number
           reference_id?: string | null
           reference_type?: string | null
           type: Database["public"]["Enums"]["movement_type"]
+          unit?: string | null
+          user_email?: string | null
+          user_id?: string | null
+          variation_id?: string | null
         }
         Update: {
+          balance_after?: number | null
+          balance_before?: number | null
           created_at?: string | null
+          dest_balance_after?: number | null
+          dest_balance_before?: number | null
+          dest_location?: string | null
           id?: string
           item_id?: string
+          location?: string | null
           notes?: string | null
+          open_after?: number | null
+          open_before?: number | null
           quantity?: number
           reference_id?: string | null
           reference_type?: string | null
           type?: Database["public"]["Enums"]["movement_type"]
+          unit?: string | null
+          user_email?: string | null
+          user_id?: string | null
+          variation_id?: string | null
         }
         Relationships: [
           {
@@ -327,6 +363,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
             referencedColumns: ["id"]
           },
         ]

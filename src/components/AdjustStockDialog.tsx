@@ -58,13 +58,18 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
         .eq("id", item.id);
       if (upErr) throw upErr;
 
-      const { error: mvErr } = await supabase.from("inventory_movements").insert({
-        item_id: item.id,
+      const { recordMovement } = await import("@/lib/inventoryLog");
+      await recordMovement({
+        itemId: item.id,
         type: diff < 0 ? "adjust_missing" : "adjust_surplus",
         quantity: Math.abs(diff),
+        unit: item.base_unit || "pcs",
+        location,
         notes: `${location === "warehouse" ? "Warehouse" : "Store"}: ${currentQty} → ${actualNum}${notes ? ` — ${notes}` : ""}`,
+        balanceBefore: currentQty,
+        balanceAfter: actualNum,
       });
-      if (mvErr) throw mvErr;
+
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });

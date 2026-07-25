@@ -2,6 +2,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
+import { recordMovement } from "@/lib/inventoryLog";
+
 
 const applyLocationDelta = (
   current: { warehouse_quantity: number; store_quantity: number },
@@ -63,9 +65,10 @@ export const applyStockChange = async (params: {
   if (qty === 0) return;
 
   const { data: item } = await from("items")
-    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock")
+    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock, base_unit")
     .eq("id", itemId)
     .single();
+
   if (!item) return;
   const cur = item as any;
 
@@ -177,15 +180,25 @@ export const applyStockChange = async (params: {
     updated_at: new Date().toISOString(),
   }).eq("id", itemId);
 
-  await from("inventory_movements").insert({
-    item_id: itemId,
+  // Sales deduct from store; restores add back to store (see applyLocationDelta).
+  const isRestore = qty < 0;
+  await recordMovement({
+    itemId,
+    variationId: variationId || null,
     type: movementType,
     quantity: Math.abs(baseUnitsMoved),
-    reference_id: referenceId,
-    reference_type: referenceType,
-    notes: notes || (qty > 0 ? "Stock deducted" : "Stock restored"),
+    unit: (cur as any).base_unit || (variationId ? "m" : "pcs"),
+    location: "store",
+    referenceId,
+    referenceType,
+    notes: notes || (isRestore ? "Stock restored" : "Stock deducted"),
+    balanceBefore: Number(cur.store_quantity || 0),
+    balanceAfter: Number(next.store_quantity || 0),
+    openBefore: Number(cur.open_roll_remaining || 0),
+    openAfter: Number(next.open_roll_remaining || 0),
   });
 };
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
@@ -424,15 +437,20 @@ export const receivePO = async (
     }
     await from("items").update(updates).eq("id", item.itemId);
 
-    await from("inventory_movements").insert({
-      item_id: item.itemId,
+    await recordMovement({
+      itemId: item.itemId,
       type: "in_po",
       quantity: item.quantity,
-      reference_id: poId,
-      reference_type: "purchase_order",
+      unit: "pcs",
+      location,
+      referenceId: poId,
+      referenceType: "purchase_order",
       notes: `Received from PO on ${rcvDate} → ${location}`,
+      balanceBefore: location === "store" ? curSt : curWh,
+      balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
     });
   }
+
 
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
   const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
@@ -470,19 +488,27 @@ export const unreceivePO = async (
       .eq("id", item.poItemId);
 
     if (item.itemId) {
-      const { data: currentItem } = await from("items").select("quantity").eq("id", item.itemId).single();
-      const newQty = Math.max(0, ((currentItem as any)?.quantity || 0) - undoQty);
-      await from("items").update({ quantity: newQty, updated_at: new Date().toISOString() }).eq("id", item.itemId);
+      const { data: currentItem } = await from("items").select("quantity, warehouse_quantity, store_quantity").eq("id", item.itemId).single();
+      const prev = Number((currentItem as any)?.quantity || 0);
+      const prevWh = Number((currentItem as any)?.warehouse_quantity || 0);
+      const newQty = Math.max(0, prev - undoQty);
+      const newWh = Math.max(0, prevWh - undoQty);
+      await from("items").update({ quantity: newQty, warehouse_quantity: newWh, updated_at: new Date().toISOString() }).eq("id", item.itemId);
 
-      await from("inventory_movements").insert({
-        item_id: item.itemId,
+      await recordMovement({
+        itemId: item.itemId,
         type: "in_po",
-        quantity: -undoQty,
-        reference_id: poId,
-        reference_type: "purchase_order",
+        quantity: undoQty,
+        unit: "pcs",
+        location: "warehouse",
+        referenceId: poId,
+        referenceType: "purchase_order_undo",
         notes: `Undo receive from PO`,
+        balanceBefore: prevWh,
+        balanceAfter: newWh,
       });
     }
+
   }
 
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
@@ -1104,14 +1130,19 @@ export const receiveOverseasPO = async (
       }
       await from("items").update(updates).eq("id", item.itemId);
 
-      await from("inventory_movements").insert({
-        item_id: item.itemId,
+      await recordMovement({
+        itemId: item.itemId,
         type: "in_po",
         quantity: item.quantity,
-        reference_id: poId,
-        reference_type: "overseas_purchase_order",
+        unit: "pcs",
+        location,
+        referenceId: poId,
+        referenceType: "overseas_purchase_order",
         notes: `Received from overseas PO on ${rcvDate} → ${location}`,
+        balanceBefore: location === "store" ? curSt : curWh,
+        balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
       });
+
     }
   }
 
@@ -1184,14 +1215,19 @@ export const unreceiveOverseasPO = async (
         updated_at: new Date().toISOString(),
       }).eq("id", item.itemId);
 
-      await from("inventory_movements").insert({
-        item_id: item.itemId,
+      await recordMovement({
+        itemId: item.itemId,
         type: "in_po",
-        quantity: -undoQty,
-        reference_id: poId,
-        reference_type: "overseas_purchase_order",
+        quantity: undoQty,
+        unit: "pcs",
+        location: fromWh > 0 ? "warehouse" : "store",
+        referenceId: poId,
+        referenceType: "overseas_purchase_order_undo",
         notes: `Undo receive from overseas PO`,
+        balanceBefore: fromWh > 0 ? curWh : curSt,
+        balanceAfter: fromWh > 0 ? curWh - fromWh : curSt - fromSt,
       });
+
     }
 
     const newReceived = currentReceived - undoQty;
