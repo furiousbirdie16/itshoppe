@@ -1130,14 +1130,19 @@ export const receiveOverseasPO = async (
       }
       await from("items").update(updates).eq("id", item.itemId);
 
-      await from("inventory_movements").insert({
-        item_id: item.itemId,
+      await recordMovement({
+        itemId: item.itemId,
         type: "in_po",
         quantity: item.quantity,
-        reference_id: poId,
-        reference_type: "overseas_purchase_order",
+        unit: "pcs",
+        location,
+        referenceId: poId,
+        referenceType: "overseas_purchase_order",
         notes: `Received from overseas PO on ${rcvDate} → ${location}`,
+        balanceBefore: location === "store" ? curSt : curWh,
+        balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
       });
+
     }
   }
 
