@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CustomerSearch } from "@/components/CustomerSearch";
 import { Button } from "@/components/ui/button";
