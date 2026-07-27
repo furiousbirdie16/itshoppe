@@ -28,6 +28,20 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
   });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
 
+  const tagSuggestions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customers) {
+      const tags = Array.isArray((c as any).tags) ? ((c as any).tags as string[]) : [];
+      for (const t of tags) {
+        const clean = normalizeTag(t);
+        if (!clean) continue;
+        const k = tagKey(clean);
+        if (!map.has(k)) map.set(k, clean);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [customers]);
+
   const reset = () => {
     setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
     setAddress(emptyAddress());
