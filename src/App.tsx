@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { BranchProvider } from "@/contexts/BranchContext";
 import { AppLayout } from "@/components/AppLayout";
 import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -49,29 +50,31 @@ function ProtectedRoutes() {
   }
 
   return (
-    <AppLayout>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/inventory" element={<InventoryPage />} />
-        <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
-        <Route path="/suppliers" element={<SuppliersHubPage />} />
-        <Route path="/overseas-suppliers" element={<Navigate to="/suppliers" replace />} />
-        <Route path="/overseas-purchase-orders" element={<OverseasPurchaseOrdersPage />} />
-        <Route path="/shipment-tracking" element={<Navigate to="/overseas-purchase-orders" replace />} />
-        <Route path="/customers" element={<CustomersPage />} />
-        <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
-        <Route path="/quotations" element={<QuotationsPage />} />
-        <Route path="/invoices" element={<InvoicesPage />} />
-        <Route path="/pending-payments" element={<PendingPaymentsPage />} />
-        <Route path="/online-sales" element={<OnlineSalesPage />} />
-        <Route path="/customer-pricing" element={<CustomerPricingPage />} />
-        <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
-        <Route path="/business-insights" element={<BusinessInsightsPage />} />
-        <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
-        <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </AppLayout>
+    <BranchProvider>
+      <AppLayout>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/inventory" element={<InventoryPage />} />
+          <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
+          <Route path="/suppliers" element={<SuppliersHubPage />} />
+          <Route path="/overseas-suppliers" element={<Navigate to="/suppliers" replace />} />
+          <Route path="/overseas-purchase-orders" element={<OverseasPurchaseOrdersPage />} />
+          <Route path="/shipment-tracking" element={<Navigate to="/overseas-purchase-orders" replace />} />
+          <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+          <Route path="/quotations" element={<QuotationsPage />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/pending-payments" element={<PendingPaymentsPage />} />
+          <Route path="/online-sales" element={<OnlineSalesPage />} />
+          <Route path="/customer-pricing" element={<CustomerPricingPage />} />
+          <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
+          <Route path="/business-insights" element={<BusinessInsightsPage />} />
+          <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+          <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AppLayout>
+    </BranchProvider>
   );
 }
 
