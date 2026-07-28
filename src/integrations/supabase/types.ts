@@ -327,6 +327,7 @@ export type Database = {
         Row: {
           balance_after: number | null
           balance_before: number | null
+          branch_id: string | null
           created_at: string | null
           dest_balance_after: number | null
           dest_balance_before: number | null
@@ -349,6 +350,7 @@ export type Database = {
         Insert: {
           balance_after?: number | null
           balance_before?: number | null
+          branch_id?: string | null
           created_at?: string | null
           dest_balance_after?: number | null
           dest_balance_before?: number | null
@@ -371,6 +373,7 @@ export type Database = {
         Update: {
           balance_after?: number | null
           balance_before?: number | null
+          branch_id?: string | null
           created_at?: string | null
           dest_balance_after?: number | null
           dest_balance_before?: number | null
@@ -391,6 +394,13 @@ export type Database = {
           variation_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "inventory_movements_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "inventory_movements_item_id_fkey"
             columns: ["item_id"]
@@ -693,6 +703,60 @@ export type Database = {
             columns: ["quotation_id"]
             isOneToOne: false
             referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_branch_stock: {
+        Row: {
+          branch_id: string
+          created_at: string
+          id: string
+          item_id: string
+          open_roll_remaining: number
+          quantity: number
+          store_quantity: number
+          units_per_stock: number
+          updated_at: string
+          warehouse_quantity: number
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          id?: string
+          item_id: string
+          open_roll_remaining?: number
+          quantity?: number
+          store_quantity?: number
+          units_per_stock?: number
+          updated_at?: string
+          warehouse_quantity?: number
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          id?: string
+          item_id?: string
+          open_roll_remaining?: number
+          quantity?: number
+          store_quantity?: number
+          units_per_stock?: number
+          updated_at?: string
+          warehouse_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_branch_stock_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_branch_stock_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
             referencedColumns: ["id"]
           },
         ]
@@ -1951,6 +2015,8 @@ export type Database = {
         | "transfer_s2w"
         | "adjust_missing"
         | "adjust_surplus"
+        | "transfer_b2b_out"
+        | "transfer_b2b_in"
       online_sale_status: "completed" | "returned" | "cancelled"
       po_status:
         | "draft"
@@ -2109,6 +2175,8 @@ export const Constants = {
         "transfer_s2w",
         "adjust_missing",
         "adjust_surplus",
+        "transfer_b2b_out",
+        "transfer_b2b_in",
       ],
       online_sale_status: ["completed", "returned", "cancelled"],
       po_status: [

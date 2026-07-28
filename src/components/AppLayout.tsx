@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Sun, Moon, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
+import { BranchSwitcher } from "@/components/BranchSwitcher";
 
 function HeaderBar() {
   const [darkMode, setDarkMode] = useState(false);
@@ -18,9 +19,12 @@ function HeaderBar() {
       <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-8 w-8 rounded-lg">
         <Menu className="h-5 w-5" />
       </Button>
-      <Button variant="ghost" size="icon" onClick={() => setDarkMode(!darkMode)} className="h-8 w-8 rounded-lg">
-        {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
+      <div className="flex items-center gap-2">
+        <BranchSwitcher />
+        <Button variant="ghost" size="icon" onClick={() => setDarkMode(!darkMode)} className="h-8 w-8 rounded-lg">
+          {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+      </div>
     </header>
   );
 }
