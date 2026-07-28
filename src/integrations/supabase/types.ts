@@ -89,6 +89,39 @@ export type Database = {
         }
         Relationships: []
       }
+      branches: {
+        Row: {
+          address: string | null
+          branch_code: string
+          branch_name: string
+          contact_number: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          branch_code: string
+          branch_name: string
+          contact_number?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          branch_code?: string
+          branch_name?: string
+          contact_number?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customer_follow_ups: {
         Row: {
           created_at: string
@@ -1746,6 +1779,35 @@ export type Database = {
         }
         Relationships: []
       }
+      user_branches: {
+        Row: {
+          branch_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_branches_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -1819,6 +1881,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_default_branch_id: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1863,6 +1926,10 @@ export type Database = {
       set_online_sale_cost: {
         Args: { _new_cost: number; _online_sale_id: string }
         Returns: undefined
+      }
+      user_has_branch: {
+        Args: { _branch_id: string; _user_id: string }
+        Returns: boolean
       }
     }
     Enums: {
