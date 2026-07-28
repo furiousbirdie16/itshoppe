@@ -12,10 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { UserPlus, Shield, User, Trash2, Search } from "lucide-react";
 import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
+import { UserBranchesCell } from "@/components/UserBranchesCell";
 
 const USER_COLUMNS: ColumnDef[] = [
   { key: "user", label: "User", defaultVisible: true },
   { key: "role", label: "Role", defaultVisible: true },
+  { key: "branches", label: "Branches", defaultVisible: true },
 ];
 
 interface ManagedUser {
@@ -193,6 +195,7 @@ export default function UsersPage() {
               {visibleColumns.map((c) => {
                 if (c.key === "user") return <TableHead key="h-user" className="text-xs">User</TableHead>;
                 if (c.key === "role") return <TableHead key="h-role" className="text-xs">Role</TableHead>;
+                if (c.key === "branches") return <TableHead key="h-branches" className="text-xs">Branches</TableHead>;
                 return null;
               })}
               <TableHead className="text-xs text-right">Actions</TableHead>
@@ -228,6 +231,11 @@ export default function UsersPage() {
                             <SelectItem value="user"><span className="flex items-center gap-1.5"><User className="h-3 w-3" /> User</span></SelectItem>
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                    );
+                    if (c.key === "branches") return (
+                      <TableCell key="c-branches">
+                        <UserBranchesCell userId={u.id} />
                       </TableCell>
                     );
                     return null;
