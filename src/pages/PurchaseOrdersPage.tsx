@@ -206,6 +206,7 @@ export default function PurchaseOrdersPage() {
         payment_due_date: due,
         status: editForm.status,
         total_amount: total,
+        ...(editForm.branch_id ? { branch_id: editForm.branch_id } : {}),
       } as any);
       await deletePOItems(editPO.id);
       await createPOItems(validLines.map(l => ({
