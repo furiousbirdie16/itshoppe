@@ -133,6 +133,8 @@ export default function PurchaseOrdersPage() {
       for (const l of validLines) {
         if (!l.quantity || l.quantity <= 0) throw new Error(`"${l.item_name || "Item"}" must have a quantity greater than 0`);
       }
+      const branchId = form.branch_id || activeBranchId;
+      if (!branchId) throw new Error("Please select a branch before creating this PO.");
       const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const terms = form.payment_terms ? parseInt(form.payment_terms) : null;
       const due = terms ? addDays(form.order_date, terms) : null;
@@ -144,6 +146,7 @@ export default function PurchaseOrdersPage() {
         payment_terms: terms,
         payment_due_date: due,
         total_amount: total,
+        branch_id: branchId,
       } as any);
       await createPOItems(validLines.map(l => ({
         po_id: po.id,
@@ -173,6 +176,7 @@ export default function PurchaseOrdersPage() {
       order_date: po.order_date || todayISO(),
       payment_terms: po.payment_terms?.toString() || "",
       status: po.status || "draft",
+      branch_id: po.branch_id || "",
     });
     setEditLines(items.map((pi: any) => ({
       item_id: pi.item_id || "",
