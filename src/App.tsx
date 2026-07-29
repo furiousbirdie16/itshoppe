@@ -56,6 +56,7 @@ function ProtectedRoutes() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
+          <Route path="/stock-transfers" element={<StockTransfersPage />} />
           <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
           <Route path="/suppliers" element={<SuppliersHubPage />} />
           <Route path="/overseas-suppliers" element={<Navigate to="/suppliers" replace />} />
