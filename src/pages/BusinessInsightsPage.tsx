@@ -140,7 +140,7 @@ export default function BusinessInsightsPage() {
   // Online sales — include ALL sales regardless of payment status so units/revenue
   // reflect actual sales volume. Cost & profit are only recognized for PAID sales.
   const { data: onlineRows = [] } = useQuery({
-    queryKey: ["bi_online", fromStr, toStr, payment],
+    queryKey: ["bi_online", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
       return fetchAll(() => {
         let q = supabase
@@ -151,6 +151,7 @@ export default function BusinessInsightsPage() {
           .lte("order_date", toStr);
         if (payment === "paid") q = q.eq("payment_status", "paid");
         else if (payment === "unpaid") q = q.eq("payment_status", "unpaid");
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
         return q;
       });
     },
