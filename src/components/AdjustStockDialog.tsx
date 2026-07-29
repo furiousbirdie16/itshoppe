@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ClipboardEdit } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
+import { useBranch } from "@/contexts/BranchContext";
 
 type Location = "warehouse" | "store";
 
