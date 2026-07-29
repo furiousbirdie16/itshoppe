@@ -1073,7 +1073,7 @@ export default function InventoryPage() {
                       return null;
                   }
                 })}
-                <TableCell className="text-right">
+                <TableCell className="text-right sticky right-0 z-10 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
                   <div className="flex justify-end gap-0.5">
                     {!viewArchived && (
                       <>
