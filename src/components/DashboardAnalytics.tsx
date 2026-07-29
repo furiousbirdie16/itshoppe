@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { BellRing } from "lucide-react";
 import AssetTrendChart from "@/components/AssetTrendChart";
 import { usePermissions } from "@/lib/permissions";
+import { useBranch } from "@/contexts/BranchContext";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
