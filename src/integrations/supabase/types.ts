@@ -1863,6 +1863,201 @@ export type Database = {
           },
         ]
       }
+      stock_transfer_audit: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string | null
+          created_at: string
+          from_status: string | null
+          id: string
+          notes: string | null
+          to_status: string | null
+          transfer_id: string
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          to_status?: string | null
+          transfer_id: string
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          to_status?: string | null
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_audit_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfer_items: {
+        Row: {
+          created_at: string
+          destination_location: string
+          id: string
+          item_id: string
+          quantity: number
+          received_quantity: number
+          source_location: string
+          transfer_id: string
+          variation_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          destination_location?: string
+          id?: string
+          item_id: string
+          quantity: number
+          received_quantity?: number
+          source_location?: string
+          transfer_id: string
+          variation_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          destination_location?: string
+          id?: string
+          item_id?: string
+          quantity?: number
+          received_quantity?: number
+          source_location?: string
+          transfer_id?: string
+          variation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_by_email: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by_email: string | null
+          created_at: string
+          destination_branch_id: string
+          dispatched_at: string | null
+          dispatched_by: string | null
+          dispatched_by_email: string | null
+          id: string
+          notes: string
+          received_at: string | null
+          received_by: string | null
+          received_by_email: string | null
+          requested_at: string | null
+          requested_by: string | null
+          requested_by_email: string | null
+          source_branch_id: string
+          status: string
+          transfer_number: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_by_email?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by_email?: string | null
+          created_at?: string
+          destination_branch_id: string
+          dispatched_at?: string | null
+          dispatched_by?: string | null
+          dispatched_by_email?: string | null
+          id?: string
+          notes?: string
+          received_at?: string | null
+          received_by?: string | null
+          received_by_email?: string | null
+          requested_at?: string | null
+          requested_by?: string | null
+          requested_by_email?: string | null
+          source_branch_id: string
+          status?: string
+          transfer_number: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_by_email?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by_email?: string | null
+          created_at?: string
+          destination_branch_id?: string
+          dispatched_at?: string | null
+          dispatched_by?: string | null
+          dispatched_by_email?: string | null
+          id?: string
+          notes?: string
+          received_at?: string | null
+          received_by?: string | null
+          received_by_email?: string | null
+          requested_at?: string | null
+          requested_by?: string | null
+          requested_by_email?: string | null
+          source_branch_id?: string
+          status?: string
+          transfer_number?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_destination_branch_id_fkey"
+            columns: ["destination_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_source_branch_id_fkey"
+            columns: ["source_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -1993,6 +2188,14 @@ export type Database = {
         Args: { _ids: string[]; _new_cost: number }
         Returns: number
       }
+      cancel_stock_transfer: {
+        Args: { _reason: string; _transfer_id: string }
+        Returns: undefined
+      }
+      dispatch_stock_transfer: {
+        Args: { _transfer_id: string }
+        Returns: undefined
+      }
       generate_asset_snapshot: {
         Args: never
         Returns: {
@@ -2028,6 +2231,10 @@ export type Database = {
         Args: { _status: string }
         Returns: boolean
       }
+      receive_stock_transfer: {
+        Args: { _lines: Json; _transfer_id: string }
+        Returns: undefined
+      }
       record_item_cost_change: {
         Args: {
           _changed_by: string
@@ -2059,6 +2266,10 @@ export type Database = {
       }
       set_online_sale_cost: {
         Args: { _new_cost: number; _online_sale_id: string }
+        Returns: undefined
+      }
+      transition_stock_transfer: {
+        Args: { _to_status: string; _transfer_id: string }
         Returns: undefined
       }
       user_has_branch: {
