@@ -402,6 +402,7 @@ export default function OverseasPurchaseOrdersPage() {
     setLines([emptyLine()]);
     setCurrency("USD");
     setExchangeRate("1");
+    setBranchId(activeBranchId || "");
     setOpen(true);
   };
 
@@ -414,6 +415,7 @@ export default function OverseasPurchaseOrdersPage() {
     setNotes(po.notes);
     setCurrency(po.currency);
     setExchangeRate(String(po.exchange_rate));
+    setBranchId((po as any).branch_id || "");
     const poItems = await getOverseasPOItems(po.id);
     setLines(poItems.length > 0 ? poItems.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
     setOpen(true);
