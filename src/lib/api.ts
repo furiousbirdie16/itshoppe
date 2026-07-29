@@ -377,6 +377,10 @@ export const receivePO = async (
   receivedDate?: string,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
+  const { data: poRow } = await from("purchase_orders").select("branch_id, status").eq("id", poId).single();
+  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  if (!poBranchId) throw new Error("This PO has no branch assigned. Edit the PO and set its branch before receiving.");
+
   for (const item of itemsToReceive) {
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
     const newReceived = ((poItem as any)?.received_quantity || 0) + item.quantity;
@@ -385,23 +389,19 @@ export const receivePO = async (
     // Custom (non-inventory) items: just record the receipt against the PO line, do not touch inventory.
     if (!item.itemId) continue;
 
-    const location = item.location || "warehouse";
-    const { data: currentItem } = await from("items")
-      .select("warehouse_quantity, store_quantity")
-      .eq("id", item.itemId)
-      .single();
-    const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
-    const curSt = Number((currentItem as any)?.store_quantity || 0);
-    const updates: any = { updated_at: new Date().toISOString() };
-    if (location === "store") {
-      updates.store_quantity = curSt + item.quantity;
-    } else {
-      updates.warehouse_quantity = curWh + item.quantity;
-    }
-    await from("items").update(updates).eq("id", item.itemId);
+    const location: "warehouse" | "store" = item.location || "warehouse";
+    const result = await applyBranchStockRpc({
+      itemId: item.itemId,
+      branchId: poBranchId,
+      location,
+      deltaStock: item.quantity,
+    });
+    const before = location === "store" ? result.st_before : result.wh_before;
+    const after = location === "store" ? result.store_quantity : result.warehouse_quantity;
 
     await recordMovement({
       itemId: item.itemId,
+      branchId: poBranchId,
       type: "in_po",
       quantity: item.quantity,
       unit: "pcs",
@@ -409,8 +409,8 @@ export const receivePO = async (
       referenceId: poId,
       referenceType: "purchase_order",
       notes: `Received from PO on ${rcvDate} → ${location}`,
-      balanceBefore: location === "store" ? curSt : curWh,
-      balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
+      balanceBefore: before,
+      balanceAfter: after,
     });
   }
 
@@ -418,8 +418,7 @@ export const receivePO = async (
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
   const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
   const someReceived = (allItems as any[])?.some((i: any) => i.received_quantity > 0);
-  const { data: curPO } = await from("purchase_orders").select("status").eq("id", poId).single();
-  const cur = (curPO as any)?.status;
+  const cur = (poRow as any)?.status;
   let newStatus: string;
   if (cur === "closed") {
     newStatus = cur;
