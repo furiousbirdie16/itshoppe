@@ -375,18 +375,24 @@ export const receivePO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
+  branchOverride?: string | null,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   const { data: poRow } = await from("purchase_orders").select("branch_id, status").eq("id", poId).single();
-  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  const originalBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  const poBranchId: string | null = branchOverride ?? originalBranchId;
   if (!poBranchId) throw new Error("This PO has no branch assigned. Edit the PO and set its branch before receiving.");
+
+  if (branchOverride && branchOverride !== originalBranchId) {
+    await from("purchase_orders").update({ branch_id: branchOverride, updated_at: new Date().toISOString() }).eq("id", poId);
+    await logActivity("changed_po_branch", "purchase_order", poId, { from: originalBranchId, to: branchOverride });
+  }
 
   for (const item of itemsToReceive) {
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
     const newReceived = ((poItem as any)?.received_quantity || 0) + item.quantity;
     await from("purchase_order_items").update({ received_quantity: newReceived, received_date: rcvDate }).eq("id", item.poItemId);
 
-    // Custom (non-inventory) items: just record the receipt against the PO line, do not touch inventory.
     if (!item.itemId) continue;
 
     const location: "warehouse" | "store" = item.location || "warehouse";
@@ -1076,8 +1082,19 @@ export const receiveOverseasPO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
+  branchOverride?: string | null,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
+  const { data: poRow } = await from("overseas_purchase_orders").select("branch_id, status").eq("id", poId).single();
+  const originalBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  const poBranchId: string | null = branchOverride ?? originalBranchId;
+  if (!poBranchId) throw new Error("This PO has no branch assigned. Edit the PO and set its branch before receiving.");
+
+  if (branchOverride && branchOverride !== originalBranchId) {
+    await from("overseas_purchase_orders").update({ branch_id: branchOverride, updated_at: new Date().toISOString() }).eq("id", poId);
+    await logActivity("changed_overseas_po_branch", "overseas_purchase_order", poId, { from: originalBranchId, to: branchOverride });
+  }
+
   for (const item of itemsToReceive) {
     if (item.quantity <= 0) continue;
 
@@ -1094,22 +1111,18 @@ export const receiveOverseasPO = async (
 
     if (item.itemId) {
       const location = item.location || "warehouse";
-      const { data: currentItem } = await from("items")
-        .select("warehouse_quantity, store_quantity")
-        .eq("id", item.itemId)
-        .single();
-      const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
-      const curSt = Number((currentItem as any)?.store_quantity || 0);
-      const updates: any = { updated_at: new Date().toISOString() };
-      if (location === "store") {
-        updates.store_quantity = curSt + item.quantity;
-      } else {
-        updates.warehouse_quantity = curWh + item.quantity;
-      }
-      await from("items").update(updates).eq("id", item.itemId);
+      const result = await applyBranchStockRpc({
+        itemId: item.itemId,
+        branchId: poBranchId,
+        location,
+        deltaStock: item.quantity,
+      });
+      const before = location === "store" ? result.st_before : result.wh_before;
+      const after = location === "store" ? result.store_quantity : result.warehouse_quantity;
 
       await recordMovement({
         itemId: item.itemId,
+        branchId: poBranchId,
         type: "in_po",
         quantity: item.quantity,
         unit: "pcs",
@@ -1117,10 +1130,9 @@ export const receiveOverseasPO = async (
         referenceId: poId,
         referenceType: "overseas_purchase_order",
         notes: `Received from overseas PO on ${rcvDate} → ${location}`,
-        balanceBefore: location === "store" ? curSt : curWh,
-        balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
+        balanceBefore: before,
+        balanceAfter: after,
       });
-
     }
   }
 
@@ -1131,8 +1143,7 @@ export const receiveOverseasPO = async (
   const allReceived = list.length > 0 && list.every((i) => (i.received_quantity || 0) >= i.quantity);
   const someReceived = list.some((i) => (i.received_quantity || 0) > 0);
 
-  const { data: prevPo } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
-  const prevStatus = (prevPo as any)?.status || "unpaid";
+  const prevStatus = (poRow as any)?.status || "unpaid";
   const preserved = prevStatus === "received";
   const newStatus = preserved
     ? prevStatus
@@ -1161,6 +1172,9 @@ export const unreceiveOverseasPO = async (
   poId: string,
   itemsToUnreceive: { poItemId: string; itemId: string | null; quantity: number }[],
 ) => {
+  const { data: poRow } = await from("overseas_purchase_orders").select("branch_id").eq("id", poId).single();
+  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+
   for (const item of itemsToUnreceive) {
     if (item.quantity <= 0) continue;
     const { data: poItem } = await from("overseas_purchase_order_items")
@@ -1171,41 +1185,67 @@ export const unreceiveOverseasPO = async (
     const undoQty = Math.min(item.quantity, currentReceived);
     if (undoQty <= 0) continue;
 
-    if (item.itemId) {
-      const { data: currentItem } = await from("items")
-        .select("warehouse_quantity, store_quantity, name")
-        .eq("id", item.itemId)
-        .single();
-      const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
-      const curSt = Number((currentItem as any)?.store_quantity || 0);
+    if (item.itemId && poBranchId) {
+      // Read current branch stock
+      const { data: ibs } = await from("item_branch_stock")
+        .select("warehouse_quantity, store_quantity")
+        .eq("item_id", item.itemId)
+        .eq("branch_id", poBranchId)
+        .maybeSingle();
+      const curWh = Number((ibs as any)?.warehouse_quantity || 0);
+      const curSt = Number((ibs as any)?.store_quantity || 0);
       const onHand = curWh + curSt;
       if (onHand < undoQty) {
+        const { data: nm } = await from("items").select("name").eq("id", item.itemId).single();
         throw new Error(
-          `Cannot undo this receipt for "${(currentItem as any)?.name || "item"}" because the inventory has already been consumed (on hand: ${onHand}, needed: ${undoQty}). Please perform a manual inventory adjustment instead.`,
+          `Cannot undo this receipt for "${(nm as any)?.name || "item"}" at this branch (on hand: ${onHand}, needed: ${undoQty}). Please perform a manual inventory adjustment instead.`,
         );
       }
-      // Deduct from warehouse first, then store
       const fromWh = Math.min(curWh, undoQty);
       const fromSt = undoQty - fromWh;
-      await from("items").update({
-        warehouse_quantity: curWh - fromWh,
-        store_quantity: curSt - fromSt,
-        updated_at: new Date().toISOString(),
-      }).eq("id", item.itemId);
 
-      await recordMovement({
-        itemId: item.itemId,
-        type: "in_po",
-        quantity: undoQty,
-        unit: "pcs",
-        location: fromWh > 0 ? "warehouse" : "store",
-        referenceId: poId,
-        referenceType: "overseas_purchase_order_undo",
-        notes: `Undo receive from overseas PO`,
-        balanceBefore: fromWh > 0 ? curWh : curSt,
-        balanceAfter: fromWh > 0 ? curWh - fromWh : curSt - fromSt,
-      });
-
+      if (fromWh > 0) {
+        const r = await applyBranchStockRpc({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          location: "warehouse",
+          deltaStock: -fromWh,
+        });
+        await recordMovement({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          type: "in_po",
+          quantity: fromWh,
+          unit: "pcs",
+          location: "warehouse",
+          referenceId: poId,
+          referenceType: "overseas_purchase_order_undo",
+          notes: `Undo receive from overseas PO`,
+          balanceBefore: r.wh_before,
+          balanceAfter: r.warehouse_quantity,
+        });
+      }
+      if (fromSt > 0) {
+        const r = await applyBranchStockRpc({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          location: "store",
+          deltaStock: -fromSt,
+        });
+        await recordMovement({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          type: "in_po",
+          quantity: fromSt,
+          unit: "pcs",
+          location: "store",
+          referenceId: poId,
+          referenceType: "overseas_purchase_order_undo",
+          notes: `Undo receive from overseas PO`,
+          balanceBefore: r.st_before,
+          balanceAfter: r.store_quantity,
+        });
+      }
     }
 
     const newReceived = currentReceived - undoQty;

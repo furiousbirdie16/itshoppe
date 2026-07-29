@@ -20,6 +20,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBranch } from "@/contexts/BranchContext";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
@@ -37,16 +38,18 @@ const addDays = (dateStr: string, days: number) => {
 export default function PurchaseOrdersPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { branches, activeBranchId } = useBranch();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewPO, setViewPO] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
+  const [receiveBranchId, setReceiveBranchId] = useState<string>("");
   const [editPO, setEditPO] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ supplier_id: "", notes: "", order_date: "", payment_terms: "", status: "draft" as string });
+  const [editForm, setEditForm] = useState({ supplier_id: "", notes: "", order_date: "", payment_terms: "", status: "draft" as string, branch_id: "" });
   const [editLines, setEditLines] = useState<LineItem[]>([]);
-  const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
+  const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "", branch_id: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -130,6 +133,8 @@ export default function PurchaseOrdersPage() {
       for (const l of validLines) {
         if (!l.quantity || l.quantity <= 0) throw new Error(`"${l.item_name || "Item"}" must have a quantity greater than 0`);
       }
+      const branchId = form.branch_id || activeBranchId;
+      if (!branchId) throw new Error("Please select a branch before creating this PO.");
       const total = validLines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
       const terms = form.payment_terms ? parseInt(form.payment_terms) : null;
       const due = terms ? addDays(form.order_date, terms) : null;
@@ -141,6 +146,7 @@ export default function PurchaseOrdersPage() {
         payment_terms: terms,
         payment_due_date: due,
         total_amount: total,
+        branch_id: branchId,
       } as any);
       await createPOItems(validLines.map(l => ({
         po_id: po.id,
@@ -170,6 +176,7 @@ export default function PurchaseOrdersPage() {
       order_date: po.order_date || todayISO(),
       payment_terms: po.payment_terms?.toString() || "",
       status: po.status || "draft",
+      branch_id: po.branch_id || "",
     });
     setEditLines(items.map((pi: any) => ({
       item_id: pi.item_id || "",
@@ -199,6 +206,7 @@ export default function PurchaseOrdersPage() {
         payment_due_date: due,
         status: editForm.status,
         total_amount: total,
+        ...(editForm.branch_id ? { branch_id: editForm.branch_id } : {}),
       } as any);
       await deletePOItems(editPO.id);
       await createPOItems(validLines.map(l => ({
@@ -247,7 +255,9 @@ export default function PurchaseOrdersPage() {
           };
         });
       if (itemsToReceive.length === 0) throw new Error("Enter quantities to receive");
-      await receivePO(receiveOpen!, itemsToReceive, receiveDate);
+      const poRow: any = pos.find((p: any) => p.id === receiveOpen);
+      const override = isAdmin && receiveBranchId && receiveBranchId !== poRow?.branch_id ? receiveBranchId : null;
+      await receivePO(receiveOpen!, itemsToReceive, receiveDate, override);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
@@ -282,7 +292,7 @@ export default function PurchaseOrdersPage() {
   });
 
   const resetForm = () => {
-    setForm({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
+    setForm({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "", branch_id: activeBranchId || "" });
     setLines([{ item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   };
 
@@ -391,6 +401,18 @@ export default function PurchaseOrdersPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">New Purchase Order</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch <span className="text-destructive">*</span></Label>
+              <Select value={form.branch_id} onValueChange={(v) => setForm({ ...form, branch_id: v })} disabled={!isAdmin && branches.length <= 1}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                <SelectContent>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">Stock from this PO will be received into the selected branch.</p>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Supplier</Label>
               <SupplierSearch
@@ -514,6 +536,29 @@ export default function PurchaseOrdersPage() {
       <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
+          {(() => {
+            const po: any = pos.find((p: any) => p.id === receiveOpen);
+            const originalBranch = branches.find(b => b.id === po?.branch_id);
+            const changed = isAdmin && receiveBranchId && receiveBranchId !== po?.branch_id;
+            return (
+              <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">Receiving into branch</div>
+                {isAdmin ? (
+                  <Select value={receiveBranchId} onValueChange={setReceiveBranchId}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                    <SelectContent>
+                      {branches.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="text-sm font-semibold">{originalBranch ? `${originalBranch.branch_name} (${originalBranch.branch_code})` : "—"}</div>
+                )}
+                {changed && <p className="text-[11px] text-amber-600">Branch differs from PO's original ({originalBranch?.branch_code || "—"}). The PO's branch will be updated on confirm.</p>}
+              </div>
+            );
+          })()}
           <div className="flex items-end gap-3">
             <div className="space-y-1.5 flex-1">
               <Label className="text-xs">Date Received</Label>
@@ -616,7 +661,7 @@ export default function PurchaseOrdersPage() {
                     <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); }} title={po.status === "received" ? "Undo Receipt" : "Receive / Undo"} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveBranchId(po.branch_id || activeBranchId || ""); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); }} title={po.status === "received" ? "Undo Receipt" : "Receive / Undo"} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                   </div>
                 </TableCell>
@@ -631,6 +676,17 @@ export default function PurchaseOrdersPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">Edit Purchase Order {editPO?.po_number}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch</Label>
+              <Select value={editForm.branch_id} onValueChange={(v) => setEditForm({ ...editForm, branch_id: v })} disabled={!isAdmin}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                <SelectContent>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Supplier</Label>
               <SupplierSearch suppliers={suppliers} value={editForm.supplier_id} onChange={(id) => setEditForm({ ...editForm, supplier_id: id })} />

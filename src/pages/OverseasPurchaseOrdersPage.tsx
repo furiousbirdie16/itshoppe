@@ -30,6 +30,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { usePermissions } from "@/lib/permissions";
+import { useBranch } from "@/contexts/BranchContext";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 
@@ -67,6 +68,7 @@ const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
+  const { branches, activeBranchId } = useBranch();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
@@ -74,6 +76,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [orderDate, setOrderDate] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [notes, setNotes] = useState("");
+  const [branchId, setBranchId] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
   const [exchangeRate, setExchangeRate] = useState("1");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
@@ -107,6 +110,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
+  const [receiveBranchId, setReceiveBranchId] = useState<string>("");
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
   const [undoQtys, setUndoQtys] = useState<Record<string, number>>({});
   const [receiveLocations, setReceiveLocations] = useState<Record<string, "warehouse" | "store">>({});
@@ -254,6 +258,8 @@ export default function OverseasPurchaseOrdersPage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
+      const bId = branchId || activeBranchId;
+      if (!bId) throw new Error("Please select a branch before creating this PO.");
       const poNumber = await generateOverseasPONumber();
       const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
       const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
@@ -267,6 +273,7 @@ export default function OverseasPurchaseOrdersPage() {
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
+        branch_id: bId,
       } as any);
       const valid = normalized.filter(l => l.item_name);
       if (valid.length > 0) {
@@ -299,6 +306,7 @@ export default function OverseasPurchaseOrdersPage() {
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
+        ...(branchId ? { branch_id: branchId } : {}),
       } as any);
       await deleteOverseasPOItems(editing.id);
       const valid = normalized.filter(l => l.item_name);
@@ -341,7 +349,9 @@ export default function OverseasPurchaseOrdersPage() {
         toast.info("Enter a quantity for at least one item");
         return;
       }
-      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate);
+      const po: any = (orders as any[]).find((o: any) => o.id === receiveOpen);
+      const override = isAdmin && receiveBranchId && receiveBranchId !== po?.branch_id ? receiveBranchId : null;
+      await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate, override);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -392,6 +402,7 @@ export default function OverseasPurchaseOrdersPage() {
     setLines([emptyLine()]);
     setCurrency("USD");
     setExchangeRate("1");
+    setBranchId(activeBranchId || "");
     setOpen(true);
   };
 
@@ -404,6 +415,7 @@ export default function OverseasPurchaseOrdersPage() {
     setNotes(po.notes);
     setCurrency(po.currency);
     setExchangeRate(String(po.exchange_rate));
+    setBranchId((po as any).branch_id || "");
     const poItems = await getOverseasPOItems(po.id);
     setLines(poItems.length > 0 ? poItems.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
     setOpen(true);
@@ -694,6 +706,18 @@ export default function OverseasPurchaseOrdersPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Overseas PO" : "New Overseas PO"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch <span className="text-destructive">*</span></Label>
+              <Select value={branchId} onValueChange={setBranchId} disabled={!isAdmin && branches.length <= 1}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select destination branch..." /></SelectTrigger>
+                <SelectContent>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">Stock from this PO will be received into the selected branch.</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Overseas Supplier</Label>
@@ -974,6 +998,29 @@ export default function OverseasPurchaseOrdersPage() {
       <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
+          {(() => {
+            const po: any = (orders as any[]).find((o: any) => o.id === receiveOpen);
+            const originalBranch = branches.find(b => b.id === po?.branch_id);
+            const changed = isAdmin && receiveBranchId && receiveBranchId !== po?.branch_id;
+            return (
+              <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">Receiving into branch</div>
+                {isAdmin ? (
+                  <Select value={receiveBranchId} onValueChange={setReceiveBranchId}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                    <SelectContent>
+                      {branches.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="text-sm font-semibold">{originalBranch ? `${originalBranch.branch_name} (${originalBranch.branch_code})` : "—"}</div>
+                )}
+                {changed && <p className="text-[11px] text-amber-600">Branch differs from PO's original ({originalBranch?.branch_code || "—"}). The PO's branch will be updated on confirm.</p>}
+              </div>
+            );
+          })()}
           <div className="flex items-end gap-3">
             <div className="space-y-1.5 flex-1">
               <Label className="text-xs">Date Received</Label>
@@ -1172,7 +1219,7 @@ export default function OverseasPurchaseOrdersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }}
+                        onClick={() => { setReceiveOpen(po.id); setReceiveBranchId((po as any).branch_id || activeBranchId || ""); setReceiveQtys({}); }}
                         className="h-7 w-7 rounded-md"
                         title="Receive items"
                       >
