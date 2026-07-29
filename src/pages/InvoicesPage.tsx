@@ -40,6 +40,7 @@ export default function InvoicesPage() {
   const queryClient = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId, activeBranch, branches } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
