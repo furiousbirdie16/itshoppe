@@ -349,7 +349,6 @@ export default function OverseasPurchaseOrdersPage() {
         toast.info("Enter a quantity for at least one item");
         return;
       }
-      const poRow: any = (allPOItems as any[]).length ? null : null;
       const po: any = (orders as any[]).find((o: any) => o.id === receiveOpen);
       const override = isAdmin && receiveBranchId && receiveBranchId !== po?.branch_id ? receiveBranchId : null;
       await receiveOverseasPO(receiveOpen!, itemsToReceive, receiveDate, override);
