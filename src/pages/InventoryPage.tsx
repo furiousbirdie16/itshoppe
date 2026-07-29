@@ -120,14 +120,64 @@ export default function InventoryPage() {
   const setF = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
     setFilters(prev => ({ ...prev, [key]: value }));
 
+  const { activeBranchId, activeBranch } = useBranch();
   const { data: activeItems = [], isLoading: loadingActive } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: archivedItemsData = [], isLoading: loadingArchived } = useQuery({
     queryKey: ["items", "archived"],
     queryFn: getArchivedItems,
     enabled: viewArchived,
   });
-  const items = viewArchived ? archivedItemsData : activeItems;
+  const rawItems = viewArchived ? archivedItemsData : activeItems;
   const isLoading = viewArchived ? loadingArchived : loadingActive;
+
+  // Per-branch stock overlay — Phase 2: stock columns must come from item_branch_stock,
+  // never from the legacy items.* stock fields. When activeBranchId is null (admin
+  // "All branches"), sum across every branch the user can see.
+  const { data: branchStockRows = [] } = useQuery({
+    queryKey: ["item_branch_stock", activeBranchId ?? "ALL"],
+    queryFn: async () => {
+      let q = (supabase as any)
+        .from("item_branch_stock")
+        .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock");
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data as any[]) || [];
+    },
+  });
+
+  const branchStockMap = useMemo(() => {
+    const m = new Map<string, { wh: number; st: number; q: number; open: number; ups: number }>();
+    for (const r of branchStockRows) {
+      const prev = m.get(r.item_id);
+      const wh = Number(r.warehouse_quantity || 0);
+      const st = Number(r.store_quantity || 0);
+      const q = Number(r.quantity || 0);
+      const open = Number(r.open_roll_remaining || 0);
+      const ups = Number(r.units_per_stock || 0);
+      if (prev) {
+        prev.wh += wh; prev.st += st; prev.q += q; prev.open += open;
+        if (!prev.ups && ups) prev.ups = ups;
+      } else {
+        m.set(r.item_id, { wh, st, q, open, ups });
+      }
+    }
+    return m;
+  }, [branchStockRows]);
+
+  const items = useMemo(() => {
+    return rawItems.map((it: any) => {
+      const s = branchStockMap.get(it.id);
+      return {
+        ...it,
+        warehouse_quantity: s ? s.wh : 0,
+        store_quantity: s ? s.st : 0,
+        quantity: s ? s.q : 0,
+        open_roll_remaining: s ? s.open : 0,
+        units_per_stock: s && s.ups ? s.ups : it.units_per_stock,
+      };
+    });
+  }, [rawItems, branchStockMap]);
 
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
 
