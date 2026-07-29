@@ -6,6 +6,7 @@ const db = supabase as any;
 export interface MovementInput {
   itemId: string;
   variationId?: string | null;
+  branchId?: string | null;
   type:
     | "in_po"
     | "out_invoice"
@@ -13,7 +14,9 @@ export interface MovementInput {
     | "transfer_w2s"
     | "transfer_s2w"
     | "adjust_missing"
-    | "adjust_surplus";
+    | "adjust_surplus"
+    | "transfer_b2b_out"
+    | "transfer_b2b_in";
   /** Quantity moved, always positive. */
   quantity: number;
   /** Display unit: "pcs", "rolls", "m", "box", etc. */
@@ -36,6 +39,7 @@ export interface MovementInput {
 /**
  * Insert a fully-audited inventory movement. Auto-attaches the current user's
  * id + email. All balance fields are optional — pass whichever apply.
+ * `branchId` MUST match the transaction's branch (not the currently-viewed one).
  */
 export async function recordMovement(m: MovementInput) {
   let user_id: string | null = null;
@@ -51,6 +55,7 @@ export async function recordMovement(m: MovementInput) {
   await db.from("inventory_movements").insert({
     item_id: m.itemId,
     variation_id: m.variationId ?? null,
+    branch_id: m.branchId ?? null,
     type: m.type,
     quantity: Math.abs(m.quantity),
     unit: m.unit ?? null,
