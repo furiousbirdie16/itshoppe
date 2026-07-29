@@ -706,6 +706,18 @@ export default function OverseasPurchaseOrdersPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Overseas PO" : "New Overseas PO"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch <span className="text-destructive">*</span></Label>
+              <Select value={branchId} onValueChange={setBranchId} disabled={!isAdmin && branches.length <= 1}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select destination branch..." /></SelectTrigger>
+                <SelectContent>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">Stock from this PO will be received into the selected branch.</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Overseas Supplier</Label>
