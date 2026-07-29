@@ -290,7 +290,7 @@ export default function PurchaseOrdersPage() {
   });
 
   const resetForm = () => {
-    setForm({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "" });
+    setForm({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "", branch_id: activeBranchId || "" });
     setLines([{ item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
   };
 
