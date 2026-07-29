@@ -954,16 +954,17 @@ export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) =>
 };
 
 export const returnOnlineSale = async (id: string, status: 'returned' | 'cancelled') => {
-  const { data: sale } = await from("online_sales").select("item_id, variation_id, order_number, sales_channel, quantity, status").eq("id", id).single();
+  const { data: sale } = await from("online_sales").select("item_id, variation_id, branch_id, order_number, sales_channel, quantity, status").eq("id", id).single();
   if (!sale) throw new Error("Sale not found");
   const s = sale as any;
   if (s.status === 'returned' || s.status === 'cancelled') throw new Error("Sale already returned/cancelled");
 
   // Restore inventory if linked to an item (variation-aware)
-  if (s.item_id) {
+  if (s.item_id && s.branch_id) {
     await applyStockChange({
       itemId: s.item_id,
       variationId: s.variation_id || null,
+      branchId: s.branch_id,
       qty: -(s.quantity || 1),
       referenceId: id,
       referenceType: `online_sale_${status}`,
