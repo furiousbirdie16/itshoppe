@@ -10,6 +10,7 @@ import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
 import LowStockAlertsPage from "@/pages/LowStockAlertsPage";
+import StockTransfersPage from "@/pages/StockTransfersPage";
 import SuppliersHubPage from "@/pages/SuppliersHubPage";
 import OverseasPurchaseOrdersPage from "@/pages/OverseasPurchaseOrdersPage";
 import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
