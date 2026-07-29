@@ -35,9 +35,12 @@ import { useBranch } from "@/contexts/BranchContext";
 const INVENTORY_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Name", required: true },
   { key: "source", label: "Source", defaultVisible: true },
-  { key: "quantity", label: "Total", defaultVisible: true },
-  { key: "warehouse_quantity", label: "Warehouse", defaultVisible: true },
-  { key: "store_quantity", label: "Store", defaultVisible: true },
+  { key: "branch", label: "Branch", defaultVisible: true },
+  { key: "quantity", label: "Available", defaultVisible: true },
+  { key: "reserved_quantity", label: "Reserved", defaultVisible: true },
+  { key: "incoming_quantity", label: "Incoming", defaultVisible: true },
+  { key: "warehouse_quantity", label: "Warehouse", defaultVisible: false },
+  { key: "store_quantity", label: "Store", defaultVisible: false },
   { key: "cost_price", label: "Cost", defaultVisible: true },
   { key: "selling_price", label: "Sell", defaultVisible: true },
   { key: "low_stock_threshold", label: "Threshold", defaultVisible: true },
@@ -166,6 +169,70 @@ export default function InventoryPage() {
     return m;
   }, [branchStockRows]);
 
+  // Reserved quantity — invoice line quantities on invoices currently in "reserved" status
+  // for the active branch (or across all visible branches when admin picks "All").
+  const { data: reservedRows = [] } = useQuery({
+    queryKey: ["inventory_reserved", activeBranchId ?? "ALL"],
+    queryFn: async () => {
+      let q = (supabase as any)
+        .from("invoice_items")
+        .select("item_id, quantity, invoices!inner(status, branch_id)")
+        .eq("invoices.status", "reserved");
+      if (activeBranchId) q = q.eq("invoices.branch_id", activeBranchId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data as any[]) || [];
+    },
+  });
+  const reservedMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of reservedRows) {
+      if (!r.item_id) continue;
+      m.set(r.item_id, (m.get(r.item_id) || 0) + Number(r.quantity || 0));
+    }
+    return m;
+  }, [reservedRows]);
+
+  // Incoming quantity — outstanding (quantity - received_quantity) on open local + overseas POs
+  // for the active branch.
+  const { data: incomingRows = [] } = useQuery({
+    queryKey: ["inventory_incoming", activeBranchId ?? "ALL"],
+    queryFn: async () => {
+      const buildLocal = () => {
+        let q = (supabase as any)
+          .from("purchase_order_items")
+          .select("item_id, quantity, received_quantity, purchase_orders!inner(status, branch_id)")
+          .not("purchase_orders.status", "in", "(received,cargo_adjusted,closed)");
+        if (activeBranchId) q = q.eq("purchase_orders.branch_id", activeBranchId);
+        return q;
+      };
+      const buildOverseas = () => {
+        let q = (supabase as any)
+          .from("overseas_purchase_order_items")
+          .select("item_id, quantity, received_quantity, overseas_purchase_orders!inner(status, branch_id)")
+          .not("overseas_purchase_orders.status", "in", "(received,cargo_adjusted,pending_cargo_adjustment)");
+        if (activeBranchId) q = q.eq("overseas_purchase_orders.branch_id", activeBranchId);
+        return q;
+      };
+      const [local, overseas] = await Promise.all([buildLocal(), buildOverseas()]);
+      if (local.error) throw local.error;
+      if (overseas.error) throw overseas.error;
+      return [...((local.data as any[]) || []), ...((overseas.data as any[]) || [])];
+    },
+  });
+  const incomingMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of incomingRows) {
+      if (!r.item_id) continue;
+      const remaining = Math.max(0, Number(r.quantity || 0) - Number(r.received_quantity || 0));
+      if (remaining <= 0) continue;
+      m.set(r.item_id, (m.get(r.item_id) || 0) + remaining);
+    }
+    return m;
+  }, [incomingRows]);
+
+  const branchLabel = activeBranch ? activeBranch.branch_code : "All";
+
   const items = useMemo(() => {
     return rawItems.map((it: any) => {
       const s = branchStockMap.get(it.id);
@@ -176,9 +243,11 @@ export default function InventoryPage() {
         quantity: s ? s.q : 0,
         open_roll_remaining: s ? s.open : 0,
         units_per_stock: s && s.ups ? s.ups : it.units_per_stock,
+        reserved_quantity: reservedMap.get(it.id) || 0,
+        incoming_quantity: incomingMap.get(it.id) || 0,
       };
     });
-  }, [rawItems, branchStockMap]);
+  }, [rawItems, branchStockMap, reservedMap, incomingMap]);
 
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
 
@@ -375,7 +444,10 @@ export default function InventoryPage() {
     name: (r) => r.name,
     sku: (r) => r.sku,
     source: (r: any) => (r.source as string) || "local",
+    branch: () => branchLabel,
     quantity: (r) => Number(r.quantity),
+    reserved_quantity: (r: any) => Number(r.reserved_quantity ?? 0),
+    incoming_quantity: (r: any) => Number(r.incoming_quantity ?? 0),
     warehouse_quantity: (r: any) => Number(r.warehouse_quantity ?? 0),
     store_quantity: (r: any) => Number(r.store_quantity ?? 0),
     cost_price: (r) => Number(r.cost_price),
@@ -885,7 +957,7 @@ export default function InventoryPage() {
                 />
               </TableHead>
               {visibleColumns.map((c) => {
-                const align = (c.key === "name" || c.key === "source") ? "left" : "right";
+                const align = (c.key === "name" || c.key === "source" || c.key === "branch") ? "left" : "right";
                 return <SortableHeader key={`h-${c.key}`} sortKey={c.key} label={c.label} sort={sort} onToggle={toggle} align={align} />;
               })}
               <TableHead className="text-xs text-right w-32">Actions</TableHead>
@@ -954,6 +1026,28 @@ export default function InventoryPage() {
                           )}
                         </TableCell>
                       );
+                    case "branch":
+                      return (
+                        <TableCell key="c-branch" className="text-sm">
+                          <Badge variant="outline" className="text-[10px] uppercase">{branchLabel}</Badge>
+                        </TableCell>
+                      );
+                    case "reserved_quantity": {
+                      const rq = Number((item as any).reserved_quantity ?? 0);
+                      return (
+                        <TableCell key="c-res" className="text-right text-sm">
+                          <span className={rq > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"}>{rq}</span>
+                        </TableCell>
+                      );
+                    }
+                    case "incoming_quantity": {
+                      const iq = Number((item as any).incoming_quantity ?? 0);
+                      return (
+                        <TableCell key="c-inc" className="text-right text-sm">
+                          <span className={iq > 0 ? "text-blue-600 font-medium" : "text-muted-foreground"}>{iq}</span>
+                        </TableCell>
+                      );
+                    }
                     case "warehouse_quantity":
                       return <TableCell key="c-wh" className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>;
                     case "store_quantity":
