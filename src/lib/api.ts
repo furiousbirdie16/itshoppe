@@ -708,15 +708,17 @@ export const shipInvoice = async (invoiceId: string) => {
 
 // Cancel a Reserved (or any open) invoice: restore stock if previously deducted.
 export const cancelInvoice = async (invoiceId: string) => {
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   const wasDeducted = !!(invRow as any)?.inventory_deducted;
-  if (wasDeducted) {
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
+  if (wasDeducted && branchId) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
     for (const invItem of (invItems as any[]) || []) {
       if (!invItem.item_id) continue;
       await applyStockChange({
         itemId: invItem.item_id,
         variationId: invItem.variation_id || null,
+        branchId,
         qty: -invItem.quantity,
         referenceId: invoiceId,
         referenceType: "invoice_cancel",
