@@ -67,6 +67,7 @@ const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
+  const { branches, activeBranchId } = useBranch();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
@@ -74,6 +75,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [orderDate, setOrderDate] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [notes, setNotes] = useState("");
+  const [branchId, setBranchId] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
   const [exchangeRate, setExchangeRate] = useState("1");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
