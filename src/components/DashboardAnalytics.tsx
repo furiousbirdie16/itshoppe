@@ -83,7 +83,7 @@ export function DashboardAnalytics() {
   const { data: stats } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardStats });
   const { data: receivables = 0 } = useQuery({
     queryKey: ["accounts_receivable"],
-    queryFn: getAccountsReceivable,
+    queryFn: () => getAccountsReceivable(),
   });
 
   const assetBreakdown = [
