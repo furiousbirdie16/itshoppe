@@ -15,6 +15,7 @@ import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
 import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBranch } from "@/contexts/BranchContext";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -75,6 +76,7 @@ function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKe
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const money = (n: number) => (isAdmin ? peso(n) : "—");
   const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
@@ -138,7 +140,7 @@ export default function BusinessInsightsPage() {
   // Online sales — include ALL sales regardless of payment status so units/revenue
   // reflect actual sales volume. Cost & profit are only recognized for PAID sales.
   const { data: onlineRows = [] } = useQuery({
-    queryKey: ["bi_online", fromStr, toStr, payment],
+    queryKey: ["bi_online", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
       return fetchAll(() => {
         let q = supabase
@@ -149,6 +151,7 @@ export default function BusinessInsightsPage() {
           .lte("order_date", toStr);
         if (payment === "paid") q = q.eq("payment_status", "paid");
         else if (payment === "unpaid") q = q.eq("payment_status", "unpaid");
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
         return q;
       });
     },
@@ -207,19 +210,21 @@ export default function BusinessInsightsPage() {
 
   // Invoice items (only for confirmed/paid invoices in date range)
   const { data: invoiceRows = [] } = useQuery({
-    queryKey: ["bi_invoice", fromStr, toStr, payment],
+    queryKey: ["bi_invoice", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
       const statuses =
         payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
 
-      const invs = await fetchAll<any>(() =>
-        supabase
+      const invs = await fetchAll<any>(() => {
+        let q = supabase
           .from("invoices")
           .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
           .in("status", statuses as any)
           .gte("invoice_date", fromStr)
-          .lte("invoice_date", toStr)
-      );
+          .lte("invoice_date", toStr);
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+        return q;
+      });
       const ids = invs.map((i: any) => i.id);
       if (!ids.length) return [];
       // Chunk the IN() filter and paginate per chunk

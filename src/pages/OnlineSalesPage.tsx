@@ -24,6 +24,7 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
 import { supabase } from "@/integrations/supabase/client";
+import { useBranch } from "@/contexts/BranchContext";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -150,8 +151,9 @@ export default function OnlineSalesPage() {
   const qc = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
-  const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales"], queryFn: getOnlineSales });
+  const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales", activeBranchId], queryFn: () => getOnlineSales(activeBranchId) });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
 
@@ -317,6 +319,7 @@ export default function OnlineSalesPage() {
         } as any);
         toast.success("Updated");
       } else {
+        if (!activeBranchId) { toast.error("Select a branch before creating an online sale."); setSaving(false); return; }
         const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
         for (const line of cleanLines) {
           await createOnlineSale({
@@ -330,7 +333,8 @@ export default function OnlineSalesPage() {
             notes: form.notes,
             item_id: line.item_id || null,
             variation_id: line.variation_id || null,
-          });
+            branch_id: activeBranchId,
+          } as any);
         }
         toast.success(cleanLines.length > 1 ? `Created order with ${cleanLines.length} items` : "Created");
       }
@@ -642,6 +646,7 @@ export default function OnlineSalesPage() {
   const handleBulkUpload = async () => {
     const valid = bulkRows.filter(r => r.valid);
     if (valid.length === 0) return;
+    if (!activeBranchId) { toast.error("Select a branch before bulk uploading online sales."); return; }
     setBulkUploading(true);
     let success = 0;
     let failed = 0;
@@ -649,7 +654,7 @@ export default function OnlineSalesPage() {
     for (const row of valid) {
       try {
         const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, variation_id: row.variation_id, notes: "" });
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, variation_id: row.variation_id, notes: "", branch_id: activeBranchId } as any);
         success++;
       } catch (e: any) {
         failed++;

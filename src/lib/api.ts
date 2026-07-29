@@ -491,8 +491,10 @@ export const unreceivePO = async (
 };
 
 // Quotations
-export const getQuotations = async (): Promise<Quotation[]> => {
-  const { data, error } = await from("quotations").select("*, customers(*)").order("created_at", { ascending: false });
+export const getQuotations = async (branchId?: string | null): Promise<Quotation[]> => {
+  let q = from("quotations").select("*, customers(*)").order("created_at", { ascending: false });
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
   if (error) throw error;
   return data;
 };
@@ -567,6 +569,7 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
     notes: q.notes,
     total_amount: q.total_amount,
     sales_agent: q.sales_agent || "",
+    branch_id: q.branch_id,
   }).select().single();
 
   if (error) throw error;
@@ -590,8 +593,10 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
 };
 
 // Invoices
-export const getInvoices = async (): Promise<Invoice[]> => {
-  const { data, error } = await from("invoices").select("*, customers(*)").order("created_at", { ascending: false });
+export const getInvoices = async (branchId?: string | null): Promise<Invoice[]> => {
+  let q = from("invoices").select("*, customers(*)").order("created_at", { ascending: false });
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
   if (error) throw error;
   return data;
 };
@@ -914,16 +919,18 @@ export const generateShopeeOrderNumber = () => generateNextNumber("shopee_order"
 export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order");
 
 // Online Sales
-export const getOnlineSales = async (): Promise<OnlineSale[]> => {
+export const getOnlineSales = async (branchId?: string | null): Promise<OnlineSale[]> => {
   const pageSize = 1000;
   const all: any[] = [];
   for (let page = 0; ; page++) {
     const fromIdx = page * pageSize;
     const toIdx = fromIdx + pageSize - 1;
-    const { data, error } = await from("online_sales")
+    let q = from("online_sales")
       .select("*, items(*), item_variations(*)")
       .order("created_at", { ascending: false })
       .range(fromIdx, toIdx);
+    if (branchId) q = q.eq("branch_id", branchId);
+    const { data, error } = await q;
     if (error) throw error;
     if (!data || data.length === 0) break;
     all.push(...data);
@@ -1338,13 +1345,17 @@ export const getLastSalesAgentForCustomer = async (customerId: string): Promise<
 };
 
 /** Aggregates accounts receivable (unpaid invoices + manual receivables). */
-export const getAccountsReceivable = async (): Promise<number> => {
-  const { data: invs } = await from("invoices")
-    .select("total_amount, status")
-    .in("status", ["confirmed", "unpaid"]);
+export const getAccountsReceivable = async (branchId?: string | null): Promise<number> => {
+  let invQ = from("invoices").select("total_amount, status").in("status", ["confirmed", "unpaid"]);
+  if (branchId) invQ = invQ.eq("branch_id", branchId);
+  const { data: invs } = await invQ;
   const invTotal = ((invs as any[]) || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
-  const { data: mr } = await from("manual_receivables").select("amount, status").neq("status", "paid");
-  const mrTotal = ((mr as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  // Manual receivables have no branch column — only include when viewing all branches.
+  let mrTotal = 0;
+  if (!branchId) {
+    const { data: mr } = await from("manual_receivables").select("amount, status").neq("status", "paid");
+    mrTotal = ((mr as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  }
   return invTotal + mrTotal;
 };
 
@@ -1352,17 +1363,22 @@ export const getAccountsReceivable = async (): Promise<number> => {
 export const getSalesTrend = async (
   fromIso: string,
   toIso: string,
+  branchId?: string | null,
 ): Promise<{ date: string; online: number; invoice: number; total: number }[]> => {
-  const { data: online } = await from("online_sales")
-    .select("order_date, posted_price, quantity")
+  let onlineQ = from("online_sales")
+    .select("order_date, posted_price, quantity, branch_id")
     .gte("order_date", fromIso)
     .lte("order_date", toIso)
     .eq("status", "completed");
-  const { data: invs } = await from("invoices")
-    .select("invoice_date, total_amount, status")
+  if (branchId) onlineQ = onlineQ.eq("branch_id", branchId);
+  const { data: online } = await onlineQ;
+  let invQ = from("invoices")
+    .select("invoice_date, total_amount, status, branch_id")
     .gte("invoice_date", fromIso)
     .lte("invoice_date", toIso)
     .in("status", ["confirmed", "paid"]);
+  if (branchId) invQ = invQ.eq("branch_id", branchId);
+  const { data: invs } = await invQ;
   const map: Record<string, { online: number; invoice: number }> = {};
   for (const r of (online as any[]) || []) {
     const k = r.order_date;

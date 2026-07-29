@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { BellRing } from "lucide-react";
 import AssetTrendChart from "@/components/AssetTrendChart";
 import { usePermissions } from "@/lib/permissions";
+import { useBranch } from "@/contexts/BranchContext";
 
 type Preset = "today" | "week" | "month" | "year" | "custom";
 
@@ -31,6 +32,7 @@ const PRESETS: { id: Preset; label: string }[] = [
 
 export function DashboardAnalytics() {
   const { isAdmin } = usePermissions();
+  const { activeBranchId } = useBranch();
   const [preset, setPreset] = useState<Preset>("month");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
@@ -51,8 +53,8 @@ export function DashboardAnalytics() {
   const toIso = format(to, "yyyy-MM-dd");
 
   const { data: trend = [], isLoading: trendLoading } = useQuery({
-    queryKey: ["sales_trend", fromIso, toIso],
-    queryFn: () => getSalesTrend(fromIso, toIso),
+    queryKey: ["sales_trend", fromIso, toIso, activeBranchId],
+    queryFn: () => getSalesTrend(fromIso, toIso, activeBranchId),
   });
 
   // Fill in missing days with zeros so the line is continuous
@@ -82,8 +84,8 @@ export function DashboardAnalytics() {
   // Asset value: inventory + incoming + receivables
   const { data: stats } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardStats });
   const { data: receivables = 0 } = useQuery({
-    queryKey: ["accounts_receivable"],
-    queryFn: getAccountsReceivable,
+    queryKey: ["accounts_receivable", activeBranchId],
+    queryFn: () => getAccountsReceivable(activeBranchId),
   });
 
   const assetBreakdown = [
@@ -255,16 +257,19 @@ export function DashboardAnalytics() {
 
 function GeographicAnalytics({ fromIso, toIso }: { fromIso: string; toIso: string }) {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const { activeBranchId } = useBranch();
 
   const { data: invoiceSales = [] } = useQuery({
-    queryKey: ["geo_sales", fromIso, toIso],
+    queryKey: ["geo_sales", fromIso, toIso, activeBranchId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from("invoices")
         .select("customer_id, total_amount")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", fromIso)
         .lte("invoice_date", toIso);
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      const { data } = await q;
       return (data || []) as { customer_id: string | null; total_amount: number }[];
     },
   });

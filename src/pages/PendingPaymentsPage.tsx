@@ -22,6 +22,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
+import { useBranch } from "@/contexts/BranchContext";
 
 interface ManualForm {
   customer_id: string;
@@ -37,6 +38,7 @@ export default function PendingPaymentsPage() {
   const queryClient = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
@@ -54,7 +56,7 @@ export default function PendingPaymentsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
 
-  const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
+  const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
 

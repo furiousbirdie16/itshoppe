@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { useBranch } from "@/contexts/BranchContext";
 
 type SalesRange = "daily" | "monthly" | "custom";
 type SalesDetail = "online" | "invoice" | "combined" | null;
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const queryClient = useQueryClient();
 
   const [salesRange, setSalesRange] = useState<SalesRange>("daily");
@@ -70,30 +72,34 @@ export default function DashboardPage() {
 
   // Fetch full online sales records for the date range
   const { data: onlineSalesData = [] } = useQuery({
-    queryKey: ["dashboard_online_sales_list", dateFromStr, dateToStr],
+    queryKey: ["dashboard_online_sales_list", dateFromStr, dateToStr, activeBranchId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from("online_sales")
         .select("*")
         .gte("order_date", dateFromStr)
         .lte("order_date", dateToStr)
         .eq("status", "completed")
         .order("order_date", { ascending: false });
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      const { data } = await q;
       return data || [];
     },
   });
 
   // Fetch full invoice records for the date range
   const { data: invoiceSalesData = [] } = useQuery({
-    queryKey: ["dashboard_invoice_sales_list", dateFromStr, dateToStr],
+    queryKey: ["dashboard_invoice_sales_list", dateFromStr, dateToStr, activeBranchId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from("invoices")
         .select("*, customers(name), quotations(sales_agent)")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", dateFromStr)
         .lte("invoice_date", dateToStr)
         .order("invoice_date", { ascending: false });
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      const { data } = await q;
       return data || [];
     },
   });

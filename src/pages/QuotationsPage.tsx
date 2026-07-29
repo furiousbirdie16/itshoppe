@@ -31,6 +31,7 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
+import { useBranch } from "@/contexts/BranchContext";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
 
@@ -39,6 +40,7 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -71,7 +73,7 @@ export default function QuotationsPage() {
   const [filterAgent, setFilterAgent] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
 
-  const { data: quotations = [] } = useQuery({ queryKey: ["quotations"], queryFn: getQuotations });
+  const { data: quotations = [] } = useQuery({ queryKey: ["quotations", activeBranchId], queryFn: () => getQuotations(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
@@ -281,6 +283,8 @@ export default function QuotationsPage() {
       const payload = buildPayload();
       payload.quotation_number = await generateQuotationNumber();
       payload.total_amount = total;
+      if (!activeBranchId) throw new Error("Select a branch before creating a quotation.");
+      payload.branch_id = activeBranchId;
       const q = await createQuotation(payload);
       await createQuotationItems(saved.map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
