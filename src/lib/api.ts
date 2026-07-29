@@ -930,9 +930,12 @@ export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
 
   // Deduct inventory if linked to an item (variation-aware)
   if (created.item_id) {
+    const branchId: string | null = (created as any).branch_id ?? null;
+    if (!branchId) throw new Error("Online sale is missing a branch. Select a branch before saving.");
     await applyStockChange({
       itemId: created.item_id,
       variationId: (created as any).variation_id || null,
+      branchId,
       qty: created.quantity || 1,
       referenceId: created.id,
       referenceType: "online_sale",
