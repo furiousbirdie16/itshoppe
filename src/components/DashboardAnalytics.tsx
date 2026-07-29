@@ -53,8 +53,8 @@ export function DashboardAnalytics() {
   const toIso = format(to, "yyyy-MM-dd");
 
   const { data: trend = [], isLoading: trendLoading } = useQuery({
-    queryKey: ["sales_trend", fromIso, toIso],
-    queryFn: () => getSalesTrend(fromIso, toIso),
+    queryKey: ["sales_trend", fromIso, toIso, activeBranchId],
+    queryFn: () => getSalesTrend(fromIso, toIso, activeBranchId),
   });
 
   // Fill in missing days with zeros so the line is continuous
