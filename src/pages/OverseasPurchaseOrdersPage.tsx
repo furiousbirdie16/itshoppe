@@ -258,6 +258,8 @@ export default function OverseasPurchaseOrdersPage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
+      const bId = branchId || activeBranchId;
+      if (!bId) throw new Error("Please select a branch before creating this PO.");
       const poNumber = await generateOverseasPONumber();
       const normalized = lines.map(l => ({ ...l, quantity: Number(l.quantity) || 0, unit_cost: Number(l.unit_cost) || 0 }));
       const total = normalized.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
@@ -271,6 +273,7 @@ export default function OverseasPurchaseOrdersPage() {
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
+        branch_id: bId,
       } as any);
       const valid = normalized.filter(l => l.item_name);
       if (valid.length > 0) {
