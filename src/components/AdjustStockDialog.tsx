@@ -23,6 +23,7 @@ interface Props {
 
 export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
   const qc = useQueryClient();
+  const { activeBranchId, activeBranch } = useBranch();
   const [location, setLocation] = useState<Location>("store");
   const [actualQty, setActualQty] = useState("");
   const [notes, setNotes] = useState("");
@@ -45,35 +46,40 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
   const adjustMut = useMutation({
     mutationFn: async () => {
       if (!item) throw new Error("No item selected");
+      if (!activeBranchId) throw new Error("Select a specific branch (not 'All branches') before adjusting stock");
       if (actualNum === null || Number.isNaN(actualNum) || actualNum < 0) {
         throw new Error("Enter a valid actual quantity");
       }
       if (diff === 0) throw new Error("Actual quantity matches current — no adjustment needed");
 
-      const newWh = location === "warehouse" ? actualNum : wh;
-      const newSt = location === "store" ? actualNum : st;
-
-      const { error: upErr } = await supabase
-        .from("items")
-        .update({ warehouse_quantity: newWh, store_quantity: newSt })
-        .eq("id", item.id);
-      if (upErr) throw upErr;
+      const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("apply_branch_stock_change", {
+        _item_id: item.id,
+        _branch_id: activeBranchId,
+        _location: location,
+        _delta_stock: diff,
+        _delta_open: 0,
+        _units_per_stock: null,
+      });
+      if (rpcErr) throw rpcErr;
+      const row: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
 
       const { recordMovement } = await import("@/lib/inventoryLog");
       await recordMovement({
         itemId: item.id,
+        branchId: activeBranchId,
         type: diff < 0 ? "adjust_missing" : "adjust_surplus",
         quantity: Math.abs(diff),
         unit: item.base_unit || "pcs",
         location,
         notes: `${location === "warehouse" ? "Warehouse" : "Store"}: ${currentQty} → ${actualNum}${notes ? ` — ${notes}` : ""}`,
-        balanceBefore: currentQty,
-        balanceAfter: actualNum,
+        balanceBefore: location === "warehouse" ? row.wh_before : row.st_before,
+        balanceAfter: location === "warehouse" ? row.warehouse_quantity : row.store_quantity,
       });
 
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["item_branch_stock"] });
       qc.invalidateQueries({ queryKey: ["adjust-history", item?.id] });
       toast.success("Stock adjusted");
       onOpenChange(false);
