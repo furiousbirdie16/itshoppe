@@ -84,8 +84,8 @@ export function DashboardAnalytics() {
   // Asset value: inventory + incoming + receivables
   const { data: stats } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardStats });
   const { data: receivables = 0 } = useQuery({
-    queryKey: ["accounts_receivable"],
-    queryFn: () => getAccountsReceivable(),
+    queryKey: ["accounts_receivable", activeBranchId],
+    queryFn: () => getAccountsReceivable(activeBranchId),
   });
 
   const assetBreakdown = [
