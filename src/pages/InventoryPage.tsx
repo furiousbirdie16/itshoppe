@@ -1122,7 +1122,7 @@ export default function InventoryPage() {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </HorizontalScrollSync>
 
       {variationsItem && (
         <VariationsManager
