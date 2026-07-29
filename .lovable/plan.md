@@ -1,78 +1,67 @@
-# Phase 2 — Per-Branch Inventory
+# Phase 2 Completion Plan
 
-Move stock from `items.warehouse_quantity` / `items.store_quantity` (plus `open_roll_remaining`) into a per-branch table so each branch (MNL, GES, future) has its own warehouse + store buckets, while keeping the existing UI, ledger, and analytics working.
+Goal: `item_branch_stock` becomes the ONLY inventory source. Every transaction records its own `branch_id`. Legacy `items.warehouse_quantity` / `store_quantity` / `quantity` / `open_roll_remaining` are frozen (kept for historical reads only, never written by app code from this point).
 
-## 1. New table: `item_branch_stock`
+## Part A — Database (one migration)
 
-One row per (item, branch). Holds the numbers currently on `items`:
+Add `branch_id uuid REFERENCES branches(id)` to:
+- `purchase_orders`, `overseas_purchase_orders`
+- `invoices`, `quotations`
+- `online_sales`
+- `inventory_movements` already has it — keep
 
+Backfill every existing row to Manila (MNL). Make column NOT NULL after backfill.
+
+RLS: keep current policies; add branch check via `user_has_branch(auth.uid(), branch_id)` for non-admin insert/update on those tables (admins unaffected).
+
+Drop the legacy sync triggers `sync_item_total_quantity` from `items` writes at the app layer (we simply stop writing those columns).
+
+## Part B — `src/lib/api.ts` rewire
+
+Replace the core stock helper with a branch-scoped version:
+
+```ts
+applyStockChange({ itemId, variationId, branchId, location, deltaBase, ... })
 ```
-item_branch_stock
-- id
-- item_id            FK items
-- branch_id          FK branches
-- warehouse_quantity int
-- store_quantity     int
-- quantity           int  (generated: warehouse + store, kept in sync by trigger for legacy reads)
-- open_roll_remaining numeric  (per-branch open roll)
-- units_per_stock    numeric  (mirrors item; kept per-branch so future divergence is possible; default from parent)
-- updated_at
-- UNIQUE(item_id, branch_id)
-```
 
-Grants + RLS: `authenticated` can read rows for branches they belong to (via `user_has_branch`); admins full access; writes gated by `user_has_branch` too.
+- Reads current row from `item_branch_stock` for `(item_id, branch_id)` (creates one at zero if missing).
+- Applies the same open-roll / variation math against that row only.
+- Writes back to `item_branch_stock` (never `items`).
+- Passes `branchId` into `recordMovement`.
 
-Backfill: for every existing item, insert one row for Manila (MNL) with the current `warehouse_quantity`, `store_quantity`, `open_roll_remaining`, `units_per_stock`. Gen San starts at 0/0 with `open_roll_remaining = 0`.
+Every call site in `api.ts` must pass an explicit `branchId` sourced from the transaction row (PO/invoice/online-sale/adjustment), not from `BranchContext`.
 
-Do NOT drop the columns on `items` in this phase. Leave them as a legacy mirror so any code path we miss still reads a plausible number. A follow-up cleanup phase can remove them once Phase 3 lands.
+Call sites to update in `api.ts` (from the grep):
+- PO receive (local) — line ~651, ~692, ~750, ~799 → use `purchase_orders.branch_id`
+- Invoice deduct / cancel replenish — line ~962, ~990 → use `invoices.branch_id`
+- Online sales deduct / replenish — same helper
+- Return flows at ~427, ~1120, ~1198 → replace direct `items.update` with `item_branch_stock` writes via helper
+- Bulk stock edit at ~491 → per-branch write against the currently-active branch
 
-Add `branch_id` (nullable) to `inventory_movements` so the ledger records which branch a movement happened in. Backfill existing rows to MNL.
+## Part C — Dialogs & pages
 
-## 2. Stock helpers
+- `AdjustStockDialog`: read + write against `item_branch_stock` for the active branch. Show branch name in the header. Block save if admin has "All branches" selected.
+- `TransferStockDialog`: same, warehouse↔store stays intra-branch.
+- New `InterBranchTransferDialog`: pick source + destination branch, emits `transfer_b2b_out` on source row and `transfer_b2b_in` on destination row atomically.
+- `OverseasPurchaseOrdersPage` + `PurchaseOrdersPage`: on create, stamp `branch_id`. Receive & undo-receive routes read the PO's `branch_id` (never the switcher). Display "Receiving into: <Branch>" prominently on the receive dialog.
+- `InvoicesPage` / `QuotationsPage` / `OnlineSalesPage`: stamp `branch_id` on create; show branch chip on the form; if admin is on "All branches", require picking one before save.
+- `BulkEditUploadDialog`: apply quantities into `item_branch_stock` for the active branch only.
+- `InventoryPage`: read path already correct — add "Opening stock" writes to `item_branch_stock` for the active branch. Guard admin "All branches" on any write.
 
-New module `src/lib/branchStock.ts`:
+## Part D — Ledger
 
-- `getBranchStock(itemId, branchId)` → row from `item_branch_stock`.
-- `getAllBranchStock(itemId)` → all rows (for admin "All branches" view).
-- `applyBranchStockChange(itemId, branchId, delta, opts)` — replaces `applyStockChange` in `src/lib/api.ts` for POs, invoices, online sales, returns. Handles pack/cut math against per-branch open roll.
-- `transferBranchStock({ itemId, fromBranchId, toBranchId, fromLoc, toLoc, qty })` — new function for **inter-branch transfers** (source branch's warehouse/store → destination branch's warehouse/store).
+`recordMovement` already accepts `branchId` via schema; wire the new param through `src/lib/inventoryLog.ts` and pass the transaction's branch on every call. `ItemHistoryDialog` gets a Branch column.
 
-Existing `applyStockChange` becomes a thin shim that resolves the active branch from context and delegates.
+## Part E — Verification checklist (I will run before returning)
 
-## 3. UI rewire
+1. Grep confirms zero writes to `items.warehouse_quantity` / `items.store_quantity` / `items.quantity` / `items.open_roll_remaining` outside the initial-create path for a new SKU.
+2. Receiving a PO stamped to GES only mutates `item_branch_stock` rows where `branch_id = GES`.
+3. Switching the header branch does NOT change what a saved invoice/PO deducts from.
+4. Admin on "All branches" cannot save a new invoice/PO/adjust/transfer — UI blocks with a toast asking to pick a branch.
+5. `tsgo` clean.
 
-- **InventoryPage**: stock columns now read from `item_branch_stock` filtered by the active branch from `BranchContext`. "All branches" (admin) sums across branches and shows a per-branch breakdown in the row expander.
-- **AdjustStockDialog**: writes to `item_branch_stock` for the active branch. Adds branch label in the header.
-- **TransferStockDialog**: two modes:
-  - *Within branch* — Warehouse ↔ Store (current behaviour, but on the active branch's row).
-  - *Between branches* — pick destination branch + destination location; uses `transferBranchStock`. New movement types `transfer_b2b_out` / `transfer_b2b_in` (added to `movement_type` enum) with the counter-branch recorded in the notes + `dest_location` = `"<branch_code>:<warehouse|store>"`.
-- **ItemHistoryDialog**: shows a "Branch" column (from the new `branch_id` on movements) and can filter to the active branch.
-- **BulkEditUploadDialog / BulkUploadDialog**: the stock columns operate on the active branch. Non-admins can't switch branches, so they only ever edit their own.
-- **Low-stock alerts, dashboard KPIs, business insights**: filtered by active branch; "All branches" for admin aggregates.
+## Scope note
 
-## 4. Purchasing + Sales (read-only in Phase 2)
+This is ~8 files touched heavily (`api.ts`, both PO pages, invoices, online sales, both dialogs, bulk edit) plus one migration and one new dialog. I'll do it in a single pass but the migration lands first (needs your approval) before the code edits — the code depends on the new columns.
 
-POs, invoices, and online sales keep working as they do today, but every stock mutation they trigger now goes through `applyBranchStockChange` against the **active branch**. Tagging those documents with a `branch_id` column of their own is Phase 3 — for now the branch is inferred from `BranchContext` at the moment of the mutation.
-
-## 5. Ledger + analytics
-
-- `inventory_movements.branch_id` populated on every write via `recordMovement`.
-- `ItemHistoryDialog`, Business Insights inventory tab, and Low Stock page all filter by active branch (admin can pick "All branches").
-- Asset snapshot function extended: `inventory_value` computed from `item_branch_stock` summed across all branches (unchanged total), plus new `inventory_value_by_branch jsonb` for future per-branch charting.
-
-## Technical details
-
-- Trigger on `item_branch_stock` keeps `quantity = warehouse_quantity + store_quantity` (mirrors existing `sync_item_total_quantity` on `items`).
-- Backfill runs inside the same migration as the table creation, wrapped in a single transaction so it's atomic.
-- New enum values for `movement_type`: `transfer_b2b_out`, `transfer_b2b_in`.
-- `applyBranchStockChange` reuses `applyVariationDelta` from `src/lib/variations.ts` — that helper is pure, no DB coupling, so it just needs the per-branch stock state passed in.
-- `BranchContext.activeBranchId` is `null` when admin picks "All branches". Mutations require a concrete branch — the UI blocks Adjust/Transfer/Receive-PO/Create-Invoice actions with a toast ("Pick a branch first") when active branch is null.
-- No existing historical rows are modified beyond the MNL backfill; `items.*_quantity` stays as-is.
-
-## What's out of scope for Phase 2
-
-- Tagging invoices / quotations / POs / online sales with `branch_id` (Phase 3).
-- RLS lockdown so non-admin users literally can't see other branches' documents (Phase 4).
-- Removing legacy `items.warehouse_quantity` / `store_quantity` columns.
-
-Say **"go"** and I'll ship the migration + code changes. If you want the inter-branch transfer UI deferred, or want the legacy columns dropped now, tell me before I start.
+If you want inter-branch transfers deferred, say so and I'll leave that dialog for a Phase 2.5.
