@@ -210,19 +210,21 @@ export default function BusinessInsightsPage() {
 
   // Invoice items (only for confirmed/paid invoices in date range)
   const { data: invoiceRows = [] } = useQuery({
-    queryKey: ["bi_invoice", fromStr, toStr, payment],
+    queryKey: ["bi_invoice", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
       const statuses =
         payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
 
-      const invs = await fetchAll<any>(() =>
-        supabase
+      const invs = await fetchAll<any>(() => {
+        let q = supabase
           .from("invoices")
           .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
           .in("status", statuses as any)
           .gte("invoice_date", fromStr)
-          .lte("invoice_date", toStr)
-      );
+          .lte("invoice_date", toStr);
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+        return q;
+      });
       const ids = invs.map((i: any) => i.id);
       if (!ids.length) return [];
       // Chunk the IN() filter and paginate per chunk
