@@ -56,7 +56,7 @@ export default function PendingPaymentsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
 
-  const { data: invoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: getInvoices });
+  const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
 
