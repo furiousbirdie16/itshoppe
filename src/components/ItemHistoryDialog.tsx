@@ -13,6 +13,7 @@ import { Search, History, ExternalLink } from "lucide-react";
 import type { Item } from "@/types/database";
 import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
 import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
+import { useBranch } from "@/contexts/BranchContext";
 
 interface Props {
   item: Item | null;
@@ -51,6 +52,8 @@ interface LedgerRow {
   reference_id: string | null;
   notes: string;
   user: string;
+  branch_id: string | null;
+  branch_label: string;
 }
 
 
@@ -95,12 +98,14 @@ function classify(type: string, reference_type: string | null): { category: Move
   return { category: "correction", label: type, direction: "neutral" };
 }
 
-async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRow[]> {
-  const { data: movements } = await supabase
+async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<LedgerRow[]> {
+  let q = supabase
     .from("inventory_movements")
-    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email")
+    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email, branch_id")
     .eq("item_id", itemId)
     .order("created_at", { ascending: true });
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { data: movements } = await q;
 
   const rows = movements || [];
 
@@ -131,6 +136,17 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
   (poRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order" }));
   (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
   (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
+
+  // Load branch labels for rows we retrieved
+  const branchIds = Array.from(new Set(rows.map((m: any) => m.branch_id).filter(Boolean)));
+  const branchMap = new Map<string, string>();
+  if (branchIds.length) {
+    const { data: bs } = await (supabase as any)
+      .from("branches")
+      .select("id, branch_code")
+      .in("id", branchIds);
+    (bs || []).forEach((b: any) => branchMap.set(b.id, b.branch_code));
+  }
 
   // Compute signed deltas
   const enriched = rows.map((m: any) => {
@@ -177,6 +193,8 @@ async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRo
       reference_id: m.reference_id || null,
       notes: m.notes || "",
       user: m.user_email || "—",
+      branch_id: m.branch_id || null,
+      branch_label: m.branch_id ? (branchMap.get(m.branch_id) || "—") : "—",
     });
     runningNew = previousBalance;
   }
@@ -191,12 +209,14 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [to, setTo] = useState("");
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
   const [onlineSaleDetailId, setOnlineSaleDetailId] = useState<string | null>(null);
+  const { activeBranchId, activeBranch, canPickAll } = useBranch();
 
   const { data: ledger = [], isLoading } = useQuery({
-    queryKey: ["item-ledger", item?.id, item?.quantity],
-    queryFn: () => fetchLedger(item!.id, Number(item!.quantity || 0)),
+    queryKey: ["item-ledger", item?.id, item?.quantity, activeBranchId],
+    queryFn: () => fetchLedger(item!.id, Number(item!.quantity || 0), activeBranchId),
     enabled: !!item && open,
   });
+
 
   const filtered = useMemo(() => ledger.filter((r) => {
     if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
@@ -221,7 +241,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-lg">Inventory Ledger — {item?.name}</DialogTitle>
+          <DialogTitle className="text-lg">
+            Inventory Ledger — {item?.name}
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              ({activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : canPickAll ? "All branches" : "—"})
+            </span>
+          </DialogTitle>
         </DialogHeader>
 
         {stats && (
@@ -265,6 +290,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead className="text-xs whitespace-nowrap">Date & Time</TableHead>
+                <TableHead className="text-xs">Branch</TableHead>
                 <TableHead className="text-xs">Transaction</TableHead>
                 <TableHead className="text-xs">Reference</TableHead>
                 <TableHead className="text-xs">Location</TableHead>
@@ -279,9 +305,9 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={11} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={11} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
               ) : filtered.map((r) => {
                 const locLabel = r.category === "transfer" && r.dest_location
                   ? `${r.location || "?"} → ${r.dest_location}`
@@ -295,6 +321,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 return (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</TableCell>
+                  <TableCell className="text-xs font-mono">{r.branch_label}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
                   </TableCell>
