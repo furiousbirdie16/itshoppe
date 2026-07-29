@@ -402,6 +402,18 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">New Purchase Order</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch <span className="text-destructive">*</span></Label>
+              <Select value={form.branch_id} onValueChange={(v) => setForm({ ...form, branch_id: v })} disabled={!isAdmin && branches.length <= 1}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                <SelectContent>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">Stock from this PO will be received into the selected branch.</p>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-medium">Supplier</Label>
               <SupplierSearch
                 suppliers={suppliers}
