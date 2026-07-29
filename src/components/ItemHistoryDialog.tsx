@@ -321,6 +321,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 return (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</TableCell>
+                  <TableCell className="text-xs font-mono">{r.branch_label}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
                   </TableCell>
