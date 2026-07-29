@@ -603,16 +603,18 @@ export const updateInvoice = async (id: string, inv: Partial<Invoice>) => {
 
 export const deleteInvoice = async (id: string) => {
   // If this invoice currently has stock deducted, restore inventory before deleting.
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", id).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", id).maybeSingle();
   const stockCurrentlyDeducted = !!(invRow as any)?.inventory_deducted;
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
 
-  if (stockCurrentlyDeducted) {
+  if (stockCurrentlyDeducted && branchId) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", id);
     for (const invItem of (invItems as any[]) || []) {
       if (!invItem.item_id) continue;
       await applyStockChange({
         itemId: invItem.item_id,
         variationId: invItem.variation_id || null,
+        branchId,
         qty: -invItem.quantity, // restore
         referenceId: id,
         referenceType: "invoice_delete",
