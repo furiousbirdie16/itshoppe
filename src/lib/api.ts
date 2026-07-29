@@ -83,154 +83,82 @@ export const deleteItemVariation = async (id: string) => {
 };
 
 /**
- * Apply a sale (qty>0) or restore (qty<0) of a variation against the parent item.
- * Updates item.quantity + open_roll_remaining and writes an inventory_movement row.
- * For non-variation lines, falls back to a plain whole-unit deduction.
+ * Apply a sale (qty>0) or restore (qty<0) against `item_branch_stock` for the
+ * TRANSACTION'S branch (never the currently-viewed branch). Variation-aware.
+ * All sales deduct from the branch's store bucket; restores add back to store.
  */
 export const applyStockChange = async (params: {
   itemId: string;
   variationId: string | null;
+  branchId: string;
   qty: number; // positive = deduct, negative = restore
   referenceId: string;
   referenceType: string;
-  movementType: 'in_po' | 'out_invoice' | 'out_online_sale';
+  movementType: "in_po" | "out_invoice" | "out_online_sale";
   notes?: string;
 }) => {
-  const { itemId, variationId, qty, referenceId, referenceType, movementType, notes } = params;
+  const { itemId, variationId, branchId, qty, referenceId, referenceType, movementType, notes } = params;
   if (qty === 0) return;
+  if (!branchId) throw new Error("applyStockChange: branchId is required");
 
-  const { data: item } = await from("items")
-    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock, base_unit")
-    .eq("id", itemId)
-    .single();
+  const { data: item } = await _from("items").select("base_unit, units_per_stock").eq("id", itemId).maybeSingle();
+  const baseUnit = (item as any)?.base_unit ?? "pcs";
+  const itemUps = Number((item as any)?.units_per_stock || 1);
 
-  if (!item) return;
-  const cur = item as any;
+  // Read current branch stock (before mutation) for ledger + variation math.
+  const cur = await getBranchStock(itemId, branchId);
+  const effectiveUps = Math.max(cur.units_per_stock || 0, itemUps || 0, 1);
 
-   let next = {
-    quantity: cur.quantity || 0,
-    warehouse_quantity: cur.warehouse_quantity || 0,
-    store_quantity: cur.store_quantity || 0,
-    open_roll_remaining: cur.open_roll_remaining || 0,
-   };
-  let baseUnitsMoved = qty; // for movement log when no variation
+  let baseUnitsMoved = qty;
+  let deltaStock = -qty; // default: deduct N stock units from store
+  let deltaOpen = 0;
 
   if (variationId) {
-    const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
-    if (v) {
-      const variation = v as any;
-      baseUnitsMoved = Number(variation.factor) * qty;
+    const { data: v } = await _from("item_variations").select("type, factor").eq("id", variationId).single();
+    const variation = v as any;
+    if (!variation) return;
+    baseUnitsMoved = Number(variation.factor) * qty;
 
-      if (variation.type === "cut") {
-        let effectiveUnitsPerStock = Number(cur.units_per_stock || 1);
-
-        if (effectiveUnitsPerStock <= 1) {
-          const { data: cutVariations } = await from("item_variations")
-            .select("factor")
-            .eq("item_id", itemId)
-            .eq("type", "cut");
-
-          const fallbackUnitsPerStock = Math.max(
-            1,
-            ...((cutVariations as any[]) || []).map((entry: any) => Number(entry.factor) || 1),
-          );
-          effectiveUnitsPerStock = fallbackUnitsPerStock;
-        }
-
-        const variationResult = applyVariationDelta(
-          {
-            quantity: cur.quantity || 0,
-            open_roll_remaining: cur.open_roll_remaining || 0,
-            units_per_stock: effectiveUnitsPerStock,
-          },
-          { type: variation.type, factor: Number(variation.factor) },
-          qty,
-        );
-
-        const stockUnitsConsumed = Math.max(0, Number(cur.quantity || 0) - Number(variationResult.quantity || 0));
-        const stockUnitsRestored = Math.max(0, Number(variationResult.quantity || 0) - Number(cur.quantity || 0));
-        const locationResult = applyLocationDelta(
-          {
-            warehouse_quantity: cur.warehouse_quantity || 0,
-            store_quantity: cur.store_quantity || 0,
-          },
-          qty > 0 ? stockUnitsConsumed : -stockUnitsRestored,
-        );
-
-        next = {
-          quantity: variationResult.quantity,
-          warehouse_quantity: locationResult.warehouse_quantity,
-          store_quantity: locationResult.store_quantity,
-          open_roll_remaining: variationResult.open_roll_remaining,
-        };
-      } else {
-        const locationResult = applyLocationDelta(
-          {
-            warehouse_quantity: cur.warehouse_quantity || 0,
-            store_quantity: cur.store_quantity || 0,
-          },
-          baseUnitsMoved,
-        );
-
-        next = {
-          quantity: Math.max(0, (cur.quantity || 0) - baseUnitsMoved),
-          warehouse_quantity: locationResult.warehouse_quantity,
-          store_quantity: locationResult.store_quantity,
-          open_roll_remaining: cur.open_roll_remaining || 0,
-        };
-      }
+    if (variation.type === "cut") {
+      // Simulate variation delta on the branch row
+      const sim = applyVariationDelta(
+        { quantity: cur.quantity, open_roll_remaining: cur.open_roll_remaining, units_per_stock: effectiveUps },
+        { type: "cut", factor: Number(variation.factor) },
+        qty,
+      );
+      const stockConsumed = cur.quantity - sim.quantity; // + = consumed, - = restored
+      deltaStock = -stockConsumed;
+      deltaOpen = sim.open_roll_remaining - cur.open_roll_remaining;
+    } else {
+      // "pack" variation: deducts baseUnitsMoved stock units directly
+      deltaStock = -baseUnitsMoved;
     }
-  } else {
-    // Plain whole-unit deduction (legacy behavior).
-    const locationResult = applyLocationDelta(
-      {
-        warehouse_quantity: cur.warehouse_quantity || 0,
-        store_quantity: cur.store_quantity || 0,
-      },
-      qty,
-    );
-    next.quantity = Math.max(0, (cur.quantity || 0) - qty);
-    next.warehouse_quantity = locationResult.warehouse_quantity;
-    next.store_quantity = locationResult.store_quantity;
   }
 
-  // eslint-disable-next-line no-console
-  console.debug("[applyStockChange]", {
+  const result = await applyBranchStockRpc({
     itemId,
-    variationId: variationId || null,
-    lineQty: qty,
-    baseUnitsMoved,
-    before: { quantity: cur.quantity, store_quantity: cur.store_quantity, warehouse_quantity: cur.warehouse_quantity, open_roll_remaining: cur.open_roll_remaining },
-    after: next,
-    movementType,
-    referenceType,
-    referenceId,
+    branchId,
+    location: "store",
+    deltaStock,
+    deltaOpen,
+    unitsPerStock: variationId ? effectiveUps : null,
   });
 
-  await from("items").update({
-    quantity: next.quantity,
-    warehouse_quantity: next.warehouse_quantity,
-    store_quantity: next.store_quantity,
-    open_roll_remaining: next.open_roll_remaining,
-    updated_at: new Date().toISOString(),
-  }).eq("id", itemId);
-
-  // Sales deduct from store; restores add back to store (see applyLocationDelta).
-  const isRestore = qty < 0;
   await recordMovement({
     itemId,
     variationId: variationId || null,
+    branchId,
     type: movementType,
     quantity: Math.abs(baseUnitsMoved),
-    unit: (cur as any).base_unit || (variationId ? "m" : "pcs"),
+    unit: baseUnit || (variationId ? "m" : "pcs"),
     location: "store",
     referenceId,
     referenceType,
-    notes: notes || (isRestore ? "Stock restored" : "Stock deducted"),
-    balanceBefore: Number(cur.store_quantity || 0),
-    balanceAfter: Number(next.store_quantity || 0),
-    openBefore: Number(cur.open_roll_remaining || 0),
-    openAfter: Number(next.open_roll_remaining || 0),
+    notes: notes || (qty < 0 ? "Stock restored" : "Stock deducted"),
+    balanceBefore: cur.store_quantity,
+    balanceAfter: result.store_quantity,
+    openBefore: cur.open_roll_remaining,
+    openAfter: result.open_roll_remaining,
   });
 };
 
