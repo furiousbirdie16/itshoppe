@@ -32,6 +32,7 @@ const PRESETS: { id: Preset; label: string }[] = [
 
 export function DashboardAnalytics() {
   const { isAdmin } = usePermissions();
+  const { activeBranchId } = useBranch();
   const [preset, setPreset] = useState<Preset>("month");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
