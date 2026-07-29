@@ -438,6 +438,9 @@ export const unreceivePO = async (
   poId: string,
   itemsToUnreceive: { poItemId: string; itemId: string | null; quantity: number }[],
 ) => {
+  const { data: poRow } = await from("purchase_orders").select("branch_id").eq("id", poId).single();
+  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+
   for (const item of itemsToUnreceive) {
     if (item.quantity <= 0) continue;
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
@@ -449,16 +452,16 @@ export const unreceivePO = async (
       .update({ received_quantity: newReceived, received_date: newReceived === 0 ? null : undefined })
       .eq("id", item.poItemId);
 
-    if (item.itemId) {
-      const { data: currentItem } = await from("items").select("quantity, warehouse_quantity, store_quantity").eq("id", item.itemId).single();
-      const prev = Number((currentItem as any)?.quantity || 0);
-      const prevWh = Number((currentItem as any)?.warehouse_quantity || 0);
-      const newQty = Math.max(0, prev - undoQty);
-      const newWh = Math.max(0, prevWh - undoQty);
-      await from("items").update({ quantity: newQty, warehouse_quantity: newWh, updated_at: new Date().toISOString() }).eq("id", item.itemId);
-
+    if (item.itemId && poBranchId) {
+      const result = await applyBranchStockRpc({
+        itemId: item.itemId,
+        branchId: poBranchId,
+        location: "warehouse",
+        deltaStock: -undoQty,
+      });
       await recordMovement({
         itemId: item.itemId,
+        branchId: poBranchId,
         type: "in_po",
         quantity: undoQty,
         unit: "pcs",
@@ -466,8 +469,8 @@ export const unreceivePO = async (
         referenceId: poId,
         referenceType: "purchase_order_undo",
         notes: `Undo receive from PO`,
-        balanceBefore: prevWh,
-        balanceAfter: newWh,
+        balanceBefore: result.wh_before,
+        balanceAfter: result.warehouse_quantity,
       });
     }
 
