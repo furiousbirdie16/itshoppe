@@ -957,7 +957,7 @@ export default function InventoryPage() {
                 />
               </TableHead>
               {visibleColumns.map((c) => {
-                const align = (c.key === "name" || c.key === "source") ? "left" : "right";
+                const align = (c.key === "name" || c.key === "source" || c.key === "branch") ? "left" : "right";
                 return <SortableHeader key={`h-${c.key}`} sortKey={c.key} label={c.label} sort={sort} onToggle={toggle} align={align} />;
               })}
               <TableHead className="text-xs text-right w-32">Actions</TableHead>
