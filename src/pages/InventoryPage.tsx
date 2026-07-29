@@ -961,7 +961,7 @@ export default function InventoryPage() {
                 const align = (c.key === "name" || c.key === "source" || c.key === "branch") ? "left" : "right";
                 return <SortableHeader key={`h-${c.key}`} sortKey={c.key} label={c.label} sort={sort} onToggle={toggle} align={align} />;
               })}
-              <TableHead className="text-xs text-right w-32">Actions</TableHead>
+              <TableHead className="text-xs text-right w-32 sticky right-0 z-20 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
