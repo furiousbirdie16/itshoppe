@@ -76,6 +76,7 @@ function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKe
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const money = (n: number) => (isAdmin ? peso(n) : "—");
   const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
