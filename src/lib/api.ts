@@ -646,8 +646,10 @@ export const deleteInvoiceItems = async (invId: string) => {
 
 // Internal: deduct stock for an invoice exactly once (idempotent via inventory_deducted flag)
 const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   if ((invRow as any)?.inventory_deducted) return false;
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
+  if (!branchId) throw new Error("This invoice has no branch assigned. Set the invoice branch before deducting stock.");
 
   const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
   if (invItems) {
@@ -656,6 +658,7 @@ const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
       await applyStockChange({
         itemId: invItem.item_id,
         variationId: invItem.variation_id || null,
+        branchId,
         qty: invItem.quantity,
         referenceId: invoiceId,
         referenceType: "invoice",
