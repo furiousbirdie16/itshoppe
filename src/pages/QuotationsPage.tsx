@@ -283,6 +283,8 @@ export default function QuotationsPage() {
       const payload = buildPayload();
       payload.quotation_number = await generateQuotationNumber();
       payload.total_amount = total;
+      if (!activeBranchId) throw new Error("Select a branch before creating a quotation.");
+      payload.branch_id = activeBranchId;
       const q = await createQuotation(payload);
       await createQuotationItems(saved.map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
