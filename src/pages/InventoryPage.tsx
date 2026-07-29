@@ -30,6 +30,7 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/components/ColumnVisibility";
+import { useBranch } from "@/contexts/BranchContext";
 
 const INVENTORY_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Name", required: true },
