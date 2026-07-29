@@ -98,12 +98,14 @@ function classify(type: string, reference_type: string | null): { category: Move
   return { category: "correction", label: type, direction: "neutral" };
 }
 
-async function fetchLedger(itemId: string, currentQty: number): Promise<LedgerRow[]> {
-  const { data: movements } = await supabase
+async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<LedgerRow[]> {
+  let q = supabase
     .from("inventory_movements")
-    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email")
+    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email, branch_id")
     .eq("item_id", itemId)
     .order("created_at", { ascending: true });
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { data: movements } = await q;
 
   const rows = movements || [];
 
