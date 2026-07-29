@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { useBranch } from "@/contexts/BranchContext";
 
 type SalesRange = "daily" | "monthly" | "custom";
 type SalesDetail = "online" | "invoice" | "combined" | null;
