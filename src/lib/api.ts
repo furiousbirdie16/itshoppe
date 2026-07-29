@@ -1172,6 +1172,9 @@ export const unreceiveOverseasPO = async (
   poId: string,
   itemsToUnreceive: { poItemId: string; itemId: string | null; quantity: number }[],
 ) => {
+  const { data: poRow } = await from("overseas_purchase_orders").select("branch_id").eq("id", poId).single();
+  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+
   for (const item of itemsToUnreceive) {
     if (item.quantity <= 0) continue;
     const { data: poItem } = await from("overseas_purchase_order_items")
@@ -1182,41 +1185,67 @@ export const unreceiveOverseasPO = async (
     const undoQty = Math.min(item.quantity, currentReceived);
     if (undoQty <= 0) continue;
 
-    if (item.itemId) {
-      const { data: currentItem } = await from("items")
-        .select("warehouse_quantity, store_quantity, name")
-        .eq("id", item.itemId)
-        .single();
-      const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
-      const curSt = Number((currentItem as any)?.store_quantity || 0);
+    if (item.itemId && poBranchId) {
+      // Read current branch stock
+      const { data: ibs } = await from("item_branch_stock")
+        .select("warehouse_quantity, store_quantity")
+        .eq("item_id", item.itemId)
+        .eq("branch_id", poBranchId)
+        .maybeSingle();
+      const curWh = Number((ibs as any)?.warehouse_quantity || 0);
+      const curSt = Number((ibs as any)?.store_quantity || 0);
       const onHand = curWh + curSt;
       if (onHand < undoQty) {
+        const { data: nm } = await from("items").select("name").eq("id", item.itemId).single();
         throw new Error(
-          `Cannot undo this receipt for "${(currentItem as any)?.name || "item"}" because the inventory has already been consumed (on hand: ${onHand}, needed: ${undoQty}). Please perform a manual inventory adjustment instead.`,
+          `Cannot undo this receipt for "${(nm as any)?.name || "item"}" at this branch (on hand: ${onHand}, needed: ${undoQty}). Please perform a manual inventory adjustment instead.`,
         );
       }
-      // Deduct from warehouse first, then store
       const fromWh = Math.min(curWh, undoQty);
       const fromSt = undoQty - fromWh;
-      await from("items").update({
-        warehouse_quantity: curWh - fromWh,
-        store_quantity: curSt - fromSt,
-        updated_at: new Date().toISOString(),
-      }).eq("id", item.itemId);
 
-      await recordMovement({
-        itemId: item.itemId,
-        type: "in_po",
-        quantity: undoQty,
-        unit: "pcs",
-        location: fromWh > 0 ? "warehouse" : "store",
-        referenceId: poId,
-        referenceType: "overseas_purchase_order_undo",
-        notes: `Undo receive from overseas PO`,
-        balanceBefore: fromWh > 0 ? curWh : curSt,
-        balanceAfter: fromWh > 0 ? curWh - fromWh : curSt - fromSt,
-      });
-
+      if (fromWh > 0) {
+        const r = await applyBranchStockRpc({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          location: "warehouse",
+          deltaStock: -fromWh,
+        });
+        await recordMovement({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          type: "in_po",
+          quantity: fromWh,
+          unit: "pcs",
+          location: "warehouse",
+          referenceId: poId,
+          referenceType: "overseas_purchase_order_undo",
+          notes: `Undo receive from overseas PO`,
+          balanceBefore: r.wh_before,
+          balanceAfter: r.warehouse_quantity,
+        });
+      }
+      if (fromSt > 0) {
+        const r = await applyBranchStockRpc({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          location: "store",
+          deltaStock: -fromSt,
+        });
+        await recordMovement({
+          itemId: item.itemId,
+          branchId: poBranchId,
+          type: "in_po",
+          quantity: fromSt,
+          unit: "pcs",
+          location: "store",
+          referenceId: poId,
+          referenceType: "overseas_purchase_order_undo",
+          notes: `Undo receive from overseas PO`,
+          balanceBefore: r.st_before,
+          balanceAfter: r.store_quantity,
+        });
+      }
     }
 
     const newReceived = currentReceived - undoQty;
