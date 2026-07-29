@@ -757,10 +757,11 @@ export const markInvoicePaid = async (
 
 // Revert invoice to draft - restore stock only if it was previously deducted
 export const revertInvoice = async (invoiceId: string) => {
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   const wasDeducted = !!(invRow as any)?.inventory_deducted;
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
 
-  if (wasDeducted) {
+  if (wasDeducted && branchId) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
     if (invItems) {
       for (const invItem of invItems as any[]) {
@@ -768,6 +769,7 @@ export const revertInvoice = async (invoiceId: string) => {
         await applyStockChange({
           itemId: invItem.item_id,
           variationId: invItem.variation_id || null,
+          branchId,
           qty: -invItem.quantity,
           referenceId: invoiceId,
           referenceType: "invoice_revert",
