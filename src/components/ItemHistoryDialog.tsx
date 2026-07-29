@@ -137,6 +137,17 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
   (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
   (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
 
+  // Load branch labels for rows we retrieved
+  const branchIds = Array.from(new Set(rows.map((m: any) => m.branch_id).filter(Boolean)));
+  const branchMap = new Map<string, string>();
+  if (branchIds.length) {
+    const { data: bs } = await (supabase as any)
+      .from("branches")
+      .select("id, branch_code")
+      .in("id", branchIds);
+    (bs || []).forEach((b: any) => branchMap.set(b.id, b.branch_code));
+  }
+
   // Compute signed deltas
   const enriched = rows.map((m: any) => {
     const info = classify(m.type as string, m.reference_type);
@@ -182,6 +193,8 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
       reference_id: m.reference_id || null,
       notes: m.notes || "",
       user: m.user_email || "—",
+      branch_id: m.branch_id || null,
+      branch_label: m.branch_id ? (branchMap.get(m.branch_id) || "—") : "—",
     });
     runningNew = previousBalance;
   }
@@ -196,12 +209,14 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [to, setTo] = useState("");
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
   const [onlineSaleDetailId, setOnlineSaleDetailId] = useState<string | null>(null);
+  const { activeBranchId, activeBranch, canPickAll } = useBranch();
 
   const { data: ledger = [], isLoading } = useQuery({
-    queryKey: ["item-ledger", item?.id, item?.quantity],
-    queryFn: () => fetchLedger(item!.id, Number(item!.quantity || 0)),
+    queryKey: ["item-ledger", item?.id, item?.quantity, activeBranchId],
+    queryFn: () => fetchLedger(item!.id, Number(item!.quantity || 0), activeBranchId),
     enabled: !!item && open,
   });
+
 
   const filtered = useMemo(() => ledger.filter((r) => {
     if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
