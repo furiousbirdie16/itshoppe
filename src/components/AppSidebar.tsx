@@ -1,4 +1,4 @@
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +18,7 @@ const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, adminOnly: false },
   { title: "Inventory", url: "/inventory", icon: Package, adminOnly: false },
   { title: "Low Stock Alerts", url: "/low-stock-alerts", icon: AlertTriangle, adminOnly: false },
+  { title: "Stock Transfers", url: "/stock-transfers", icon: ArrowLeftRight, adminOnly: false },
   { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: false },
   { title: "Overseas PO", url: "/overseas-purchase-orders", icon: ShoppingCart },
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },

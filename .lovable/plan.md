@@ -1,67 +1,81 @@
-# Phase 2 Completion Plan
+# Inter-Branch Stock Transfer
 
-Goal: `item_branch_stock` becomes the ONLY inventory source. Every transaction records its own `branch_id`. Legacy `items.warehouse_quantity` / `store_quantity` / `quantity` / `open_roll_remaining` are frozen (kept for historical reads only, never written by app code from this point).
+A new module for moving stock between branches with a full approval workflow. Inventory leaves the source immediately, sits in an "in-transit" bucket (not sellable at either branch), and only becomes available at the destination once received.
 
-## Part A — Database (one migration)
+## Database
 
-Add `branch_id uuid REFERENCES branches(id)` to:
-- `purchase_orders`, `overseas_purchase_orders`
-- `invoices`, `quotations`
-- `online_sales`
-- `inventory_movements` already has it — keep
+New table `stock_transfers`:
+- transfer_number (auto: `TRF-YYYYMM-####`)
+- source_branch_id, destination_branch_id
+- status: `draft | pending_approval | approved | in_transit | received | cancelled`
+- notes
+- requested_by / _email, approved_by / _email, dispatched_by / _email, received_by / _email
+- requested_at, approved_at, dispatched_at, received_at, cancelled_at
 
-Backfill every existing row to Manila (MNL). Make column NOT NULL after backfill.
+New table `stock_transfer_items`:
+- transfer_id, item_id, variation_id (nullable)
+- quantity (base units), source_location (`warehouse` | `store`), destination_location
+- received_quantity (for partial receives)
 
-RLS: keep current policies; add branch check via `user_has_branch(auth.uid(), branch_id)` for non-admin insert/update on those tables (admins unaffected).
+New table `stock_transfer_audit`:
+- transfer_id, action, from_status, to_status, actor_id/email, notes, created_at
 
-Drop the legacy sync triggers `sync_item_total_quantity` from `items` writes at the app layer (we simply stop writing those columns).
+New movement types (extends existing enum): already have `transfer_b2b_out` / `transfer_b2b_in`; add `transfer_b2b_in_transit` for the holding leg so ledger shows the parked stock.
 
-## Part B — `src/lib/api.ts` rewire
+RLS: admins full access; non-admins limited to transfers where they have access to either source or destination branch via `user_has_branch`.
 
-Replace the core stock helper with a branch-scoped version:
+## Workflow & Inventory Effects
 
-```ts
-applyStockChange({ itemId, variationId, branchId, location, deltaBase, ... })
+```text
+Draft ──submit──▶ Pending Approval ──approve──▶ Approved ──dispatch──▶ In Transit ──receive──▶ Received
+  │                     │                          │                       │
+  └────── cancel ───────┴────── cancel ────────────┘                  (no cancel after receipt)
 ```
 
-- Reads current row from `item_branch_stock` for `(item_id, branch_id)` (creates one at zero if missing).
-- Applies the same open-roll / variation math against that row only.
-- Writes back to `item_branch_stock` (never `items`).
-- Passes `branchId` into `recordMovement`.
+- **Dispatch (Approved → In Transit):** deduct from source branch's `item_branch_stock` via `apply_branch_stock_change` (movement `transfer_b2b_out`). Stock is now "in transit" — recorded on the transfer itself, NOT added to destination yet, so it's unavailable everywhere.
+- **Receive (In Transit → Received):** add to destination's `item_branch_stock` (movement `transfer_b2b_in`), supports full or partial receive per line.
+- **Cancel before dispatch:** no inventory impact.
+- **Cancel after dispatch (admin only):** returns stock to source and logs a reversal.
 
-Every call site in `api.ts` must pass an explicit `branchId` sourced from the transaction row (PO/invoice/online-sale/adjustment), not from `BranchContext`.
+## Server RPCs (SECURITY DEFINER)
 
-Call sites to update in `api.ts` (from the grep):
-- PO receive (local) — line ~651, ~692, ~750, ~799 → use `purchase_orders.branch_id`
-- Invoice deduct / cancel replenish — line ~962, ~990 → use `invoices.branch_id`
-- Online sales deduct / replenish — same helper
-- Return flows at ~427, ~1120, ~1198 → replace direct `items.update` with `item_branch_stock` writes via helper
-- Bulk stock edit at ~491 → per-branch write against the currently-active branch
+- `dispatch_stock_transfer(_transfer_id)` — validates source stock, deducts, flips to `in_transit`, writes movements + audit row.
+- `receive_stock_transfer(_transfer_id, _lines jsonb)` — adds per-line `received_quantity` to destination, flips to `received` when all lines complete, writes movements + audit row.
+- `cancel_stock_transfer(_transfer_id, _reason)` — reverses source deduction if already dispatched.
 
-## Part C — Dialogs & pages
+Each RPC captures `auth.uid()` + email into the appropriate `*_by` field and appends to `stock_transfer_audit`.
 
-- `AdjustStockDialog`: read + write against `item_branch_stock` for the active branch. Show branch name in the header. Block save if admin has "All branches" selected.
-- `TransferStockDialog`: same, warehouse↔store stays intra-branch.
-- New `InterBranchTransferDialog`: pick source + destination branch, emits `transfer_b2b_out` on source row and `transfer_b2b_in` on destination row atomically.
-- `OverseasPurchaseOrdersPage` + `PurchaseOrdersPage`: on create, stamp `branch_id`. Receive & undo-receive routes read the PO's `branch_id` (never the switcher). Display "Receiving into: <Branch>" prominently on the receive dialog.
-- `InvoicesPage` / `QuotationsPage` / `OnlineSalesPage`: stamp `branch_id` on create; show branch chip on the form; if admin is on "All branches", require picking one before save.
-- `BulkEditUploadDialog`: apply quantities into `item_branch_stock` for the active branch only.
-- `InventoryPage`: read path already correct — add "Opening stock" writes to `item_branch_stock` for the active branch. Guard admin "All branches" on any write.
+## UI — `src/pages/StockTransfersPage.tsx`
 
-## Part D — Ledger
+- New sidebar entry "Stock Transfers" under Inventory (admin + assigned-branch users).
+- List view: transfer number, source → destination, status badge, item count, requested/received dates, actor chips, actions.
+- Filters: status, source, destination, date range, search.
+- Detail dialog: line items with item picker (reuse `ItemSearch` + variation), source location, quantity; per-status action buttons (Submit / Approve / Dispatch / Receive / Cancel).
+- Receive dialog: per-line received quantity input, supports partial.
+- Audit trail tab inside the detail dialog showing every state change.
 
-`recordMovement` already accepts `branchId` via schema; wire the new param through `src/lib/inventoryLog.ts` and pass the transaction's branch on every call. `ItemHistoryDialog` gets a Branch column.
+## Inventory Page Additions
 
-## Part E — Verification checklist (I will run before returning)
+- New display-only column "In Transit" (sum of dispatched-but-not-received quantities for the branch, from either side).
+- Item History ledger already reads `inventory_movements` — new movement types surface automatically with branch labels.
 
-1. Grep confirms zero writes to `items.warehouse_quantity` / `items.store_quantity` / `items.quantity` / `items.open_roll_remaining` outside the initial-create path for a new SKU.
-2. Receiving a PO stamped to GES only mutates `item_branch_stock` rows where `branch_id = GES`.
-3. Switching the header branch does NOT change what a saved invoice/PO deducts from.
-4. Admin on "All branches" cannot save a new invoice/PO/adjust/transfer — UI blocks with a toast asking to pick a branch.
-5. `tsgo` clean.
+## Permissions
 
-## Scope note
+- Create/Submit: any user with access to source branch.
+- Approve: admin, or manager of source branch.
+- Dispatch: admin, or user with source branch access.
+- Receive: admin, or user with destination branch access.
+- Cancel after dispatch: admin only.
 
-This is ~8 files touched heavily (`api.ts`, both PO pages, invoices, online sales, both dialogs, bulk edit) plus one migration and one new dialog. I'll do it in a single pass but the migration lands first (needs your approval) before the code edits — the code depends on the new columns.
+## Technical Notes
 
-If you want inter-branch transfers deferred, say so and I'll leave that dialog for a Phase 2.5.
+- Reuses `apply_branch_stock_change` RPC so ledger balances stay consistent with existing branch stock model.
+- `stock_transfer_items.quantity` is stored in base units; UI converts when a variation is chosen (same logic as `stockCheck.ts`).
+- Transfer number generated via `document_sequences` (new row `STOCK_TRANSFER`).
+- All state transitions go through RPCs so RLS + audit logging can't be bypassed by direct table writes.
+- New `useStockTransfers` hook wraps list/detail queries with `activeBranchId` filtering (shows transfers where source OR destination matches the active branch).
+
+## Files
+
+New: `src/pages/StockTransfersPage.tsx`, `src/components/StockTransferDialog.tsx`, `src/components/ReceiveTransferDialog.tsx`, `src/lib/stockTransfers.ts`.
+Edit: `src/App.tsx` (route), `src/components/AppSidebar.tsx` (nav), `src/pages/InventoryPage.tsx` (In Transit column), one Supabase migration for tables + RPCs + policies + sequence + grants.

@@ -10,6 +10,7 @@ import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
 import LowStockAlertsPage from "@/pages/LowStockAlertsPage";
+import StockTransfersPage from "@/pages/StockTransfersPage";
 import SuppliersHubPage from "@/pages/SuppliersHubPage";
 import OverseasPurchaseOrdersPage from "@/pages/OverseasPurchaseOrdersPage";
 import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
@@ -55,6 +56,7 @@ function ProtectedRoutes() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
+          <Route path="/stock-transfers" element={<StockTransfersPage />} />
           <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
           <Route path="/suppliers" element={<SuppliersHubPage />} />
           <Route path="/overseas-suppliers" element={<Navigate to="/suppliers" replace />} />
