@@ -1026,6 +1026,28 @@ export default function InventoryPage() {
                           )}
                         </TableCell>
                       );
+                    case "branch":
+                      return (
+                        <TableCell key="c-branch" className="text-sm">
+                          <Badge variant="outline" className="text-[10px] uppercase">{branchLabel}</Badge>
+                        </TableCell>
+                      );
+                    case "reserved_quantity": {
+                      const rq = Number((item as any).reserved_quantity ?? 0);
+                      return (
+                        <TableCell key="c-res" className="text-right text-sm">
+                          <span className={rq > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"}>{rq}</span>
+                        </TableCell>
+                      );
+                    }
+                    case "incoming_quantity": {
+                      const iq = Number((item as any).incoming_quantity ?? 0);
+                      return (
+                        <TableCell key="c-inc" className="text-right text-sm">
+                          <span className={iq > 0 ? "text-blue-600 font-medium" : "text-muted-foreground"}>{iq}</span>
+                        </TableCell>
+                      );
+                    }
                     case "warehouse_quantity":
                       return <TableCell key="c-wh" className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>;
                     case "store_quantity":
