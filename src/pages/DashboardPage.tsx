@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const queryClient = useQueryClient();
 
   const [salesRange, setSalesRange] = useState<SalesRange>("daily");
