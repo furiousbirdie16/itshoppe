@@ -22,6 +22,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
+import { useBranch } from "@/contexts/BranchContext";
 
 interface ManualForm {
   customer_id: string;
