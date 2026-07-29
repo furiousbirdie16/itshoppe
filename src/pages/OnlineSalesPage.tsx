@@ -151,8 +151,9 @@ export default function OnlineSalesPage() {
   const qc = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
-  const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales"], queryFn: getOnlineSales });
+  const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales", activeBranchId], queryFn: () => getOnlineSales(activeBranchId) });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
 
