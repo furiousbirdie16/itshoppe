@@ -1184,7 +1184,7 @@ export default function OverseasPurchaseOrdersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => { setReceiveOpen(po.id); setReceiveQtys({}); }}
+                        onClick={() => { setReceiveOpen(po.id); setReceiveBranchId((po as any).branch_id || activeBranchId || ""); setReceiveQtys({}); }}
                         className="h-7 w-7 rounded-md"
                         title="Receive items"
                       >
