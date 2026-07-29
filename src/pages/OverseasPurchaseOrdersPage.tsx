@@ -306,6 +306,7 @@ export default function OverseasPurchaseOrdersPage() {
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
+        ...(branchId ? { branch_id: branchId } : {}),
       } as any);
       await deleteOverseasPOItems(editing.id);
       const valid = normalized.filter(l => l.item_name);
