@@ -677,6 +677,17 @@ export default function PurchaseOrdersPage() {
           <DialogHeader><DialogTitle className="text-lg">Edit Purchase Order {editPO?.po_number}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch</Label>
+              <Select value={editForm.branch_id} onValueChange={(v) => setEditForm({ ...editForm, branch_id: v })} disabled={!isAdmin}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                <SelectContent>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-medium">Supplier</Label>
               <SupplierSearch suppliers={suppliers} value={editForm.supplier_id} onChange={(id) => setEditForm({ ...editForm, supplier_id: id })} />
             </div>
