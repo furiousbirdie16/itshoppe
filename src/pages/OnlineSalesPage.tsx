@@ -646,6 +646,7 @@ export default function OnlineSalesPage() {
   const handleBulkUpload = async () => {
     const valid = bulkRows.filter(r => r.valid);
     if (valid.length === 0) return;
+    if (!activeBranchId) { toast.error("Select a branch before bulk uploading online sales."); return; }
     setBulkUploading(true);
     let success = 0;
     let failed = 0;
@@ -653,7 +654,7 @@ export default function OnlineSalesPage() {
     for (const row of valid) {
       try {
         const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, variation_id: row.variation_id, notes: "" });
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, variation_id: row.variation_id, notes: "", branch_id: activeBranchId } as any);
         success++;
       } catch (e: any) {
         failed++;
