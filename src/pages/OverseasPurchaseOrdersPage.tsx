@@ -30,6 +30,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { usePermissions } from "@/lib/permissions";
+import { useBranch } from "@/contexts/BranchContext";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 
