@@ -24,6 +24,7 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
 import { supabase } from "@/integrations/supabase/client";
+import { useBranch } from "@/contexts/BranchContext";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
