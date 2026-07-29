@@ -631,6 +631,7 @@ export type Database = {
       }
       invoices: {
         Row: {
+          branch_id: string
           cancelled_at: string | null
           created_at: string | null
           customer_id: string | null
@@ -651,6 +652,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          branch_id?: string
           cancelled_at?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -671,6 +673,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          branch_id?: string
           cancelled_at?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -691,6 +694,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_customer_id_fkey"
             columns: ["customer_id"]
@@ -1213,6 +1223,7 @@ export type Database = {
       online_sales: {
         Row: {
           amount_paid: number
+          branch_id: string
           created_at: string | null
           deal_price: number
           id: string
@@ -1232,6 +1243,7 @@ export type Database = {
         }
         Insert: {
           amount_paid?: number
+          branch_id?: string
           created_at?: string | null
           deal_price?: number
           id?: string
@@ -1251,6 +1263,7 @@ export type Database = {
         }
         Update: {
           amount_paid?: number
+          branch_id?: string
           created_at?: string | null
           deal_price?: number
           id?: string
@@ -1269,6 +1282,13 @@ export type Database = {
           variation_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "online_sales_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "online_sales_item_id_fkey"
             columns: ["item_id"]
@@ -1350,6 +1370,7 @@ export type Database = {
       }
       overseas_purchase_orders: {
         Row: {
+          branch_id: string
           cargo_adjusted_at: string | null
           cargo_adjusted_by_email: string | null
           cargo_cost: number
@@ -1374,6 +1395,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          branch_id?: string
           cargo_adjusted_at?: string | null
           cargo_adjusted_by_email?: string | null
           cargo_cost?: number
@@ -1398,6 +1420,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          branch_id?: string
           cargo_adjusted_at?: string | null
           cargo_adjusted_by_email?: string | null
           cargo_cost?: number
@@ -1422,6 +1445,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "overseas_purchase_orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "overseas_purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
@@ -1562,6 +1592,7 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          branch_id: string
           cargo_adjusted_at: string | null
           cargo_adjusted_by_email: string | null
           cargo_cost: number
@@ -1585,6 +1616,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          branch_id?: string
           cargo_adjusted_at?: string | null
           cargo_adjusted_by_email?: string | null
           cargo_cost?: number
@@ -1608,6 +1640,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          branch_id?: string
           cargo_adjusted_at?: string | null
           cargo_adjusted_by_email?: string | null
           cargo_cost?: number
@@ -1631,6 +1664,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
@@ -1694,6 +1734,7 @@ export type Database = {
       }
       quotations: {
         Row: {
+          branch_id: string
           created_at: string | null
           customer_id: string | null
           id: string
@@ -1708,6 +1749,7 @@ export type Database = {
           valid_until: string | null
         }
         Insert: {
+          branch_id?: string
           created_at?: string | null
           customer_id?: string | null
           id?: string
@@ -1722,6 +1764,7 @@ export type Database = {
           valid_until?: string | null
         }
         Update: {
+          branch_id?: string
           created_at?: string | null
           customer_id?: string | null
           id?: string
@@ -1736,6 +1779,13 @@ export type Database = {
           valid_until?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "quotations_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quotations_customer_id_fkey"
             columns: ["customer_id"]
@@ -1895,6 +1945,26 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_branch_stock_change: {
+        Args: {
+          _branch_id: string
+          _delta_open: number
+          _delta_stock: number
+          _item_id: string
+          _location: string
+          _units_per_stock: number
+        }
+        Returns: {
+          open_before: number
+          open_roll_remaining: number
+          quantity: number
+          st_before: number
+          store_quantity: number
+          units_per_stock: number
+          warehouse_quantity: number
+          wh_before: number
+        }[]
+      }
       apply_overseas_po_cargo_adjustment: {
         Args: {
           _cargo_cost: number

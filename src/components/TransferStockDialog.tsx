@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
+import { useBranch } from "@/contexts/BranchContext";
 
 type Direction = "w2s" | "s2w";
 
@@ -21,6 +22,7 @@ interface Props {
 
 export function TransferStockDialog({ item, open, onOpenChange }: Props) {
   const qc = useQueryClient();
+  const { activeBranchId } = useBranch();
   const [direction, setDirection] = useState<Direction>("w2s");
   const [qty, setQty] = useState("1");
   const [notes, setNotes] = useState("");
@@ -36,43 +38,49 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
   const transferMut = useMutation({
     mutationFn: async () => {
       if (!item) throw new Error("No item selected");
+      if (!activeBranchId) throw new Error("Select a specific branch (not 'All branches') before transferring stock");
       const n = parseInt(qty);
       if (Number.isNaN(n) || n <= 0) throw new Error("Enter a quantity greater than 0");
 
       const wh = Number(item.warehouse_quantity ?? 0);
       const st = Number(item.store_quantity ?? 0);
 
-      let newWh = wh;
-      let newSt = st;
+      if (direction === "w2s" && n > wh) throw new Error(`Warehouse only has ${wh} in stock`);
+      if (direction === "s2w" && n > st) throw new Error(`Store only has ${st} in stock`);
 
-      if (direction === "w2s") {
-        if (n > wh) throw new Error(`Warehouse only has ${wh} in stock`);
-        newWh = wh - n;
-        newSt = st + n;
-      } else {
-        if (n > st) throw new Error(`Store only has ${st} in stock`);
-        newSt = st - n;
-        newWh = wh + n;
-      }
+      const src: "warehouse" | "store" = direction === "w2s" ? "warehouse" : "store";
+      const dst: "warehouse" | "store" = direction === "w2s" ? "store" : "warehouse";
 
-      const { error: upErr } = await supabase
-        .from("items")
-        .update({ warehouse_quantity: newWh, store_quantity: newSt })
-        .eq("id", item.id);
-      if (upErr) throw upErr;
+      // Deduct from source
+      const { data: srcData, error: srcErr } = await (supabase as any).rpc("apply_branch_stock_change", {
+        _item_id: item.id, _branch_id: activeBranchId, _location: src,
+        _delta_stock: -n, _delta_open: 0, _units_per_stock: null,
+      });
+      if (srcErr) throw srcErr;
+      const srcRow: any = Array.isArray(srcData) ? srcData[0] : srcData;
 
-      const srcBefore = direction === "w2s" ? wh : st;
-      const srcAfter = direction === "w2s" ? newWh : newSt;
-      const dstBefore = direction === "w2s" ? st : wh;
-      const dstAfter = direction === "w2s" ? newSt : newWh;
+      // Add to destination
+      const { data: dstData, error: dstErr } = await (supabase as any).rpc("apply_branch_stock_change", {
+        _item_id: item.id, _branch_id: activeBranchId, _location: dst,
+        _delta_stock: n, _delta_open: 0, _units_per_stock: null,
+      });
+      if (dstErr) throw dstErr;
+      const dstRow: any = Array.isArray(dstData) ? dstData[0] : dstData;
+
+      const srcBefore = src === "warehouse" ? srcRow.wh_before : srcRow.st_before;
+      const srcAfter = src === "warehouse" ? srcRow.warehouse_quantity : srcRow.store_quantity;
+      const dstBefore = dst === "warehouse" ? dstRow.wh_before : dstRow.st_before;
+      const dstAfter = dst === "warehouse" ? dstRow.warehouse_quantity : dstRow.store_quantity;
+
       const { recordMovement } = await import("@/lib/inventoryLog");
       await recordMovement({
         itemId: item.id,
+        branchId: activeBranchId,
         type: direction === "w2s" ? "transfer_w2s" : "transfer_s2w",
         quantity: n,
         unit: item.base_unit || "pcs",
-        location: direction === "w2s" ? "warehouse" : "store",
-        destLocation: direction === "w2s" ? "store" : "warehouse",
+        location: src,
+        destLocation: dst,
         notes: notes || (direction === "w2s" ? "Warehouse → Store" : "Store → Warehouse"),
         balanceBefore: srcBefore,
         balanceAfter: srcAfter,
@@ -83,6 +91,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["item_branch_stock"] });
       qc.invalidateQueries({ queryKey: ["transfer-history", item?.id] });
       toast.success("Stock transferred");
       onOpenChange(false);

@@ -5,21 +5,56 @@ import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 
 
-const applyLocationDelta = (
-  current: { warehouse_quantity: number; store_quantity: number },
-  unitsToDeduct: number,
-) => {
-  // Sales (invoices, online sales, etc.) ALWAYS deduct from store stock,
-  // never from warehouse. Store may go negative if oversold; warehouse is
-  // preserved so that transferring stock W→S is the only path to restock.
-  const warehouse = Number(current.warehouse_quantity || 0);
-  const store = Number(current.store_quantity || 0) - unitsToDeduct;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _sb: any = supabase as any;
+const _from = (table: string) => _sb.from(table);
 
+/** Read the branch-scoped stock row (returns zeros if missing). */
+async function getBranchStock(itemId: string, branchId: string) {
+  const { data } = await _from("item_branch_stock")
+    .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+    .eq("item_id", itemId)
+    .eq("branch_id", branchId)
+    .maybeSingle();
+  const r = (data as any) || {};
   return {
-    warehouse_quantity: Math.max(0, warehouse),
-    store_quantity: store,
+    warehouse_quantity: Number(r.warehouse_quantity || 0),
+    store_quantity: Number(r.store_quantity || 0),
+    quantity: Number(r.quantity || 0),
+    open_roll_remaining: Number(r.open_roll_remaining || 0),
+    units_per_stock: Number(r.units_per_stock || 1),
   };
-};
+}
+
+/** RPC wrapper — mutates item_branch_stock atomically. */
+async function applyBranchStockRpc(args: {
+  itemId: string;
+  branchId: string;
+  location: "warehouse" | "store";
+  deltaStock: number;
+  deltaOpen?: number;
+  unitsPerStock?: number | null;
+}) {
+  const { data, error } = await _sb.rpc("apply_branch_stock_change", {
+    _item_id: args.itemId,
+    _branch_id: args.branchId,
+    _location: args.location,
+    _delta_stock: args.deltaStock,
+    _delta_open: args.deltaOpen ?? 0,
+    _units_per_stock: args.unitsPerStock ?? null,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data[0] : data) as {
+    warehouse_quantity: number;
+    store_quantity: number;
+    quantity: number;
+    open_roll_remaining: number;
+    units_per_stock: number;
+    wh_before: number;
+    st_before: number;
+    open_before: number;
+  };
+}
 
 // ---------- Item Variations ----------
 export const getItemVariations = async (itemId?: string): Promise<ItemVariation[]> => {
@@ -48,154 +83,82 @@ export const deleteItemVariation = async (id: string) => {
 };
 
 /**
- * Apply a sale (qty>0) or restore (qty<0) of a variation against the parent item.
- * Updates item.quantity + open_roll_remaining and writes an inventory_movement row.
- * For non-variation lines, falls back to a plain whole-unit deduction.
+ * Apply a sale (qty>0) or restore (qty<0) against `item_branch_stock` for the
+ * TRANSACTION'S branch (never the currently-viewed branch). Variation-aware.
+ * All sales deduct from the branch's store bucket; restores add back to store.
  */
 export const applyStockChange = async (params: {
   itemId: string;
   variationId: string | null;
+  branchId: string;
   qty: number; // positive = deduct, negative = restore
   referenceId: string;
   referenceType: string;
-  movementType: 'in_po' | 'out_invoice' | 'out_online_sale';
+  movementType: "in_po" | "out_invoice" | "out_online_sale";
   notes?: string;
 }) => {
-  const { itemId, variationId, qty, referenceId, referenceType, movementType, notes } = params;
+  const { itemId, variationId, branchId, qty, referenceId, referenceType, movementType, notes } = params;
   if (qty === 0) return;
+  if (!branchId) throw new Error("applyStockChange: branchId is required");
 
-  const { data: item } = await from("items")
-    .select("quantity, warehouse_quantity, store_quantity, open_roll_remaining, units_per_stock, base_unit")
-    .eq("id", itemId)
-    .single();
+  const { data: item } = await _from("items").select("base_unit, units_per_stock").eq("id", itemId).maybeSingle();
+  const baseUnit = (item as any)?.base_unit ?? "pcs";
+  const itemUps = Number((item as any)?.units_per_stock || 1);
 
-  if (!item) return;
-  const cur = item as any;
+  // Read current branch stock (before mutation) for ledger + variation math.
+  const cur = await getBranchStock(itemId, branchId);
+  const effectiveUps = Math.max(cur.units_per_stock || 0, itemUps || 0, 1);
 
-   let next = {
-    quantity: cur.quantity || 0,
-    warehouse_quantity: cur.warehouse_quantity || 0,
-    store_quantity: cur.store_quantity || 0,
-    open_roll_remaining: cur.open_roll_remaining || 0,
-   };
-  let baseUnitsMoved = qty; // for movement log when no variation
+  let baseUnitsMoved = qty;
+  let deltaStock = -qty; // default: deduct N stock units from store
+  let deltaOpen = 0;
 
   if (variationId) {
-    const { data: v } = await from("item_variations").select("type, factor").eq("id", variationId).single();
-    if (v) {
-      const variation = v as any;
-      baseUnitsMoved = Number(variation.factor) * qty;
+    const { data: v } = await _from("item_variations").select("type, factor").eq("id", variationId).single();
+    const variation = v as any;
+    if (!variation) return;
+    baseUnitsMoved = Number(variation.factor) * qty;
 
-      if (variation.type === "cut") {
-        let effectiveUnitsPerStock = Number(cur.units_per_stock || 1);
-
-        if (effectiveUnitsPerStock <= 1) {
-          const { data: cutVariations } = await from("item_variations")
-            .select("factor")
-            .eq("item_id", itemId)
-            .eq("type", "cut");
-
-          const fallbackUnitsPerStock = Math.max(
-            1,
-            ...((cutVariations as any[]) || []).map((entry: any) => Number(entry.factor) || 1),
-          );
-          effectiveUnitsPerStock = fallbackUnitsPerStock;
-        }
-
-        const variationResult = applyVariationDelta(
-          {
-            quantity: cur.quantity || 0,
-            open_roll_remaining: cur.open_roll_remaining || 0,
-            units_per_stock: effectiveUnitsPerStock,
-          },
-          { type: variation.type, factor: Number(variation.factor) },
-          qty,
-        );
-
-        const stockUnitsConsumed = Math.max(0, Number(cur.quantity || 0) - Number(variationResult.quantity || 0));
-        const stockUnitsRestored = Math.max(0, Number(variationResult.quantity || 0) - Number(cur.quantity || 0));
-        const locationResult = applyLocationDelta(
-          {
-            warehouse_quantity: cur.warehouse_quantity || 0,
-            store_quantity: cur.store_quantity || 0,
-          },
-          qty > 0 ? stockUnitsConsumed : -stockUnitsRestored,
-        );
-
-        next = {
-          quantity: variationResult.quantity,
-          warehouse_quantity: locationResult.warehouse_quantity,
-          store_quantity: locationResult.store_quantity,
-          open_roll_remaining: variationResult.open_roll_remaining,
-        };
-      } else {
-        const locationResult = applyLocationDelta(
-          {
-            warehouse_quantity: cur.warehouse_quantity || 0,
-            store_quantity: cur.store_quantity || 0,
-          },
-          baseUnitsMoved,
-        );
-
-        next = {
-          quantity: Math.max(0, (cur.quantity || 0) - baseUnitsMoved),
-          warehouse_quantity: locationResult.warehouse_quantity,
-          store_quantity: locationResult.store_quantity,
-          open_roll_remaining: cur.open_roll_remaining || 0,
-        };
-      }
+    if (variation.type === "cut") {
+      // Simulate variation delta on the branch row
+      const sim = applyVariationDelta(
+        { quantity: cur.quantity, open_roll_remaining: cur.open_roll_remaining, units_per_stock: effectiveUps },
+        { type: "cut", factor: Number(variation.factor) },
+        qty,
+      );
+      const stockConsumed = cur.quantity - sim.quantity; // + = consumed, - = restored
+      deltaStock = -stockConsumed;
+      deltaOpen = sim.open_roll_remaining - cur.open_roll_remaining;
+    } else {
+      // "pack" variation: deducts baseUnitsMoved stock units directly
+      deltaStock = -baseUnitsMoved;
     }
-  } else {
-    // Plain whole-unit deduction (legacy behavior).
-    const locationResult = applyLocationDelta(
-      {
-        warehouse_quantity: cur.warehouse_quantity || 0,
-        store_quantity: cur.store_quantity || 0,
-      },
-      qty,
-    );
-    next.quantity = Math.max(0, (cur.quantity || 0) - qty);
-    next.warehouse_quantity = locationResult.warehouse_quantity;
-    next.store_quantity = locationResult.store_quantity;
   }
 
-  // eslint-disable-next-line no-console
-  console.debug("[applyStockChange]", {
+  const result = await applyBranchStockRpc({
     itemId,
-    variationId: variationId || null,
-    lineQty: qty,
-    baseUnitsMoved,
-    before: { quantity: cur.quantity, store_quantity: cur.store_quantity, warehouse_quantity: cur.warehouse_quantity, open_roll_remaining: cur.open_roll_remaining },
-    after: next,
-    movementType,
-    referenceType,
-    referenceId,
+    branchId,
+    location: "store",
+    deltaStock,
+    deltaOpen,
+    unitsPerStock: variationId ? effectiveUps : null,
   });
 
-  await from("items").update({
-    quantity: next.quantity,
-    warehouse_quantity: next.warehouse_quantity,
-    store_quantity: next.store_quantity,
-    open_roll_remaining: next.open_roll_remaining,
-    updated_at: new Date().toISOString(),
-  }).eq("id", itemId);
-
-  // Sales deduct from store; restores add back to store (see applyLocationDelta).
-  const isRestore = qty < 0;
   await recordMovement({
     itemId,
     variationId: variationId || null,
+    branchId,
     type: movementType,
     quantity: Math.abs(baseUnitsMoved),
-    unit: (cur as any).base_unit || (variationId ? "m" : "pcs"),
+    unit: baseUnit || (variationId ? "m" : "pcs"),
     location: "store",
     referenceId,
     referenceType,
-    notes: notes || (isRestore ? "Stock restored" : "Stock deducted"),
-    balanceBefore: Number(cur.store_quantity || 0),
-    balanceAfter: Number(next.store_quantity || 0),
-    openBefore: Number(cur.open_roll_remaining || 0),
-    openAfter: Number(next.open_roll_remaining || 0),
+    notes: notes || (qty < 0 ? "Stock restored" : "Stock deducted"),
+    balanceBefore: cur.store_quantity,
+    balanceAfter: result.store_quantity,
+    openBefore: cur.open_roll_remaining,
+    openAfter: result.open_roll_remaining,
   });
 };
 
@@ -414,6 +377,10 @@ export const receivePO = async (
   receivedDate?: string,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
+  const { data: poRow } = await from("purchase_orders").select("branch_id, status").eq("id", poId).single();
+  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  if (!poBranchId) throw new Error("This PO has no branch assigned. Edit the PO and set its branch before receiving.");
+
   for (const item of itemsToReceive) {
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
     const newReceived = ((poItem as any)?.received_quantity || 0) + item.quantity;
@@ -422,23 +389,19 @@ export const receivePO = async (
     // Custom (non-inventory) items: just record the receipt against the PO line, do not touch inventory.
     if (!item.itemId) continue;
 
-    const location = item.location || "warehouse";
-    const { data: currentItem } = await from("items")
-      .select("warehouse_quantity, store_quantity")
-      .eq("id", item.itemId)
-      .single();
-    const curWh = Number((currentItem as any)?.warehouse_quantity || 0);
-    const curSt = Number((currentItem as any)?.store_quantity || 0);
-    const updates: any = { updated_at: new Date().toISOString() };
-    if (location === "store") {
-      updates.store_quantity = curSt + item.quantity;
-    } else {
-      updates.warehouse_quantity = curWh + item.quantity;
-    }
-    await from("items").update(updates).eq("id", item.itemId);
+    const location: "warehouse" | "store" = item.location || "warehouse";
+    const result = await applyBranchStockRpc({
+      itemId: item.itemId,
+      branchId: poBranchId,
+      location,
+      deltaStock: item.quantity,
+    });
+    const before = location === "store" ? result.st_before : result.wh_before;
+    const after = location === "store" ? result.store_quantity : result.warehouse_quantity;
 
     await recordMovement({
       itemId: item.itemId,
+      branchId: poBranchId,
       type: "in_po",
       quantity: item.quantity,
       unit: "pcs",
@@ -446,8 +409,8 @@ export const receivePO = async (
       referenceId: poId,
       referenceType: "purchase_order",
       notes: `Received from PO on ${rcvDate} → ${location}`,
-      balanceBefore: location === "store" ? curSt : curWh,
-      balanceAfter: location === "store" ? curSt + item.quantity : curWh + item.quantity,
+      balanceBefore: before,
+      balanceAfter: after,
     });
   }
 
@@ -455,8 +418,7 @@ export const receivePO = async (
   const { data: allItems } = await from("purchase_order_items").select("quantity, received_quantity").eq("po_id", poId);
   const allReceived = (allItems as any[])?.every((i: any) => i.received_quantity >= i.quantity);
   const someReceived = (allItems as any[])?.some((i: any) => i.received_quantity > 0);
-  const { data: curPO } = await from("purchase_orders").select("status").eq("id", poId).single();
-  const cur = (curPO as any)?.status;
+  const cur = (poRow as any)?.status;
   let newStatus: string;
   if (cur === "closed") {
     newStatus = cur;
@@ -476,6 +438,9 @@ export const unreceivePO = async (
   poId: string,
   itemsToUnreceive: { poItemId: string; itemId: string | null; quantity: number }[],
 ) => {
+  const { data: poRow } = await from("purchase_orders").select("branch_id").eq("id", poId).single();
+  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+
   for (const item of itemsToUnreceive) {
     if (item.quantity <= 0) continue;
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
@@ -487,16 +452,16 @@ export const unreceivePO = async (
       .update({ received_quantity: newReceived, received_date: newReceived === 0 ? null : undefined })
       .eq("id", item.poItemId);
 
-    if (item.itemId) {
-      const { data: currentItem } = await from("items").select("quantity, warehouse_quantity, store_quantity").eq("id", item.itemId).single();
-      const prev = Number((currentItem as any)?.quantity || 0);
-      const prevWh = Number((currentItem as any)?.warehouse_quantity || 0);
-      const newQty = Math.max(0, prev - undoQty);
-      const newWh = Math.max(0, prevWh - undoQty);
-      await from("items").update({ quantity: newQty, warehouse_quantity: newWh, updated_at: new Date().toISOString() }).eq("id", item.itemId);
-
+    if (item.itemId && poBranchId) {
+      const result = await applyBranchStockRpc({
+        itemId: item.itemId,
+        branchId: poBranchId,
+        location: "warehouse",
+        deltaStock: -undoQty,
+      });
       await recordMovement({
         itemId: item.itemId,
+        branchId: poBranchId,
         type: "in_po",
         quantity: undoQty,
         unit: "pcs",
@@ -504,8 +469,8 @@ export const unreceivePO = async (
         referenceId: poId,
         referenceType: "purchase_order_undo",
         notes: `Undo receive from PO`,
-        balanceBefore: prevWh,
-        balanceAfter: newWh,
+        balanceBefore: result.wh_before,
+        balanceAfter: result.warehouse_quantity,
       });
     }
 
@@ -641,16 +606,18 @@ export const updateInvoice = async (id: string, inv: Partial<Invoice>) => {
 
 export const deleteInvoice = async (id: string) => {
   // If this invoice currently has stock deducted, restore inventory before deleting.
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", id).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", id).maybeSingle();
   const stockCurrentlyDeducted = !!(invRow as any)?.inventory_deducted;
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
 
-  if (stockCurrentlyDeducted) {
+  if (stockCurrentlyDeducted && branchId) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", id);
     for (const invItem of (invItems as any[]) || []) {
       if (!invItem.item_id) continue;
       await applyStockChange({
         itemId: invItem.item_id,
         variationId: invItem.variation_id || null,
+        branchId,
         qty: -invItem.quantity, // restore
         referenceId: id,
         referenceType: "invoice_delete",
@@ -682,8 +649,10 @@ export const deleteInvoiceItems = async (invId: string) => {
 
 // Internal: deduct stock for an invoice exactly once (idempotent via inventory_deducted flag)
 const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   if ((invRow as any)?.inventory_deducted) return false;
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
+  if (!branchId) throw new Error("This invoice has no branch assigned. Set the invoice branch before deducting stock.");
 
   const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
   if (invItems) {
@@ -692,6 +661,7 @@ const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
       await applyStockChange({
         itemId: invItem.item_id,
         variationId: invItem.variation_id || null,
+        branchId,
         qty: invItem.quantity,
         referenceId: invoiceId,
         referenceType: "invoice",
@@ -741,15 +711,17 @@ export const shipInvoice = async (invoiceId: string) => {
 
 // Cancel a Reserved (or any open) invoice: restore stock if previously deducted.
 export const cancelInvoice = async (invoiceId: string) => {
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   const wasDeducted = !!(invRow as any)?.inventory_deducted;
-  if (wasDeducted) {
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
+  if (wasDeducted && branchId) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
     for (const invItem of (invItems as any[]) || []) {
       if (!invItem.item_id) continue;
       await applyStockChange({
         itemId: invItem.item_id,
         variationId: invItem.variation_id || null,
+        branchId,
         qty: -invItem.quantity,
         referenceId: invoiceId,
         referenceType: "invoice_cancel",
@@ -788,10 +760,11 @@ export const markInvoicePaid = async (
 
 // Revert invoice to draft - restore stock only if it was previously deducted
 export const revertInvoice = async (invoiceId: string) => {
-  const { data: invRow } = await from("invoices").select("inventory_deducted").eq("id", invoiceId).maybeSingle();
+  const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   const wasDeducted = !!(invRow as any)?.inventory_deducted;
+  const branchId: string | null = (invRow as any)?.branch_id ?? null;
 
-  if (wasDeducted) {
+  if (wasDeducted && branchId) {
     const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
     if (invItems) {
       for (const invItem of invItems as any[]) {
@@ -799,6 +772,7 @@ export const revertInvoice = async (invoiceId: string) => {
         await applyStockChange({
           itemId: invItem.item_id,
           variationId: invItem.variation_id || null,
+          branchId,
           qty: -invItem.quantity,
           referenceId: invoiceId,
           referenceType: "invoice_revert",
@@ -959,9 +933,12 @@ export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
 
   // Deduct inventory if linked to an item (variation-aware)
   if (created.item_id) {
+    const branchId: string | null = (created as any).branch_id ?? null;
+    if (!branchId) throw new Error("Online sale is missing a branch. Select a branch before saving.");
     await applyStockChange({
       itemId: created.item_id,
       variationId: (created as any).variation_id || null,
+      branchId,
       qty: created.quantity || 1,
       referenceId: created.id,
       referenceType: "online_sale",
@@ -980,16 +957,17 @@ export const updateOnlineSale = async (id: string, sale: Partial<OnlineSale>) =>
 };
 
 export const returnOnlineSale = async (id: string, status: 'returned' | 'cancelled') => {
-  const { data: sale } = await from("online_sales").select("item_id, variation_id, order_number, sales_channel, quantity, status").eq("id", id).single();
+  const { data: sale } = await from("online_sales").select("item_id, variation_id, branch_id, order_number, sales_channel, quantity, status").eq("id", id).single();
   if (!sale) throw new Error("Sale not found");
   const s = sale as any;
   if (s.status === 'returned' || s.status === 'cancelled') throw new Error("Sale already returned/cancelled");
 
   // Restore inventory if linked to an item (variation-aware)
-  if (s.item_id) {
+  if (s.item_id && s.branch_id) {
     await applyStockChange({
       itemId: s.item_id,
       variationId: s.variation_id || null,
+      branchId: s.branch_id,
       qty: -(s.quantity || 1),
       referenceId: id,
       referenceType: `online_sale_${status}`,
