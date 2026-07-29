@@ -31,6 +31,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/components/ColumnVisibility";
 import { useBranch } from "@/contexts/BranchContext";
+import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
 
 const INVENTORY_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Name", required: true },
@@ -945,7 +946,7 @@ export default function InventoryPage() {
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_variations"] }); }} />
       <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
 
-      <div className="data-table-wrapper">
+      <HorizontalScrollSync className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -960,7 +961,7 @@ export default function InventoryPage() {
                 const align = (c.key === "name" || c.key === "source" || c.key === "branch") ? "left" : "right";
                 return <SortableHeader key={`h-${c.key}`} sortKey={c.key} label={c.label} sort={sort} onToggle={toggle} align={align} />;
               })}
-              <TableHead className="text-xs text-right w-32">Actions</TableHead>
+              <TableHead className="text-xs text-right w-32 sticky right-0 z-20 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1072,7 +1073,7 @@ export default function InventoryPage() {
                       return null;
                   }
                 })}
-                <TableCell className="text-right">
+                <TableCell className="text-right sticky right-0 z-10 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
                   <div className="flex justify-end gap-0.5">
                     {!viewArchived && (
                       <>
@@ -1122,7 +1123,7 @@ export default function InventoryPage() {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </HorizontalScrollSync>
 
       {variationsItem && (
         <VariationsManager
