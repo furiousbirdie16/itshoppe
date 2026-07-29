@@ -998,6 +998,29 @@ export default function OverseasPurchaseOrdersPage() {
       <Dialog open={!!receiveOpen} onOpenChange={() => { setReceiveOpen(null); setReceiveQtys({}); setUndoQtys({}); setReceiveLocations({}); setReceiveDate(new Date().toISOString().split("T")[0]); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="text-lg">Receive / Undo Items</DialogTitle></DialogHeader>
+          {(() => {
+            const po: any = (orders as any[]).find((o: any) => o.id === receiveOpen);
+            const originalBranch = branches.find(b => b.id === po?.branch_id);
+            const changed = isAdmin && receiveBranchId && receiveBranchId !== po?.branch_id;
+            return (
+              <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">Receiving into branch</div>
+                {isAdmin ? (
+                  <Select value={receiveBranchId} onValueChange={setReceiveBranchId}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select branch..." /></SelectTrigger>
+                    <SelectContent>
+                      {branches.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="text-sm font-semibold">{originalBranch ? `${originalBranch.branch_name} (${originalBranch.branch_code})` : "—"}</div>
+                )}
+                {changed && <p className="text-[11px] text-amber-600">Branch differs from PO's original ({originalBranch?.branch_code || "—"}). The PO's branch will be updated on confirm.</p>}
+              </div>
+            );
+          })()}
           <div className="flex items-end gap-3">
             <div className="space-y-1.5 flex-1">
               <Label className="text-xs">Date Received</Label>
