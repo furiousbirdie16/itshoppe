@@ -290,6 +290,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead className="text-xs whitespace-nowrap">Date & Time</TableHead>
+                <TableHead className="text-xs">Branch</TableHead>
                 <TableHead className="text-xs">Transaction</TableHead>
                 <TableHead className="text-xs">Reference</TableHead>
                 <TableHead className="text-xs">Location</TableHead>
@@ -304,9 +305,9 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={11} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={11} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
               ) : filtered.map((r) => {
                 const locLabel = r.category === "transfer" && r.dest_location
                   ? `${r.location || "?"} → ${r.dest_location}`
