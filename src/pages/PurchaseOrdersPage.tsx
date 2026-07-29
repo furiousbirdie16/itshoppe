@@ -255,7 +255,9 @@ export default function PurchaseOrdersPage() {
           };
         });
       if (itemsToReceive.length === 0) throw new Error("Enter quantities to receive");
-      await receivePO(receiveOpen!, itemsToReceive, receiveDate);
+      const poRow: any = pos.find((p: any) => p.id === receiveOpen);
+      const override = isAdmin && receiveBranchId && receiveBranchId !== poRow?.branch_id ? receiveBranchId : null;
+      await receivePO(receiveOpen!, itemsToReceive, receiveDate, override);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
