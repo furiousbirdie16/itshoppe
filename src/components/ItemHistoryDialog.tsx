@@ -241,7 +241,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-lg">Inventory Ledger — {item?.name}</DialogTitle>
+          <DialogTitle className="text-lg">
+            Inventory Ledger — {item?.name}
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              ({activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : canPickAll ? "All branches" : "—"})
+            </span>
+          </DialogTitle>
         </DialogHeader>
 
         {stats && (
