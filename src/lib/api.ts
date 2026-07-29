@@ -5,21 +5,56 @@ import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 
 
-const applyLocationDelta = (
-  current: { warehouse_quantity: number; store_quantity: number },
-  unitsToDeduct: number,
-) => {
-  // Sales (invoices, online sales, etc.) ALWAYS deduct from store stock,
-  // never from warehouse. Store may go negative if oversold; warehouse is
-  // preserved so that transferring stock W→S is the only path to restock.
-  const warehouse = Number(current.warehouse_quantity || 0);
-  const store = Number(current.store_quantity || 0) - unitsToDeduct;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _sb: any = supabase as any;
+const _from = (table: string) => _sb.from(table);
 
+/** Read the branch-scoped stock row (returns zeros if missing). */
+async function getBranchStock(itemId: string, branchId: string) {
+  const { data } = await _from("item_branch_stock")
+    .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+    .eq("item_id", itemId)
+    .eq("branch_id", branchId)
+    .maybeSingle();
+  const r = (data as any) || {};
   return {
-    warehouse_quantity: Math.max(0, warehouse),
-    store_quantity: store,
+    warehouse_quantity: Number(r.warehouse_quantity || 0),
+    store_quantity: Number(r.store_quantity || 0),
+    quantity: Number(r.quantity || 0),
+    open_roll_remaining: Number(r.open_roll_remaining || 0),
+    units_per_stock: Number(r.units_per_stock || 1),
   };
-};
+}
+
+/** RPC wrapper — mutates item_branch_stock atomically. */
+async function applyBranchStockRpc(args: {
+  itemId: string;
+  branchId: string;
+  location: "warehouse" | "store";
+  deltaStock: number;
+  deltaOpen?: number;
+  unitsPerStock?: number | null;
+}) {
+  const { data, error } = await _sb.rpc("apply_branch_stock_change", {
+    _item_id: args.itemId,
+    _branch_id: args.branchId,
+    _location: args.location,
+    _delta_stock: args.deltaStock,
+    _delta_open: args.deltaOpen ?? 0,
+    _units_per_stock: args.unitsPerStock ?? null,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data[0] : data) as {
+    warehouse_quantity: number;
+    store_quantity: number;
+    quantity: number;
+    open_roll_remaining: number;
+    units_per_stock: number;
+    wh_before: number;
+    st_before: number;
+    open_before: number;
+  };
+}
 
 // ---------- Item Variations ----------
 export const getItemVariations = async (itemId?: string): Promise<ItemVariation[]> => {
