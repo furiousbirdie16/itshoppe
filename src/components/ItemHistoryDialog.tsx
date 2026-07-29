@@ -13,6 +13,7 @@ import { Search, History, ExternalLink } from "lucide-react";
 import type { Item } from "@/types/database";
 import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
 import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
+import { useBranch } from "@/contexts/BranchContext";
 
 interface Props {
   item: Item | null;
