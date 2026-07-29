@@ -38,6 +38,7 @@ export default function PendingPaymentsPage() {
   const queryClient = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
+  const { activeBranchId } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
