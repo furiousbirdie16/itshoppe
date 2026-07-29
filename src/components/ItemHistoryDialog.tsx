@@ -52,6 +52,8 @@ interface LedgerRow {
   reference_id: string | null;
   notes: string;
   user: string;
+  branch_id: string | null;
+  branch_label: string;
 }
 
 
