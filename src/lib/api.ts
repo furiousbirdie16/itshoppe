@@ -375,18 +375,24 @@ export const receivePO = async (
   poId: string,
   itemsToReceive: { poItemId: string; itemId: string | null; quantity: number; location?: "warehouse" | "store" }[],
   receivedDate?: string,
+  branchOverride?: string | null,
 ) => {
   const rcvDate = receivedDate || new Date().toISOString().split("T")[0];
   const { data: poRow } = await from("purchase_orders").select("branch_id, status").eq("id", poId).single();
-  const poBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  const originalBranchId: string | null = (poRow as any)?.branch_id ?? null;
+  const poBranchId: string | null = branchOverride ?? originalBranchId;
   if (!poBranchId) throw new Error("This PO has no branch assigned. Edit the PO and set its branch before receiving.");
+
+  if (branchOverride && branchOverride !== originalBranchId) {
+    await from("purchase_orders").update({ branch_id: branchOverride, updated_at: new Date().toISOString() }).eq("id", poId);
+    await logActivity("changed_po_branch", "purchase_order", poId, { from: originalBranchId, to: branchOverride });
+  }
 
   for (const item of itemsToReceive) {
     const { data: poItem } = await from("purchase_order_items").select("received_quantity").eq("id", item.poItemId).single();
     const newReceived = ((poItem as any)?.received_quantity || 0) + item.quantity;
     await from("purchase_order_items").update({ received_quantity: newReceived, received_date: rcvDate }).eq("id", item.poItemId);
 
-    // Custom (non-inventory) items: just record the receipt against the PO line, do not touch inventory.
     if (!item.itemId) continue;
 
     const location: "warehouse" | "store" = item.location || "warehouse";
