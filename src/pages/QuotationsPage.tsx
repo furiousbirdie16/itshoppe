@@ -73,7 +73,7 @@ export default function QuotationsPage() {
   const [filterAgent, setFilterAgent] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
 
-  const { data: quotations = [] } = useQuery({ queryKey: ["quotations"], queryFn: getQuotations });
+  const { data: quotations = [] } = useQuery({ queryKey: ["quotations", activeBranchId], queryFn: () => getQuotations(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
