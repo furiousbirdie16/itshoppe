@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
+import { useBranch } from "@/contexts/BranchContext";
 
 type Direction = "w2s" | "s2w";
 
