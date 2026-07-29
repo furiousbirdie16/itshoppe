@@ -257,16 +257,19 @@ export function DashboardAnalytics() {
 
 function GeographicAnalytics({ fromIso, toIso }: { fromIso: string; toIso: string }) {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const { activeBranchId } = useBranch();
 
   const { data: invoiceSales = [] } = useQuery({
-    queryKey: ["geo_sales", fromIso, toIso],
+    queryKey: ["geo_sales", fromIso, toIso, activeBranchId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from("invoices")
         .select("customer_id, total_amount")
         .in("status", ["confirmed", "paid"])
         .gte("invoice_date", fromIso)
         .lte("invoice_date", toIso);
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      const { data } = await q;
       return (data || []) as { customer_id: string | null; total_amount: number }[];
     },
   });
