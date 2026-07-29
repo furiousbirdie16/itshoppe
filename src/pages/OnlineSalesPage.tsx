@@ -319,6 +319,7 @@ export default function OnlineSalesPage() {
         } as any);
         toast.success("Updated");
       } else {
+        if (!activeBranchId) { toast.error("Select a branch before creating an online sale."); setSaving(false); return; }
         const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
         for (const line of cleanLines) {
           await createOnlineSale({
@@ -332,7 +333,8 @@ export default function OnlineSalesPage() {
             notes: form.notes,
             item_id: line.item_id || null,
             variation_id: line.variation_id || null,
-          });
+            branch_id: activeBranchId,
+          } as any);
         }
         toast.success(cleanLines.length > 1 ? `Created order with ${cleanLines.length} items` : "Created");
       }
