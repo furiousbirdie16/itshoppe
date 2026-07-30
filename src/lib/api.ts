@@ -841,52 +841,55 @@ export const getDashboardStats = async (branchId?: string | null) => {
   if (branchId) openPOQ = openPOQ.eq("purchase_orders.branch_id", branchId);
   const { data: openPOItems } = await openPOQ;
   let openOverseasQ = from("overseas_purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate, branch_id)")
+    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, payment_status, shipping_status, exchange_rate, branch_id)")
     .neq("overseas_purchase_orders.status", "received");
   if (branchId) openOverseasQ = openOverseasQ.eq("overseas_purchase_orders.branch_id", branchId);
   const { data: openOverseasItems } = await openOverseasQ;
 
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};
-  let incomingAssetsValue = 0;   // Paid (or local) goods in transit
-  let payableAssetsValue = 0;    // Overseas goods shipped but not yet paid
-  // Local POs: treat all open remaining as Incoming Assets (paid on receipt model)
+  let incomingAssetsValue = 0;   // Goods marked shipped (local + overseas), in transit
+  let payableAssetsValue = 0;    // Unpaid POs (local + overseas), shipped or not
+  // Local POs: "sent"/"partially_received" are considered shipped/in transit; all open POs are unpaid
+  const LOCAL_SHIPPED_STATUSES = new Set(["sent", "partially_received", "shipped"]);
   for (const li of (openPOItems as any[]) || []) {
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
-    incomingAssetsValue += remaining * Number(li.unit_cost || 0);
+    const value = remaining * Number(li.unit_cost || 0);
+    const status = li.purchase_orders?.status;
+    if (LOCAL_SHIPPED_STATUSES.has(status)) incomingAssetsValue += value;
+    if (status !== "cancelled") payableAssetsValue += value;
     if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.localQty += remaining;
     const num = li.purchase_orders?.po_number;
     if (num && !e.localPOs.includes(num)) e.localPOs.push(num);
   }
-  // Overseas POs: classify by status into Payable vs Incoming
-  const PAYABLE_STATUSES = new Set(["shipped_not_paid", "sent"]);
-  const INCOMING_STATUSES = new Set(["shipped", "partially_received"]);
+  // Overseas POs: shipped -> incoming; not fully paid -> payable
+  const OVERSEAS_SHIPPED_STATUSES = new Set(["shipped", "shipped_not_paid", "paid_shipped", "partially_received"]);
   for (const li of (openOverseasItems as any[]) || []) {
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
     const rate = Number(li.overseas_purchase_orders?.exchange_rate || 1);
-    const status = li.overseas_purchase_orders?.status;
+    const po = li.overseas_purchase_orders || {};
+    const status = po.status;
     const value = remaining * Number(li.unit_cost || 0) * rate;
-    if (PAYABLE_STATUSES.has(status)) {
-      payableAssetsValue += value;
-    } else if (INCOMING_STATUSES.has(status)) {
-      incomingAssetsValue += value;
-    }
-    // 'draft'/'unpaid'/'paid_not_shipped'/'pending_cargo_adjustment'/'cargo_adjusted' contribute $0
+    const isShipped = po.shipping_status === "shipped" || OVERSEAS_SHIPPED_STATUSES.has(status);
+    const isPaid = po.payment_status === "paid" || status === "paid_shipped" || status === "paid_not_shipped";
+    if (isShipped) incomingAssetsValue += value;
+    if (!isPaid && status !== "cancelled") payableAssetsValue += value;
     if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.overseasQty += remaining;
-    const num = li.overseas_purchase_orders?.po_number;
+    const num = po.po_number;
     if (num && !e.overseasPOs.includes(num)) e.overseasPOs.push(num);
   }
 
-  // Accounts Payable for overseas = the Payable Assets amount (what we owe suppliers for shipped goods)
+  // Accounts Payable = everything unpaid across local + overseas POs
   const accountsPayableValue = payableAssetsValue;
-  // Keep legacy combined "incoming stock" for backward compatibility with the existing chart/UI
-  const incomingStockValue = incomingAssetsValue + payableAssetsValue;
+  // Incoming stock value for charts = shipped goods in transit
+  const incomingStockValue = incomingAssetsValue;
+
 
   const itemsList = ((items as any[]) || []).map((i: any) => ({ ...i, quantity: qtyByItem[i.id] ?? 0 }));
   const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
@@ -951,7 +954,7 @@ export const getDashboardStats = async (branchId?: string | null) => {
     incomingAssetsValue,
     payableAssetsValue,
     accountsPayableValue,
-    totalAssetValue: totalValue + incomingAssetsValue + payableAssetsValue,
+    totalAssetValue: totalValue + incomingAssetsValue,
     salesToday,
     salesThisMonth,
     grossProfitMonth,
