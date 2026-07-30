@@ -1350,7 +1350,73 @@ export default function OverseasPurchaseOrdersPage() {
         </Table>
       </div>
 
+      {/* Mark as Paid */}
+      <Dialog open={!!payPO} onOpenChange={(o) => !o && setPayPO(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Record Payment — {payPO?.po_number}</DialogTitle></DialogHeader>
+          {payPO && (() => {
+            const total = Number(payPO.total_amount || 0);
+            const sym = payPO.currency === "USD" ? "$" : "¥";
+            const amount = parseFloat(payAmount) || 0;
+            const nextStatus = derivePaymentStatus(amount, total);
+            return (
+              <div className="space-y-4 pt-1">
+                <div className="rounded-lg bg-muted/50 p-3 text-sm flex justify-between">
+                  <span className="text-muted-foreground">PO Total</span>
+                  <span className="font-semibold font-mono">{sym}{total.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Amount Paid ({payPO.currency})</Label>
+                  <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0.00" />
+                  <div className="flex gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPayAmount(String(total))}>Full payment</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPayAmount(String(total / 2))}>50%</Button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Payment Date</Label>
+                  <DateField value={payDate} onChange={setPayDate} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">New payment status</span>
+                  <StatusBadge status={nextStatus} context="overseas_po" />
+                </div>
+                <Button className="w-full h-9 rounded-lg" onClick={() => markPaidMut.mutate()} disabled={markPaidMut.isPending}>
+                  {markPaidMut.isPending ? "Saving..." : "Save Payment"}
+                </Button>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark as Shipped */}
+      <Dialog open={!!shipPO} onOpenChange={(o) => !o && setShipPO(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Mark as Shipped — {shipPO?.po_number}</DialogTitle></DialogHeader>
+          {shipPO && (
+            <div className="space-y-4 pt-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Shipping Date</Label>
+                <DateField value={shipDate} onChange={setShipDate} />
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">New overall status</span>
+                <StatusBadge
+                  status={deriveOverallStatus(shipPO, (shipPO as any).payment_status || "unpaid", "shipped")}
+                  context="overseas_po"
+                />
+              </div>
+              <Button className="w-full h-9 rounded-lg" onClick={() => markShippedMut.mutate()} disabled={markShippedMut.isPending}>
+                {markShippedMut.isPending ? "Saving..." : "Confirm Shipped"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+
         </TabsContent>
         <TabsContent value="incoming" className="mt-0">
       <section className="space-y-4">
