@@ -577,14 +577,15 @@ export default function OverseasPurchaseOrdersPage() {
     expected_delivery: (row) => row.expected_delivery || "",
   });
 
-  // Total value of items not yet received across all open POs (in PHP)
+  // Total value of items not yet received across POs that are NOT marked received (in PHP)
   const notReceivedPhpTotal = (() => {
-    const rateByPo = new Map(orders.map(o => [o.id, o.exchange_rate || 1]));
+    const openPos = new Map(orders.filter(o => o.status !== "received").map(o => [o.id, o.exchange_rate || 1]));
     let total = 0;
     for (const li of allPOItems) {
       const remaining = (li.quantity || 0) - (li.received_quantity || 0);
       if (remaining <= 0) continue;
-      const rate = rateByPo.get(li.po_id) || 1;
+      const rate = openPos.get(li.po_id);
+      if (rate === undefined) continue;
       total += remaining * (li.unit_cost || 0) * rate;
     }
     return total;

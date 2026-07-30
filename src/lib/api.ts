@@ -851,9 +851,9 @@ export const getDashboardStats = async (branchId?: string | null) => {
   let incomingAssetsValue = 0;   // Goods already shipped (in transit), local + overseas
   let payableAssetsValue = 0;    // Unpaid POs (unpaid / shipped / not yet shipped), local + overseas
 
-  // Statuses that mean "shipped / in transit"
-  const LOCAL_SHIPPED = new Set(["sent", "partially_received"]);
-  const OVERSEAS_SHIPPED = new Set(["shipped", "shipped_not_paid", "partially_received", "pending_cargo_adjustment", "cargo_adjusted"]);
+  // Statuses that mean "shipped / in transit" (incoming assets)
+  const LOCAL_SHIPPED = new Set<string>([]);
+  const OVERSEAS_SHIPPED = new Set(["shipped"]);
   // Statuses that mean "not yet paid"
   const OVERSEAS_UNPAID = new Set(["unpaid", "draft", "sent", "shipped_not_paid"]);
 
