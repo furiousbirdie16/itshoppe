@@ -94,13 +94,6 @@ export default function DashboardPage() {
             description="Owed to suppliers"
           />
         )}
-        <StatCard
-          title="Low Stock Items"
-          value={stats?.lowStockItems.length || 0}
-          icon={AlertTriangle}
-          variant="warning"
-        />
-        <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
         {isAdmin && (
           <StatCard
             title="Incoming Assets"
