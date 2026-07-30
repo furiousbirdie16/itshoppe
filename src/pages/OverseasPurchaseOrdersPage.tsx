@@ -90,6 +90,74 @@ export default function OverseasPurchaseOrdersPage() {
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Mark as Paid / Mark as Shipped
+  const [payPO, setPayPO] = useState<OverseasPurchaseOrder | null>(null);
+  const [payAmount, setPayAmount] = useState<string>("");
+  const [payDate, setPayDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [shipPO, setShipPO] = useState<OverseasPurchaseOrder | null>(null);
+  const [shipDate, setShipDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  const derivePaymentStatus = (paid: number, total: number) => {
+    if (paid <= 0) return "unpaid";
+    if (paid + 0.005 >= total) return "paid";
+    return "partially_paid";
+  };
+  const deriveOverallStatus = (po: any, paymentStatus: string, shippingStatus: string) => {
+    // Don't override receiving-stage statuses
+    if (["partially_received", "received", "pending_cargo_adjustment", "cargo_adjusted", "closed"].includes(po.status)) {
+      return po.status;
+    }
+    const shipped = shippingStatus === "shipped";
+    const paid = paymentStatus === "paid";
+    if (paid && shipped) return "paid_shipped";
+    if (paid && !shipped) return "paid_not_shipped";
+    if (!paid && shipped) return "shipped_not_paid";
+    return "unpaid";
+  };
+
+  const markPaidMut = useMutation({
+    mutationFn: async () => {
+      if (!payPO) return;
+      const total = Number(payPO.total_amount || 0);
+      const amount = parseFloat(payAmount);
+      if (!isFinite(amount) || amount < 0) throw new Error("Enter a valid amount");
+      const paymentStatus = derivePaymentStatus(amount, total);
+      const shippingStatus = (payPO as any).shipping_status || "not_shipped";
+      await updateOverseasPurchaseOrder(payPO.id, {
+        amount_paid: amount,
+        payment_status: paymentStatus,
+        paid_at: paymentStatus === "unpaid" ? null : new Date(payDate).toISOString(),
+        status: deriveOverallStatus(payPO, paymentStatus, shippingStatus),
+      } as any);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      setPayPO(null);
+      toast.success("Payment recorded");
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to record payment"),
+  });
+
+  const markShippedMut = useMutation({
+    mutationFn: async () => {
+      if (!shipPO) return;
+      if (!shipDate) throw new Error("Select a shipping date");
+      const paymentStatus = (shipPO as any).payment_status || "unpaid";
+      await updateOverseasPurchaseOrder(shipPO.id, {
+        shipping_status: "shipped",
+        shipped_at: shipDate,
+        status: deriveOverallStatus(shipPO, paymentStatus, "shipped"),
+      } as any);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      setShipPO(null);
+      toast.success("Marked as shipped");
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to mark as shipped"),
+  });
+
+
   const toggleAll = () => {
     if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
     else setSelectedIds(new Set(filteredOrders.map((o) => o.id)));
