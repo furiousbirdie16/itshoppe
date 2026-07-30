@@ -1426,7 +1426,8 @@ export const getLastSalesAgentForCustomer = async (customerId: string): Promise<
 
 /** Aggregates accounts receivable (unpaid invoices + manual receivables). */
 export const getAccountsReceivable = async (branchId?: string | null): Promise<number> => {
-  let invQ = from("invoices").select("total_amount, status").in("status", ["confirmed", "unpaid"]);
+  // Mirrors the Pending Payments page: open, not-yet-paid invoices.
+  let invQ = from("invoices").select("total_amount, status").in("status", ["confirmed", "unpaid", "shipped"]);
   if (branchId) invQ = invQ.eq("branch_id", branchId);
   const { data: invs } = await invQ;
   const invTotal = ((invs as any[]) || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
