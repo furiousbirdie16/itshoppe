@@ -815,18 +815,37 @@ export const getInventoryMovements = async (itemId?: string): Promise<InventoryM
 };
 
 // Dashboard stats
-export const getDashboardStats = async () => {
+export const getDashboardStats = async (branchId?: string | null) => {
   const { data: items } = await from("items").select("*");
-  const { data: recentPOs } = await from("purchase_orders").select("*, suppliers(*)").order("created_at", { ascending: false }).limit(5);
-  const { data: recentInvoices } = await from("invoices").select("*, customers(*)").order("created_at", { ascending: false }).limit(5);
+
+  // Branch-scoped stock: item_branch_stock is the single source of truth.
+  let stockQ = from("item_branch_stock").select("item_id, quantity, branch_id");
+  if (branchId) stockQ = stockQ.eq("branch_id", branchId);
+  const { data: branchStock } = await stockQ;
+  const qtyByItem: Record<string, number> = {};
+  for (const r of (branchStock as any[]) || []) {
+    qtyByItem[r.item_id] = (qtyByItem[r.item_id] || 0) + Number(r.quantity || 0);
+  }
+
+  let recentPOQ = from("purchase_orders").select("*, suppliers(*)").order("created_at", { ascending: false }).limit(5);
+  if (branchId) recentPOQ = recentPOQ.eq("branch_id", branchId);
+  const { data: recentPOs } = await recentPOQ;
+  let recentInvQ = from("invoices").select("*, customers(*)").order("created_at", { ascending: false }).limit(5);
+  if (branchId) recentInvQ = recentInvQ.eq("branch_id", branchId);
+  const { data: recentInvoices } = await recentInvQ;
 
   // Outstanding (not fully received) line items from local + overseas POs
-  const { data: openPOItems } = await from("purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status)")
+  let openPOQ = from("purchase_order_items")
+    .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status, branch_id)")
     .neq("purchase_orders.status", "received");
-  const { data: openOverseasItems } = await from("overseas_purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate)")
+  if (branchId) openPOQ = openPOQ.eq("purchase_orders.branch_id", branchId);
+  const { data: openPOItems } = await openPOQ;
+  let openOverseasQ = from("overseas_purchase_order_items")
+    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate, branch_id)")
     .neq("overseas_purchase_orders.status", "received");
+  if (branchId) openOverseasQ = openOverseasQ.eq("overseas_purchase_orders.branch_id", branchId);
+  const { data: openOverseasItems } = await openOverseasQ;
+
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};
   let incomingAssetsValue = 0;   // Paid (or local) goods in transit
