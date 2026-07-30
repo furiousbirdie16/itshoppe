@@ -332,6 +332,31 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); toast.success("Deleted"); },
   });
 
+  // ---- Shipped / Paid quick toggles ----
+  const isPaidStatus = (s: string) => ["paid_not_shipped", "shipped", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
+  const isShippedStatus = (s: string) => ["shipped", "shipped_not_paid", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
+  const statusFromFlags = (paid: boolean, shipped: boolean) =>
+    paid && shipped ? "shipped" : paid ? "paid_not_shipped" : shipped ? "shipped_not_paid" : "unpaid";
+
+  const statusMut = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) =>
+      updateOverseasPurchaseOrder(id, { status } as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Status updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const toggleFlag = (po: OverseasPurchaseOrder, flag: "paid" | "shipped") => {
+    const paid = isPaidStatus(po.status);
+    const shipped = isShippedStatus(po.status);
+    const next = flag === "paid" ? statusFromFlags(!paid, shipped) : statusFromFlags(paid, !shipped);
+    statusMut.mutate({ id: po.id, status: next });
+  };
+
+
   const receiveMut = useMutation({
     mutationFn: async () => {
       const itemsToReceive = Object.entries(receiveQtys)
