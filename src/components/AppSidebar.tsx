@@ -15,11 +15,12 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, adminOnly: false },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, adminOnly: true },
   { title: "Inventory", url: "/inventory", icon: Package, adminOnly: false },
   { title: "Low Stock Alerts", url: "/low-stock-alerts", icon: AlertTriangle, adminOnly: false },
   { title: "Stock Transfers", url: "/stock-transfers", icon: ArrowLeftRight, adminOnly: false },
-  { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: false },
+  { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: true },
+
   { title: "Overseas PO", url: "/overseas-purchase-orders", icon: ShoppingCart },
   { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },
   { title: "Customers", url: "/customers", icon: Users, adminOnly: false },
