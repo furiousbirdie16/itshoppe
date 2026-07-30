@@ -1,40 +1,16 @@
-import { useState } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { getDashboardStats, updateItem } from "@/lib/api";
-import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
-import { Package, DollarSign, AlertTriangle, TruckIcon, ArrowRight, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp } from "lucide-react";
+import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp } from "lucide-react";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
 import { useBranch } from "@/contexts/BranchContext";
 
-type LowStockFilter = "all" | "ordered" | "not_ordered";
-
 export default function DashboardPage() {
-  const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const { activeBranchId, activeBranch } = useBranch();
-  const queryClient = useQueryClient();
-
-  const [lowStockFilter, setLowStockFilter] = useState<LowStockFilter>("all");
-  const [editingThreshold, setEditingThreshold] = useState<Record<string, string>>({});
-
-  const updateThresholdMutation = useMutation({
-    mutationFn: ({ id, threshold }: { id: string; threshold: number }) =>
-      updateItem(id, { low_stock_threshold: threshold }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      toast.success("Threshold updated");
-    },
-    onError: (e: any) => toast.error(e.message || "Failed to update threshold"),
-  });
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard", activeBranchId],
