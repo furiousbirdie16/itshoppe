@@ -77,7 +77,7 @@ function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKe
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, activeBranch } = useBranch();
   const money = (n: number) => (isAdmin ? peso(n) : "—");
   const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
@@ -1213,7 +1213,7 @@ export default function BusinessInsightsPage() {
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
+        {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches"} · {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
