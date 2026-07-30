@@ -31,9 +31,10 @@ const queryClient = new QueryClient();
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { role } = useAuth();
-  if (role !== "admin") return <Navigate to="/" replace />;
+  if (role !== "admin") return <Navigate to="/inventory" replace />;
   return <>{children}</>;
 }
+
 
 function ProtectedRoutes() {
   const { user, role, loading } = useAuth();
