@@ -954,7 +954,7 @@ export const getDashboardStats = async (branchId?: string | null) => {
     incomingAssetsValue,
     payableAssetsValue,
     accountsPayableValue,
-    totalAssetValue: totalValue + incomingAssetsValue + payableAssetsValue,
+    totalAssetValue: totalValue + incomingAssetsValue,
     salesToday,
     salesThisMonth,
     grossProfitMonth,
