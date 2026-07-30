@@ -31,9 +31,10 @@ const queryClient = new QueryClient();
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { role } = useAuth();
-  if (role !== "admin") return <Navigate to="/" replace />;
+  if (role !== "admin") return <Navigate to="/inventory" replace />;
   return <>{children}</>;
 }
+
 
 function ProtectedRoutes() {
   const { user, role, loading } = useAuth();
@@ -54,11 +55,12 @@ function ProtectedRoutes() {
     <BranchProvider>
       <AppLayout>
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={role === "admin" ? <DashboardPage /> : <Navigate to="/inventory" replace />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/stock-transfers" element={<StockTransfersPage />} />
           <Route path="/low-stock-alerts" element={<LowStockAlertsPage />} />
-          <Route path="/suppliers" element={<SuppliersHubPage />} />
+          <Route path="/suppliers" element={<AdminRoute><SuppliersHubPage /></AdminRoute>} />
+
           <Route path="/overseas-suppliers" element={<Navigate to="/suppliers" replace />} />
           <Route path="/overseas-purchase-orders" element={<OverseasPurchaseOrdersPage />} />
           <Route path="/shipment-tracking" element={<Navigate to="/overseas-purchase-orders" replace />} />
