@@ -1370,6 +1370,7 @@ export type Database = {
       }
       overseas_purchase_orders: {
         Row: {
+          amount_paid: number
           branch_id: string
           cargo_adjusted_at: string | null
           cargo_adjusted_by_email: string | null
@@ -1385,9 +1386,13 @@ export type Database = {
           misc_charges: number
           notes: string | null
           order_date: string | null
+          paid_at: string | null
+          payment_status: string
           po_number: string
           receipt_url: string | null
+          shipped_at: string | null
           shipping_fee: number
+          shipping_status: string
           status: string
           supplier_id: string | null
           total_additional_charges: number
@@ -1395,6 +1400,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          amount_paid?: number
           branch_id?: string
           cargo_adjusted_at?: string | null
           cargo_adjusted_by_email?: string | null
@@ -1410,9 +1416,13 @@ export type Database = {
           misc_charges?: number
           notes?: string | null
           order_date?: string | null
+          paid_at?: string | null
+          payment_status?: string
           po_number: string
           receipt_url?: string | null
+          shipped_at?: string | null
           shipping_fee?: number
+          shipping_status?: string
           status?: string
           supplier_id?: string | null
           total_additional_charges?: number
@@ -1420,6 +1430,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          amount_paid?: number
           branch_id?: string
           cargo_adjusted_at?: string | null
           cargo_adjusted_by_email?: string | null
@@ -1435,9 +1446,13 @@ export type Database = {
           misc_charges?: number
           notes?: string | null
           order_date?: string | null
+          paid_at?: string | null
+          payment_status?: string
           po_number?: string
           receipt_url?: string | null
+          shipped_at?: string | null
           shipping_fee?: number
+          shipping_status?: string
           status?: string
           supplier_id?: string | null
           total_additional_charges?: number

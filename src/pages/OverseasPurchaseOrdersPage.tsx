@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Wallet, Truck } from "lucide-react";
 
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -89,6 +89,74 @@ export default function OverseasPurchaseOrdersPage() {
   const [incomingReceiptFilter, setIncomingReceiptFilter] = useState<string>("incoming");
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Mark as Paid / Mark as Shipped
+  const [payPO, setPayPO] = useState<OverseasPurchaseOrder | null>(null);
+  const [payAmount, setPayAmount] = useState<string>("");
+  const [payDate, setPayDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [shipPO, setShipPO] = useState<OverseasPurchaseOrder | null>(null);
+  const [shipDate, setShipDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  const derivePaymentStatus = (paid: number, total: number) => {
+    if (paid <= 0) return "unpaid";
+    if (paid + 0.005 >= total) return "paid";
+    return "partially_paid";
+  };
+  const deriveOverallStatus = (po: any, paymentStatus: string, shippingStatus: string) => {
+    // Don't override receiving-stage statuses
+    if (["partially_received", "received", "pending_cargo_adjustment", "cargo_adjusted", "closed"].includes(po.status)) {
+      return po.status;
+    }
+    const shipped = shippingStatus === "shipped";
+    const paid = paymentStatus === "paid";
+    if (paid && shipped) return "paid_shipped";
+    if (paid && !shipped) return "paid_not_shipped";
+    if (!paid && shipped) return "shipped_not_paid";
+    return "unpaid";
+  };
+
+  const markPaidMut = useMutation({
+    mutationFn: async () => {
+      if (!payPO) return;
+      const total = Number(payPO.total_amount || 0);
+      const amount = parseFloat(payAmount);
+      if (!isFinite(amount) || amount < 0) throw new Error("Enter a valid amount");
+      const paymentStatus = derivePaymentStatus(amount, total);
+      const shippingStatus = (payPO as any).shipping_status || "not_shipped";
+      await updateOverseasPurchaseOrder(payPO.id, {
+        amount_paid: amount,
+        payment_status: paymentStatus,
+        paid_at: paymentStatus === "unpaid" ? null : new Date(payDate).toISOString(),
+        status: deriveOverallStatus(payPO, paymentStatus, shippingStatus),
+      } as any);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      setPayPO(null);
+      toast.success("Payment recorded");
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to record payment"),
+  });
+
+  const markShippedMut = useMutation({
+    mutationFn: async () => {
+      if (!shipPO) return;
+      if (!shipDate) throw new Error("Select a shipping date");
+      const paymentStatus = (shipPO as any).payment_status || "unpaid";
+      await updateOverseasPurchaseOrder(shipPO.id, {
+        shipping_status: "shipped",
+        shipped_at: shipDate,
+        status: deriveOverallStatus(shipPO, paymentStatus, "shipped"),
+      } as any);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      setShipPO(null);
+      toast.success("Marked as shipped");
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to mark as shipped"),
+  });
+
 
   const toggleAll = () => {
     if (filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))) setSelectedIds(new Set());
@@ -175,6 +243,8 @@ export default function OverseasPurchaseOrdersPage() {
     paid_not_shipped: "not_shipped",
     draft: "not_shipped",
     shipped_not_paid: "incoming",
+    paid_shipped: "incoming",
+
     shipped: "incoming",
     sent: "incoming",
     partially_received: "incoming",
@@ -1141,6 +1211,9 @@ export default function OverseasPurchaseOrdersPage() {
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
+              <TableHead className="text-xs">Payment</TableHead>
+              <TableHead className="text-xs">Shipping</TableHead>
+
               <SortableHeader sortKey="eta" label="ETA" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Items</TableHead>
               {isAdmin && <SortableHeader sortKey="currency" label="Currency" sort={sort} onToggle={toggle} />}
@@ -1151,9 +1224,9 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={10}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : sortedOrders.map(po => {
               const shipment = shipmentByPo.get(po.id);
               const eta = shipment?.estimated_arrival || po.expected_delivery;
@@ -1170,6 +1243,23 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <StatusBadge status={(po as any).payment_status || "unpaid"} context="overseas_po" />
+                  {isAdmin && Number((po as any).amount_paid || 0) > 0 && (
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                      {po.currency === "USD" ? "$" : "¥"}{Number((po as any).amount_paid).toLocaleString("en", { minimumFractionDigits: 2 })} paid
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <StatusBadge status={(po as any).shipping_status || "not_shipped"} context="overseas_po" />
+                  {(po as any).shipped_at && (
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {new Date((po as any).shipped_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </div>
+                  )}
+                </TableCell>
+
                 <TableCell className="text-sm whitespace-nowrap">
                   {actualArrival ? (
                     <span className="text-success font-medium">✓ {new Date(actualArrival).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
@@ -1215,6 +1305,29 @@ export default function OverseasPurchaseOrdersPage() {
                   <div className="flex justify-end gap-0.5">
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>}
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {isAdmin && (po as any).payment_status !== "paid" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Mark as Paid"
+                        className="h-7 w-7 rounded-md"
+                        onClick={() => { setPayPO(po); setPayAmount(String((po as any).amount_paid || "")); setPayDate(new Date().toISOString().split("T")[0]); }}
+                      >
+                        <Wallet className="h-3.5 w-3.5 text-primary" />
+                      </Button>
+                    )}
+                    {isAdmin && (po as any).shipping_status !== "shipped" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Mark as Shipped"
+                        className="h-7 w-7 rounded-md"
+                        onClick={() => { setShipPO(po); setShipDate(new Date().toISOString().split("T")[0]); }}
+                      >
+                        <Truck className="h-3.5 w-3.5 text-blue-600" />
+                      </Button>
+                    )}
+
                     {po.status !== "received" && (
                       <Button
                         variant="ghost"
@@ -1237,7 +1350,73 @@ export default function OverseasPurchaseOrdersPage() {
         </Table>
       </div>
 
+      {/* Mark as Paid */}
+      <Dialog open={!!payPO} onOpenChange={(o) => !o && setPayPO(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Record Payment — {payPO?.po_number}</DialogTitle></DialogHeader>
+          {payPO && (() => {
+            const total = Number(payPO.total_amount || 0);
+            const sym = payPO.currency === "USD" ? "$" : "¥";
+            const amount = parseFloat(payAmount) || 0;
+            const nextStatus = derivePaymentStatus(amount, total);
+            return (
+              <div className="space-y-4 pt-1">
+                <div className="rounded-lg bg-muted/50 p-3 text-sm flex justify-between">
+                  <span className="text-muted-foreground">PO Total</span>
+                  <span className="font-semibold font-mono">{sym}{total.toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Amount Paid ({payPO.currency})</Label>
+                  <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0.00" />
+                  <div className="flex gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPayAmount(String(total))}>Full payment</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPayAmount(String(total / 2))}>50%</Button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Payment Date</Label>
+                  <DateField value={payDate} onChange={setPayDate} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">New payment status</span>
+                  <StatusBadge status={nextStatus} context="overseas_po" />
+                </div>
+                <Button className="w-full h-9 rounded-lg" onClick={() => markPaidMut.mutate()} disabled={markPaidMut.isPending}>
+                  {markPaidMut.isPending ? "Saving..." : "Save Payment"}
+                </Button>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark as Shipped */}
+      <Dialog open={!!shipPO} onOpenChange={(o) => !o && setShipPO(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Mark as Shipped — {shipPO?.po_number}</DialogTitle></DialogHeader>
+          {shipPO && (
+            <div className="space-y-4 pt-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Shipping Date</Label>
+                <DateField value={shipDate} onChange={setShipDate} />
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">New overall status</span>
+                <StatusBadge
+                  status={deriveOverallStatus(shipPO, (shipPO as any).payment_status || "unpaid", "shipped")}
+                  context="overseas_po"
+                />
+              </div>
+              <Button className="w-full h-9 rounded-lg" onClick={() => markShippedMut.mutate()} disabled={markShippedMut.isPending}>
+                {markShippedMut.isPending ? "Saving..." : "Confirm Shipped"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+
         </TabsContent>
         <TabsContent value="incoming" className="mt-0">
       <section className="space-y-4">
@@ -1339,7 +1518,7 @@ export default function OverseasPurchaseOrdersPage() {
             <TableBody>
               {sortedIncomingRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10}>
+                  <TableCell colSpan={12}>
                     <div className="empty-state">
                       <ShoppingCart className="empty-state-icon" />
                       <p className="text-sm">No ordered products match your filters</p>

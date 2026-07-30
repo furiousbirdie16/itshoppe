@@ -10,6 +10,9 @@ const statusStyles: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   sent: "bg-primary/10 text-primary",
   shipped: "bg-primary/10 text-primary",
+  not_shipped: "bg-muted text-muted-foreground",
+  partially_paid: "bg-warning/10 text-warning",
+  paid_shipped: "bg-success/10 text-success",
   paid_not_shipped: "bg-blue-500/10 text-blue-600",
   shipped_not_paid: "bg-destructive/10 text-destructive",
   partially_received: "bg-warning/10 text-warning",
@@ -27,6 +30,7 @@ const statusStyles: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground line-through",
 };
 
+
 const invoiceLabels: Record<string, string> = {
   draft: "not shipped",
   confirmed: "shipped, not paid",
@@ -42,10 +46,14 @@ const overseasPoLabels: Record<string, string> = {
   draft: "unpaid",
   sent: "shipped",
   paid_not_shipped: "paid, not shipped",
-  shipped_not_paid: "shipped, not paid",
+  shipped_not_paid: "unpaid, shipped",
+  paid_shipped: "paid, shipped",
+  partially_paid: "partially paid",
+  not_shipped: "not shipped",
   pending_cargo_adjustment: "pending cargo adj.",
   cargo_adjusted: "cargo adjusted",
 };
+
 
 
 export function StatusBadge({ status, className, context = "default" }: StatusBadgeProps) {
