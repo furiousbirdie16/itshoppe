@@ -243,6 +243,8 @@ export default function OverseasPurchaseOrdersPage() {
     paid_not_shipped: "not_shipped",
     draft: "not_shipped",
     shipped_not_paid: "incoming",
+    paid_shipped: "incoming",
+
     shipped: "incoming",
     sent: "incoming",
     partially_received: "incoming",
