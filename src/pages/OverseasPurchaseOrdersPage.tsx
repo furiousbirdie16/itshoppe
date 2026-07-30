@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign } from "lucide-react";
 
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -1250,6 +1250,28 @@ export default function OverseasPurchaseOrdersPage() {
                       >
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
                       </Button>
+                    )}
+                    {isAdmin && ["unpaid", "draft", "sent", "paid_not_shipped", "shipped_not_paid", "shipped"].includes(po.status) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFlag(po, "shipped")}
+                          className="h-7 w-7 rounded-md"
+                          title={isShippedStatus(po.status) ? "Unmark as shipped" : "Mark as shipped"}
+                        >
+                          <Truck className={`h-3.5 w-3.5 ${isShippedStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFlag(po, "paid")}
+                          className="h-7 w-7 rounded-md"
+                          title={isPaidStatus(po.status) ? "Unmark as paid" : "Mark as paid"}
+                        >
+                          <BadgeDollarSign className={`h-3.5 w-3.5 ${isPaidStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
+                        </Button>
+                      </>
                     )}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
