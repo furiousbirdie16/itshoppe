@@ -46,10 +46,14 @@ const overseasPoLabels: Record<string, string> = {
   draft: "unpaid",
   sent: "shipped",
   paid_not_shipped: "paid, not shipped",
-  shipped_not_paid: "shipped, not paid",
+  shipped_not_paid: "unpaid, shipped",
+  paid_shipped: "paid, shipped",
+  partially_paid: "partially paid",
+  not_shipped: "not shipped",
   pending_cargo_adjustment: "pending cargo adj.",
   cargo_adjusted: "cargo adjusted",
 };
+
 
 
 export function StatusBadge({ status, className, context = "default" }: StatusBadgeProps) {
