@@ -8,14 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarIcon, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
-import { getSalesTrend, getAccountsReceivable, getDashboardStats, getCustomers } from "@/lib/api";
-import { supabase } from "@/integrations/supabase/client";
+import { getSalesTrend, getAccountsReceivable, getDashboardStats } from "@/lib/api";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend, Bar, BarChart } from "recharts";
-import { Badge } from "@/components/ui/badge";
-import { getFollowUpInfo, classificationMeta } from "@/lib/followUps";
-import { Link } from "react-router-dom";
-import { BellRing } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend } from "recharts";
 import AssetTrendChart from "@/components/AssetTrendChart";
 import { usePermissions } from "@/lib/permissions";
 import { useBranch } from "@/contexts/BranchContext";
@@ -82,7 +77,7 @@ export function DashboardAnalytics() {
   const trendPct = firstHalf > 0 ? Math.abs(((secondHalf - firstHalf) / firstHalf) * 100) : 0;
 
   // Asset value: inventory + incoming + receivables
-  const { data: stats } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardStats });
+  const { data: stats } = useQuery({ queryKey: ["dashboard", activeBranchId], queryFn: () => getDashboardStats(activeBranchId) });
   const { data: receivables = 0 } = useQuery({
     queryKey: ["accounts_receivable", activeBranchId],
     queryFn: () => getAccountsReceivable(activeBranchId),
@@ -248,218 +243,6 @@ export function DashboardAnalytics() {
       </div>
 
       {isAdmin && <AssetTrendChart />}
-
-      <FollowUpOverview />
-      <GeographicAnalytics fromIso={fromIso} toIso={toIso} />
-    </div>
-  );
-}
-
-function GeographicAnalytics({ fromIso, toIso }: { fromIso: string; toIso: string }) {
-  const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { activeBranchId } = useBranch();
-
-  const { data: invoiceSales = [] } = useQuery({
-    queryKey: ["geo_sales", fromIso, toIso, activeBranchId],
-    queryFn: async () => {
-      let q = supabase
-        .from("invoices")
-        .select("customer_id, total_amount")
-        .in("status", ["confirmed", "paid"])
-        .gte("invoice_date", fromIso)
-        .lte("invoice_date", toIso);
-      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
-      const { data } = await q;
-      return (data || []) as { customer_id: string | null; total_amount: number }[];
-    },
-  });
-
-  const { byProvince, byCity, salesByCity } = useMemo(() => {
-    const prov: Record<string, number> = {};
-    const city: Record<string, number> = {};
-    const custToCity: Record<string, string> = {};
-    for (const c of customers as any[]) {
-      if (c.province_state) prov[c.province_state] = (prov[c.province_state] || 0) + 1;
-      if (c.city_municipality) {
-        city[c.city_municipality] = (city[c.city_municipality] || 0) + 1;
-        custToCity[c.id] = c.city_municipality;
-      }
-    }
-    const sales: Record<string, number> = {};
-    for (const inv of invoiceSales) {
-      if (!inv.customer_id) continue;
-      const k = custToCity[inv.customer_id];
-      if (!k) continue;
-      sales[k] = (sales[k] || 0) + Number(inv.total_amount || 0);
-    }
-    const top = (m: Record<string, number>, n: number) =>
-      Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, value]) => ({ name, value }));
-    return {
-      byProvince: top(prov, 10),
-      byCity: top(city, 10),
-      salesByCity: top(sales, 10),
-    };
-  }, [customers, invoiceSales]);
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Customers per Province</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">Top 10</p>
-        </CardHeader>
-        <CardContent>
-          {byProvince.length === 0 ? (
-            <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">No location data</div>
-          ) : (
-            <ChartContainer config={{ value: { label: "Customers", color: "hsl(var(--primary))" } }} className="h-[200px] w-full">
-              <BarChart data={byProvince} layout="vertical" margin={{ left: 4, right: 8 }}>
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} width={100} tick={{ fontSize: 11 }} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ChartContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Customers per City</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">Top 10</p>
-        </CardHeader>
-        <CardContent>
-          {byCity.length === 0 ? (
-            <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">No location data</div>
-          ) : (
-            <ChartContainer config={{ value: { label: "Customers", color: "hsl(var(--accent))" } }} className="h-[200px] w-full">
-              <BarChart data={byCity} layout="vertical" margin={{ left: 4, right: 8 }}>
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} width={100} tick={{ fontSize: 11 }} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="value" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ChartContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Top Sales by City</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">{fromIso} → {toIso}</p>
-        </CardHeader>
-        <CardContent>
-          {salesByCity.length === 0 ? (
-            <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">No sales in range</div>
-          ) : (
-            <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
-              {salesByCity.map((row, i) => (
-                <div key={row.name} className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-2 truncate">
-                    <span className="inline-flex items-center justify-center h-5 w-5 rounded bg-muted text-[10px] font-medium shrink-0">{i + 1}</span>
-                    <span className="truncate">{row.name}</span>
-                  </span>
-                  <span className="font-semibold tabular-nums">{peso(row.value)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function FollowUpOverview() {
-  const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-
-  const stats = useMemo(() => {
-    let active = 0, needs = 0, never = 0;
-    const byClass: Record<string, number> = { retail: 0, wholesale: 0, recurring: 0 };
-    for (const c of customers) {
-      const s = getFollowUpInfo(c.last_follow_up_at).status;
-      if (s === "active") active++; else if (s === "needs") needs++; else never++;
-      const cls = (c.classification || "retail") as keyof typeof byClass;
-      if (byClass[cls] !== undefined) byClass[cls]++;
-    }
-    const overdue = [...customers]
-      .map((c) => ({ c, info: getFollowUpInfo(c.last_follow_up_at) }))
-      .filter((r) => r.info.status !== "active")
-      .sort((a, b) => (b.info.days ?? 9999) - (a.info.days ?? 9999))
-      .slice(0, 8);
-    return { active, needs, never, byClass, overdue };
-  }, [customers]);
-
-  return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card className="md:col-span-1">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Customer Follow-ups</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-md border bg-success/5 p-2">
-              <div className="text-xl font-semibold text-success">{stats.active}</div>
-              <div className="text-[10px] text-muted-foreground">Active</div>
-            </div>
-            <div className="rounded-md border bg-warning/5 p-2">
-              <div className="text-xl font-semibold text-warning">{stats.needs}</div>
-              <div className="text-[10px] text-muted-foreground">Needs FU</div>
-            </div>
-            <div className="rounded-md border bg-destructive/5 p-2">
-              <div className="text-xl font-semibold text-destructive">{stats.never}</div>
-              <div className="text-[10px] text-muted-foreground">Never</div>
-            </div>
-          </div>
-          <div className="space-y-1.5 pt-1">
-            {(["retail", "wholesale", "recurring"] as const).map((k) => {
-              const meta = classificationMeta(k);
-              return (
-                <div key={k} className="flex items-center justify-between text-xs">
-                  <Badge variant="outline" className={cn("text-[10px] font-medium", meta.className)}>{meta.label}</Badge>
-                  <span className="font-medium tabular-nums">{stats.byClass[k]}</span>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="md:col-span-2">
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Customers needing follow-up</CardTitle>
-          <Link to="/customers" className="text-xs text-primary hover:underline">View all</Link>
-        </CardHeader>
-        <CardContent>
-          {stats.overdue.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">All customers are up to date.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {stats.overdue.map(({ c, info }) => (
-                <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", info.dotClass)} />
-                    <span className="text-sm font-medium truncate">{c.name}</span>
-                    <Badge variant="outline" className={cn("text-[10px] font-medium", classificationMeta(c.classification).className)}>
-                      {classificationMeta(c.classification).label}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant="outline" className={cn("text-[10px] font-medium", info.className)}>{info.label}</Badge>
-                    <Link to="/customers">
-                      <Button variant="ghost" size="icon" className="h-6 w-6"><BellRing className="h-3.5 w-3.5 text-primary" /></Button>
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
