@@ -1243,6 +1243,23 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <StatusBadge status={(po as any).payment_status || "unpaid"} context="overseas_po" />
+                  {isAdmin && Number((po as any).amount_paid || 0) > 0 && (
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                      {po.currency === "USD" ? "$" : "¥"}{Number((po as any).amount_paid).toLocaleString("en", { minimumFractionDigits: 2 })} paid
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <StatusBadge status={(po as any).shipping_status || "not_shipped"} context="overseas_po" />
+                  {(po as any).shipped_at && (
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {new Date((po as any).shipped_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </div>
+                  )}
+                </TableCell>
+
                 <TableCell className="text-sm whitespace-nowrap">
                   {actualArrival ? (
                     <span className="text-success font-medium">✓ {new Date(actualArrival).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
