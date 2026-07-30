@@ -10,6 +10,9 @@ const statusStyles: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   sent: "bg-primary/10 text-primary",
   shipped: "bg-primary/10 text-primary",
+  not_shipped: "bg-muted text-muted-foreground",
+  partially_paid: "bg-warning/10 text-warning",
+  paid_shipped: "bg-success/10 text-success",
   paid_not_shipped: "bg-blue-500/10 text-blue-600",
   shipped_not_paid: "bg-destructive/10 text-destructive",
   partially_received: "bg-warning/10 text-warning",
@@ -26,6 +29,7 @@ const statusStyles: Record<string, string> = {
   completed: "bg-success/10 text-success",
   cancelled: "bg-muted text-muted-foreground line-through",
 };
+
 
 const invoiceLabels: Record<string, string> = {
   draft: "not shipped",
