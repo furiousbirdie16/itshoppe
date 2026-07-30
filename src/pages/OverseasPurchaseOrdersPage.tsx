@@ -1305,6 +1305,29 @@ export default function OverseasPurchaseOrdersPage() {
                   <div className="flex justify-end gap-0.5">
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>}
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {isAdmin && (po as any).payment_status !== "paid" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Mark as Paid"
+                        className="h-7 w-7 rounded-md"
+                        onClick={() => { setPayPO(po); setPayAmount(String((po as any).amount_paid || "")); setPayDate(new Date().toISOString().split("T")[0]); }}
+                      >
+                        <Wallet className="h-3.5 w-3.5 text-primary" />
+                      </Button>
+                    )}
+                    {isAdmin && (po as any).shipping_status !== "shipped" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Mark as Shipped"
+                        className="h-7 w-7 rounded-md"
+                        onClick={() => { setShipPO(po); setShipDate(new Date().toISOString().split("T")[0]); }}
+                      >
+                        <Truck className="h-3.5 w-3.5 text-blue-600" />
+                      </Button>
+                    )}
+
                     {po.status !== "received" && (
                       <Button
                         variant="ghost"
