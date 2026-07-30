@@ -1224,9 +1224,9 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={10}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : sortedOrders.map(po => {
               const shipment = shipmentByPo.get(po.id);
               const eta = shipment?.estimated_arrival || po.expected_delivery;
@@ -1518,7 +1518,7 @@ export default function OverseasPurchaseOrdersPage() {
             <TableBody>
               {sortedIncomingRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10}>
+                  <TableCell colSpan={12}>
                     <div className="empty-state">
                       <ShoppingCart className="empty-state-icon" />
                       <p className="text-sm">No ordered products match your filters</p>
