@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
+import { FilterCombobox } from "@/components/FilterCombobox";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -76,7 +77,7 @@ function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKe
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, activeBranch } = useBranch();
   const money = (n: number) => (isAdmin ? peso(n) : "—");
   const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
@@ -85,6 +86,9 @@ export default function BusinessInsightsPage() {
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
   const [productSource, setProductSource] = useState<ProductSourceFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [expandedProduct, setExpandedProduct] = useState<Set<string>>(new Set());
   const toggleExpandProduct = (id: string) => {
@@ -139,7 +143,7 @@ export default function BusinessInsightsPage() {
 
   // Online sales — include ALL sales regardless of payment status so units/revenue
   // reflect actual sales volume. Cost & profit are only recognized for PAID sales.
-  const { data: onlineRows = [] } = useQuery({
+  const { data: onlineRowsRaw = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
       return fetchAll(() => {
@@ -160,18 +164,18 @@ export default function BusinessInsightsPage() {
   // Set of paid online sale IDs — profit/cost only apply to these.
   const paidOnlineIds = useMemo(() => {
     const s = new Set<string>();
-    for (const r of onlineRows as any[]) {
+    for (const r of onlineRowsRaw as any[]) {
       if (r.payment_status === "paid") s.add(r.id);
     }
     return s;
-  }, [onlineRows]);
+  }, [onlineRowsRaw]);
 
   // Online sale cost snapshots (admin only)
   const { data: onlineFinancialsRows = [] } = useQuery({
-    queryKey: ["bi_online_financials", (onlineRows as any[]).length, fromStr, toStr],
-    enabled: isAdmin && (onlineRows as any[]).length > 0,
+    queryKey: ["bi_online_financials", (onlineRowsRaw as any[]).length, fromStr, toStr],
+    enabled: isAdmin && (onlineRowsRaw as any[]).length > 0,
     queryFn: async () => {
-      const ids = (onlineRows as any[]).map((r) => r.id);
+      const ids = (onlineRowsRaw as any[]).map((r) => r.id);
       const chunkSize = 200;
       const out: any[] = [];
       for (let i = 0; i < ids.length; i += chunkSize) {
@@ -209,7 +213,7 @@ export default function BusinessInsightsPage() {
 
 
   // Invoice items (only for confirmed/paid invoices in date range)
-  const { data: invoiceRows = [] } = useQuery({
+  const { data: invoiceRowsRaw = [] } = useQuery({
     queryKey: ["bi_invoice", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
       const statuses =
@@ -246,20 +250,93 @@ export default function BusinessInsightsPage() {
   });
 
   // All items (for inventory / purchasing metrics)
-  const { data: itemsAll = [] } = useQuery({
+  const { data: itemsAllRaw = [] } = useQuery({
     queryKey: ["bi_items_all"],
     queryFn: async () => fetchAll<any>(() =>
-      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at")
+      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at, category, brand")
     ),
   });
 
   // All variations — enable per-variation rows with independent stock/cost.
-  const { data: variationsAll = [] } = useQuery({
+  const { data: variationsAllRaw = [] } = useQuery({
     queryKey: ["bi_variations_all"],
     queryFn: async () => fetchAll<any>(() =>
       supabase.from("item_variations").select("id, item_id, name, sku, quantity, cost_price, selling_price")
     ),
   });
+
+  // Supplier links for every item (used by the Supplier filter)
+  const { data: itemSupplierLinks = [] } = useQuery({
+    queryKey: ["bi_item_suppliers"],
+    queryFn: async () => {
+      const links = await fetchAll<any>(() =>
+        supabase.from("item_suppliers").select("item_id, supplier_id, overseas_supplier_id")
+      );
+      const [{ data: locals }, { data: overseas }] = await Promise.all([
+        supabase.from("suppliers").select("id, name"),
+        supabase.from("overseas_suppliers").select("id, name"),
+      ]);
+      const names = new Map<string, string>();
+      for (const s of (locals as any[]) || []) names.set(s.id, s.name);
+      for (const s of (overseas as any[]) || []) names.set(s.id, s.name);
+      return links.map((l: any) => ({
+        item_id: l.item_id,
+        supplier: names.get(l.supplier_id || l.overseas_supplier_id) || null,
+      })).filter((l: any) => l.supplier);
+    },
+  });
+
+  // Filter option lists
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of itemsAllRaw as any[]) if (i.category) set.add(i.category);
+    return Array.from(set).sort().map((v) => ({ value: v, label: v }));
+  }, [itemsAllRaw]);
+  const brandOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of itemsAllRaw as any[]) if (i.brand) set.add(i.brand);
+    return Array.from(set).sort().map((v) => ({ value: v, label: v }));
+  }, [itemsAllRaw]);
+  const supplierOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of itemSupplierLinks as any[]) set.add(l.supplier);
+    return Array.from(set).sort().map((v) => ({ value: v, label: v }));
+  }, [itemSupplierLinks]);
+
+  // Item ids allowed by the Category / Brand / Supplier filters (null = no restriction)
+  const allowedItemIds = useMemo(() => {
+    const active = categoryFilter !== "all" || brandFilter !== "all" || supplierFilter !== "all";
+    if (!active) return null;
+    let bySupplier: Set<string> | null = null;
+    if (supplierFilter !== "all") {
+      bySupplier = new Set((itemSupplierLinks as any[]).filter((l) => l.supplier === supplierFilter).map((l) => l.item_id));
+    }
+    const ids = new Set<string>();
+    for (const i of itemsAllRaw as any[]) {
+      if (categoryFilter !== "all" && i.category !== categoryFilter) continue;
+      if (brandFilter !== "all" && i.brand !== brandFilter) continue;
+      if (bySupplier && !bySupplier.has(i.id)) continue;
+      ids.add(i.id);
+    }
+    return ids;
+  }, [categoryFilter, brandFilter, supplierFilter, itemsAllRaw, itemSupplierLinks]);
+
+  const itemsAll = useMemo(
+    () => (allowedItemIds ? (itemsAllRaw as any[]).filter((i) => allowedItemIds.has(i.id)) : (itemsAllRaw as any[])),
+    [itemsAllRaw, allowedItemIds],
+  );
+  const variationsAll = useMemo(
+    () => (allowedItemIds ? (variationsAllRaw as any[]).filter((v) => allowedItemIds.has(v.item_id)) : (variationsAllRaw as any[])),
+    [variationsAllRaw, allowedItemIds],
+  );
+  const onlineRows = useMemo(
+    () => (allowedItemIds ? (onlineRowsRaw as any[]).filter((r) => r.item_id && allowedItemIds.has(r.item_id)) : (onlineRowsRaw as any[])),
+    [onlineRowsRaw, allowedItemIds],
+  );
+  const invoiceRows = useMemo(
+    () => (allowedItemIds ? (invoiceRowsRaw as any[]).filter((r) => r.item_id && allowedItemIds.has(r.item_id)) : (invoiceRowsRaw as any[])),
+    [invoiceRowsRaw, allowedItemIds],
+  );
 
   // All inventory movements — used to reconstruct historical stock levels for GMROI.
   const { data: movementsAll = [] } = useQuery({
@@ -1112,6 +1189,12 @@ export default function BusinessInsightsPage() {
             </Button>
           ))}
         </div>
+        <div className="h-5 w-px bg-border mx-1" />
+        <div className="flex items-center gap-1 flex-wrap">
+          <FilterCombobox value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} allLabel="All categories" className="h-7 text-xs w-[150px]" />
+          <FilterCombobox value={brandFilter} onChange={setBrandFilter} options={brandOptions} allLabel="All brands" className="h-7 text-xs w-[150px]" />
+          <FilterCombobox value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} allLabel="All suppliers" className="h-7 text-xs w-[160px]" />
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="relative">
             <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -1130,7 +1213,7 @@ export default function BusinessInsightsPage() {
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
+        {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches"} · {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">

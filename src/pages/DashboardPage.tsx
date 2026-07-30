@@ -1,39 +1,27 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { getDashboardStats, updateItem } from "@/lib/api";
-import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
-import { StatusBadge } from "@/components/StatusBadge";
-import { Package, DollarSign, AlertTriangle, TruckIcon, ArrowRight, ShoppingCart, Receipt, CalendarIcon, X, Wallet, Banknote, Coins } from "lucide-react";
+import { Package, DollarSign, AlertTriangle, TruckIcon, ArrowRight, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp } from "lucide-react";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useBranch } from "@/contexts/BranchContext";
 
-type SalesRange = "daily" | "monthly" | "custom";
-type SalesDetail = "online" | "invoice" | "combined" | null;
 type LowStockFilter = "all" | "ordered" | "not_ordered";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, activeBranch } = useBranch();
   const queryClient = useQueryClient();
 
-  const [salesRange, setSalesRange] = useState<SalesRange>("daily");
-  const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
-  const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
-  const [showDetail, setShowDetail] = useState<SalesDetail>(null);
   const [lowStockFilter, setLowStockFilter] = useState<LowStockFilter>("all");
   const [editingThreshold, setEditingThreshold] = useState<Record<string, string>>({});
 
@@ -48,65 +36,10 @@ export default function DashboardPage() {
     onError: (e: any) => toast.error(e.message || "Failed to update threshold"),
   });
 
-  const { dateFrom, dateTo } = useMemo(() => {
-    const now = new Date();
-    if (salesRange === "daily") {
-      return { dateFrom: startOfDay(now), dateTo: endOfDay(now) };
-    } else if (salesRange === "monthly") {
-      return { dateFrom: startOfMonth(now), dateTo: endOfMonth(now) };
-    } else {
-      return {
-        dateFrom: customFrom ? startOfDay(customFrom) : startOfDay(now),
-        dateTo: customTo ? endOfDay(customTo) : endOfDay(now),
-      };
-    }
-  }, [salesRange, customFrom, customTo]);
-
-  const dateFromStr = format(dateFrom, "yyyy-MM-dd");
-  const dateToStr = format(dateTo, "yyyy-MM-dd");
-
   const { data: stats, isLoading } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: getDashboardStats,
+    queryKey: ["dashboard", activeBranchId],
+    queryFn: () => getDashboardStats(activeBranchId),
   });
-
-  // Fetch full online sales records for the date range
-  const { data: onlineSalesData = [] } = useQuery({
-    queryKey: ["dashboard_online_sales_list", dateFromStr, dateToStr, activeBranchId],
-    queryFn: async () => {
-      let q = supabase
-        .from("online_sales")
-        .select("*")
-        .gte("order_date", dateFromStr)
-        .lte("order_date", dateToStr)
-        .eq("status", "completed")
-        .order("order_date", { ascending: false });
-      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
-      const { data } = await q;
-      return data || [];
-    },
-  });
-
-  // Fetch full invoice records for the date range
-  const { data: invoiceSalesData = [] } = useQuery({
-    queryKey: ["dashboard_invoice_sales_list", dateFromStr, dateToStr, activeBranchId],
-    queryFn: async () => {
-      let q = supabase
-        .from("invoices")
-        .select("*, customers(name), quotations(sales_agent)")
-        .in("status", ["confirmed", "paid"])
-        .gte("invoice_date", dateFromStr)
-        .lte("invoice_date", dateToStr)
-        .order("invoice_date", { ascending: false });
-      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
-      const { data } = await q;
-      return data || [];
-    },
-  });
-
-  const onlineSalesTotal = onlineSalesData.reduce((sum: number, s: any) => sum + Number(s.posted_price) * (s.quantity || 1), 0);
-  const invoiceSalesTotal = invoiceSalesData.reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0);
-  const combinedTotal = onlineSalesTotal + invoiceSalesTotal;
 
   if (isLoading) {
     return (
@@ -120,41 +53,84 @@ export default function DashboardPage() {
     <div className="space-y-6 sm:space-y-8">
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
-        <p className="page-description">Overview of your business operations</p>
+        <p className="page-description">
+          {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches — company-wide totals"}
+        </p>
       </div>
 
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
+        {isAdmin && (
+          <StatCard
+            title="Sales Today"
+            value={peso(stats?.salesToday || 0)}
+            icon={ShoppingCart}
+            variant="success"
+            description="Invoices + online sales"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Sales This Month"
+            value={peso(stats?.salesThisMonth || 0)}
+            icon={TrendingUp}
+            variant="success"
+            description="Month to date"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Gross Profit"
+            value={peso(stats?.grossProfitMonth || 0)}
+            icon={Coins}
+            variant="success"
+            description="Month to date"
+          />
+        )}
         {isAdmin && (
           <StatCard
             title="Inventory Value"
             value={peso(stats?.totalValue || 0)}
             icon={DollarSign}
-            variant="success"
-            description="Goods on hand, available for sale"
+            description="Goods on hand"
           />
         )}
         <StatCard
-          title="Low Stock"
+          title="Purchase Orders"
+          value={stats?.openPurchaseOrders || 0}
+          icon={Receipt}
+          description="Open local + overseas"
+        />
+        {isAdmin && (
+          <StatCard
+            title="Receivables"
+            value={peso(stats?.receivablesValue || 0)}
+            icon={Wallet}
+            variant="warning"
+            description="Unpaid invoices"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Payables"
+            value={peso(stats?.accountsPayableValue || 0)}
+            icon={Banknote}
+            variant="warning"
+            description="Owed to suppliers"
+          />
+        )}
+        <StatCard
+          title="Low Stock Items"
           value={stats?.lowStockItems.length || 0}
           icon={AlertTriangle}
           variant="warning"
         />
+        <StatCard title="Total Items" value={stats?.totalItems || 0} icon={Package} />
         {isAdmin && (
           <StatCard
             title="Incoming Assets"
             value={peso(stats?.incomingAssetsValue || 0)}
             icon={TruckIcon}
             description="Paid goods in transit"
-          />
-        )}
-        {isAdmin && (
-          <StatCard
-            title="Accounts Payable"
-            value={peso(stats?.accountsPayableValue || 0)}
-            icon={Banknote}
-            variant="warning"
-            description="Owed to overseas suppliers"
           />
         )}
         {isAdmin && (
@@ -168,161 +144,9 @@ export default function DashboardPage() {
         )}
       </div>
 
-
       {/* Analytics: charts (admin only) */}
       {isAdmin && <DashboardAnalytics />}
 
-      {/* Sales Summary */}
-      {isAdmin && (
-        <div>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <h2 className="text-sm font-semibold">Sales Summary</h2>
-            <div className="flex items-center gap-2 flex-wrap">
-              {(["daily", "monthly", "custom"] as SalesRange[]).map((r) => (
-                <Button
-                  key={r}
-                  variant={salesRange === r ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 text-xs capitalize"
-                  onClick={() => { setSalesRange(r); setShowDetail(null); }}
-                >
-                  {r}
-                </Button>
-              ))}
-              {salesRange === "custom" && (
-                <div className="flex items-center gap-1">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className={cn("h-7 text-xs w-[110px] justify-start", !customFrom && "text-muted-foreground")}>
-                        <CalendarIcon className="h-3 w-3 mr-1" />
-                        {customFrom ? format(customFrom, "MM/dd/yyyy") : "From"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} initialFocus className="p-3 pointer-events-auto" />
-                    </PopoverContent>
-                  </Popover>
-                  <span className="text-xs text-muted-foreground">—</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className={cn("h-7 text-xs w-[110px] justify-start", !customTo && "text-muted-foreground")}>
-                        <CalendarIcon className="h-3 w-3 mr-1" />
-                        {customTo ? format(customTo, "MM/dd/yyyy") : "To"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={customTo} onSelect={setCustomTo} initialFocus className="p-3 pointer-events-auto" />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="text-xs text-muted-foreground mb-3">
-            {salesRange === "daily" ? `Today: ${format(dateFrom, "MMM d, yyyy")}` :
-             salesRange === "monthly" ? `${format(dateFrom, "MMMM yyyy")}` :
-             `${format(dateFrom, "MMM d, yyyy")} — ${format(dateTo, "MMM d, yyyy")}`}
-          </div>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-            <div className={cn("cursor-pointer rounded-xl transition-all", showDetail === "online" ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border")} onClick={() => setShowDetail(showDetail === "online" ? null : "online")}>
-              <StatCard title="Online Sales" value={peso(onlineSalesTotal)} icon={ShoppingCart} variant="success" />
-            </div>
-            <div className={cn("cursor-pointer rounded-xl transition-all", showDetail === "invoice" ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border")} onClick={() => setShowDetail(showDetail === "invoice" ? null : "invoice")}>
-              <StatCard title="Invoice Sales" value={peso(invoiceSalesTotal)} icon={Receipt} variant="success" />
-            </div>
-            <div className={cn("cursor-pointer rounded-xl transition-all", showDetail === "combined" ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border")} onClick={() => setShowDetail(showDetail === "combined" ? null : "combined")}>
-              <StatCard title="Total Sales" value={peso(combinedTotal)} icon={DollarSign} variant="success" />
-            </div>
-          </div>
-
-          {/* Detail tables */}
-          {showDetail && (
-            <div className="mt-4 space-y-4">
-              {(showDetail === "online" || showDetail === "combined") && onlineSalesData.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Online Sales ({onlineSalesData.length})</h3>
-                    {showDetail !== "combined" && (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowDetail(null)}><X className="h-3.5 w-3.5" /></Button>
-                    )}
-                  </div>
-                  <div className="data-table-wrapper">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs">Date</TableHead>
-                          <TableHead className="text-xs">Order #</TableHead>
-                          <TableHead className="text-xs">Product</TableHead>
-                          <TableHead className="text-xs">Channel</TableHead>
-                          <TableHead className="text-xs text-right">Qty</TableHead>
-                          <TableHead className="text-xs text-right">Price</TableHead>
-                          <TableHead className="text-xs text-right">Total</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {onlineSalesData.map((s: any) => (
-                          <TableRow key={s.id} className="hover:bg-muted/30">
-                            <TableCell className="text-sm text-muted-foreground">{s.order_date}</TableCell>
-                            <TableCell className="font-mono text-xs font-semibold">{s.order_number}</TableCell>
-                            <TableCell className="text-sm">{s.product_name}</TableCell>
-                            <TableCell className="text-sm capitalize">{s.sales_channel}</TableCell>
-                            <TableCell className="text-sm text-right">{s.quantity}</TableCell>
-                            <TableCell className="text-sm text-right">{peso(Number(s.posted_price))}</TableCell>
-                            <TableCell className="text-sm text-right font-medium">{peso(Number(s.posted_price) * (s.quantity || 1))}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-
-              {(showDetail === "invoice" || showDetail === "combined") && invoiceSalesData.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Invoice Sales ({invoiceSalesData.length})</h3>
-                    {showDetail !== "combined" && (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowDetail(null)}><X className="h-3.5 w-3.5" /></Button>
-                    )}
-                  </div>
-                  <div className="data-table-wrapper">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs">Date</TableHead>
-                          <TableHead className="text-xs">Invoice #</TableHead>
-                          <TableHead className="text-xs">Customer</TableHead>
-                          <TableHead className="text-xs">Sales Agent</TableHead>
-                          <TableHead className="text-xs">Status</TableHead>
-                          <TableHead className="text-xs text-right">Total</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {invoiceSalesData.map((inv: any) => (
-                          <TableRow key={inv.id} className="hover:bg-muted/30">
-                            <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
-                            <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
-                            <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
-                            <TableCell className="text-sm">{inv.quotations?.sales_agent || "—"}</TableCell>
-                            <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
-                            <TableCell className="text-sm text-right font-medium">{peso(Number(inv.total_amount))}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-
-              {showDetail === "combined" && (
-                <Button variant="ghost" size="sm" className="text-xs" onClick={() => setShowDetail(null)}>
-                  <X className="h-3 w-3 mr-1" /> Close details
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Low Stock Alert */}
       {stats?.lowStockItems && stats.lowStockItems.length > 0 && (() => {

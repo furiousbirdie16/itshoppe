@@ -815,18 +815,37 @@ export const getInventoryMovements = async (itemId?: string): Promise<InventoryM
 };
 
 // Dashboard stats
-export const getDashboardStats = async () => {
+export const getDashboardStats = async (branchId?: string | null) => {
   const { data: items } = await from("items").select("*");
-  const { data: recentPOs } = await from("purchase_orders").select("*, suppliers(*)").order("created_at", { ascending: false }).limit(5);
-  const { data: recentInvoices } = await from("invoices").select("*, customers(*)").order("created_at", { ascending: false }).limit(5);
+
+  // Branch-scoped stock: item_branch_stock is the single source of truth.
+  let stockQ = from("item_branch_stock").select("item_id, quantity, branch_id");
+  if (branchId) stockQ = stockQ.eq("branch_id", branchId);
+  const { data: branchStock } = await stockQ;
+  const qtyByItem: Record<string, number> = {};
+  for (const r of (branchStock as any[]) || []) {
+    qtyByItem[r.item_id] = (qtyByItem[r.item_id] || 0) + Number(r.quantity || 0);
+  }
+
+  let recentPOQ = from("purchase_orders").select("*, suppliers(*)").order("created_at", { ascending: false }).limit(5);
+  if (branchId) recentPOQ = recentPOQ.eq("branch_id", branchId);
+  const { data: recentPOs } = await recentPOQ;
+  let recentInvQ = from("invoices").select("*, customers(*)").order("created_at", { ascending: false }).limit(5);
+  if (branchId) recentInvQ = recentInvQ.eq("branch_id", branchId);
+  const { data: recentInvoices } = await recentInvQ;
 
   // Outstanding (not fully received) line items from local + overseas POs
-  const { data: openPOItems } = await from("purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status)")
+  let openPOQ = from("purchase_order_items")
+    .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status, branch_id)")
     .neq("purchase_orders.status", "received");
-  const { data: openOverseasItems } = await from("overseas_purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate)")
+  if (branchId) openPOQ = openPOQ.eq("purchase_orders.branch_id", branchId);
+  const { data: openPOItems } = await openPOQ;
+  let openOverseasQ = from("overseas_purchase_order_items")
+    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate, branch_id)")
     .neq("overseas_purchase_orders.status", "received");
+  if (branchId) openOverseasQ = openOverseasQ.eq("overseas_purchase_orders.branch_id", branchId);
+  const { data: openOverseasItems } = await openOverseasQ;
+
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};
   let incomingAssetsValue = 0;   // Paid (or local) goods in transit
@@ -869,11 +888,61 @@ export const getDashboardStats = async () => {
   // Keep legacy combined "incoming stock" for backward compatibility with the existing chart/UI
   const incomingStockValue = incomingAssetsValue + payableAssetsValue;
 
-  const itemsList = (items as any[]) || [];
+  const itemsList = ((items as any[]) || []).map((i: any) => ({ ...i, quantity: qtyByItem[i.id] ?? 0 }));
   const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
   const lowStockItems = itemsList
     .filter((i: any) => (i.low_stock_threshold ?? 0) > 0 && i.quantity <= i.low_stock_threshold)
     .map((i: any) => ({ ...i, on_order: onOrder[i.id] || { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] } }));
+
+  // ---- Period sales, gross profit, receivables, open PO count ----
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const todayIso = iso(now);
+  const monthStartIso = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+
+  const periodSales = async (fromIso: string) => {
+    let invQ = from("invoices")
+      .select("total_amount")
+      .in("status", ["confirmed", "paid", "reserved", "shipped", "completed"])
+      .gte("invoice_date", fromIso)
+      .lte("invoice_date", todayIso);
+    if (branchId) invQ = invQ.eq("branch_id", branchId);
+    let onQ = from("online_sales")
+      .select("posted_price, quantity")
+      .eq("status", "completed")
+      .gte("order_date", fromIso)
+      .lte("order_date", todayIso);
+    if (branchId) onQ = onQ.eq("branch_id", branchId);
+    const [{ data: inv }, { data: on }] = await Promise.all([invQ, onQ]);
+    const invTotal = ((inv as any[]) || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
+    const onTotal = ((on as any[]) || []).reduce((s, r) => s + Number(r.posted_price || 0) * (r.quantity || 1), 0);
+    return invTotal + onTotal;
+  };
+
+  const [salesToday, salesThisMonth, receivablesValue] = await Promise.all([
+    periodSales(todayIso),
+    periodSales(monthStartIso),
+    getAccountsReceivable(branchId),
+  ]);
+
+  // Gross profit for the current month (invoice line financials)
+  let gpQ = from("invoice_item_financials")
+    .select("line_profit, invoices!inner(invoice_date, status, branch_id)")
+    .gte("invoices.invoice_date", monthStartIso)
+    .lte("invoices.invoice_date", todayIso)
+    .in("invoices.status", ["confirmed", "paid", "reserved", "shipped", "completed"]);
+  if (branchId) gpQ = gpQ.eq("invoices.branch_id", branchId);
+  const { data: gpRows } = await gpQ;
+  const grossProfitMonth = ((gpRows as any[]) || []).reduce((s, r) => s + Number(r.line_profit || 0), 0);
+
+  // Open purchase orders (local + overseas) count
+  let poCountQ = from("purchase_orders").select("id", { count: "exact", head: true }).neq("status", "received");
+  if (branchId) poCountQ = poCountQ.eq("branch_id", branchId);
+  let opoCountQ = from("overseas_purchase_orders").select("id", { count: "exact", head: true }).neq("status", "received");
+  if (branchId) opoCountQ = opoCountQ.eq("branch_id", branchId);
+  const [{ count: poCount }, { count: opoCount }] = await Promise.all([poCountQ, opoCountQ]);
+  const openPurchaseOrders = (poCount || 0) + (opoCount || 0);
 
   return {
     totalItems: itemsList.length,
@@ -883,11 +952,17 @@ export const getDashboardStats = async () => {
     payableAssetsValue,
     accountsPayableValue,
     totalAssetValue: totalValue + incomingAssetsValue + payableAssetsValue,
+    salesToday,
+    salesThisMonth,
+    grossProfitMonth,
+    receivablesValue,
+    openPurchaseOrders,
     lowStockItems: lowStockItems as (Item & { on_order: { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] } })[],
     recentPOs: (recentPOs || []) as PurchaseOrder[],
     recentInvoices: (recentInvoices || []) as Invoice[],
   };
 };
+
 
 
 // Document sequences
