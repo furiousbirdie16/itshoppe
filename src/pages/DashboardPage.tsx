@@ -99,7 +99,7 @@ export default function DashboardPage() {
             title="Incoming Assets"
             value={peso(stats?.incomingAssetsValue || 0)}
             icon={TruckIcon}
-            description="Paid goods in transit"
+            description="Shipped goods in transit"
           />
         )}
         {isAdmin && (
@@ -108,7 +108,8 @@ export default function DashboardPage() {
             value={peso(stats?.totalAssetValue || 0)}
             icon={Coins}
             variant="success"
-            description="Inventory + Incoming + Payable"
+            description="Inventory + Incoming"
+
           />
         )}
       </div>

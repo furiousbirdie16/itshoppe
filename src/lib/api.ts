@@ -848,34 +848,38 @@ export const getDashboardStats = async (branchId?: string | null) => {
 
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};
-  let incomingAssetsValue = 0;   // Paid (or local) goods in transit
-  let payableAssetsValue = 0;    // Overseas goods shipped but not yet paid
-  // Local POs: treat all open remaining as Incoming Assets (paid on receipt model)
+  let incomingAssetsValue = 0;   // Goods already shipped (in transit), local + overseas
+  let payableAssetsValue = 0;    // Unpaid POs (unpaid / shipped / not yet shipped), local + overseas
+
+  // Statuses that mean "shipped / in transit"
+  const LOCAL_SHIPPED = new Set(["sent", "partially_received"]);
+  const OVERSEAS_SHIPPED = new Set(["shipped", "shipped_not_paid", "partially_received", "pending_cargo_adjustment", "cargo_adjusted"]);
+  // Statuses that mean "not yet paid"
+  const OVERSEAS_UNPAID = new Set(["unpaid", "draft", "sent", "shipped_not_paid"]);
+
+  // Local POs: paid on receipt, so every open PO is a payable; shipped ones are also incoming assets
   for (const li of (openPOItems as any[]) || []) {
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
-    incomingAssetsValue += remaining * Number(li.unit_cost || 0);
+    const status = li.purchase_orders?.status;
+    const value = remaining * Number(li.unit_cost || 0);
+    payableAssetsValue += value;
+    if (LOCAL_SHIPPED.has(status)) incomingAssetsValue += value;
     if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.localQty += remaining;
     const num = li.purchase_orders?.po_number;
     if (num && !e.localPOs.includes(num)) e.localPOs.push(num);
   }
-  // Overseas POs: classify by status into Payable vs Incoming
-  const PAYABLE_STATUSES = new Set(["shipped_not_paid", "sent"]);
-  const INCOMING_STATUSES = new Set(["shipped", "partially_received"]);
+  // Overseas POs
   for (const li of (openOverseasItems as any[]) || []) {
     const remaining = (li.quantity || 0) - (li.received_quantity || 0);
     if (remaining <= 0) continue;
     const rate = Number(li.overseas_purchase_orders?.exchange_rate || 1);
     const status = li.overseas_purchase_orders?.status;
     const value = remaining * Number(li.unit_cost || 0) * rate;
-    if (PAYABLE_STATUSES.has(status)) {
-      payableAssetsValue += value;
-    } else if (INCOMING_STATUSES.has(status)) {
-      incomingAssetsValue += value;
-    }
-    // 'draft'/'unpaid'/'paid_not_shipped'/'pending_cargo_adjustment'/'cargo_adjusted' contribute $0
+    if (OVERSEAS_SHIPPED.has(status)) incomingAssetsValue += value;
+    if (OVERSEAS_UNPAID.has(status)) payableAssetsValue += value;
     if (!li.item_id) continue;
     const e = onOrder[li.item_id] ||= { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] };
     e.overseasQty += remaining;
@@ -883,10 +887,11 @@ export const getDashboardStats = async (branchId?: string | null) => {
     if (num && !e.overseasPOs.includes(num)) e.overseasPOs.push(num);
   }
 
-  // Accounts Payable for overseas = the Payable Assets amount (what we owe suppliers for shipped goods)
+  // Accounts Payable = everything we still owe suppliers
   const accountsPayableValue = payableAssetsValue;
-  // Keep legacy combined "incoming stock" for backward compatibility with the existing chart/UI
-  const incomingStockValue = incomingAssetsValue + payableAssetsValue;
+  // Legacy combined "incoming stock" used by charts
+  const incomingStockValue = incomingAssetsValue;
+
 
   const itemsList = ((items as any[]) || []).map((i: any) => ({ ...i, quantity: qtyByItem[i.id] ?? 0 }));
   const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
@@ -951,7 +956,7 @@ export const getDashboardStats = async (branchId?: string | null) => {
     incomingAssetsValue,
     payableAssetsValue,
     accountsPayableValue,
-    totalAssetValue: totalValue + incomingAssetsValue + payableAssetsValue,
+    totalAssetValue: totalValue + incomingAssetsValue,
     salesToday,
     salesThisMonth,
     grossProfitMonth,

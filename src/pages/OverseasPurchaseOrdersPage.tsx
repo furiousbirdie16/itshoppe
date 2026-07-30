@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign } from "lucide-react";
 
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -331,6 +331,31 @@ export default function OverseasPurchaseOrdersPage() {
     mutationFn: deleteOverseasPurchaseOrder,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); toast.success("Deleted"); },
   });
+
+  // ---- Shipped / Paid quick toggles ----
+  const isPaidStatus = (s: string) => ["paid_not_shipped", "shipped", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
+  const isShippedStatus = (s: string) => ["shipped", "shipped_not_paid", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
+  const statusFromFlags = (paid: boolean, shipped: boolean) =>
+    paid && shipped ? "shipped" : paid ? "paid_not_shipped" : shipped ? "shipped_not_paid" : "unpaid";
+
+  const statusMut = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) =>
+      updateOverseasPurchaseOrder(id, { status } as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Status updated");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const toggleFlag = (po: OverseasPurchaseOrder, flag: "paid" | "shipped") => {
+    const paid = isPaidStatus(po.status);
+    const shipped = isShippedStatus(po.status);
+    const next = flag === "paid" ? statusFromFlags(!paid, shipped) : statusFromFlags(paid, !shipped);
+    statusMut.mutate({ id: po.id, status: next });
+  };
+
 
   const receiveMut = useMutation({
     mutationFn: async () => {
@@ -1225,6 +1250,28 @@ export default function OverseasPurchaseOrdersPage() {
                       >
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
                       </Button>
+                    )}
+                    {isAdmin && ["unpaid", "draft", "sent", "paid_not_shipped", "shipped_not_paid", "shipped"].includes(po.status) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFlag(po, "shipped")}
+                          className="h-7 w-7 rounded-md"
+                          title={isShippedStatus(po.status) ? "Unmark as shipped" : "Mark as shipped"}
+                        >
+                          <Truck className={`h-3.5 w-3.5 ${isShippedStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFlag(po, "paid")}
+                          className="h-7 w-7 rounded-md"
+                          title={isPaidStatus(po.status) ? "Unmark as paid" : "Mark as paid"}
+                        >
+                          <BadgeDollarSign className={`h-3.5 w-3.5 ${isPaidStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
+                        </Button>
+                      </>
                     )}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
