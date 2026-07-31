@@ -106,12 +106,12 @@ const navGroups: NavGroup[] = [
     title: "Finance",
     icon: Wallet,
     items: [
-      { title: "Financial Dashboard", url: "#", icon: LineChart, disabled: true },
+      { title: "Financial Dashboard", url: "#", icon: LineChart, disabled: true, adminOnly: true },
       { title: "Receivables", url: "/pending-payments", icon: CircleDollarSign },
-      { title: "Cash & Bank", url: "#", icon: Landmark, disabled: true },
-      { title: "Payables", url: "#", icon: HandCoins, disabled: true },
-      { title: "Loans", url: "#", icon: PiggyBank, disabled: true },
-      { title: "Owner Transactions", url: "#", icon: Wallet, disabled: true },
+      { title: "Cash & Bank", url: "#", icon: Landmark, disabled: true, adminOnly: true },
+      { title: "Payables", url: "#", icon: HandCoins, disabled: true, adminOnly: true },
+      { title: "Loans", url: "#", icon: PiggyBank, disabled: true, adminOnly: true },
+      { title: "Owner Transactions", url: "#", icon: Wallet, disabled: true, adminOnly: true },
     ],
   },
   {
