@@ -580,8 +580,15 @@ export default function InventoryPage() {
                     { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
                   ] : []),
                 ]) as BulkField[]}
-                updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
+                updateOne={async (id, patch) => {
+                  const { rest, wh, st } = splitQty(patch as any);
+                  if (Object.keys(rest).length > 0) await updateItem(id, rest as Partial<Item>);
+                  if (wh !== undefined || st !== undefined) {
+                    if (!activeBranchId) throw new Error("Select a specific branch to edit quantities");
+                    await setBranchQuantities({ itemId: id, branchId: activeBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
+                  }
+                }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setSelectedIds(new Set()); }}
               />
             );
           })()}
