@@ -99,15 +99,26 @@ function classify(type: string, reference_type: string | null): { category: Move
 }
 
 async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<LedgerRow[]> {
-  let q = supabase
-    .from("inventory_movements")
-    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email, branch_id")
-    .eq("item_id", itemId)
-    .order("created_at", { ascending: true });
-  if (branchId) q = q.eq("branch_id", branchId);
-  const { data: movements } = await q;
+  // Paginate: Supabase caps rows per request (1000), which previously truncated
+  // the ledger to the oldest 1000 movements.
+  const PAGE = 1000;
+  const rows: any[] = [];
+  for (let page = 0; page < 50; page++) {
+    let q = supabase
+      .from("inventory_movements")
+      .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email, branch_id")
+      .eq("item_id", itemId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (branchId) q = q.eq("branch_id", branchId);
+    const { data, error } = await q;
+    if (error) break;
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
 
-  const rows = movements || [];
 
   // Resolve reference document numbers
   const invoiceIds = new Set<string>();
