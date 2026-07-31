@@ -976,7 +976,7 @@ export default function InventoryPage() {
       </Dialog>
 
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_variations"] }); }} />
-      <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
+      <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); }} />
 
       <HorizontalScrollSync className="rounded-xl border bg-card">
         <Table>
