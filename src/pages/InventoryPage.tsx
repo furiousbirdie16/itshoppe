@@ -273,15 +273,40 @@ export default function InventoryPage() {
     },
   });
 
+  // Quantities live in item_branch_stock (per branch) — never on items.*
+  const splitQty = (data: Partial<Item> & Record<string, any>) => {
+    const rest = { ...data };
+    const wh = rest.warehouse_quantity as number | undefined;
+    const st = rest.store_quantity as number | undefined;
+    delete rest.warehouse_quantity;
+    delete rest.store_quantity;
+    return { rest, wh, st };
+  };
+
   const createMut = useMutation({
-    mutationFn: (data: Partial<Item>) => createItem(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); setOpen(false); toast.success("Item created"); },
+    mutationFn: async (data: Partial<Item>) => {
+      const { rest, wh, st } = splitQty(data);
+      const created = await createItem(rest);
+      if ((wh || st) && activeBranchId) {
+        await setBranchQuantities({ itemId: created.id, branchId: activeBranchId, warehouse: wh ?? 0, store: st ?? 0, notes: "Item created" });
+      }
+      return created;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setOpen(false); toast.success("Item created"); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Item> }) => updateItem(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); setOpen(false); setEditing(null); toast.success("Item updated"); },
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Item> }) => {
+      const { rest, wh, st } = splitQty(data);
+      const res = await updateItem(id, rest);
+      if (wh !== undefined || st !== undefined) {
+        if (!activeBranchId) throw new Error("Select a specific branch to edit quantities");
+        await setBranchQuantities({ itemId: id, branchId: activeBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
+      }
+      return res;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setOpen(false); setEditing(null); toast.success("Item updated"); },
     onError: (e: any) => toast.error(e.message),
   });
 
