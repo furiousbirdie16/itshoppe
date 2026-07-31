@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers } from "@/lib/api";
+import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,15 +273,40 @@ export default function InventoryPage() {
     },
   });
 
+  // Quantities live in item_branch_stock (per branch) — never on items.*
+  const splitQty = (data: Partial<Item> & Record<string, any>) => {
+    const rest = { ...data };
+    const wh = rest.warehouse_quantity as number | undefined;
+    const st = rest.store_quantity as number | undefined;
+    delete rest.warehouse_quantity;
+    delete rest.store_quantity;
+    return { rest, wh, st };
+  };
+
   const createMut = useMutation({
-    mutationFn: (data: Partial<Item>) => createItem(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); setOpen(false); toast.success("Item created"); },
+    mutationFn: async (data: Partial<Item>) => {
+      const { rest, wh, st } = splitQty(data);
+      const created = await createItem(rest);
+      if ((wh || st) && activeBranchId) {
+        await setBranchQuantities({ itemId: created.id, branchId: activeBranchId, warehouse: wh ?? 0, store: st ?? 0, notes: "Item created" });
+      }
+      return created;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setOpen(false); toast.success("Item created"); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Item> }) => updateItem(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); setOpen(false); setEditing(null); toast.success("Item updated"); },
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Item> }) => {
+      const { rest, wh, st } = splitQty(data);
+      const res = await updateItem(id, rest);
+      if (wh !== undefined || st !== undefined) {
+        if (!activeBranchId) throw new Error("Select a specific branch to edit quantities");
+        await setBranchQuantities({ itemId: id, branchId: activeBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
+      }
+      return res;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setOpen(false); setEditing(null); toast.success("Item updated"); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -555,8 +580,15 @@ export default function InventoryPage() {
                     { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
                   ] : []),
                 ]) as BulkField[]}
-                updateOne={async (id, patch) => { await updateItem(id, patch as Partial<Item>); }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); setSelectedIds(new Set()); }}
+                updateOne={async (id, patch) => {
+                  const { rest, wh, st } = splitQty(patch as any);
+                  if (Object.keys(rest).length > 0) await updateItem(id, rest as Partial<Item>);
+                  if (wh !== undefined || st !== undefined) {
+                    if (!activeBranchId) throw new Error("Select a specific branch to edit quantities");
+                    await setBranchQuantities({ itemId: id, branchId: activeBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
+                  }
+                }}
+                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setSelectedIds(new Set()); }}
               />
             );
           })()}
@@ -944,7 +976,7 @@ export default function InventoryPage() {
       </Dialog>
 
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_variations"] }); }} />
-      <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => queryClient.invalidateQueries({ queryKey: ["items"] })} />
+      <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); }} />
 
       <HorizontalScrollSync className="rounded-xl border bg-card">
         <Table>
