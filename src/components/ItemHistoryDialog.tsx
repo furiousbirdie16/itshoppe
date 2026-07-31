@@ -99,15 +99,26 @@ function classify(type: string, reference_type: string | null): { category: Move
 }
 
 async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<LedgerRow[]> {
-  let q = supabase
-    .from("inventory_movements")
-    .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email, branch_id")
-    .eq("item_id", itemId)
-    .order("created_at", { ascending: true });
-  if (branchId) q = q.eq("branch_id", branchId);
-  const { data: movements } = await q;
+  // Paginate: Supabase caps rows per request (1000), which previously truncated
+  // the ledger to the oldest 1000 movements.
+  const PAGE = 1000;
+  const rows: any[] = [];
+  for (let page = 0; page < 50; page++) {
+    let q = supabase
+      .from("inventory_movements")
+      .select("id, created_at, type, reference_type, reference_id, quantity, notes, unit, location, dest_location, balance_before, balance_after, open_before, open_after, dest_balance_before, dest_balance_after, user_email, branch_id")
+      .eq("item_id", itemId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (branchId) q = q.eq("branch_id", branchId);
+    const { data, error } = await q;
+    if (error) break;
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
 
-  const rows = movements || [];
 
   // Resolve reference document numbers
   const invoiceIds = new Set<string>();
@@ -124,18 +135,30 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
     else if (rt.startsWith("online_sale")) onlineSaleIds.add(m.reference_id);
   }
 
-  const [invRes, poRes, oposRes, osRes] = await Promise.all([
-    invoiceIds.size ? supabase.from("invoices").select("id, invoice_number").in("id", Array.from(invoiceIds)) : Promise.resolve({ data: [] as any[] }),
-    poIds.size ? supabase.from("purchase_orders").select("id, po_number").in("id", Array.from(poIds)) : Promise.resolve({ data: [] as any[] }),
-    oposIds.size ? supabase.from("overseas_purchase_orders").select("id, po_number").in("id", Array.from(oposIds)) : Promise.resolve({ data: [] as any[] }),
-    onlineSaleIds.size ? supabase.from("online_sales").select("id, order_number").in("id", Array.from(onlineSaleIds)) : Promise.resolve({ data: [] as any[] }),
+  // Chunk id lookups so long URLs / row caps don't drop references
+  const fetchRefs = async (table: string, col: string, ids: Set<string>) => {
+    const out: any[] = [];
+    const arr = Array.from(ids);
+    for (let i = 0; i < arr.length; i += 150) {
+      const { data } = await (supabase as any).from(table).select(`id, ${col}`).in("id", arr.slice(i, i + 150));
+      out.push(...(data || []));
+    }
+    return out;
+  };
+
+  const [invRows, poRows, oposRows, osRows] = await Promise.all([
+    fetchRefs("invoices", "invoice_number", invoiceIds),
+    fetchRefs("purchase_orders", "po_number", poIds),
+    fetchRefs("overseas_purchase_orders", "po_number", oposIds),
+    fetchRefs("online_sales", "order_number", onlineSaleIds),
   ]);
 
   const refMap = new Map<string, { number: string; link: string; kind: LedgerRow["reference_kind"] }>();
-  (invRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice" }));
-  (poRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order" }));
-  (oposRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
-  (osRes.data || []).forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
+  invRows.forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice" }));
+  poRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order" }));
+  oposRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
+  osRows.forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
+
 
   // Load branch labels for rows we retrieved
   const branchIds = Array.from(new Set(rows.map((m: any) => m.branch_id).filter(Boolean)));
