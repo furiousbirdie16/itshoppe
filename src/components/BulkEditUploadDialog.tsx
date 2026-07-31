@@ -369,12 +369,33 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
   const handleApply = async () => {
     const toUpdate = rows.filter(r => r.status === "matched" && r.targetId);
     if (toUpdate.length === 0) { toast.error("Nothing to update"); return; }
+    const hasQtyChange = toUpdate.some(r => r.kind === "item" && ("warehouse_quantity" in r.patch || "store_quantity" in r.patch));
+    if (hasQtyChange && !activeBranchId) {
+      toast.error("Select a specific branch to update quantities (quantities are per branch)");
+      return;
+    }
     setBusy(true);
     let ok = 0, fail = 0;
     for (const r of toUpdate) {
       try {
         if (r.kind === "item") {
-          await updateItem(r.targetId!, r.patch as Partial<Item>);
+          const patch = { ...(r.patch as Record<string, unknown>) };
+          const wh = patch.warehouse_quantity as number | undefined;
+          const st = patch.store_quantity as number | undefined;
+          delete patch.warehouse_quantity;
+          delete patch.store_quantity;
+          if (Object.keys(patch).length > 0) {
+            await updateItem(r.targetId!, patch as Partial<Item>);
+          }
+          if (wh !== undefined || st !== undefined) {
+            await setBranchQuantities({
+              itemId: r.targetId!,
+              branchId: activeBranchId!,
+              warehouse: wh ?? null,
+              store: st ?? null,
+              notes: "Bulk edit upload",
+            });
+          }
         } else {
           await updateItemVariation(r.targetId!, r.patch as Partial<ItemVariation>);
         }
