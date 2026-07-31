@@ -434,6 +434,9 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         <DialogHeader>
           <DialogTitle className="text-lg flex items-center gap-2">
             <Pencil className="h-5 w-5" /> Bulk Edit
+            <span className="text-xs font-normal text-muted-foreground">
+              · Quantities apply to {activeBranch ? activeBranch.branch_name : "— select a branch"}
+            </span>
           </DialogTitle>
         </DialogHeader>
 
