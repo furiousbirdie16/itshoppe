@@ -66,6 +66,7 @@ const numOrNull = (v: unknown): number | null => {
 };
 
 export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmin, onSuccess }: BulkEditUploadDialogProps) {
+  const { activeBranchId, activeBranch } = useBranch();
   const [rows, setRows] = useState<DiffRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
