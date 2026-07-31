@@ -145,7 +145,7 @@ function loadOpenState(): Record<string, boolean> {
 }
 
 export function AppSidebar() {
-  const { state, setOpenMobile } = useSidebar();
+  const { state, setOpenMobile, setOpen } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { user, role, signOut } = useAuth();
@@ -234,7 +234,7 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={group.key}>
                       <SidebarMenuButton
-                        onClick={() => toggleGroup(group.key, true)}
+                        onClick={() => { setOpen(true); toggleGroup(group.key, true); }}
                         className={`flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:text-foreground hover:bg-accent ${
                           hasActive ? "text-primary" : "text-muted-foreground"
                         }`}
