@@ -162,6 +162,58 @@ export const applyStockChange = async (params: {
   });
 };
 
+/**
+ * Set absolute warehouse/store quantities for an item in a SPECIFIC branch.
+ * `item_branch_stock` is the single source of truth for stock, so manual edits
+ * (item form, bulk edit upload) must go through here — writing the legacy
+ * `items.warehouse_quantity` / `items.store_quantity` columns has no effect.
+ */
+export const setBranchQuantities = async (params: {
+  itemId: string;
+  branchId: string;
+  warehouse?: number | null;
+  store?: number | null;
+  notes?: string;
+}) => {
+  const { itemId, branchId, warehouse, store, notes } = params;
+  if (!branchId) throw new Error("A branch must be selected to edit quantities");
+
+  const cur = await getBranchStock(itemId, branchId);
+  const targets: { location: "warehouse" | "store"; target: number; before: number }[] = [];
+  if (warehouse !== null && warehouse !== undefined && Number(warehouse) !== cur.warehouse_quantity) {
+    targets.push({ location: "warehouse", target: Number(warehouse), before: cur.warehouse_quantity });
+  }
+  if (store !== null && store !== undefined && Number(store) !== cur.store_quantity) {
+    targets.push({ location: "store", target: Number(store), before: cur.store_quantity });
+  }
+  if (targets.length === 0) return;
+
+  const { data: item } = await _from("items").select("base_unit").eq("id", itemId).maybeSingle();
+  const baseUnit = (item as any)?.base_unit ?? "pcs";
+
+  for (const t of targets) {
+    const delta = t.target - t.before;
+    const result = await applyBranchStockRpc({
+      itemId,
+      branchId,
+      location: t.location,
+      deltaStock: delta,
+    });
+    await recordMovement({
+      itemId,
+      branchId,
+      type: delta > 0 ? "adjust_surplus" : "adjust_missing",
+      quantity: Math.abs(delta),
+      unit: baseUnit,
+      location: t.location,
+      referenceType: "manual_adjustment",
+      notes: notes || "Manual quantity edit",
+      balanceBefore: t.before,
+      balanceAfter: t.location === "warehouse" ? result.warehouse_quantity : result.store_quantity,
+    });
+  }
+};
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = (supabase as any);
