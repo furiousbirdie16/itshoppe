@@ -261,6 +261,10 @@ export default function OnlineSalesPage() {
       order_number: s.order_number,
       sales_channel: s.sales_channel,
       notes: s.notes || "",
+      marketplace_fee_pct:
+        (s as any).marketplace_fee_pct === null || (s as any).marketplace_fee_pct === undefined
+          ? ""
+          : String((s as any).marketplace_fee_pct),
       lines: [{
         product_name: s.product_name,
         quantity: s.quantity || 1,
