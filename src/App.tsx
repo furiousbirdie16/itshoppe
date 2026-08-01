@@ -19,6 +19,7 @@ import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";
 import InvoicesPage from "@/pages/InvoicesPage";
 import PendingPaymentsPage from "@/pages/PendingPaymentsPage";
+import MarketplaceReceivablesPage from "@/pages/MarketplaceReceivablesPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import CustomerPricingPage from "@/pages/CustomerPricingPage";
 import SettingsPage from "@/pages/SettingsPage";
