@@ -61,6 +61,7 @@ const emptyForm: SaleForm = {
   order_number: "",
   sales_channel: "shopee",
   notes: "",
+  marketplace_fee_pct: "",
   lines: [{ ...emptyLine }],
 };
 
