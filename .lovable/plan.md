@@ -36,12 +36,12 @@ Administration           (admin only)
 - The group containing the current route is auto-opened on load.
 - Active item highlighting keeps the existing NavLink styling.
 - Admin-only items keep their current visibility rules; a group hides entirely if it has no visible items.
-- Finance placeholder items render greyed out and non-clickable with a "Soon" hint — no routes added.
+- Finance placeholder items render greyed out and non-clickable with a "Soon" hint — no routes added. They are admin-only, so non-admins see just Receivables under Finance.
 - When the sidebar is icon-collapsed, groups render as flat icon rows (no headers), so every item stays reachable.
 
 ## Technical notes
 
 - Only `src/components/AppSidebar.tsx` changes: replace the flat `navItems` array with a grouped array (`{ label, icon, items[] }`), render each group with the existing shadcn `SidebarGroup` + a Radix `Collapsible`.
 - Persistence via a small `useState` + `localStorage` (key `sidebar-groups-open`), synced in an effect.
-- Existing `Pending Payments` route `/pending-payments` is placed under Finance as the one live item.
+- "Pending Payments" is relabeled "Receivables" in the sidebar; the route stays `/pending-payments` and the page component is unchanged.
 - No changes to `App.tsx`, routes, or `src/lib/permissions.ts`.
