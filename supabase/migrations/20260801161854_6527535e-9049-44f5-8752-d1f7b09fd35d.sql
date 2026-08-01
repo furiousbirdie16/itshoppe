@@ -1,0 +1,1 @@
+ALTER TABLE public.online_sales ADD COLUMN IF NOT EXISTS marketplace_fee_pct numeric NULL;
