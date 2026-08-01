@@ -1228,6 +1228,7 @@ export type Database = {
           deal_price: number
           id: string
           item_id: string | null
+          marketplace_fee_pct: number | null
           notes: string | null
           order_date: string
           order_number: string
@@ -1248,6 +1249,7 @@ export type Database = {
           deal_price?: number
           id?: string
           item_id?: string | null
+          marketplace_fee_pct?: number | null
           notes?: string | null
           order_date?: string
           order_number: string
@@ -1268,6 +1270,7 @@ export type Database = {
           deal_price?: number
           id?: string
           item_id?: string | null
+          marketplace_fee_pct?: number | null
           notes?: string | null
           order_date?: string
           order_number?: string

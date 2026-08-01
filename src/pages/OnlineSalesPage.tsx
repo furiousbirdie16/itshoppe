@@ -43,6 +43,8 @@ interface SaleForm {
   order_number: string;
   sales_channel: SalesChannel;
   notes: string;
+  /** Optional marketplace fee % override (blank = default 22%). */
+  marketplace_fee_pct: string;
   lines: SaleLine[];
 }
 
@@ -59,6 +61,7 @@ const emptyForm: SaleForm = {
   order_number: "",
   sales_channel: "shopee",
   notes: "",
+  marketplace_fee_pct: "",
   lines: [{ ...emptyLine }],
 };
 
@@ -258,6 +261,10 @@ export default function OnlineSalesPage() {
       order_number: s.order_number,
       sales_channel: s.sales_channel,
       notes: s.notes || "",
+      marketplace_fee_pct:
+        (s as any).marketplace_fee_pct === null || (s as any).marketplace_fee_pct === undefined
+          ? ""
+          : String((s as any).marketplace_fee_pct),
       lines: [{
         product_name: s.product_name,
         quantity: s.quantity || 1,
@@ -317,6 +324,8 @@ export default function OnlineSalesPage() {
           notes: form.notes,
           item_id: line.item_id || null,
           variation_id: line.variation_id || null,
+          marketplace_fee_pct:
+            form.marketplace_fee_pct.trim() === "" ? null : Number(form.marketplace_fee_pct),
         } as any);
         toast.success("Updated");
       } else {
@@ -1643,6 +1652,25 @@ export default function OnlineSalesPage() {
               <Label className="text-xs font-medium">Notes</Label>
               <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
             </div>
+
+            {editingSale && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">
+                  Marketplace Fee % <span className="text-muted-foreground font-normal">(optional — blank uses 22%)</span>
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={form.marketplace_fee_pct}
+                  onChange={e => setForm(f => ({ ...f, marketplace_fee_pct: e.target.value }))}
+                  placeholder="22"
+                  className="h-9"
+                />
+                <p className="text-[11px] text-muted-foreground">Used only to estimate Marketplace Receivables payouts.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>

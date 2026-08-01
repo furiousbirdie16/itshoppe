@@ -71,6 +71,7 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Financial Dashboard", icon: BarChart3, adminOnly: true, soon: true },
       { title: "Receivables", url: "/pending-payments", icon: CircleDollarSign },
+      { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
       { title: "Cash & Bank", icon: Landmark, adminOnly: true, soon: true },
       { title: "Payables", icon: Wallet, adminOnly: true, soon: true },
       { title: "Loans", icon: PiggyBank, adminOnly: true, soon: true },
