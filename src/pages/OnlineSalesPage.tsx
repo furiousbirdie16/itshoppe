@@ -43,6 +43,8 @@ interface SaleForm {
   order_number: string;
   sales_channel: SalesChannel;
   notes: string;
+  /** Optional marketplace fee % override (blank = default 22%). */
+  marketplace_fee_pct: string;
   lines: SaleLine[];
 }
 
