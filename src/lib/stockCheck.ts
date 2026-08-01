@@ -118,9 +118,11 @@ export const checkStoreStock = async (
     const it = itemMap.get(itemId);
     if (!it) continue;
 
-    const storeQty = Number(it.store_quantity || 0);
-    const ups = Number(it.units_per_stock || 1);
-    const openRem = Number(it.open_roll_remaining || 0);
+    const bs = stockMap.get(itemId);
+    const storeQty = Number(bs?.store || 0);
+    const ups = Number(bs?.ups || it.units_per_stock || 1);
+    const openRem = Number(bs?.open || 0);
+
 
     // For cut-mode items, convert store stock into base units (meters).
     const available = cutMode.get(itemId)
