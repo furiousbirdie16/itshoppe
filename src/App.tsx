@@ -70,6 +70,7 @@ function ProtectedRoutes() {
           <Route path="/quotations" element={<QuotationsPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/pending-payments" element={<PendingPaymentsPage />} />
+          <Route path="/marketplace-receivables" element={<AdminRoute><MarketplaceReceivablesPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
