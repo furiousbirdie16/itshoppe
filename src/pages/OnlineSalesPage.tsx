@@ -324,6 +324,8 @@ export default function OnlineSalesPage() {
           notes: form.notes,
           item_id: line.item_id || null,
           variation_id: line.variation_id || null,
+          marketplace_fee_pct:
+            form.marketplace_fee_pct.trim() === "" ? null : Number(form.marketplace_fee_pct),
         } as any);
         toast.success("Updated");
       } else {
