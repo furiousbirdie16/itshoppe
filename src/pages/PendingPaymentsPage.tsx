@@ -273,7 +273,7 @@ export default function PendingPaymentsPage() {
     <div className="space-y-6">
       <div className="page-toolbar">
         <div className="page-header mb-0">
-          <h1 className="page-title">Pending Payments</h1>
+          <h1 className="page-title">Receivables</h1>
           <p className="page-description">{totalCount} pending · Total: {peso(totalPending)}</p>
         </div>
         <div className="toolbar-actions">
