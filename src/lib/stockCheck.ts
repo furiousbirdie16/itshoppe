@@ -30,7 +30,10 @@ export interface Shortage {
  * For pack variations (or non-variation lines), items are compared in whole units
  * directly against store_quantity.
  */
-export const checkStoreStock = async (lines: StockCheckLine[]): Promise<Shortage[]> => {
+export const checkStoreStock = async (
+  lines: StockCheckLine[],
+  branchId?: string | null,
+): Promise<Shortage[]> => {
   const valid = lines.filter((l) => l.item_id && Number(l.quantity) > 0);
   if (valid.length === 0) return [];
 
@@ -39,10 +42,16 @@ export const checkStoreStock = async (lines: StockCheckLine[]): Promise<Shortage
     new Set(valid.map((l) => l.variation_id).filter(Boolean) as string[]),
   );
 
-  const [{ data: items }, { data: variations }] = await Promise.all([
+  let stockQ = (supabase as any)
+    .from("item_branch_stock")
+    .select("item_id, branch_id, store_quantity, units_per_stock, open_roll_remaining")
+    .in("item_id", itemIds);
+  if (branchId) stockQ = stockQ.eq("branch_id", branchId);
+
+  const [{ data: items }, { data: variations }, { data: branchStock }] = await Promise.all([
     (supabase as any)
       .from("items")
-      .select("id, name, store_quantity, base_unit, units_per_stock, open_roll_remaining")
+      .select("id, name, base_unit, units_per_stock")
       .in("id", itemIds),
     variationIds.length > 0
       ? (supabase as any)
@@ -50,7 +59,20 @@ export const checkStoreStock = async (lines: StockCheckLine[]): Promise<Shortage
           .select("id, item_id, factor, type, name")
           .in("id", variationIds)
       : Promise.resolve({ data: [] as any[] }),
+    stockQ,
   ]);
+
+  // Aggregate branch stock per item (single branch, or all branches when none selected).
+  const stockMap = new Map<string, { store: number; ups: number; open: number }>();
+  for (const row of ((branchStock as any[]) || [])) {
+    const prev = stockMap.get(row.item_id) || { store: 0, ups: 0, open: 0 };
+    stockMap.set(row.item_id, {
+      store: prev.store + Number(row.store_quantity || 0),
+      ups: Number(row.units_per_stock || 0) || prev.ups,
+      open: prev.open + Number(row.open_roll_remaining || 0),
+    });
+  }
+
 
   const itemMap = new Map<string, any>(((items as any[]) || []).map((i) => [i.id, i]));
   const varMap = new Map<string, any>(((variations as any[]) || []).map((v) => [v.id, v]));
