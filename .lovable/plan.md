@@ -17,9 +17,10 @@ Sales
   Customers, Customer Pricing, Quotations, Invoices, Online Sales
 
 Finance
-  Financial Dashboard (soon), Receivables (soon), Cash & Bank (soon),
+  Receivables            (existing Pending Payments page, /pending-payments)
+  Financial Dashboard (soon), Cash & Bank (soon),
   Payables (soon), Loans (soon), Owner Transactions (soon)
-  Pending Payments  (existing page, keeps working)
+  -> non-admins see only Receivables in this group
 
 Reports
   Business Insights
