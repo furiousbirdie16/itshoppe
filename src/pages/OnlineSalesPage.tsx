@@ -1652,6 +1652,25 @@ export default function OnlineSalesPage() {
               <Label className="text-xs font-medium">Notes</Label>
               <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
             </div>
+
+            {editingSale && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">
+                  Marketplace Fee % <span className="text-muted-foreground font-normal">(optional — blank uses 22%)</span>
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={form.marketplace_fee_pct}
+                  onChange={e => setForm(f => ({ ...f, marketplace_fee_pct: e.target.value }))}
+                  placeholder="22"
+                  className="h-9"
+                />
+                <p className="text-[11px] text-muted-foreground">Used only to estimate Marketplace Receivables payouts.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
