@@ -1,8 +1,10 @@
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Globe, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -14,34 +16,168 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, adminOnly: true },
-  { title: "Inventory", url: "/inventory", icon: Package, adminOnly: false },
-  { title: "Low Stock Alerts", url: "/low-stock-alerts", icon: AlertTriangle, adminOnly: false },
-  { title: "Stock Transfers", url: "/stock-transfers", icon: ArrowLeftRight, adminOnly: false },
-  { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: true },
+type NavItem = {
+  title: string;
+  url?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
+  soon?: boolean;
+};
 
-  { title: "Overseas PO", url: "/overseas-purchase-orders", icon: ShoppingCart },
-  { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart, adminOnly: false },
-  { title: "Customers", url: "/customers", icon: Users, adminOnly: false },
-  { title: "Customer Pricing", url: "/customer-pricing", icon: Tag, adminOnly: false },
-  { title: "Quotations", url: "/quotations", icon: FileText, adminOnly: false },
-  { title: "Invoices", url: "/invoices", icon: Receipt, adminOnly: false },
-  { title: "Online Sales", url: "/online-sales", icon: Store, adminOnly: false },
-  { title: "Pending Payments", url: "/pending-payments", icon: CircleDollarSign, adminOnly: false },
-  { title: "Business Insights", url: "/business-insights", icon: BarChart3, adminOnly: false },
-  { title: "Activity Log", url: "/activity-log", icon: ClipboardList, adminOnly: true },
-  { title: "Users", url: "/users", icon: UserCog, adminOnly: true },
-  { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
+type NavGroup = {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
+  items: NavItem[];
+};
+
+const topLevelItems: NavItem[] = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, adminOnly: true },
 ];
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Inventory",
+    icon: Package,
+    items: [
+      { title: "Inventory", url: "/inventory", icon: Package },
+      { title: "Low Stock Alerts", url: "/low-stock-alerts", icon: AlertTriangle },
+      { title: "Stock Transfers", url: "/stock-transfers", icon: ArrowLeftRight },
+    ],
+  },
+  {
+    label: "Purchasing",
+    icon: ShoppingCart,
+    items: [
+      { title: "Suppliers", url: "/suppliers", icon: Truck, adminOnly: true },
+      { title: "Overseas PO", url: "/overseas-purchase-orders", icon: Ship },
+      { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingCart },
+    ],
+  },
+  {
+    label: "Sales",
+    icon: Receipt,
+    items: [
+      { title: "Customers", url: "/customers", icon: Users },
+      { title: "Customer Pricing", url: "/customer-pricing", icon: Tag },
+      { title: "Quotations", url: "/quotations", icon: FileText },
+      { title: "Invoices", url: "/invoices", icon: Receipt },
+      { title: "Online Sales", url: "/online-sales", icon: Store },
+    ],
+  },
+  {
+    label: "Finance",
+    icon: CircleDollarSign,
+    items: [
+      { title: "Financial Dashboard", icon: BarChart3, adminOnly: true, soon: true },
+      { title: "Receivables", url: "/pending-payments", icon: CircleDollarSign },
+      { title: "Cash & Bank", icon: Landmark, adminOnly: true, soon: true },
+      { title: "Payables", icon: Wallet, adminOnly: true, soon: true },
+      { title: "Loans", icon: PiggyBank, adminOnly: true, soon: true },
+      { title: "Owner Transactions", icon: HandCoins, adminOnly: true, soon: true },
+    ],
+  },
+  {
+    label: "Reports",
+    icon: BarChart3,
+    items: [
+      { title: "Business Insights", url: "/business-insights", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Administration",
+    icon: ShieldCheck,
+    adminOnly: true,
+    items: [
+      { title: "Activity Log", url: "/activity-log", icon: ClipboardList, adminOnly: true },
+      { title: "Users", url: "/users", icon: UserCog, adminOnly: true },
+      { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
+    ],
+  },
+];
+
+const STORAGE_KEY = "sidebar-groups-open";
 
 export function AppSidebar() {
   const { state, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { user, role, signOut } = useAuth();
+  const isAdmin = role === "admin";
 
-  const visibleItems = navItems.filter((item) => !item.adminOnly || role === "admin");
+  const groups = useMemo(
+    () =>
+      navGroups
+        .filter((g) => !g.adminOnly || isAdmin)
+        .map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly || isAdmin) }))
+        .filter((g) => g.items.length > 0),
+    [isAdmin]
+  );
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Auto-open the group containing the active route
+  useEffect(() => {
+    const active = groups.find((g) => g.items.some((i) => i.url && i.url !== "/" && location.pathname.startsWith(i.url)));
+    if (active && !openGroups[active.label]) {
+      setOpenGroups((prev) => ({ ...prev, [active.label]: true }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, groups]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(openGroups));
+    } catch {
+      /* ignore */
+    }
+  }, [openGroups]);
+
+  const itemLinkClass =
+    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent";
+
+  const renderLink = (item: NavItem) => {
+    if (item.soon || !item.url) {
+      return (
+        <SidebarMenuItem key={item.title}>
+          <div className={`${itemLinkClass} cursor-not-allowed opacity-50`} title="Coming soon">
+            <item.icon className="h-4 w-4 shrink-0" />
+            {!collapsed && (
+              <span className="flex-1 flex items-center justify-between gap-2">
+                <span>{item.title}</span>
+                <span className="text-[10px] uppercase tracking-wider">Soon</span>
+              </span>
+            )}
+          </div>
+        </SidebarMenuItem>
+      );
+    }
+    return (
+      <SidebarMenuItem key={item.title}>
+        <SidebarMenuButton asChild>
+          <NavLink
+            to={item.url}
+            end={item.url === "/"}
+            onClick={() => setOpenMobile(false)}
+            className={itemLinkClass}
+            activeClassName="bg-primary/8 text-primary hover:bg-primary/10 hover:text-primary"
+          >
+            <item.icon className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>{item.title}</span>}
+          </NavLink>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  };
+
+  const visibleTopLevel = topLevelItems.filter((i) => !i.adminOnly || isAdmin);
 
   return (
     <Sidebar collapsible="icon">
@@ -54,25 +190,38 @@ export function AppSidebar() {
             )}
           </div>
         </div>
+
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5 px-2">
-              {visibleItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      end={item.url === "/"}
-                      onClick={() => setOpenMobile(false)}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
-                      activeClassName="bg-primary/8 text-primary hover:bg-primary/10 hover:text-primary"
+              {visibleTopLevel.map(renderLink)}
+
+              {collapsed
+                ? groups.flatMap((g) => g.items.map(renderLink))
+                : groups.map((group) => (
+                    <Collapsible
+                      key={group.label}
+                      open={!!openGroups[group.label]}
+                      onOpenChange={(open) =>
+                        setOpenGroups((prev) => ({ ...prev, [group.label]: open }))
+                      }
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                      <CollapsibleTrigger className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent">
+                        <group.icon className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{group.label}</span>
+                        <ChevronRight
+                          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                            openGroups[group.label] ? "rotate-90" : ""
+                          }`}
+                        />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenu className="gap-0.5 pl-4 mt-0.5">
+                          {group.items.map(renderLink)}
+                        </SidebarMenu>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
