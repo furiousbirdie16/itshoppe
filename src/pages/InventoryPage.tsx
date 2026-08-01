@@ -525,6 +525,25 @@ export default function InventoryPage() {
   const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("inventory:columns:v1", INVENTORY_COLUMNS);
   const visibleColCount = 2 + visibleColumns.length;
 
+  // --- Mobile card list: incremental (infinite scroll) rendering ---
+  const MOBILE_PAGE = 20;
+  const [mobileCount, setMobileCount] = useState(MOBILE_PAGE);
+  useEffect(() => { setMobileCount(MOBILE_PAGE); }, [filters, viewArchived, sort.key, sort.dir, activeBranchId]);
+  const mobileSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = mobileSentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        setMobileCount(c => (c < sortedFiltered.length ? c + MOBILE_PAGE : c));
+      }
+    }, { rootMargin: "200px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [sortedFiltered.length, mobileCount]);
+  const mobileItems = sortedFiltered.slice(0, mobileCount);
+
+
   return (
     <div className="space-y-6">
       <div className="page-toolbar">
