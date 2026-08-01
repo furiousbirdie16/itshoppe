@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -32,6 +32,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/components/ColumnVisibility";
 import { useBranch } from "@/contexts/BranchContext";
 import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
+import InventoryMobileCard from "@/components/InventoryMobileCard";
+
 
 const INVENTORY_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Name", required: true },
@@ -525,6 +527,25 @@ export default function InventoryPage() {
   const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("inventory:columns:v1", INVENTORY_COLUMNS);
   const visibleColCount = 2 + visibleColumns.length;
 
+  // --- Mobile card list: incremental (infinite scroll) rendering ---
+  const MOBILE_PAGE = 20;
+  const [mobileCount, setMobileCount] = useState(MOBILE_PAGE);
+  useEffect(() => { setMobileCount(MOBILE_PAGE); }, [filters, viewArchived, sort.key, sort.dir, activeBranchId]);
+  const mobileSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = mobileSentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        setMobileCount(c => (c < sortedFiltered.length ? c + MOBILE_PAGE : c));
+      }
+    }, { rootMargin: "200px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [sortedFiltered.length, mobileCount]);
+  const mobileItems = sortedFiltered.slice(0, mobileCount);
+
+
   return (
     <div className="space-y-6">
       <div className="page-toolbar">
@@ -978,7 +999,62 @@ export default function InventoryPage() {
       <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_variations"] }); }} />
       <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); }} />
 
-      <HorizontalScrollSync className="rounded-xl border bg-card">
+      {/* Mobile: card layout (<768px) */}
+      <div className="md:hidden space-y-2.5">
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sortedFiltered.length === 0 ? (
+          <div className="rounded-xl border bg-card">
+            <div className="empty-state">
+              <Package className="empty-state-icon" />
+              <p className="text-sm">No items match your filters</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+              <button type="button" onClick={toggleAll} className="font-medium text-foreground">
+                {allSelected ? "Clear selection" : "Select all"}
+              </button>
+              <span>{sortedFiltered.length} product{sortedFiltered.length === 1 ? "" : "s"}</span>
+            </div>
+            {mobileItems.map(item => (
+              <InventoryMobileCard
+                key={item.id}
+                item={item}
+                branchLabel={branchLabel}
+                isAdmin={isAdmin}
+                viewArchived={viewArchived}
+                selected={selectedIds.has(item.id)}
+                onToggleSelect={() => toggleOne(item.id)}
+                onTransfer={() => setTransferItem(item)}
+                onAdjust={() => setAdjustItem(item)}
+                onHistory={() => setHistoryItem(item)}
+                onPricing={() => setCostHistoryItem(item)}
+                onSuppliers={() => setSuppliersItem(item)}
+                onBundles={() => setVariationsItem(item)}
+                onEdit={() => openEdit(item)}
+                onArchive={() => setArchiveConfirm({ ids: [item.id], label: `"${item.name}"` })}
+                onRestore={() => unarchiveMut.mutate([item.id])}
+                onDelete={() => { if (confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) deleteMut.mutate(item.id); }}
+              />
+            ))}
+            <div ref={mobileSentinelRef} className="h-8" />
+            {mobileCount < sortedFiltered.length && (
+              <div className="flex justify-center pb-2">
+                <Button variant="outline" className="h-9 rounded-lg text-sm" onClick={() => setMobileCount(c => c + MOBILE_PAGE)}>
+                  Load more
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <HorizontalScrollSync className="hidden md:block rounded-xl border bg-card">
+
         <Table>
           <TableHeader>
             <TableRow>
