@@ -637,6 +637,7 @@ export default function QuotationsPage() {
                     variation_id: l.variation_id || null,
                     quantity: Number(l.quantity || 0),
                   })),
+                  activeBranchId ?? null,
                 );
                 if (shortages.length > 0) {
                   const ok = window.confirm(

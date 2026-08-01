@@ -562,7 +562,7 @@ export default function InvoicesPage() {
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
 
   // Warn (but allow) if shipping/paying an invoice would oversell store stock.
-  const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay"): Promise<boolean> => {
+  const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay", branchId?: string | null): Promise<boolean> => {
     try {
       const lineItems = await getInvoiceItems(invoiceId);
       const shortages = await checkStoreStock(
@@ -571,6 +571,7 @@ export default function InvoicesPage() {
           variation_id: li.variation_id || null,
           quantity: li.quantity,
         })),
+        branchId ?? activeBranchId ?? null,
       );
       if (shortages.length === 0) return true;
       const verb = action === "ship" ? "ship" : "mark this invoice as paid";
@@ -1165,9 +1166,9 @@ export default function InvoicesPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship")) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay")) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay", inv.branch_id)) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                       </>
                     )}
                     {inv.status === "reserved" && (
