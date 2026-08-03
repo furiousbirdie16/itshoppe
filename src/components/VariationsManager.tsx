@@ -70,8 +70,9 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
         type: form.type,
         factor: parseFloat(form.factor) || 1,
         selling_price: parseFloat(form.selling_price) || 0,
-        // Empty cost = intentional "not set" — do NOT inherit parent cost.
+        // Blank cost = auto (proportional from parent). A typed value = manual override.
         cost_price: trimmedCost === "" ? null : parseFloat(trimmedCost),
+        cost_is_manual: trimmedCost !== "",
       };
       if (editing) await updateItemVariation(editing.id, payload as any);
       else await createItemVariation(payload as any);
