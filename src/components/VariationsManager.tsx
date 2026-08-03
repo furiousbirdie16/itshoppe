@@ -147,12 +147,18 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold">Variations ({variations.length})</p>
-            {!showForm && (
-              <Button size="sm" onClick={() => { resetForm(); setShowForm(true); }} className="h-7 text-xs">
-                <Plus className="h-3 w-3 mr-1" /> Add Variation
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => autoCostAllMut.mutate()} disabled={autoCostAllMut.isPending || variations.length === 0} className="h-7 text-xs">
+                <RefreshCw className="h-3 w-3 mr-1" /> Auto-cost all
               </Button>
-            )}
+              {!showForm && (
+                <Button size="sm" onClick={() => { resetForm(); setShowForm(true); }} className="h-7 text-xs">
+                  <Plus className="h-3 w-3 mr-1" /> Add Variation
+                </Button>
+              )}
+            </div>
           </div>
+
 
           {showForm && (
             <div className="rounded-lg border p-3 space-y-2 bg-card">
