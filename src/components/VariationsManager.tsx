@@ -95,6 +95,24 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
     },
   });
 
+  // Clears manual overrides for this item's variations; DB trigger recomputes the proportional cost.
+  const autoCostAllMut = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("item_variations")
+        .update({ cost_is_manual: false } as any)
+        .eq("item_id", item.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["item_variations"] });
+      qc.invalidateQueries({ queryKey: ["item_variations", item.id] });
+      toast.success("Variation costs recalculated from parent");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+
   const startEdit = (v: ItemVariation) => {
     setEditing(v);
     setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_is_manual && v.cost_price != null ? String(v.cost_price) : "" });
