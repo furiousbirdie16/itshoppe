@@ -314,14 +314,13 @@ export default function OverseasPurchaseOrdersPage() {
       }
       return updated;
     },
-    onSuccess: (updated) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", editing?.id] });
       setOpen(false);
       setEditing(null);
       toast.success("Purchase Order updated successfully.");
-      if (updated) openPreview(updated as OverseasPurchaseOrder);
     },
     onError: (e: any) => toast.error(e.message),
   });
