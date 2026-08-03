@@ -310,6 +310,8 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
                   if (newVal !== oldNum) {
                     changes.push({ field, from: oldVal, to: newVal });
                     patch[field] = newVal;
+                    // Blank = auto (proportional from parent); a value = manual override.
+                    patch["cost_is_manual"] = newVal !== null;
                   }
                 } else if (field === "type") {
                   const v = normalize(raw);

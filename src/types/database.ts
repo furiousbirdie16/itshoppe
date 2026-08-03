@@ -35,8 +35,10 @@ export interface ItemVariation {
   /** For pack: pieces per pack. For cut: meters per cut. */
   factor: number;
   selling_price: number;
-  /** Independent per-variation cost. NULL = not set (do NOT inherit parent cost). */
+  /** Cost. Auto-computed from parent (cost_price × factor / units_per_stock) unless cost_is_manual. */
   cost_price: number | null;
+  /** True when a user typed an explicit cost that must not be auto-recalculated. */
+  cost_is_manual?: boolean;
   created_at: string;
   updated_at: string;
   items?: Item;

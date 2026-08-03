@@ -7,11 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Pencil, Layers } from "lucide-react";
+import { Plus, Trash2, Pencil, Layers, RefreshCw } from "lucide-react";
 import { peso } from "@/lib/currency";
 import { getItemVariations, createItemVariation, updateItemVariation, deleteItemVariation, updateItem } from "@/lib/api";
 import type { Item, ItemVariation } from "@/types/database";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   item: Item;
@@ -30,6 +31,15 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
   const [editing, setEditing] = useState<ItemVariation | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0", cost_price: "" });
   const [showForm, setShowForm] = useState(false);
+
+  /** Proportional cost from parent: parent.cost_price × (factor / units_per_stock). */
+  const autoCost = (factor: number) => {
+    const parentCost = Number(item.cost_price);
+    const ups = Number(item.units_per_stock ?? 1) || 1;
+    if (!Number.isFinite(parentCost) || parentCost <= 0 || ups <= 0) return null;
+    return parentCost * (factor / ups);
+  };
+  const formAutoCost = autoCost(parseFloat(form.factor) || 0);
 
   // Parent stock settings
   const [baseUnit, setBaseUnit] = useState(item.base_unit || "pcs");
@@ -61,8 +71,9 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
         type: form.type,
         factor: parseFloat(form.factor) || 1,
         selling_price: parseFloat(form.selling_price) || 0,
-        // Empty cost = intentional "not set" — do NOT inherit parent cost.
+        // Blank cost = auto (proportional from parent). A typed value = manual override.
         cost_price: trimmedCost === "" ? null : parseFloat(trimmedCost),
+        cost_is_manual: trimmedCost !== "",
       };
       if (editing) await updateItemVariation(editing.id, payload as any);
       else await createItemVariation(payload as any);
@@ -85,9 +96,27 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
     },
   });
 
+  // Clears manual overrides for this item's variations; DB trigger recomputes the proportional cost.
+  const autoCostAllMut = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("item_variations")
+        .update({ cost_is_manual: false } as any)
+        .eq("item_id", item.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["item_variations"] });
+      qc.invalidateQueries({ queryKey: ["item_variations", item.id] });
+      toast.success("Variation costs recalculated from parent");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+
   const startEdit = (v: ItemVariation) => {
     setEditing(v);
-    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_price == null ? "" : String(v.cost_price) });
+    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_is_manual && v.cost_price != null ? String(v.cost_price) : "" });
     setShowForm(true);
   };
 
@@ -137,12 +166,18 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold">Variations ({variations.length})</p>
-            {!showForm && (
-              <Button size="sm" onClick={() => { resetForm(); setShowForm(true); }} className="h-7 text-xs">
-                <Plus className="h-3 w-3 mr-1" /> Add Variation
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => autoCostAllMut.mutate()} disabled={autoCostAllMut.isPending || variations.length === 0} className="h-7 text-xs">
+                <RefreshCw className="h-3 w-3 mr-1" /> Auto-cost all
               </Button>
-            )}
+              {!showForm && (
+                <Button size="sm" onClick={() => { resetForm(); setShowForm(true); }} className="h-7 text-xs">
+                  <Plus className="h-3 w-3 mr-1" /> Add Variation
+                </Button>
+              )}
+            </div>
           </div>
+
 
           {showForm && (
             <div className="rounded-lg border p-3 space-y-2 bg-card">
@@ -179,8 +214,11 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase">Cost Price</Label>
-                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} placeholder="Leave blank if unknown" className="h-8 text-sm" />
-                  <p className="text-[10px] text-muted-foreground">Each variation has its own cost. Blank = no cost (profit will not be calculated).</p>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} placeholder={formAutoCost != null ? `Auto: ${formAutoCost.toFixed(2)}` : "Leave blank for auto"} className="h-8 text-sm" />
+                  <p className="text-[10px] text-muted-foreground">
+                    Blank = auto cost from parent ({peso(Number(item.cost_price || 0))} × {form.factor || 0} / {item.units_per_stock ?? 1}
+                    {formAutoCost != null ? ` = ${peso(formAutoCost)}` : ""}). Type a value to override manually.
+                  </p>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -230,10 +268,13 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                       {hasCost ? (
                         <div>
                           <div>{peso(Number(v.cost_price))}</div>
-                          {margin != null && <div className="text-[10px] text-muted-foreground">{margin.toFixed(1)}% margin</div>}
+                          <div className="text-[10px] text-muted-foreground">
+                            {v.cost_is_manual ? "manual" : "auto"}
+                            {margin != null ? ` · ${margin.toFixed(1)}% margin` : ""}
+                          </div>
                         </div>
                       ) : (
-                        <span className="text-amber-600 dark:text-amber-400 text-xs">— set cost</span>
+                        <span className="text-amber-600 dark:text-amber-400 text-xs">— set parent cost</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
