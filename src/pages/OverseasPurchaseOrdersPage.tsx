@@ -1396,7 +1396,7 @@ export default function OverseasPurchaseOrdersPage() {
             <TableBody>
               {sortedIncomingRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11}>
+                  <TableCell colSpan={10}>
                     <div className="empty-state">
                       <ShoppingCart className="empty-state-icon" />
                       <p className="text-sm">No ordered products match your filters</p>
