@@ -199,6 +199,7 @@ export default function OverseasPurchaseOrdersPage() {
       order.order_date,
       order.expected_delivery,
       order.notes,
+      branchNameById.get(order.branch_id) || "",
     ].some((value) => (value || "").toString().toLowerCase().includes(q));
   });
   const bucketCounts = orders.reduce(
@@ -231,6 +232,7 @@ export default function OverseasPurchaseOrdersPage() {
   const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(filteredOrders, {
     po_number: (r) => r.po_number,
     supplier: (r: any) => r.overseas_suppliers?.name || "",
+    branch: (r: any) => branchNameById.get(r.branch_id) || "",
     status: (r) => r.status,
     currency: (r) => r.currency,
     total_amount: (r) => Number(r.total_amount),
@@ -1171,6 +1173,7 @@ export default function OverseasPurchaseOrdersPage() {
               {isAdmin && <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>}
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="branch" label="Branch" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="eta" label="ETA" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs">Items</TableHead>
@@ -1182,9 +1185,9 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={10}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : sortedOrders.map(po => {
               const shipment = shipmentByPo.get(po.id);
               const eta = shipment?.estimated_arrival || po.expected_delivery;
@@ -1200,6 +1203,7 @@ export default function OverseasPurchaseOrdersPage() {
                 {isAdmin && <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>}
                 <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
+                <TableCell className="text-sm whitespace-nowrap">{branchNameById.get((po as any).branch_id) || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
                 <TableCell className="text-sm whitespace-nowrap">
                   {actualArrival ? (
@@ -1392,7 +1396,7 @@ export default function OverseasPurchaseOrdersPage() {
             <TableBody>
               {sortedIncomingRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10}>
+                  <TableCell colSpan={11}>
                     <div className="empty-state">
                       <ShoppingCart className="empty-state-icon" />
                       <p className="text-sm">No ordered products match your filters</p>
