@@ -97,7 +97,7 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
 
   const startEdit = (v: ItemVariation) => {
     setEditing(v);
-    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_price == null ? "" : String(v.cost_price) });
+    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_is_manual && v.cost_price != null ? String(v.cost_price) : "" });
     setShowForm(true);
   };
 
