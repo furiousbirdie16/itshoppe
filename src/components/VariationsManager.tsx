@@ -243,10 +243,13 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                       {hasCost ? (
                         <div>
                           <div>{peso(Number(v.cost_price))}</div>
-                          {margin != null && <div className="text-[10px] text-muted-foreground">{margin.toFixed(1)}% margin</div>}
+                          <div className="text-[10px] text-muted-foreground">
+                            {v.cost_is_manual ? "manual" : "auto"}
+                            {margin != null ? ` · ${margin.toFixed(1)}% margin` : ""}
+                          </div>
                         </div>
                       ) : (
-                        <span className="text-amber-600 dark:text-amber-400 text-xs">— set cost</span>
+                        <span className="text-amber-600 dark:text-amber-400 text-xs">— set parent cost</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
