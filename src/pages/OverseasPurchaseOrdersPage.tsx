@@ -509,7 +509,11 @@ export default function OverseasPurchaseOrdersPage() {
   const incomingRows = useMemo<IncomingStockRow[]>(() => {
     const ordersById = new Map(orders.map((order) => [order.id, order]));
 
-    return allPOItems.map((item) => {
+    return allPOItems.filter((item) => {
+      if (!activeBranchId) return true;
+      const po: any = ordersById.get(item.po_id);
+      return po?.branch_id === activeBranchId;
+    }).map((item) => {
       const po = ordersById.get(item.po_id);
       const orderedQuantity = Number(item.quantity || 0);
       const receivedQuantity = Number(item.received_quantity || 0);
@@ -539,7 +543,7 @@ export default function OverseasPurchaseOrdersPage() {
         php_value: lineTotal * exchangeRate,
       };
     });
-  }, [allPOItems, orders]);
+  }, [allPOItems, orders, activeBranchId]);
 
   const filteredIncomingRows = incomingRows.filter((row) => {
     const q = incomingSearch.trim().toLowerCase();
