@@ -31,6 +31,15 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
   const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0", cost_price: "" });
   const [showForm, setShowForm] = useState(false);
 
+  /** Proportional cost from parent: parent.cost_price × (factor / units_per_stock). */
+  const autoCost = (factor: number) => {
+    const parentCost = Number(item.cost_price);
+    const ups = Number(item.units_per_stock ?? 1) || 1;
+    if (!Number.isFinite(parentCost) || parentCost <= 0 || ups <= 0) return null;
+    return parentCost * (factor / ups);
+  };
+  const formAutoCost = autoCost(parseFloat(form.factor) || 0);
+
   // Parent stock settings
   const [baseUnit, setBaseUnit] = useState(item.base_unit || "pcs");
   const [unitsPerStock, setUnitsPerStock] = useState(String(item.units_per_stock ?? 1));
