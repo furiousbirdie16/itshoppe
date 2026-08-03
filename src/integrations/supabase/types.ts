@@ -892,6 +892,7 @@ export type Database = {
       }
       item_variations: {
         Row: {
+          cost_is_manual: boolean
           cost_price: number | null
           created_at: string
           factor: number
@@ -904,6 +905,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cost_is_manual?: boolean
           cost_price?: number | null
           created_at?: string
           factor?: number
@@ -916,6 +918,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cost_is_manual?: boolean
           cost_price?: number | null
           created_at?: string
           factor?: number
@@ -2209,6 +2212,14 @@ export type Database = {
       cancel_stock_transfer: {
         Args: { _reason: string; _transfer_id: string }
         Returns: undefined
+      }
+      compute_variation_cost: {
+        Args: {
+          _factor: number
+          _parent_cost: number
+          _units_per_stock: number
+        }
+        Returns: number
       }
       dispatch_stock_transfer: {
         Args: { _transfer_id: string }
