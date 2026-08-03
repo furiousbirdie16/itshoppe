@@ -7,11 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Pencil, Layers } from "lucide-react";
+import { Plus, Trash2, Pencil, Layers, RefreshCw } from "lucide-react";
 import { peso } from "@/lib/currency";
 import { getItemVariations, createItemVariation, updateItemVariation, deleteItemVariation, updateItem } from "@/lib/api";
 import type { Item, ItemVariation } from "@/types/database";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   item: Item;
