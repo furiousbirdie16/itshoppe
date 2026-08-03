@@ -281,12 +281,11 @@ export default function OverseasPurchaseOrdersPage() {
       }
       return po;
     },
-    onSuccess: (po) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
       setOpen(false);
       toast.success("Overseas PO created");
-      openPreview(po as OverseasPurchaseOrder);
     },
     onError: (e: any) => toast.error(e.message),
   });
