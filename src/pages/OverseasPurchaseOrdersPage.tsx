@@ -180,8 +180,15 @@ export default function OverseasPurchaseOrdersPage() {
     partially_received: "incoming",
     received: "received",
   };
+  const branchNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of branches) m.set(b.id, `${b.branch_name} (${b.branch_code})`);
+    return m;
+  }, [branches]);
   const filteredOrders = orders.filter((order: any) => {
+    if (activeBranchId && order.branch_id !== activeBranchId) return false;
     if (statusFilter !== "all" && statusBuckets[order.status] !== statusFilter) return false;
+
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return [
