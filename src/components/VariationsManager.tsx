@@ -189,8 +189,11 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase">Cost Price</Label>
-                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} placeholder="Leave blank if unknown" className="h-8 text-sm" />
-                  <p className="text-[10px] text-muted-foreground">Each variation has its own cost. Blank = no cost (profit will not be calculated).</p>
+                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} placeholder={formAutoCost != null ? `Auto: ${formAutoCost.toFixed(2)}` : "Leave blank for auto"} className="h-8 text-sm" />
+                  <p className="text-[10px] text-muted-foreground">
+                    Blank = auto cost from parent ({peso(Number(item.cost_price || 0))} × {form.factor || 0} / {item.units_per_stock ?? 1}
+                    {formAutoCost != null ? ` = ${peso(formAutoCost)}` : ""}). Type a value to override manually.
+                  </p>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
