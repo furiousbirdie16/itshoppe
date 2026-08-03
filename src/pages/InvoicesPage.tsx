@@ -397,8 +397,9 @@ export default function InvoicesPage() {
       if (!activeBranchId) throw new Error("Select a branch before creating an invoice.");
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: activeBranchId } as any);
       await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
+      return inv;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); },
+    onSuccess: (inv: any) => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); if (inv) openPreview(inv); },
     onError: (e: any) => toast.error(e.message),
   });
 
