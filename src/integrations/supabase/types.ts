@@ -122,6 +122,101 @@ export type Database = {
         }
         Relationships: []
       }
+      cash_accounts: {
+        Row: {
+          account_number: string
+          account_type: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          notes: string
+          opening_balance: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_number?: string
+          account_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string
+          opening_balance?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_number?: string
+          account_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string
+          opening_balance?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cash_transactions: {
+        Row: {
+          account_id: string
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          direction: string
+          id: string
+          notes: string
+          payee: string
+          reference: string
+          transfer_group_id: string | null
+          txn_date: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          notes?: string
+          payee?: string
+          reference?: string
+          transfer_group_id?: string | null
+          txn_date?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          notes?: string
+          payee?: string
+          reference?: string
+          transfer_group_id?: string | null
+          txn_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "cash_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_follow_ups: {
         Row: {
           created_at: string
@@ -1021,6 +1116,42 @@ export type Database = {
         }
         Relationships: []
       }
+      loans: {
+        Row: {
+          created_at: string
+          due_date: string | null
+          id: string
+          interest_rate: number
+          lender: string
+          monthly_payment: number
+          notes: string
+          principal_amount: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          interest_rate?: number
+          lender?: string
+          monthly_payment?: number
+          notes?: string
+          principal_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          interest_rate?: number
+          lender?: string
+          monthly_payment?: number
+          notes?: string
+          principal_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       locations_barangay: {
         Row: {
           city_name: string
@@ -1526,6 +1657,110 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      owner_transactions: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          description: string
+          id: string
+          method: string
+          notes: string
+          reference: string
+          txn_date: string
+          txn_type: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          method?: string
+          notes?: string
+          reference?: string
+          txn_date?: string
+          txn_type?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          method?: string
+          notes?: string
+          reference?: string
+          txn_date?: string
+          txn_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      payables: {
+        Row: {
+          amount: number
+          amount_paid: number
+          category: string
+          check_bank: string
+          check_number: string
+          created_at: string
+          date_written: string | null
+          due_date: string | null
+          id: string
+          is_check: boolean
+          notes: string
+          payee: string
+          status: string
+          supplier_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          amount_paid?: number
+          category?: string
+          check_bank?: string
+          check_number?: string
+          created_at?: string
+          date_written?: string | null
+          due_date?: string | null
+          id?: string
+          is_check?: boolean
+          notes?: string
+          payee?: string
+          status?: string
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          amount_paid?: number
+          category?: string
+          check_bank?: string
+          check_number?: string
+          created_at?: string
+          date_written?: string | null
+          due_date?: string | null
+          id?: string
+          is_check?: boolean
+          notes?: string
+          payee?: string
+          status?: string
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payables_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -2256,6 +2491,7 @@ export type Database = {
         Returns: boolean
       }
       is_invoice_status_locked: { Args: { _status: string }; Returns: boolean }
+      is_petty_cash_account: { Args: { _account_id: string }; Returns: boolean }
       is_quotation_status_locked: {
         Args: { _status: string }
         Returns: boolean
