@@ -262,3 +262,68 @@ export interface InventoryMovement {
   created_at: string;
   items?: Item;
 }
+
+export type CashAccountType = 'petty_cash' | 'bank';
+
+export interface CashAccount {
+  id: string;
+  name: string;
+  account_type: CashAccountType;
+  account_number: string;
+  opening_balance: number;
+  is_active: boolean;
+  sort_order: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CashTransaction {
+  id: string;
+  account_id: string;
+  txn_date: string;
+  direction: 'in' | 'out';
+  amount: number;
+  category: string;
+  payee: string;
+  reference: string;
+  notes: string;
+  transfer_group_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  cash_accounts?: CashAccount;
+}
+
+export interface OwnerTransaction {
+  id: string;
+  txn_date: string;
+  txn_type: 'owner_paid' | 'company_repaid';
+  amount: number;
+  method: 'credit_card' | 'cash' | 'bank_transfer' | 'other';
+  description: string;
+  category: string;
+  reference: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payable {
+  id: string;
+  payee: string;
+  supplier_id: string | null;
+  amount: number;
+  amount_paid: number;
+  due_date: string | null;
+  status: 'unpaid' | 'partial' | 'paid' | 'cleared' | 'bounced' | 'cancelled';
+  is_check: boolean;
+  check_number: string;
+  check_bank: string;
+  date_written: string | null;
+  category: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  suppliers?: Supplier;
+}

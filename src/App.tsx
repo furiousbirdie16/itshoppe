@@ -21,6 +21,11 @@ import InvoicesPage from "@/pages/InvoicesPage";
 import PendingPaymentsPage from "@/pages/PendingPaymentsPage";
 import MarketplaceReceivablesPage from "@/pages/MarketplaceReceivablesPage";
 import LoansPage from "@/pages/LoansPage";
+import PettyCashPage from "@/pages/PettyCashPage";
+import BankPage from "@/pages/BankPage";
+import OwnerTransactionsPage from "@/pages/OwnerTransactionsPage";
+import PayablesPage from "@/pages/PayablesPage";
+import FinancialDashboardPage from "@/pages/FinancialDashboardPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import CustomerPricingPage from "@/pages/CustomerPricingPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -73,6 +78,11 @@ function ProtectedRoutes() {
           <Route path="/pending-payments" element={<PendingPaymentsPage />} />
           <Route path="/marketplace-receivables" element={<AdminRoute><MarketplaceReceivablesPage /></AdminRoute>} />
           <Route path="/loans" element={<AdminRoute><LoansPage /></AdminRoute>} />
+          <Route path="/petty-cash" element={<PettyCashPage />} />
+          <Route path="/bank" element={<AdminRoute><BankPage /></AdminRoute>} />
+          <Route path="/owner-transactions" element={<AdminRoute><OwnerTransactionsPage /></AdminRoute>} />
+          <Route path="/payables" element={<AdminRoute><PayablesPage /></AdminRoute>} />
+          <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />

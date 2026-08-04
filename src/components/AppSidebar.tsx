@@ -69,13 +69,14 @@ const navGroups: NavGroup[] = [
     label: "Finance",
     icon: CircleDollarSign,
     items: [
-      { title: "Financial Dashboard", icon: BarChart3, adminOnly: true, soon: true },
+      { title: "Financial Dashboard", url: "/financial-dashboard", icon: BarChart3, adminOnly: true },
+      { title: "Petty Cash", url: "/petty-cash", icon: Wallet },
       { title: "Receivables", url: "/pending-payments", icon: CircleDollarSign },
+      { title: "Bank", url: "/bank", icon: Landmark, adminOnly: true },
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
-      { title: "Cash & Bank", icon: Landmark, adminOnly: true, soon: true },
-      { title: "Payables", icon: Wallet, adminOnly: true, soon: true },
+      { title: "Payables", url: "/payables", icon: Wallet, adminOnly: true },
       { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
-      { title: "Owner Transactions", icon: HandCoins, adminOnly: true, soon: true },
+      { title: "Owner Transactions", url: "/owner-transactions", icon: HandCoins, adminOnly: true },
     ],
   },
   {

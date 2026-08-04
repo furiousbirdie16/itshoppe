@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, OwnerTransaction, Payable } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
@@ -1604,3 +1604,167 @@ export const getInvoiceFinancial = async (invoiceId: string): Promise<InvoiceFin
   return (data as InvoiceFinancial) || null;
 };
 
+
+// ---------------------------------------------------------------------------
+// Finance: cash accounts, cash ledger, owner transactions, payables
+// ---------------------------------------------------------------------------
+
+export const getCashAccounts = async (): Promise<CashAccount[]> => {
+  const { data, error } = await from("cash_accounts")
+    .select("*")
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  return data;
+};
+
+export const createCashAccount = async (a: Partial<CashAccount>) => {
+  const { data, error } = await from("cash_accounts").insert(a).select().single();
+  if (error) throw error;
+  const created = data as CashAccount;
+  await logActivity("created_cash_account", "cash_account", created.id, { name: created.name });
+  return created;
+};
+
+export const updateCashAccount = async (id: string, a: Partial<CashAccount>) => {
+  const { data, error } = await from("cash_accounts")
+    .update({ ...a, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  const updated = data as CashAccount;
+  await logActivity("updated_cash_account", "cash_account", id, { name: updated.name });
+  return updated;
+};
+
+export const deleteCashAccount = async (id: string) => {
+  const { error } = await from("cash_accounts").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_cash_account", "cash_account", id);
+};
+
+/** Ledger rows, newest first. Pass accountIds to scope to petty cash or banks. */
+export const getCashTransactions = async (accountIds?: string[]): Promise<CashTransaction[]> => {
+  let q = from("cash_transactions")
+    .select("*, cash_accounts(*)")
+    .order("txn_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (accountIds) {
+    if (!accountIds.length) return [];
+    q = q.in("account_id", accountIds);
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+};
+
+export const createCashTransaction = async (t: Partial<CashTransaction>) => {
+  const { data, error } = await from("cash_transactions").insert(t).select().single();
+  if (error) throw error;
+  const created = data as CashTransaction;
+  await logActivity("created_cash_transaction", "cash_transaction", created.id, {
+    amount: created.amount, direction: created.direction,
+  });
+  return created;
+};
+
+export const updateCashTransaction = async (id: string, t: Partial<CashTransaction>) => {
+  const { data, error } = await from("cash_transactions")
+    .update({ ...t, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  await logActivity("updated_cash_transaction", "cash_transaction", id);
+  return data as CashTransaction;
+};
+
+export const deleteCashTransaction = async (id: string) => {
+  const { error } = await from("cash_transactions").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_cash_transaction", "cash_transaction", id);
+};
+
+/** Move money between two accounts as a linked pair of ledger rows. */
+export const createCashTransfer = async (args: {
+  from_account_id: string;
+  to_account_id: string;
+  amount: number;
+  txn_date: string;
+  notes?: string;
+}) => {
+  const groupId = crypto.randomUUID();
+  const shared = {
+    txn_date: args.txn_date,
+    amount: args.amount,
+    category: "Transfer",
+    notes: args.notes || "",
+    transfer_group_id: groupId,
+  };
+  const { error } = await from("cash_transactions").insert([
+    { ...shared, account_id: args.from_account_id, direction: "out" },
+    { ...shared, account_id: args.to_account_id, direction: "in" },
+  ]);
+  if (error) throw error;
+  await logActivity("created_cash_transfer", "cash_transaction", groupId, { amount: args.amount });
+};
+
+export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> => {
+  const { data, error } = await from("owner_transactions")
+    .select("*")
+    .order("txn_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+};
+
+export const createOwnerTransaction = async (t: Partial<OwnerTransaction>) => {
+  const { data, error } = await from("owner_transactions").insert(t).select().single();
+  if (error) throw error;
+  const created = data as OwnerTransaction;
+  await logActivity("created_owner_transaction", "owner_transaction", created.id, {
+    amount: created.amount, txn_type: created.txn_type,
+  });
+  return created;
+};
+
+export const updateOwnerTransaction = async (id: string, t: Partial<OwnerTransaction>) => {
+  const { data, error } = await from("owner_transactions")
+    .update({ ...t, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  await logActivity("updated_owner_transaction", "owner_transaction", id);
+  return data as OwnerTransaction;
+};
+
+export const deleteOwnerTransaction = async (id: string) => {
+  const { error } = await from("owner_transactions").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_owner_transaction", "owner_transaction", id);
+};
+
+export const getPayables = async (): Promise<Payable[]> => {
+  const { data, error } = await from("payables")
+    .select("*, suppliers(*)")
+    .order("due_date", { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return data;
+};
+
+export const createPayable = async (p: Partial<Payable>) => {
+  const { data, error } = await from("payables").insert(p).select().single();
+  if (error) throw error;
+  const created = data as Payable;
+  await logActivity("created_payable", "payable", created.id, {
+    payee: created.payee, amount: created.amount,
+  });
+  return created;
+};
+
+export const updatePayable = async (id: string, p: Partial<Payable>) => {
+  const { data, error } = await from("payables")
+    .update({ ...p, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  const updated = data as Payable;
+  await logActivity("updated_payable", "payable", id, { payee: updated.payee });
+  return updated;
+};
+
+export const deletePayable = async (id: string) => {
+  const { error } = await from("payables").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_payable", "payable", id);
+};
