@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getLoans, createLoan, updateLoan, deleteLoan } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,13 @@ import type { Loan } from "@/types/database";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
-const emptyForm = { lender: "", principal_amount: "", interest_rate: "", monthly_payment: "", due_date: "", notes: "" };
+const emptyForm = { lender: "", principal_amount: "", interest_rate: "", due_date: "", notes: "" };
+
+// Interest-only: the monthly payment covers interest, principal stays outstanding.
+function monthlyInterest(principal: number, annualRate: number) {
+  if (!principal || !annualRate) return 0;
+  return (principal * (annualRate / 100)) / 12;
+}
 
 function formatDueDate(value: string | null) {
   if (!value) return "—";
@@ -88,12 +94,16 @@ export default function LoansPage() {
       lender: l.lender,
       principal_amount: String(l.principal_amount ?? ""),
       interest_rate: String(l.interest_rate ?? ""),
-      monthly_payment: String(l.monthly_payment ?? ""),
       due_date: l.due_date || "",
       notes: l.notes || "",
     });
     setOpen(true);
   };
+
+  const computedMonthlyPayment = useMemo(
+    () => monthlyInterest(Number(form.principal_amount) || 0, Number(form.interest_rate) || 0),
+    [form.principal_amount, form.interest_rate],
+  );
 
   const handleSubmit = () => {
     if (!form.lender.trim()) { toast.error("Lender / loan name is required"); return; }
@@ -101,7 +111,7 @@ export default function LoansPage() {
       lender: form.lender.trim(),
       principal_amount: Number(form.principal_amount) || 0,
       interest_rate: Number(form.interest_rate) || 0,
-      monthly_payment: Number(form.monthly_payment) || 0,
+      monthly_payment: computedMonthlyPayment,
       due_date: form.due_date || null,
       notes: form.notes,
     };
@@ -163,7 +173,8 @@ export default function LoansPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Monthly Payment</Label>
-                <Input type="number" step="0.01" min="0" value={form.monthly_payment} onChange={e => setForm({ ...form, monthly_payment: e.target.value })} className="h-9" />
+                <Input readOnly tabIndex={-1} value={peso(computedMonthlyPayment)} className="h-9 bg-muted text-muted-foreground" />
+                <p className="text-[11px] text-muted-foreground">Interest-only, calculated automatically</p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Due Date</Label>
