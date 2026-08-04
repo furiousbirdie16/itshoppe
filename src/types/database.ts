@@ -54,6 +54,18 @@ export interface Supplier {
   created_at: string;
 }
 
+export interface Loan {
+  id: string;
+  lender: string;
+  principal_amount: number;
+  interest_rate: number;
+  monthly_payment: number;
+  due_date: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Customer {
   id: string;
   name: string;

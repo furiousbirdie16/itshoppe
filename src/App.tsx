@@ -20,6 +20,7 @@ import QuotationsPage from "@/pages/QuotationsPage";
 import InvoicesPage from "@/pages/InvoicesPage";
 import PendingPaymentsPage from "@/pages/PendingPaymentsPage";
 import MarketplaceReceivablesPage from "@/pages/MarketplaceReceivablesPage";
+import LoansPage from "@/pages/LoansPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import CustomerPricingPage from "@/pages/CustomerPricingPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -71,6 +72,7 @@ function ProtectedRoutes() {
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/pending-payments" element={<PendingPaymentsPage />} />
           <Route path="/marketplace-receivables" element={<AdminRoute><MarketplaceReceivablesPage /></AdminRoute>} />
+          <Route path="/loans" element={<AdminRoute><LoansPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />

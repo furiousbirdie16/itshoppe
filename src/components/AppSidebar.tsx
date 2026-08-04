@@ -74,7 +74,7 @@ const navGroups: NavGroup[] = [
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
       { title: "Cash & Bank", icon: Landmark, adminOnly: true, soon: true },
       { title: "Payables", icon: Wallet, adminOnly: true, soon: true },
-      { title: "Loans", icon: PiggyBank, adminOnly: true, soon: true },
+      { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
       { title: "Owner Transactions", icon: HandCoins, adminOnly: true, soon: true },
     ],
   },

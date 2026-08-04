@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
@@ -311,6 +311,35 @@ export const updateSupplier = async (id: string, s: Partial<Supplier>) => {
 export const deleteSupplier = async (id: string) => {
   const { error } = await from("suppliers").delete().eq("id", id);
   if (error) throw error;
+};
+
+// Loans
+export const getLoans = async (): Promise<Loan[]> => {
+  const { data, error } = await from("loans").select("*").order("due_date", { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return data;
+};
+
+export const createLoan = async (l: Partial<Loan>) => {
+  const { data, error } = await from("loans").insert(l).select().single();
+  if (error) throw error;
+  const created = data as Loan;
+  await logActivity("created_loan", "loan", created.id, { lender: created.lender, principal_amount: created.principal_amount });
+  return created;
+};
+
+export const updateLoan = async (id: string, l: Partial<Loan>) => {
+  const { data, error } = await from("loans").update({ ...l, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) throw error;
+  const updated = data as Loan;
+  await logActivity("updated_loan", "loan", id, { lender: updated.lender });
+  return updated;
+};
+
+export const deleteLoan = async (id: string) => {
+  const { error } = await from("loans").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_loan", "loan", id);
 };
 
 // Overseas Suppliers
