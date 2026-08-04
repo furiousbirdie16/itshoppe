@@ -1021,6 +1021,42 @@ export type Database = {
         }
         Relationships: []
       }
+      loans: {
+        Row: {
+          created_at: string
+          due_date: string | null
+          id: string
+          interest_rate: number
+          lender: string
+          monthly_payment: number
+          notes: string
+          principal_amount: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          interest_rate?: number
+          lender?: string
+          monthly_payment?: number
+          notes?: string
+          principal_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          interest_rate?: number
+          lender?: string
+          monthly_payment?: number
+          notes?: string
+          principal_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       locations_barangay: {
         Row: {
           city_name: string
