@@ -70,7 +70,7 @@ const navGroups: NavGroup[] = [
     icon: CircleDollarSign,
     items: [
       { title: "Financial Dashboard", url: "/financial-dashboard", icon: BarChart3, adminOnly: true },
-      { title: "Petty Cash", url: "/petty-cash", icon: Wallet },
+      { title: "Cash", url: "/cash", icon: Wallet },
       { title: "Receivables", url: "/pending-payments", icon: CircleDollarSign },
       { title: "Bank", url: "/bank", icon: Landmark, adminOnly: true },
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },

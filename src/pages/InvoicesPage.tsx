@@ -77,8 +77,10 @@ export default function InvoicesPage() {
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: cashAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
-  // Payment options come from the Bank page so the two stay in step.
-  const bankPaymentOptions = cashAccounts.filter((a) => a.account_type === "bank" && a.is_active);
+  // Payment options come from the Cash and Bank pages so the three stay in step.
+  const activeAccounts = cashAccounts.filter((a) => a.is_active);
+  const cashPaymentOptions = activeAccounts.filter((a) => a.account_type === "petty_cash");
+  const bankPaymentOptions = activeAccounts.filter((a) => a.account_type === "bank");
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
   const { data: invItemFinancials = [] } = useQuery({
     queryKey: ["invoice_item_financials", viewInv],
@@ -454,8 +456,12 @@ export default function InvoicesPage() {
   const [payRefFile, setPayRefFile] = useState<File | null>(null);
   const [payUploading, setPayUploading] = useState(false);
 
+  // Cash payments need no reference number or slip; everything else does.
+  const isCashMethod = (method: string) =>
+    method === "Cash" || cashPaymentOptions.some((a) => a.name === method);
+
   const openPayDialog = (id: string) => {
-    setPayMethod("Cash");
+    setPayMethod(cashPaymentOptions[0]?.name || "Cash");
     setPayReference("");
     setPayRefFile(null);
     setPayDialog({ id });
@@ -471,7 +477,7 @@ export default function InvoicesPage() {
 
   const submitPayment = async () => {
     if (!payDialog) return;
-    if (payMethod !== "Cash" && !payReference.trim() && !payRefFile) {
+    if (!isCashMethod(payMethod) && !payReference.trim() && !payRefFile) {
       toast.error("Please provide a reference number or image");
       return;
     }
@@ -1231,7 +1237,10 @@ export default function InvoicesPage() {
             <Select value={payMethod} onValueChange={setPayMethod}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="Cash">Cash</SelectItem>
+                {cashPaymentOptions.length === 0 && <SelectItem value="Cash">Cash</SelectItem>}
+                {cashPaymentOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
+                ))}
                 {bankPaymentOptions.map((a) => (
                   <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
                 ))}
@@ -1239,7 +1248,7 @@ export default function InvoicesPage() {
                 <SelectItem value="Others">Others</SelectItem>
               </SelectContent>
             </Select>
-            {payMethod !== "Cash" && (
+            {!isCashMethod(payMethod) && (
               <>
                 <Label>Reference Number</Label>
                 <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="e.g. transaction ID" />

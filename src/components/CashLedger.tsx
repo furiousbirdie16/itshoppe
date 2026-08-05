@@ -285,7 +285,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
           </div>
           {managedAccounts.length === 0 ? (
             <div className="rounded-lg border bg-card">
-              <div className="empty-state"><Landmark className="empty-state-icon" /><p className="text-sm">No accounts yet — add your first bank</p></div>
+              <div className="empty-state"><Landmark className="empty-state-icon" /><p className="text-sm">No accounts yet — add your first {accountType === "bank" ? "bank" : "cash account"}</p></div>
             </div>
           ) : (
             <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
@@ -405,14 +405,16 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
           <div className="grid gap-4 pt-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Account Name *</Label>
-              <Input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} className="h-9" placeholder="e.g. GCash, BDO, Metrobank" />
+              <Input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} className="h-9" placeholder={accountType === "bank" ? "e.g. GCash, BDO, Metrobank" : "e.g. Petty Cash, Geraldine Cash"} />
               <p className="text-[11px] text-muted-foreground">This name appears as a payment option when marking invoices paid.</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Account Number</Label>
-                <Input value={accountForm.account_number} onChange={(e) => setAccountForm({ ...accountForm, account_number: e.target.value })} className="h-9" />
-              </div>
+            <div className={accountType === "bank" ? "grid grid-cols-2 gap-3" : ""}>
+              {accountType === "bank" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Account Number</Label>
+                  <Input value={accountForm.account_number} onChange={(e) => setAccountForm({ ...accountForm, account_number: e.target.value })} className="h-9" />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Opening Balance</Label>
                 <Input type="number" step="0.01" value={accountForm.opening_balance} onChange={(e) => setAccountForm({ ...accountForm, opening_balance: e.target.value })} className="h-9" />

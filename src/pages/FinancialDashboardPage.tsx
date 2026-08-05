@@ -81,14 +81,14 @@ export default function FinancialDashboardPage() {
       </div>
 
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Cash on Hand" value={peso(cashOnHand)} icon={Wallet} description="Petty cash + all banks" />
+        <StatCard title="Cash on Hand" value={peso(cashOnHand)} icon={Wallet} description="Cash + all banks" />
         <StatCard title="Receivables" value={peso(Number(receivables || 0))} icon={CircleDollarSign} description="Unpaid invoices + manual" />
         <StatCard title="Payables" value={peso(payablesTotal)} icon={Landmark} description={`${overdueCount} overdue`} />
         <StatCard title="Net Position" value={peso(netPosition)} icon={Scale} description={netPosition >= 0 ? "Assets exceed liabilities" : "Liabilities exceed assets"} />
       </div>
 
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Petty Cash" value={peso(pettyTotal)} icon={Wallet} description="Current balance" />
+        <StatCard title="Cash" value={peso(pettyTotal)} icon={Wallet} description={`${pettyAccounts.length} account${pettyAccounts.length === 1 ? "" : "s"}`} />
         <StatCard title="Bank Total" value={peso(bankTotal)} icon={Landmark} description={`${bankAccounts.length} accounts`} />
         <StatCard title="Loans Outstanding" value={peso(loanPrincipal)} icon={PiggyBank} description={`${peso(monthlyLoanPayment)}/mo`} />
         <StatCard title="Owed to Owner" value={peso(ownerBalance)} icon={HandCoins} description={ownerBalance >= 0 ? "Not yet repaid" : "Overpaid"} />
@@ -115,7 +115,7 @@ export default function FinancialDashboardPage() {
                   <TableCell className="text-sm font-medium">{a.name}</TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="text-xs font-normal">
-                      {a.account_type === "petty_cash" ? "Petty Cash" : "Bank"}
+                      {a.account_type === "petty_cash" ? "Cash" : "Bank"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-right font-medium">{peso(balanceOf(a, txns))}</TableCell>
