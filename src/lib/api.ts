@@ -828,7 +828,64 @@ export const cancelInvoice = async (invoiceId: string) => {
     cancelled_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
+  await removeInvoicePaymentFromLedger(invoiceId);
   await logActivity("cancelled_invoice", "invoice", invoiceId);
+};
+
+/** Payment methods that never touch a cash or bank account. */
+const NON_LEDGER_PAYMENT_METHODS = ["Credit Card", "Others", "Other"];
+
+/**
+ * Resolves a payment method label to a cash account: "Cash" means the petty cash
+ * account, any other label is matched against bank account names (GCash, BDO, ...).
+ * Returns null for Credit Card / Others, or when no account matches.
+ */
+const resolvePaymentAccount = async (paymentMethod: string) => {
+  if (NON_LEDGER_PAYMENT_METHODS.includes(paymentMethod)) return null;
+  const { data } = await from("cash_accounts").select("id, name, account_type").eq("is_active", true);
+  const accounts = (data as any[]) || [];
+  if (paymentMethod === "Cash") {
+    return accounts.find((a) => a.account_type === "petty_cash") || null;
+  }
+  return accounts.find((a) => a.name.toLowerCase() === paymentMethod.toLowerCase()) || null;
+};
+
+/**
+ * Posts the invoice total as an inflow to the account matching the payment method.
+ * Silently does nothing for Credit Card / Others or unmatched labels. The unique
+ * index on source_invoice_id makes a repeated mark-as-paid a no-op rather than a
+ * double-post.
+ */
+const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: string) => {
+  const account = await resolvePaymentAccount(paymentMethod);
+  if (!account) return;
+
+  const { data: inv } = await from("invoices")
+    .select("total_amount, invoice_date, invoice_number, customers(name)")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  const amount = Number((inv as any)?.total_amount || 0);
+  if (amount <= 0) return;
+
+  const { error } = await from("cash_transactions").insert({
+    account_id: account.id,
+    txn_date: (inv as any)?.invoice_date || new Date().toISOString().slice(0, 10),
+    direction: "in",
+    amount,
+    category: "Invoice Payment",
+    payee: (inv as any)?.customers?.name || "",
+    reference: (inv as any)?.invoice_number || "",
+    notes: `Auto-posted from invoice ${(inv as any)?.invoice_number || invoiceId}`,
+    source_invoice_id: invoiceId,
+  });
+  // A duplicate means the invoice was already posted — not an error worth surfacing.
+  if (error && !String(error.message || "").toLowerCase().includes("duplicate")) throw error;
+};
+
+/** Removes the auto-posted ledger entry for an invoice, if one exists. */
+const removeInvoicePaymentFromLedger = async (invoiceId: string) => {
+  const { error } = await from("cash_transactions").delete().eq("source_invoice_id", invoiceId);
+  if (error) throw error;
 };
 
 // Mark invoice as paid - also deducts stock if not yet deducted (handles draft → paid path).
@@ -847,6 +904,12 @@ export const markInvoicePaid = async (
     payment_reference_url: payment.payment_reference_url || null,
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
+  // Never let a ledger problem block the invoice itself from being marked paid.
+  try {
+    await postInvoicePaymentToLedger(invoiceId, payment.payment_method);
+  } catch (e) {
+    console.warn("Invoice paid, but posting to the cash ledger failed:", e);
+  }
   await logActivity(wasShipped ? "completed_invoice" : "marked_invoice_paid", "invoice", invoiceId);
 };
 
@@ -882,6 +945,7 @@ export const revertInvoice = async (invoiceId: string) => {
     cancelled_at: null,
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
+  await removeInvoicePaymentFromLedger(invoiceId);
   await logActivity("reverted_invoice", "invoice", invoiceId);
 };
 

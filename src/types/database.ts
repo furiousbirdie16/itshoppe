@@ -289,6 +289,7 @@ export interface CashTransaction {
   reference: string;
   notes: string;
   transfer_group_id: string | null;
+  source_invoice_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

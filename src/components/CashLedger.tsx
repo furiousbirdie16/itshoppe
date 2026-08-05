@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getCashAccounts, getCashTransactions, createCashTransaction,
   updateCashTransaction, deleteCashTransaction, createCashTransfer,
+  createCashAccount, updateCashAccount, deleteCashAccount,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
-import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid } from "date-fns";
 import { peso } from "@/lib/currency";
@@ -27,6 +28,7 @@ const emptyForm = () => ({
   amount: "", category: "", payee: "", reference: "", notes: "",
 });
 const emptyTransfer = () => ({ from_account_id: "", to_account_id: "", amount: "", txn_date: today(), notes: "" });
+const emptyAccount = () => ({ name: "", account_number: "", opening_balance: "", notes: "" });
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -61,10 +63,19 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   const [transfer, setTransfer] = useState(emptyTransfer());
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<CashAccount | null>(null);
+  const [accountForm, setAccountForm] = useState(emptyAccount());
 
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  // Active accounts drive the pickers and totals...
   const accounts = useMemo(
     () => allAccounts.filter((a) => a.account_type === accountType && a.is_active),
+    [allAccounts, accountType],
+  );
+  // ...while the management cards also show deactivated ones so they can be restored.
+  const managedAccounts = useMemo(
+    () => allAccounts.filter((a) => a.account_type === accountType),
     [allAccounts, accountType],
   );
   const accountIds = useMemo(() => accounts.map((a) => a.id), [accounts]);
@@ -127,6 +138,70 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     onSuccess: () => { invalidate(); setTransferOpen(false); toast.success("Transfer recorded"); },
     onError: (e: any) => toast.error(e.message),
   });
+
+  const accountMut = useMutation({
+    mutationFn: (data: Partial<CashAccount>) =>
+      editingAccount ? updateCashAccount(editingAccount.id, data) : createCashAccount(data),
+    onSuccess: () => {
+      invalidate();
+      setAccountOpen(false);
+      setEditingAccount(null);
+      toast.success(editingAccount ? "Account updated" : "Account added");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteAccountMut = useMutation({
+    mutationFn: deleteCashAccount,
+    onSuccess: () => { invalidate(); setAccountFilter("all"); toast.success("Account deleted"); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const openAccountCreate = () => { setEditingAccount(null); setAccountForm(emptyAccount()); setAccountOpen(true); };
+
+  const openAccountEdit = (a: CashAccount) => {
+    setEditingAccount(a);
+    setAccountForm({
+      name: a.name,
+      account_number: a.account_number || "",
+      opening_balance: String(a.opening_balance ?? ""),
+      notes: a.notes || "",
+    });
+    setAccountOpen(true);
+  };
+
+  const handleAccountSubmit = () => {
+    if (!accountForm.name.trim()) { toast.error("Account name is required"); return; }
+    accountMut.mutate({
+      name: accountForm.name.trim(),
+      account_type: accountType,
+      account_number: accountForm.account_number.trim(),
+      opening_balance: Number(accountForm.opening_balance) || 0,
+      notes: accountForm.notes,
+      sort_order: editingAccount?.sort_order ?? accounts.length,
+    });
+  };
+
+  /**
+   * Deleting cascades to every transaction on the account, so refuse when there is
+   * history and steer to deactivating instead.
+   */
+  const handleAccountDelete = (a: CashAccount) => {
+    const count = txns.filter((t) => t.account_id === a.id).length;
+    if (count > 0) {
+      toast.error(
+        `${a.name} has ${count} transaction${count === 1 ? "" : "s"}. Deactivate it instead to keep the history.`,
+      );
+      return;
+    }
+    if (!window.confirm(`Delete ${a.name}? This cannot be undone.`)) return;
+    deleteAccountMut.mutate(a.id);
+  };
+
+  const toggleAccountActive = (a: CashAccount) =>
+    updateCashAccount(a.id, { is_active: !a.is_active })
+      .then(() => { invalidate(); toast.success(a.is_active ? `${a.name} deactivated` : `${a.name} reactivated`); })
+      .catch((e: any) => toast.error(e.message));
 
   const openCreate = () => {
     setEditing(null);
@@ -200,14 +275,46 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
         <StatCard title="Total Outflow" value={peso(totalOut)} icon={TrendingDown} description="Money out" />
       </div>
 
-      {showAccountFilter && accounts.length > 0 && (
-        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-          {accounts.map((a) => (
-            <div key={a.id} className="rounded-lg border bg-card px-4 py-3">
-              <p className="text-xs text-muted-foreground">{a.name}</p>
-              <p className="text-lg font-semibold">{peso(balanceOf(a, txns))}</p>
+      {showAccountFilter && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Accounts</h2>
+            <Button variant="outline" size="sm" onClick={openAccountCreate} className="h-8 rounded-lg text-xs">
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add Account
+            </Button>
+          </div>
+          {managedAccounts.length === 0 ? (
+            <div className="rounded-lg border bg-card">
+              <div className="empty-state"><Landmark className="empty-state-icon" /><p className="text-sm">No accounts yet — add your first bank</p></div>
             </div>
-          ))}
+          ) : (
+            <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+              {managedAccounts.map((a) => (
+                <div key={a.id} className={`rounded-lg border bg-card px-4 py-3 ${a.is_active ? "" : "opacity-60"}`}>
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground truncate">
+                        {a.name}{!a.is_active && " (inactive)"}
+                      </p>
+                      <p className="text-lg font-semibold">{peso(balanceOf(a, txns))}</p>
+                      {a.account_number && <p className="text-[11px] text-muted-foreground truncate">{a.account_number}</p>}
+                    </div>
+                    <div className="flex shrink-0 gap-0.5">
+                      <Button variant="ghost" size="icon" onClick={() => openAccountEdit(a)} className="h-6 w-6 rounded-md" title="Edit">
+                        <Pencil className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => toggleAccountActive(a)} className="h-6 w-6 rounded-md" title={a.is_active ? "Deactivate" : "Reactivate"}>
+                        <ArrowLeftRight className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleAccountDelete(a)} className="h-6 w-6 rounded-md" title="Delete">
+                        <Trash2 className="h-3 w-3 text-destructive/70" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -287,6 +394,39 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="rounded-lg h-9">
               {editing ? "Save Changes" : "Add Transaction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">{editingAccount ? "Edit Account" : "New Account"}</DialogTitle></DialogHeader>
+          <div className="grid gap-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Account Name *</Label>
+              <Input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} className="h-9" placeholder="e.g. GCash, BDO, Metrobank" />
+              <p className="text-[11px] text-muted-foreground">This name appears as a payment option when marking invoices paid.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Account Number</Label>
+                <Input value={accountForm.account_number} onChange={(e) => setAccountForm({ ...accountForm, account_number: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Opening Balance</Label>
+                <Input type="number" step="0.01" value={accountForm.opening_balance} onChange={(e) => setAccountForm({ ...accountForm, opening_balance: e.target.value })} className="h-9" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={accountForm.notes} onChange={(e) => setAccountForm({ ...accountForm, notes: e.target.value })} className="resize-none" rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccountOpen(false)}>Cancel</Button>
+            <Button onClick={handleAccountSubmit} disabled={accountMut.isPending} className="rounded-lg h-9">
+              {editingAccount ? "Save Changes" : "Add Account"}
             </Button>
           </DialogFooter>
         </DialogContent>

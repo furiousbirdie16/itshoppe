@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccounts } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,9 @@ export default function InvoicesPage() {
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  const { data: cashAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  // Payment options come from the Bank page so the two stay in step.
+  const bankPaymentOptions = cashAccounts.filter((a) => a.account_type === "bank" && a.is_active);
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
   const { data: invItemFinancials = [] } = useQuery({
     queryKey: ["invoice_item_financials", viewInv],
@@ -439,6 +442,7 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
       toast.success("Marked as paid — stock deducted if not already");
     },
     onError: (e: any) => toast.error(e.message),
@@ -497,6 +501,7 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
       toast.success("Invoice reverted to draft — stock restored");
     },
     onError: (e: any) => toast.error(e.message),
@@ -530,6 +535,7 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
       toast.success("Order cancelled — reserved stock returned");
     },
     onError: (e: any) => toast.error(e.message),
@@ -1226,11 +1232,11 @@ export default function InvoicesPage() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Cash">Cash</SelectItem>
-                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                <SelectItem value="GCash">GCash</SelectItem>
-                <SelectItem value="Check">Check</SelectItem>
+                {bankPaymentOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
+                ))}
                 <SelectItem value="Credit Card">Credit Card</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
+                <SelectItem value="Others">Others</SelectItem>
               </SelectContent>
             </Select>
             {payMethod !== "Cash" && (
