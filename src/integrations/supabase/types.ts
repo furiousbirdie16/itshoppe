@@ -173,6 +173,7 @@ export type Database = {
           notes: string
           payee: string
           reference: string
+          source_invoice_id: string | null
           transfer_group_id: string | null
           txn_date: string
           updated_at: string
@@ -188,6 +189,7 @@ export type Database = {
           notes?: string
           payee?: string
           reference?: string
+          source_invoice_id?: string | null
           transfer_group_id?: string | null
           txn_date?: string
           updated_at?: string
@@ -203,6 +205,7 @@ export type Database = {
           notes?: string
           payee?: string
           reference?: string
+          source_invoice_id?: string | null
           transfer_group_id?: string | null
           txn_date?: string
           updated_at?: string
@@ -213,6 +216,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "cash_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_transactions_source_invoice_id_fkey"
+            columns: ["source_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
         ]
