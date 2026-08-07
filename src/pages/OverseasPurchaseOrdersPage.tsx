@@ -240,11 +240,28 @@ export default function OverseasPurchaseOrdersPage() {
     order_date: (r) => r.order_date,
     expected_delivery: (r) => r.expected_delivery,
     eta: (r) => {
-      const s = shipmentByPo.get(r.id);
-      const v = s?.actual_arrival || s?.estimated_arrival || r.expected_delivery;
-      return v ? new Date(v).getTime() : null;
+      const a = arrivalFor(r.id, r.expected_delivery);
+      return a ? new Date(a.date).getTime() : null;
     },
   });
+  /**
+   * The arrival date to show for a PO, and whether it is confirmed or a forecast.
+   * A shipment marked delivered wins; otherwise the latest date the goods were
+   * actually received counts as arrival. Anything else is an estimate and is
+   * labelled as one, so a forecast is never mistaken for a real arrival.
+   */
+  const arrivalFor = (poId: string, expectedDelivery: string | null) => {
+    const shipment = shipmentByPo.get(poId);
+    if (shipment?.actual_arrival) return { date: shipment.actual_arrival, confirmed: true };
+    const receivedDates = (allPOItems as any[])
+      .filter((i) => i.po_id === poId && i.received_date)
+      .map((i) => i.received_date as string)
+      .sort();
+    if (receivedDates.length) return { date: receivedDates[receivedDates.length - 1], confirmed: true };
+    const estimate = shipment?.estimated_arrival || expectedDelivery;
+    return estimate ? { date: estimate, confirmed: false } : null;
+  };
+
   const itemsByPo = useMemo(() => {
     const map = new Map<string, OverseasPurchaseOrderItem[]>();
     for (const it of allPOItems) {
@@ -1208,9 +1225,7 @@ export default function OverseasPurchaseOrdersPage() {
             ) : sortedOrders.length === 0 ? (
               <TableRow><TableCell colSpan={11}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : sortedOrders.map(po => {
-              const shipment = shipmentByPo.get(po.id);
-              const eta = shipment?.estimated_arrival || po.expected_delivery;
-              const actualArrival = shipment?.actual_arrival;
+              const arrival = arrivalFor(po.id, po.expected_delivery);
               const poItems = itemsByPo.get(po.id) || [];
               const totalItems = poItems.length;
               const fullyReceived = poItems.filter((i) => (i.received_quantity || 0) >= i.quantity).length;
@@ -1225,10 +1240,16 @@ export default function OverseasPurchaseOrdersPage() {
                 <TableCell className="text-sm whitespace-nowrap">{branchNameById.get((po as any).branch_id) || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
                 <TableCell className="text-sm whitespace-nowrap">
-                  {actualArrival ? (
-                    <span className="text-success font-medium">✓ {new Date(actualArrival).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                  ) : eta ? (
-                    <span>{new Date(eta).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  {arrival ? (
+                    arrival.confirmed ? (
+                      <span className="text-success font-medium">
+                        ✓ {new Date(arrival.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground" title="Estimated — not yet confirmed as arrived">
+                        est. {new Date(arrival.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    )
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
