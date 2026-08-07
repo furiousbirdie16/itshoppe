@@ -1,9 +1,4 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  getCashAccounts, getCashTransactions, getOwnerTransactions,
-  getPayables, getLoans, getAccountsReceivable,
-} from "@/lib/api";
+import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { StatCard } from "@/components/StatCard";
 import { peso } from "@/lib/currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -38,53 +33,11 @@ function formatDate(value: string | null) {
 }
 
 export default function FinancialDashboardPage() {
-  const { data: accounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
-  const { data: txns = [] } = useQuery({ queryKey: ["cash-transactions", "all"], queryFn: () => getCashTransactions() });
-  const { data: ownerTxns = [] } = useQuery({ queryKey: ["owner-transactions"], queryFn: getOwnerTransactions });
-  const { data: payables = [] } = useQuery({ queryKey: ["payables"], queryFn: getPayables });
-  const { data: loans = [] } = useQuery({ queryKey: ["loans"], queryFn: getLoans });
-  const { data: receivables = 0 } = useQuery({ queryKey: ["accounts-receivable"], queryFn: () => getAccountsReceivable() });
-
-  const pettyAccounts = accounts.filter((a) => a.account_type === "petty_cash");
-  const bankAccounts = accounts.filter((a) => a.account_type === "bank");
-
-  // Foreign-currency accounts are carried at their weighted-average PHP cost so a
-  // single total is meaningful across currencies.
-  const fxByAccount = useMemo(() => {
-    const out: Record<string, ReturnType<typeof fxPosition>> = {};
-    for (const a of accounts) {
-      if (isForeign(a)) out[a.id] = fxPosition(txns.filter((t) => t.account_id === a.id));
-    }
-    return out;
-  }, [accounts, txns]);
-
-  const phpBalanceOf = (a: CashAccount) =>
-    isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
-
-  const pettyTotal = pettyAccounts.reduce((s, a) => s + phpBalanceOf(a), 0);
-  const bankTotal = bankAccounts.reduce((s, a) => s + phpBalanceOf(a), 0);
-  const cashOnHand = pettyTotal + bankTotal;
-
-  // Side note: how much of each foreign currency is actually held.
-  const foreignHoldings = accounts
-    .filter(isForeign)
-    .map((a) => ({ account: a, ...(fxByAccount[a.id] || { quantity: 0, phpCost: 0, averageRate: 0 }) }))
-    .filter((h) => h.quantity > 0);
-  const foreignNote = foreignHoldings
-    .map((h) => `${foreignAmount(h.quantity, h.account.currency)} @ ${h.averageRate.toFixed(2)}`)
-    .join(" · ");
-
-  const ownerPaid = ownerTxns.filter((t) => t.txn_type === "owner_paid").reduce((s, t) => s + Number(t.amount || 0), 0);
-  const ownerRepaid = ownerTxns.filter((t) => t.txn_type === "company_repaid").reduce((s, t) => s + Number(t.amount || 0), 0);
-  const ownerBalance = ownerPaid - ownerRepaid;
-
-  const payablesTotal = payables.reduce((s, p) => s + outstandingOf(p), 0);
-  const loanPrincipal = loans.reduce((s, l) => s + Number(l.principal_amount || 0), 0);
-  const monthlyLoanPayment = loans.reduce((s, l) => s + Number(l.monthly_payment || 0), 0);
-
-  const totalAssets = cashOnHand + Number(receivables || 0);
-  const totalLiabilities = payablesTotal + loanPrincipal + Math.max(ownerBalance, 0);
-  const netPosition = totalAssets - totalLiabilities;
+  const {
+    accounts, txns, payables, fxByAccount, phpBalanceOf,
+    cashAccounts, bankAccounts, cashTotal, bankTotal, foreignNote,
+    receivables, dueToOwner, billsAndChecks, loansOutstanding, monthlyLoanPayment,
+  } = useFinanceSummary();
 
   // Anything unsettled with a due date, soonest first.
   const upcoming = payables
@@ -104,18 +57,13 @@ export default function FinancialDashboardPage() {
         <p className="page-description">Summary of cash, receivables, payables, loans, and owner balances</p>
       </div>
 
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Cash on Hand" value={peso(cashOnHand)} icon={Wallet} description={foreignNote ? `incl. ${foreignNote}` : "Cash + all banks"} />
-        <StatCard title="Receivables" value={peso(Number(receivables || 0))} icon={CircleDollarSign} description="Unpaid invoices + manual" />
-        <StatCard title="Payables" value={peso(payablesTotal)} icon={Landmark} description={`${overdueCount} overdue`} />
-        <StatCard title="Net Position" value={peso(netPosition)} icon={Scale} description={netPosition >= 0 ? "Assets exceed liabilities" : "Liabilities exceed assets"} />
-      </div>
-
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Cash" value={peso(pettyTotal)} icon={Wallet} description={`${pettyAccounts.length} account${pettyAccounts.length === 1 ? "" : "s"}`} />
-        <StatCard title="Bank Total" value={peso(bankTotal)} icon={Landmark} description={`${bankAccounts.length} accounts`} />
-        <StatCard title="Loans Outstanding" value={peso(loanPrincipal)} icon={PiggyBank} description={`${peso(monthlyLoanPayment)}/mo`} />
-        <StatCard title="Owed to Owner" value={peso(ownerBalance)} icon={HandCoins} description={ownerBalance >= 0 ? "Not yet repaid" : "Overpaid"} />
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
+        <StatCard title="Cash" value={peso(cashTotal)} icon={Wallet} tone="asset" description={`${cashAccounts.length} account${cashAccounts.length === 1 ? "" : "s"}`} />
+        <StatCard title="Bank Total" value={peso(bankTotal)} icon={Landmark} tone="asset" description={foreignNote ? `incl. ${foreignNote}` : `${bankAccounts.length} account${bankAccounts.length === 1 ? "" : "s"}`} />
+        <StatCard title="Receivables" value={peso(receivables)} icon={CircleDollarSign} tone="asset" description="Unpaid invoices + manual" />
+        <StatCard title="Loans Outstanding" value={peso(loansOutstanding)} icon={PiggyBank} tone="liability" description={`${peso(monthlyLoanPayment)}/mo`} />
+        <StatCard title="Due to Owner" value={peso(dueToOwner)} icon={HandCoins} tone="liability" description={dueToOwner >= 0 ? "Not yet repaid" : "Overpaid"} />
+        <StatCard title="Payables" value={peso(billsAndChecks)} icon={Landmark} tone="liability" description={`Bills & checks · ${overdueCount} overdue`} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

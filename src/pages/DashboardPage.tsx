@@ -3,7 +3,8 @@ import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
-import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp } from "lucide-react";
+import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp, Landmark, PiggyBank, HandCoins, Scale } from "lucide-react";
+import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -16,6 +17,22 @@ export default function DashboardPage() {
     queryKey: ["dashboard", activeBranchId],
     queryFn: () => getDashboardStats(activeBranchId),
   });
+
+  const finance = useFinanceSummary();
+
+  // Net Asset Value = what we own minus what we owe.
+  //
+  // Supplier POs are deliberately excluded from both sides: an unpaid order has not
+  // been paid for and its goods are not yet counted as Incoming Assets, so counting
+  // it as a liability alone would understate net worth. Incoming Assets only picks
+  // up overseas POs already paid and shipped.
+  const inventoryValue = Number(stats?.totalValue || 0);
+  const incomingAssets = Number(stats?.incomingAssetsValue || 0);
+  const supplierPOs = Number(stats?.accountsPayableValue || 0);
+  const assetsTotal = inventoryValue + finance.receivables + incomingAssets + finance.totalCashAvailable;
+  const liabilitiesTotal =
+    finance.billsAndChecks + Math.max(finance.dueToOwner, 0) + finance.loansOutstanding;
+  const netAssetValue = assetsTotal - liabilitiesTotal;
 
   if (isLoading) {
     return (
@@ -65,8 +82,9 @@ export default function DashboardPage() {
         {isAdmin && (
           <StatCard
             title="Inventory Value"
-            value={peso(stats?.totalValue || 0)}
+            value={peso(inventoryValue)}
             icon={DollarSign}
+            tone="asset"
             description="Goods on hand"
           />
         )}
@@ -78,38 +96,74 @@ export default function DashboardPage() {
         />
         {isAdmin && (
           <StatCard
-            title="Receivables"
-            value={peso(stats?.receivablesValue || 0)}
+            title="Total Cash Available"
+            value={peso(finance.totalCashAvailable)}
             icon={Wallet}
-            variant="warning"
-            description="Unpaid invoices"
+            tone="asset"
+            description={finance.foreignNote ? `incl. ${finance.foreignNote}` : "Cash + bank"}
           />
         )}
         {isAdmin && (
           <StatCard
-            title="Payables"
-            value={peso(stats?.accountsPayableValue || 0)}
-            icon={Banknote}
-            variant="warning"
-            description="Owed to suppliers"
+            title="Receivables"
+            value={peso(finance.receivables)}
+            icon={Wallet}
+            tone="asset"
+            description="Unpaid invoices + manual"
           />
         )}
         {isAdmin && (
           <StatCard
             title="Incoming Assets"
-            value={peso(stats?.incomingAssetsValue || 0)}
+            value={peso(incomingAssets)}
             icon={TruckIcon}
+            tone="asset"
             description="Shipped goods in transit"
           />
         )}
         {isAdmin && (
           <StatCard
-            title="Total Asset Value"
-            value={peso(stats?.totalAssetValue || 0)}
-            icon={Coins}
-            variant="success"
-            description="Inventory + Incoming"
-
+            title="Payables — Supplier POs"
+            value={peso(supplierPOs)}
+            icon={Banknote}
+            tone="liability"
+            description="Unpaid POs · not in Net Asset Value"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Payables — Bills & Checks"
+            value={peso(finance.billsAndChecks)}
+            icon={Receipt}
+            tone="liability"
+            description="From the Payables page"
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Due to Owner"
+            value={peso(finance.dueToOwner)}
+            icon={HandCoins}
+            tone="liability"
+            description={finance.dueToOwner >= 0 ? "Not yet repaid" : "Overpaid"}
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Loans Outstanding"
+            value={peso(finance.loansOutstanding)}
+            icon={PiggyBank}
+            tone="liability"
+            description={`${peso(finance.monthlyLoanPayment)}/mo`}
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Net Asset Value"
+            value={peso(netAssetValue)}
+            icon={Scale}
+            variant={netAssetValue >= 0 ? "success" : "warning"}
+            description={`${peso(assetsTotal)} assets − ${peso(liabilitiesTotal)} liabilities`}
           />
         )}
       </div>

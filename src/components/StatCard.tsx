@@ -7,9 +7,11 @@ interface StatCardProps {
   icon: LucideIcon;
   description?: string;
   variant?: "default" | "warning" | "success";
+  /** Colours the figure: green for what we own, red for what we owe. */
+  tone?: "asset" | "liability";
 }
 
-export function StatCard({ title, value, icon: Icon, description, variant = "default" }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, description, variant = "default", tone }: StatCardProps) {
   return (
     <div className="stat-card">
       <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
@@ -23,7 +25,11 @@ export function StatCard({ title, value, icon: Icon, description, variant = "def
           <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </div>
       </div>
-      <div className="text-lg sm:text-2xl font-semibold tracking-tight truncate">{value}</div>
+      <div className={cn(
+        "text-lg sm:text-2xl font-semibold tracking-tight truncate",
+        tone === "asset" && "text-emerald-600 dark:text-emerald-500",
+        tone === "liability" && "text-red-600 dark:text-red-500",
+      )}>{value}</div>
       {description && <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 truncate">{description}</p>}
     </div>
   );
