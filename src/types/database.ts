@@ -269,6 +269,7 @@ export interface CashAccount {
   id: string;
   name: string;
   account_type: CashAccountType;
+  currency: string;
   account_number: string;
   opening_balance: number;
   is_active: boolean;
@@ -289,8 +290,12 @@ export interface CashTransaction {
   reference: string;
   notes: string;
   transfer_group_id: string | null;
+  fx_rate: number | null;
   source_invoice_id: string | null;
   created_by: string | null;
+  created_by_email: string;
+  updated_by: string | null;
+  updated_by_email: string;
   created_at: string;
   updated_at: string;
   cash_accounts?: CashAccount;

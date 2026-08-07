@@ -22,6 +22,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBranch } from "@/contexts/BranchContext";
 
 interface ManualForm {
@@ -55,6 +56,7 @@ export default function PendingPaymentsPage() {
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"invoices" | "manual">("invoices");
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
@@ -227,10 +229,12 @@ export default function PendingPaymentsPage() {
   const overdueCount = overdueInvoices + overdueManual;
   const totalCount = filteredInvoices.length + filteredManual.length;
 
-  // Merge invoices + manual into a single sortable list
+
+  // Invoices and manual entries live on separate tabs — clumped together they were
+  // hard to read.
   const combinedRows = useMemo(() => {
-    const rows = [
-      ...filteredInvoices.map((inv: any) => ({
+    const rows = tab === "invoices"
+      ? filteredInvoices.map((inv: any) => ({
         kind: "invoice" as const, raw: inv,
         source: "Invoice", reference: inv.invoice_number,
         customer: inv.customers?.name || "",
@@ -238,8 +242,8 @@ export default function PendingPaymentsPage() {
         due_date: inv.due_date || "",
         status: inv.status || "",
         amount: Number(inv.total_amount),
-      })),
-      ...filteredManual.map((m: any) => ({
+      }))
+      : filteredManual.map((m: any) => ({
         kind: "manual" as const, raw: m,
         source: "Manual", reference: m.description || "",
         customer: m.customers?.name || "",
@@ -247,8 +251,7 @@ export default function PendingPaymentsPage() {
         due_date: m.due_date || "",
         status: m.status || "",
         amount: Number(m.amount),
-      })),
-    ];
+      }));
 
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -257,7 +260,7 @@ export default function PendingPaymentsPage() {
       [row.source, row.reference, row.customer, row.date, row.due_date, row.status, String(row.amount)]
         .some((value) => (value || "").toLowerCase().includes(q)),
     );
-  }, [filteredInvoices, filteredManual, search]);
+  }, [filteredInvoices, filteredManual, search, tab]);
 
   const { sort, toggle, sorted: sortedRows } = useSort<typeof combinedRows[number]>(combinedRows, {
     source: (r) => r.source,
@@ -434,12 +437,30 @@ export default function PendingPaymentsPage() {
         </DialogContent>
       </Dialog>
 
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <TabsList>
+          <TabsTrigger value="invoices">
+            Invoices
+            <span className="ml-1.5 text-xs text-muted-foreground">{filteredInvoices.length}</span>
+          </TabsTrigger>
+          <TabsTrigger value="manual">
+            Manual
+            <span className="ml-1.5 text-xs text-muted-foreground">{filteredManual.length}</span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <p className="text-sm text-muted-foreground -mt-3">
+        {tab === "invoices"
+          ? `${filteredInvoices.length} invoice${filteredInvoices.length === 1 ? "" : "s"} · ${peso(invoiceTotal)}`
+          : `${filteredManual.length} manual entr${filteredManual.length === 1 ? "y" : "ies"} · ${peso(manualTotal)}`}
+      </p>
+
       <div className="data-table-wrapper">
         <Table>
           <TableHeader>
             <TableRow>
-              <SortableHeader sortKey="source" label="Source" sort={sort} onToggle={toggle} />
-              <SortableHeader sortKey="reference" label="Reference" sort={sort} onToggle={toggle} />
+              <SortableHeader sortKey="reference" label={tab === "invoices" ? "Invoice #" : "Description"} sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="date" label="Date" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="due_date" label="Due Date" sort={sort} onToggle={toggle} />
@@ -449,15 +470,14 @@ export default function PendingPaymentsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {totalCount === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No pending payments</p></div></TableCell></TableRow>
+            {sortedRows.length === 0 ? (
+              <TableRow><TableCell colSpan={7}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">{tab === "invoices" ? "No pending invoices" : "No manual receivables"}</p></div></TableCell></TableRow>
             ) : sortedRows.map((row) => {
               if (row.kind === "invoice") {
                 const inv = row.raw;
                 const overdue = isOverdue(inv);
                 return (
                   <TableRow key={`inv-${inv.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
-                    <TableCell className="text-xs text-muted-foreground">Invoice</TableCell>
                     <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
                     <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
@@ -485,7 +505,6 @@ export default function PendingPaymentsPage() {
               const overdue = isOverdue(m);
               return (
                 <TableRow key={`man-${m.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
-                  <TableCell className="text-xs text-muted-foreground">Manual</TableCell>
                   <TableCell className="text-sm">{m.description || "—"}</TableCell>
                   <TableCell className="text-sm">{m.customers?.name || "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(m.created_at || "").split("T")[0]}</TableCell>

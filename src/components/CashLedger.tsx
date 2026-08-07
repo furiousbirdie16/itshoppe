@@ -19,16 +19,22 @@ import { toast } from "sonner";
 import { format, parse, isValid } from "date-fns";
 import { peso } from "@/lib/currency";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
+import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const emptyForm = () => ({
   account_id: "", txn_date: today(), direction: "out" as "in" | "out",
-  amount: "", category: "", payee: "", reference: "", notes: "",
+  amount: "", category: "", payee: "", reference: "", notes: "", fx_rate: "",
 });
-const emptyTransfer = () => ({ from_account_id: "", to_account_id: "", amount: "", txn_date: today(), notes: "" });
-const emptyAccount = () => ({ name: "", account_number: "", opening_balance: "", notes: "" });
+const emptyTransfer = () => ({ from_account_id: "", to_account_id: "", amount: "", amount_to: "", txn_date: today(), notes: "" });
+const emptyAccount = () => ({ name: "", account_number: "", opening_balance: "", notes: "", currency: BASE_CURRENCY });
+
+/** Emails are long in a narrow column — show the name part, full address on hover. */
+function shortUser(email: string) {
+  return email.split("@")[0] || email;
+}
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -103,10 +109,49 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     category: (r) => r.category,
     payee: (r) => r.payee,
     amount: (r) => Number(r.amount),
+    recorded_by: (r) => r.created_by_email || "",
   });
 
+  // Foreign accounts are valued in PHP from a running weighted-average of the
+  // rates paid, so one total can span currencies.
+  const fxByAccount = useMemo(() => {
+    const out: Record<string, ReturnType<typeof fxPosition>> = {};
+    for (const a of managedAccounts) {
+      if (isForeign(a)) out[a.id] = fxPosition(txns.filter((t) => t.account_id === a.id));
+    }
+    return out;
+  }, [managedAccounts, txns]);
+
+  const phpAmountById = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const a of managedAccounts) {
+      if (isForeign(a)) Object.assign(out, fxPhpAmountById(txns.filter((t) => t.account_id === a.id)));
+    }
+    return out;
+  }, [managedAccounts, txns]);
+
+  /** Balance in PHP, whatever the account's currency. */
+  const phpBalanceOf = (a: CashAccount) =>
+    isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
+
+  const hasForeign = managedAccounts.some(isForeign);
+
+  /** Amounts render in the account's own currency. */
+  const amountLabel = (t: CashTransaction) => {
+    const account = allAccounts.find((a) => a.id === t.account_id);
+    return account && isForeign(account)
+      ? foreignAmount(Number(t.amount), account.currency)
+      : peso(Number(t.amount));
+  };
+  const accountById = useMemo(
+    () => Object.fromEntries(allAccounts.map((a) => [a.id, a])),
+    [allAccounts],
+  );
+  const formAccount = accountById[form.account_id];
+  const formIsForeign = formAccount ? isForeign(formAccount) : false;
+
   const visibleAccounts = accountFilter === "all" ? accounts : accounts.filter((a) => a.id === accountFilter);
-  const totalBalance = visibleAccounts.reduce((sum, a) => sum + balanceOf(a, txns), 0);
+  const totalBalance = visibleAccounts.reduce((sum, a) => sum + phpBalanceOf(a), 0);
   const totalIn = scoped.filter((t) => t.direction === "in").reduce((s, t) => s + Number(t.amount || 0), 0);
   const totalOut = scoped.filter((t) => t.direction === "out").reduce((s, t) => s + Number(t.amount || 0), 0);
 
@@ -166,6 +211,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
       account_number: a.account_number || "",
       opening_balance: String(a.opening_balance ?? ""),
       notes: a.notes || "",
+      currency: a.currency || BASE_CURRENCY,
     });
     setAccountOpen(true);
   };
@@ -176,6 +222,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
       name: accountForm.name.trim(),
       account_type: accountType,
       account_number: accountForm.account_number.trim(),
+      currency: (accountForm.currency || BASE_CURRENCY).trim().toUpperCase(),
       opening_balance: Number(accountForm.opening_balance) || 0,
       notes: accountForm.notes,
       sort_order: editingAccount?.sort_order ?? accounts.length,
@@ -216,6 +263,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
       txn_date: t.txn_date,
       direction: t.direction,
       amount: String(t.amount ?? ""),
+      fx_rate: t.fx_rate == null ? "" : String(t.fx_rate),
       category: t.category || "",
       payee: t.payee || "",
       reference: t.reference || "",
@@ -228,11 +276,18 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     if (!form.account_id) { toast.error("Select an account"); return; }
     const amount = Number(form.amount);
     if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
+    const needsRate = formIsForeign && form.direction === "in";
+    const rate = Number(form.fx_rate);
+    if (needsRate && (!rate || rate <= 0)) {
+      toast.error(`Enter the PHP rate paid per 1 ${formAccount?.currency}`);
+      return;
+    }
     const data: Partial<CashTransaction> = {
       account_id: form.account_id,
       txn_date: form.txn_date,
       direction: form.direction,
       amount,
+      fx_rate: needsRate ? rate : null,
       category: form.category.trim(),
       payee: form.payee.trim(),
       reference: form.reference.trim(),
@@ -242,12 +297,33 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     else createMut.mutate(data);
   };
 
+  const transferFrom = accountById[transfer.from_account_id];
+  const transferTo = accountById[transfer.to_account_id];
+  const transferCurrenciesDiffer =
+    !!transferFrom && !!transferTo &&
+    (transferFrom.currency || BASE_CURRENCY) !== (transferTo.currency || BASE_CURRENCY);
+
   const handleTransfer = () => {
     const amount = Number(transfer.amount);
     if (!transfer.from_account_id || !transfer.to_account_id) { toast.error("Pick both accounts"); return; }
     if (transfer.from_account_id === transfer.to_account_id) { toast.error("Pick two different accounts"); return; }
     if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
-    transferMut.mutate({ ...transfer, amount });
+
+    if (!transferCurrenciesDiffer) {
+      transferMut.mutate({ ...transfer, amount, amount_to: amount, fx_rate: null });
+      return;
+    }
+    // An exchange: both sides differ, and the implied rate is what was really paid.
+    const amountTo = Number(transfer.amount_to);
+    if (!amountTo || amountTo <= 0) { toast.error(`Enter the ${transferTo?.currency} amount received`); return; }
+    const toIsForeign = isForeign(transferTo!);
+    transferMut.mutate({
+      ...transfer,
+      amount,
+      amount_to: amountTo,
+      // Rate only means anything when the destination is the foreign side.
+      fx_rate: toIsForeign ? amount / amountTo : null,
+    });
   };
 
   return (
@@ -296,8 +372,15 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                       <p className="text-xs text-muted-foreground truncate">
                         {a.name}{!a.is_active && " (inactive)"}
                       </p>
-                      <p className="text-lg font-semibold">{peso(balanceOf(a, txns))}</p>
-                      {a.account_number && <p className="text-[11px] text-muted-foreground truncate">{a.account_number}</p>}
+                      <p className="text-lg font-semibold">{peso(phpBalanceOf(a))}</p>
+                      {isForeign(a) ? (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {foreignAmount(fxByAccount[a.id]?.quantity || 0, a.currency)}
+                          {" · avg "}{(fxByAccount[a.id]?.averageRate || 0).toFixed(2)}
+                        </p>
+                      ) : a.account_number ? (
+                        <p className="text-[11px] text-muted-foreground truncate">{a.account_number}</p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 gap-0.5">
                       <Button variant="ghost" size="icon" onClick={() => openAccountEdit(a)} className="h-6 w-6 rounded-md" title="Edit">
@@ -361,10 +444,24 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Amount *</Label>
+                <Label className="text-xs font-medium">
+                  Amount *{formIsForeign && ` (${formAccount?.currency})`}
+                </Label>
                 <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="h-9" />
               </div>
             </div>
+            {formIsForeign && form.direction === "in" && (
+              <div className="space-y-1.5 rounded-lg border p-3">
+                <Label className="text-xs font-medium">PHP per 1 {formAccount?.currency} *</Label>
+                <Input type="number" step="0.0001" min="0" value={form.fx_rate} onChange={(e) => setForm({ ...form, fx_rate: e.target.value })} className="h-9" placeholder="e.g. 9.05" />
+                <p className="text-[11px] text-muted-foreground">
+                  {Number(form.amount) > 0 && Number(form.fx_rate) > 0
+                    ? `Costs ${peso(Number(form.amount) * Number(form.fx_rate))}. `
+                    : ""}
+                  Outflows are valued automatically at the running average.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Date *</Label>
@@ -407,6 +504,21 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
               <Label className="text-xs font-medium">Account Name *</Label>
               <Input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} className="h-9" placeholder={accountType === "bank" ? "e.g. GCash, BDO, Metrobank" : "e.g. Petty Cash, Geraldine Cash"} />
               <p className="text-[11px] text-muted-foreground">This name appears as a payment option when marking invoices paid.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Currency</Label>
+              <Input
+                value={accountForm.currency}
+                onChange={(e) => setAccountForm({ ...accountForm, currency: e.target.value.toUpperCase() })}
+                className="h-9"
+                placeholder="PHP"
+                disabled={!!editingAccount}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {editingAccount
+                  ? "Currency cannot be changed once the account has history."
+                  : "Use PHP unless this holds a foreign currency, e.g. RMB. Foreign accounts are valued in PHP at a weighted-average rate."}
+              </p>
             </div>
             <div className={accountType === "bank" ? "grid grid-cols-2 gap-3" : ""}>
               {accountType === "bank" && (
@@ -460,7 +572,9 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Amount *</Label>
+                <Label className="text-xs font-medium">
+                  Amount Sent *{transferFrom ? ` (${transferFrom.currency || BASE_CURRENCY})` : ""}
+                </Label>
                 <Input type="number" step="0.01" min="0" value={transfer.amount} onChange={(e) => setTransfer({ ...transfer, amount: e.target.value })} className="h-9" />
               </div>
               <div className="space-y-1.5">
@@ -468,6 +582,19 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                 <DateField value={transfer.txn_date} onChange={(v) => setTransfer({ ...transfer, txn_date: v })} />
               </div>
             </div>
+            {transferCurrenciesDiffer && (
+              <div className="space-y-1.5 rounded-lg border p-3">
+                <Label className="text-xs font-medium">
+                  Amount Received * ({transferTo?.currency})
+                </Label>
+                <Input type="number" step="0.01" min="0" value={transfer.amount_to} onChange={(e) => setTransfer({ ...transfer, amount_to: e.target.value })} className="h-9" />
+                <p className="text-[11px] text-muted-foreground">
+                  {Number(transfer.amount) > 0 && Number(transfer.amount_to) > 0
+                    ? `Rate: ${(Number(transfer.amount) / Number(transfer.amount_to)).toFixed(4)} ${transferFrom?.currency || BASE_CURRENCY} per 1 ${transferTo?.currency}`
+                    : "An exchange — enter what actually landed in the destination."}
+                </p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
               <Textarea value={transfer.notes} onChange={(e) => setTransfer({ ...transfer, notes: e.target.value })} className="resize-none" rows={2} />
@@ -490,22 +617,41 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
               <SortableHeader sortKey="payee" label="Payee / Source" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right">Inflow</TableHead>
               <TableHead className="text-xs text-right">Outflow</TableHead>
+              {hasForeign && <TableHead className="text-xs text-right">PHP Value</TableHead>}
+              <SortableHeader sortKey="recorded_by" label="Recorded By" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={showAccountFilter ? 7 : 6} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={showAccountFilter ? (hasForeign ? 9 : 8) : (hasForeign ? 8 : 7)} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sorted.length === 0 ? (
-              <TableRow><TableCell colSpan={showAccountFilter ? 7 : 6}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={showAccountFilter ? (hasForeign ? 9 : 8) : (hasForeign ? 8 : 7)}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div></TableCell></TableRow>
             ) : sorted.map((t) => (
               <TableRow key={t.id} className="hover:bg-muted/30">
                 <TableCell className="text-sm text-muted-foreground">{formatDate(t.txn_date)}</TableCell>
                 {showAccountFilter && <TableCell className="text-sm">{t.cash_accounts?.name || "—"}</TableCell>}
                 <TableCell className="text-sm">{t.category || "—"}</TableCell>
                 <TableCell className="text-sm font-medium">{t.payee || "—"}</TableCell>
-                <TableCell className="text-sm text-right text-emerald-600">{t.direction === "in" ? peso(Number(t.amount)) : "—"}</TableCell>
-                <TableCell className="text-sm text-right text-destructive/80">{t.direction === "out" ? peso(Number(t.amount)) : "—"}</TableCell>
+                <TableCell className="text-sm text-right text-emerald-600">{t.direction === "in" ? amountLabel(t) : "—"}</TableCell>
+                <TableCell className="text-sm text-right text-destructive/80">{t.direction === "out" ? amountLabel(t) : "—"}</TableCell>
+                {hasForeign && (
+                  <TableCell className="text-sm text-right text-muted-foreground">
+                    {accountById[t.account_id] && isForeign(accountById[t.account_id])
+                      ? peso(phpAmountById[t.id] || 0)
+                      : "—"}
+                  </TableCell>
+                )}
+                <TableCell className="text-xs text-muted-foreground">
+                  {t.created_by_email ? (
+                    <span title={t.created_by_email}>{shortUser(t.created_by_email)}</span>
+                  ) : "—"}
+                  {t.updated_by_email && t.updated_by_email !== t.created_by_email && (
+                    <span className="block text-[10px]" title={`Last edited by ${t.updated_by_email}`}>
+                      edited by {shortUser(t.updated_by_email)}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>

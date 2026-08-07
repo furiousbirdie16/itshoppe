@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getCashAccounts, getCashTransactions, getOwnerTransactions,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
 import type { CashAccount, CashTransaction, Payable } from "@/types/database";
+import { isForeign, fxPosition, foreignAmount, BASE_CURRENCY } from "@/lib/fx";
 
 const SETTLED: Payable["status"][] = ["paid", "cleared", "cancelled"];
 
@@ -46,9 +48,31 @@ export default function FinancialDashboardPage() {
   const pettyAccounts = accounts.filter((a) => a.account_type === "petty_cash");
   const bankAccounts = accounts.filter((a) => a.account_type === "bank");
 
-  const pettyTotal = pettyAccounts.reduce((s, a) => s + balanceOf(a, txns), 0);
-  const bankTotal = bankAccounts.reduce((s, a) => s + balanceOf(a, txns), 0);
+  // Foreign-currency accounts are carried at their weighted-average PHP cost so a
+  // single total is meaningful across currencies.
+  const fxByAccount = useMemo(() => {
+    const out: Record<string, ReturnType<typeof fxPosition>> = {};
+    for (const a of accounts) {
+      if (isForeign(a)) out[a.id] = fxPosition(txns.filter((t) => t.account_id === a.id));
+    }
+    return out;
+  }, [accounts, txns]);
+
+  const phpBalanceOf = (a: CashAccount) =>
+    isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
+
+  const pettyTotal = pettyAccounts.reduce((s, a) => s + phpBalanceOf(a), 0);
+  const bankTotal = bankAccounts.reduce((s, a) => s + phpBalanceOf(a), 0);
   const cashOnHand = pettyTotal + bankTotal;
+
+  // Side note: how much of each foreign currency is actually held.
+  const foreignHoldings = accounts
+    .filter(isForeign)
+    .map((a) => ({ account: a, ...(fxByAccount[a.id] || { quantity: 0, phpCost: 0, averageRate: 0 }) }))
+    .filter((h) => h.quantity > 0);
+  const foreignNote = foreignHoldings
+    .map((h) => `${foreignAmount(h.quantity, h.account.currency)} @ ${h.averageRate.toFixed(2)}`)
+    .join(" · ");
 
   const ownerPaid = ownerTxns.filter((t) => t.txn_type === "owner_paid").reduce((s, t) => s + Number(t.amount || 0), 0);
   const ownerRepaid = ownerTxns.filter((t) => t.txn_type === "company_repaid").reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -81,7 +105,7 @@ export default function FinancialDashboardPage() {
       </div>
 
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Cash on Hand" value={peso(cashOnHand)} icon={Wallet} description="Cash + all banks" />
+        <StatCard title="Cash on Hand" value={peso(cashOnHand)} icon={Wallet} description={foreignNote ? `incl. ${foreignNote}` : "Cash + all banks"} />
         <StatCard title="Receivables" value={peso(Number(receivables || 0))} icon={CircleDollarSign} description="Unpaid invoices + manual" />
         <StatCard title="Payables" value={peso(payablesTotal)} icon={Landmark} description={`${overdueCount} overdue`} />
         <StatCard title="Net Position" value={peso(netPosition)} icon={Scale} description={netPosition >= 0 ? "Assets exceed liabilities" : "Liabilities exceed assets"} />
@@ -112,13 +136,21 @@ export default function FinancialDashboardPage() {
                 <TableRow><TableCell colSpan={3}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No accounts yet</p></div></TableCell></TableRow>
               ) : accounts.map((a) => (
                 <TableRow key={a.id} className="hover:bg-muted/30">
-                  <TableCell className="text-sm font-medium">{a.name}</TableCell>
+                  <TableCell className="text-sm font-medium">
+                    {a.name}
+                    {isForeign(a) && (
+                      <span className="block text-[11px] font-normal text-muted-foreground">
+                        {foreignAmount(fxByAccount[a.id]?.quantity || 0, a.currency)}
+                        {" @ "}{(fxByAccount[a.id]?.averageRate || 0).toFixed(2)}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="text-xs font-normal">
-                      {a.account_type === "petty_cash" ? "Cash" : "Bank"}
+                      {isForeign(a) ? a.currency : a.account_type === "petty_cash" ? "Cash" : "Bank"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-right font-medium">{peso(balanceOf(a, txns))}</TableCell>
+                  <TableCell className="text-sm text-right font-medium">{peso(phpBalanceOf(a))}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

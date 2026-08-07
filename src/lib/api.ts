@@ -859,6 +859,7 @@ const resolvePaymentAccount = async (paymentMethod: string) => {
 const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: string) => {
   const account = await resolvePaymentAccount(paymentMethod);
   if (!account) return;
+  const actor = await currentActor();
 
   const { data: inv } = await from("invoices")
     .select("total_amount, invoice_date, invoice_number, customers(name)")
@@ -877,6 +878,8 @@ const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: stri
     reference: (inv as any)?.invoice_number || "",
     notes: `Auto-posted from invoice ${(inv as any)?.invoice_number || invoiceId}`,
     source_invoice_id: invoiceId,
+    created_by: actor.id,
+    created_by_email: actor.email,
   });
   // A duplicate means the invoice was already posted — not an error worth surfacing.
   if (error && !String(error.message || "").toLowerCase().includes("duplicate")) throw error;
@@ -1719,8 +1722,17 @@ export const getCashTransactions = async (accountIds?: string[]): Promise<CashTr
   return data;
 };
 
+/** Current user's id and email, for stamping who touched a ledger row. */
+const currentActor = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return { id: user?.id || null, email: user?.email || "" };
+};
+
 export const createCashTransaction = async (t: Partial<CashTransaction>) => {
-  const { data, error } = await from("cash_transactions").insert(t).select().single();
+  const actor = await currentActor();
+  const { data, error } = await from("cash_transactions")
+    .insert({ ...t, created_by: actor.id, created_by_email: actor.email })
+    .select().single();
   if (error) throw error;
   const created = data as CashTransaction;
   await logActivity("created_cash_transaction", "cash_transaction", created.id, {
@@ -1730,8 +1742,10 @@ export const createCashTransaction = async (t: Partial<CashTransaction>) => {
 };
 
 export const updateCashTransaction = async (id: string, t: Partial<CashTransaction>) => {
+  const actor = await currentActor();
   const { data, error } = await from("cash_transactions")
-    .update({ ...t, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+    .update({ ...t, updated_at: new Date().toISOString(), updated_by: actor.id, updated_by_email: actor.email })
+    .eq("id", id).select().single();
   if (error) throw error;
   await logActivity("updated_cash_transaction", "cash_transaction", id);
   return data as CashTransaction;
@@ -1748,20 +1762,32 @@ export const createCashTransfer = async (args: {
   from_account_id: string;
   to_account_id: string;
   amount: number;
+  /** Amount landing in the destination when currencies differ; defaults to `amount`. */
+  amount_to?: number;
+  /** PHP per destination unit, recorded so the weighted average can be maintained. */
+  fx_rate?: number | null;
   txn_date: string;
   notes?: string;
 }) => {
   const groupId = crypto.randomUUID();
+  const actor = await currentActor();
   const shared = {
     txn_date: args.txn_date,
-    amount: args.amount,
     category: "Transfer",
     notes: args.notes || "",
     transfer_group_id: groupId,
+    created_by: actor.id,
+    created_by_email: actor.email,
   };
   const { error } = await from("cash_transactions").insert([
-    { ...shared, account_id: args.from_account_id, direction: "out" },
-    { ...shared, account_id: args.to_account_id, direction: "in" },
+    { ...shared, account_id: args.from_account_id, direction: "out", amount: args.amount },
+    {
+      ...shared,
+      account_id: args.to_account_id,
+      direction: "in",
+      amount: args.amount_to ?? args.amount,
+      fx_rate: args.fx_rate ?? null,
+    },
   ]);
   if (error) throw error;
   await logActivity("created_cash_transfer", "cash_transaction", groupId, { amount: args.amount });
