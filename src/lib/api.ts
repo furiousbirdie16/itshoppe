@@ -1588,26 +1588,35 @@ export const getAccountsReceivable = async (branchId?: string | null): Promise<n
   return invTotal + mrTotal;
 };
 
-/** Daily series of sales totals (online + invoice) between two ISO dates. */
+/**
+ * Daily sales between two ISO dates, split into invoice and online.
+ *
+ * A sale counts once the customer has paid: invoices in `paid` or `completed`
+ * (completed being shipped-then-paid), regardless of shipping. Online orders count
+ * on their order date whether or not payment has landed, since the order itself is
+ * the sale; only cancelled and returned orders are excluded.
+ */
 export const getSalesTrend = async (
   fromIso: string,
   toIso: string,
   branchId?: string | null,
 ): Promise<{ date: string; online: number; invoice: number; total: number }[]> => {
   let onlineQ = from("online_sales")
-    .select("order_date, posted_price, quantity, branch_id")
+    .select("order_date, posted_price, quantity, branch_id, status")
     .gte("order_date", fromIso)
     .lte("order_date", toIso)
-    .eq("status", "completed");
+    .not("status", "in", "(cancelled,returned)");
   if (branchId) onlineQ = onlineQ.eq("branch_id", branchId);
   const { data: online } = await onlineQ;
+
   let invQ = from("invoices")
     .select("invoice_date, total_amount, status, branch_id")
     .gte("invoice_date", fromIso)
     .lte("invoice_date", toIso)
-    .in("status", ["confirmed", "paid"]);
+    .in("status", ["paid", "completed"]);
   if (branchId) invQ = invQ.eq("branch_id", branchId);
   const { data: invs } = await invQ;
+
   const map: Record<string, { online: number; invoice: number }> = {};
   for (const r of (online as any[]) || []) {
     const k = r.order_date;

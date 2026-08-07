@@ -70,6 +70,9 @@ export function DashboardAnalytics() {
   }, [trend, from, to]);
 
   const totalForRange = filled.reduce((s, d) => s + d.total, 0);
+  const invoiceForRange = filled.reduce((s, d) => s + d.invoice, 0);
+  const onlineForRange = filled.reduce((s, d) => s + d.online, 0);
+  const bestDay = filled.reduce((best, d) => (d.total > (best?.total ?? -1) ? d : best), filled[0]);
   const halfIdx = Math.floor(filled.length / 2);
   const firstHalf = filled.slice(0, halfIdx).reduce((s, d) => s + d.total, 0);
   const secondHalf = filled.slice(halfIdx).reduce((s, d) => s + d.total, 0);
@@ -139,8 +142,8 @@ export function DashboardAnalytics() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Sales Trend (spans 2) */}
         <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <div className="flex items-start justify-between gap-2 flex-wrap">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <CardTitle className="text-sm font-semibold">Sales Trend</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -148,51 +151,107 @@ export function DashboardAnalytics() {
                 </p>
               </div>
               <div className="text-right">
-                <div className="text-lg font-semibold">{peso(totalForRange)}</div>
+                <div className="text-2xl font-semibold tracking-tight tabular-nums">{peso(totalForRange)}</div>
                 <div className={cn("inline-flex items-center gap-1 text-xs", trendUp ? "text-success" : "text-destructive")}>
                   {trendUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                   {trendPct.toFixed(1)}% vs prior half
                 </div>
               </div>
             </div>
+            {/* Legend doubles as the per-series totals, so identity is never colour alone. */}
+            <div className="flex items-center gap-4 flex-wrap pt-1">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: "hsl(var(--primary))" }} />
+                <span className="text-xs text-muted-foreground">Invoice</span>
+                <span className="text-xs font-medium tabular-nums">{peso(invoiceForRange)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: "hsl(var(--success))" }} />
+                <span className="text-xs text-muted-foreground">Online</span>
+                <span className="text-xs font-medium tabular-nums">{peso(onlineForRange)}</span>
+              </div>
+              {bestDay && bestDay.total > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  Best day {format(new Date(bestDay.date), "MMM d")} · {peso(bestDay.total)}
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {trendLoading ? (
-              <div className="h-[240px] flex items-center justify-center">
+              <div className="h-[260px] flex items-center justify-center">
                 <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : totalForRange === 0 ? (
+              <div className="h-[260px] flex flex-col items-center justify-center gap-1 text-muted-foreground">
+                <TrendingUp className="h-6 w-6 opacity-40" />
+                <p className="text-sm">No sales in this period</p>
               </div>
             ) : (
               <ChartContainer
                 config={{
                   invoice: { label: "Invoice", color: "hsl(var(--primary))" },
-                  online: { label: "Online", color: "hsl(var(--accent))" },
+                  online: { label: "Online", color: "hsl(var(--success))" },
                 }}
-                className="h-[240px] w-full"
+                className="h-[260px] w-full"
               >
-                <AreaChart data={filled} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+                <AreaChart data={filled} margin={{ left: 4, right: 12, top: 8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="fillInvoice" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.45} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.04} />
                     </linearGradient>
                     <linearGradient id="fillOnline" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.5} />
-                      <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0.05} />
+                      <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.45} />
+                      <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.04} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
-                  <YAxis tickLine={false} axisLine={false} width={60} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)} />
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.7} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    minTickGap={28}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={52}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
+                  />
                   <ChartTooltip
+                    cursor={{ stroke: "hsl(var(--muted-foreground))", strokeOpacity: 0.35, strokeWidth: 1 }}
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(_, p) => p?.[0]?.payload?.date}
+                        labelFormatter={(_, p) =>
+                          p?.[0]?.payload?.date ? format(new Date(p[0].payload.date), "EEE, MMM d yyyy") : ""
+                        }
                         formatter={(v, name) => [peso(Number(v)), String(name)]}
                       />
                     }
                   />
-                  <Area dataKey="invoice" stackId="a" type="monotone" stroke="hsl(var(--primary))" fill="url(#fillInvoice)" strokeWidth={2} />
-                  <Area dataKey="online" stackId="a" type="monotone" stroke="hsl(var(--accent))" fill="url(#fillOnline)" strokeWidth={2} />
+                  {/* 2px strokes, and a surface-coloured seam between the stacked fills. */}
+                  <Area
+                    dataKey="invoice"
+                    stackId="a"
+                    type="monotone"
+                    stroke="hsl(var(--primary))"
+                    fill="url(#fillInvoice)"
+                    strokeWidth={2}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
+                  />
+                  <Area
+                    dataKey="online"
+                    stackId="a"
+                    type="monotone"
+                    stroke="hsl(var(--success))"
+                    fill="url(#fillOnline)"
+                    strokeWidth={2}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
+                  />
                 </AreaChart>
               </ChartContainer>
             )}

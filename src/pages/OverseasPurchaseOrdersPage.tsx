@@ -516,8 +516,14 @@ export default function OverseasPurchaseOrdersPage() {
     }).map((item) => {
       const po = ordersById.get(item.po_id);
       const orderedQuantity = Number(item.quantity || 0);
-      const receivedQuantity = Number(item.received_quantity || 0);
-      const remainingQuantity = Math.max(0, orderedQuantity - receivedQuantity);
+      const rawReceived = Number(item.received_quantity || 0);
+      // A PO closed as "received" is done, even if its line items were never
+      // ticked off individually — that happens when the status is set from the
+      // edit dialog instead of the Receive flow. Without this, the leftover
+      // quantities resurface here as phantom incoming stock.
+      const poReceived = po?.status === "received";
+      const receivedQuantity = poReceived ? orderedQuantity : rawReceived;
+      const remainingQuantity = poReceived ? 0 : Math.max(0, orderedQuantity - rawReceived);
       const unitCost = Number(item.unit_cost || 0);
       const lineTotal = orderedQuantity * unitCost;
       const exchangeRate = Number(po?.exchange_rate || 1);
@@ -776,8 +782,17 @@ export default function OverseasPurchaseOrdersPage() {
                     <SelectItem value="paid_not_shipped">Paid, Not Shipped</SelectItem>
                     <SelectItem value="shipped_not_paid">Shipped, Not Paid (Terms)</SelectItem>
                     <SelectItem value="shipped">Shipped</SelectItem>
-                    <SelectItem value="partially_received">Partially Received</SelectItem>
-                    <SelectItem value="received">Received</SelectItem>
+                    {/*
+                      Receipt statuses are set by the Receive flow, which also records
+                      per-line received quantities and adds stock. Setting them here
+                      would leave the line items untouched and the PO would resurface
+                      as phantom incoming stock. They stay selectable only when the PO
+                      already carries that status, so editing one does not reset it.
+                    */}
+                    {status === "partially_received" && (
+                      <SelectItem value="partially_received">Partially Received</SelectItem>
+                    )}
+                    {status === "received" && <SelectItem value="received">Received</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
