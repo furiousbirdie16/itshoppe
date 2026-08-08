@@ -25,6 +25,11 @@ interface Snapshot {
   accounts_payable_value?: number;
   receivables_value: number;
   total_asset_value: number;
+  cash_value?: number;
+  bills_payable_value?: number;
+  owner_due_value?: number;
+  loans_outstanding_value?: number;
+  net_asset_value?: number;
 }
 
 
@@ -60,7 +65,7 @@ export default function AssetTrendChart() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("asset_snapshots")
-        .select("snapshot_date, inventory_value, incoming_stock_value, payable_assets_value, incoming_assets_value, accounts_payable_value, receivables_value, total_asset_value")
+        .select("snapshot_date, inventory_value, incoming_stock_value, payable_assets_value, incoming_assets_value, accounts_payable_value, receivables_value, total_asset_value, cash_value, bills_payable_value, owner_due_value, loans_outstanding_value, net_asset_value")
         .gte("snapshot_date", format(fromDate, "yyyy-MM-dd"))
         .order("snapshot_date", { ascending: true });
       if (error) throw error;
@@ -105,9 +110,15 @@ export default function AssetTrendChart() {
           : granularity === "monthly" ? format(parseISO(key + "-01"), "MMM yy")
           : format(parseISO(s.snapshot_date), "MMM d"),
         inventory: Number(s.inventory_value),
-        incoming: Number(s.incoming_stock_value),
+        incoming: Number(s.incoming_assets_value ?? s.incoming_stock_value),
         receivables: Number(s.receivables_value),
-        total: Number(s.total_asset_value),
+        cash: Number(s.cash_value ?? 0),
+        bills: Number(s.bills_payable_value ?? 0),
+        owner: Number(s.owner_due_value ?? 0),
+        loans: Number(s.loans_outstanding_value ?? 0),
+        // Snapshots taken before the finance module have no net figure; fall back to
+        // the old asset total so the line does not drop to zero for history.
+        total: Number(s.net_asset_value ?? s.total_asset_value),
         snapshot_date: s.snapshot_date,
       }))
       .sort((a, b) => a.key.localeCompare(b.key));
@@ -129,6 +140,11 @@ export default function AssetTrendChart() {
     }
     const rows = snapshots.map((s) => ({
       Date: s.snapshot_date,
+      "Net Asset Value": Number(s.net_asset_value ?? 0),
+      "Cash": Number(s.cash_value ?? 0),
+      "Bills Payable": Number(s.bills_payable_value ?? 0),
+      "Due to Owner": Number(s.owner_due_value ?? 0),
+      "Loans Outstanding": Number(s.loans_outstanding_value ?? 0),
       "Inventory Value": Number(s.inventory_value),
       "Incoming Assets Value": Number(s.incoming_assets_value ?? s.incoming_stock_value),
       "Payable Assets Value": Number(s.payable_assets_value ?? 0),
@@ -149,7 +165,7 @@ export default function AssetTrendChart() {
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div>
-            <CardTitle className="text-sm font-semibold">Asset Trend</CardTitle>
+            <CardTitle className="text-sm font-semibold">Net Asset Value Trend</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
               Historical total asset value over time
             </p>
@@ -221,7 +237,7 @@ export default function AssetTrendChart() {
         ) : (
           <ChartContainer
             config={{
-              total: { label: "Total Assets", color: "hsl(var(--primary))" },
+              total: { label: "Net Asset Value", color: "hsl(var(--primary))" },
               inventory: { label: "Inventory", color: "hsl(var(--primary))" },
               incoming: { label: "Incoming", color: "hsl(var(--success, var(--primary)))" },
               receivables: { label: "Receivables", color: "hsl(var(--warning, var(--accent)))" },
@@ -246,12 +262,8 @@ export default function AssetTrendChart() {
                 }
               />
               <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(_, p) => p?.[0]?.payload?.snapshot_date || ""}
-                    formatter={(v, name) => [peso(Number(v)), String(name)]}
-                  />
-                }
+                cursor={{ stroke: "hsl(var(--muted-foreground))", strokeOpacity: 0.35, strokeWidth: 1 }}
+                content={<NetAssetTooltip />}
               />
               <Area
                 dataKey="total"
@@ -265,6 +277,42 @@ export default function AssetTrendChart() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Assets and liabilities behind the plotted net figure. */
+function NetAssetTooltip({ active, payload }: any) {
+  const p = active && payload?.[0]?.payload;
+  if (!p) return null;
+  const assets = [
+    ["Inventory", p.inventory],
+    ["Receivables", p.receivables],
+    ["Incoming", p.incoming],
+    ["Cash", p.cash],
+  ] as const;
+  const liabilities = [
+    ["Bills & checks", p.bills],
+    ["Due to owner", p.owner],
+    ["Loans", p.loans],
+  ] as const;
+  const row = (label: string, value: number, tone: string) => (
+    <div key={label} className="flex items-center justify-between gap-6">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("tabular-nums", tone)}>{peso(Number(value || 0))}</span>
+    </div>
+  );
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+      <div className="font-medium mb-1.5">{p.snapshot_date}</div>
+      <div className="space-y-0.5">{assets.map(([l, v]) => row(l, v as number, "text-emerald-600 dark:text-emerald-500"))}</div>
+      <div className="my-1.5 border-t" />
+      <div className="space-y-0.5">{liabilities.map(([l, v]) => row(l, v as number, "text-red-600 dark:text-red-500"))}</div>
+      <div className="my-1.5 border-t" />
+      <div className="flex items-center justify-between gap-6 font-medium">
+        <span>Net Asset Value</span>
+        <span className="tabular-nums">{peso(Number(p.total || 0))}</span>
+      </div>
+    </div>
   );
 }
 
