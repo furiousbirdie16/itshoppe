@@ -17,7 +17,12 @@ ALTER TABLE public.asset_snapshots
   ADD COLUMN IF NOT EXISTS loans_outstanding_value NUMERIC NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS net_asset_value NUMERIC NOT NULL DEFAULT 0;
 
-CREATE OR REPLACE FUNCTION public.generate_asset_snapshot()
+-- The previous version returned a different type, and CREATE OR REPLACE cannot
+-- change a return type. Dropping is safe: the cron job and the client RPC both
+-- reference it by name and pick up the new definition.
+DROP FUNCTION IF EXISTS public.generate_asset_snapshot();
+
+CREATE FUNCTION public.generate_asset_snapshot()
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
