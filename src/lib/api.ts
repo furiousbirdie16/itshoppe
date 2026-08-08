@@ -226,6 +226,44 @@ export const getItems = async (): Promise<Item[]> => {
   return data;
 };
 
+/**
+ * Items with their real on-hand quantity.
+ *
+ * `items.quantity` is a legacy column that stock movements stopped maintaining
+ * when per-branch stock was introduced — item_branch_stock is the source of
+ * truth. Anything showing stock to a user must go through here, or it will show
+ * a figure frozen at the migration date.
+ *
+ * Pass a branchId to scope to one branch; omit it to total every branch.
+ */
+export const getItemsWithStock = async (branchId?: string | null): Promise<Item[]> => {
+  const items = await getItems();
+  let stockQ = from("item_branch_stock").select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining");
+  if (branchId) stockQ = stockQ.eq("branch_id", branchId);
+  const { data: stock, error } = await stockQ;
+  if (error) throw error;
+
+  const byItem: Record<string, { quantity: number; warehouse: number; store: number; open: number }> = {};
+  for (const r of (stock as any[]) || []) {
+    const e = (byItem[r.item_id] ||= { quantity: 0, warehouse: 0, store: 0, open: 0 });
+    e.quantity += Number(r.quantity || 0);
+    e.warehouse += Number(r.warehouse_quantity || 0);
+    e.store += Number(r.store_quantity || 0);
+    e.open += Number(r.open_roll_remaining || 0);
+  }
+
+  return items.map((i: any) => {
+    const s = byItem[i.id];
+    return {
+      ...i,
+      quantity: s?.quantity ?? 0,
+      warehouse_quantity: s?.warehouse ?? 0,
+      store_quantity: s?.store ?? 0,
+      open_roll_remaining: s?.open ?? 0,
+    };
+  });
+};
+
 export const getArchivedItems = async (): Promise<Item[]> => {
   const { data, error } = await from("items").select("*").eq("status", "archived").order("name");
   if (error) throw error;

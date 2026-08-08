@@ -15,7 +15,7 @@ import { Plus, Trash2, ArrowRight, ClipboardList, Send, CheckCircle2, PackageChe
 import { cn } from "@/lib/utils";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getItems } from "@/lib/api";
+import { getItems, getItemsWithStock } from "@/lib/api";
 import type { Item, ItemVariation } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import {
@@ -70,7 +70,8 @@ export default function StockTransfersPage() {
     queryFn: () => listStockTransfers(activeBranchId),
   });
 
-  const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  // Stock shown by ItemSearch must come from item_branch_stock, not items.quantity.
+  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
 
   const filtered = useMemo(() => {
     return transfers.filter((t) => {

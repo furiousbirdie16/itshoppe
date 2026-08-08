@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerSearch } from "@/components/CustomerSearch";
 import { ItemSearch } from "@/components/ItemSearch";
-import { getCustomers, getItems } from "@/lib/api";
+import { getCustomers, getItems, getItemsWithStock } from "@/lib/api";
 import { toast } from "sonner";
 
 interface Props {
@@ -34,7 +34,8 @@ export function SetCustomerPriceDialog({
 }: Props) {
   const qc = useQueryClient();
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
+  // Stock shown by ItemSearch must come from item_branch_stock, not items.quantity.
+  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock"], queryFn: () => getItemsWithStock() });
 
   const [cust, setCust] = useState(customerId || "");
   const [item, setItem] = useState(itemId || "");

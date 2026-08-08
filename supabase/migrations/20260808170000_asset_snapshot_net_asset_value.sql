@@ -45,8 +45,12 @@ DECLARE
   v_cost NUMERIC;
   v_avg NUMERIC;
 BEGIN
-  -- 1) Inventory on hand at current cost.
-  SELECT COALESCE(SUM(quantity * cost_price), 0) INTO v_inv FROM public.items;
+  -- 1) Inventory on hand at current cost, valued from item_branch_stock — the
+  --    single source of truth for quantities, as getDashboardStats uses. The
+  --    denormalised items.quantity column has drifted from it and would overstate.
+  SELECT COALESCE(SUM(bs.quantity * i.cost_price), 0) INTO v_inv
+  FROM public.item_branch_stock bs
+  JOIN public.items i ON i.id = bs.item_id;
 
   -- 2) Incoming assets: overseas POs already paid AND shipped. Matches
   --    getDashboardStats, where local POs never count as incoming.

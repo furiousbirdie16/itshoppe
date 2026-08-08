@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CalendarIcon, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { CalendarIcon, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
-import { getSalesTrend, getAccountsReceivable, getDashboardStats } from "@/lib/api";
+import { getSalesTrend } from "@/lib/api";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Legend } from "recharts";
-import AssetTrendChart from "@/components/AssetTrendChart";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import NetAssetValueChart from "@/components/NetAssetValueChart";
 import { usePermissions } from "@/lib/permissions";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -79,20 +79,6 @@ export function DashboardAnalytics() {
   const trendUp = secondHalf >= firstHalf;
   const trendPct = firstHalf > 0 ? Math.abs(((secondHalf - firstHalf) / firstHalf) * 100) : 0;
 
-  // Asset value: inventory + incoming + receivables
-  const { data: stats } = useQuery({ queryKey: ["dashboard", activeBranchId], queryFn: () => getDashboardStats(activeBranchId) });
-  const { data: receivables = 0 } = useQuery({
-    queryKey: ["accounts_receivable", activeBranchId],
-    queryFn: () => getAccountsReceivable(activeBranchId),
-  });
-
-  const assetBreakdown = [
-    { name: "Inventory", value: Math.max(0, Number(stats?.totalValue || 0)), fill: "hsl(var(--primary))" },
-    { name: "Incoming Stock", value: Math.max(0, Number(stats?.incomingStockValue || 0)), fill: "hsl(var(--success, var(--primary)))" },
-    { name: "Receivables", value: Math.max(0, Number(receivables || 0)), fill: "hsl(var(--warning, var(--accent)))" },
-  ];
-  const totalAssets = assetBreakdown.reduce((s, a) => s + a.value, 0);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -139,9 +125,9 @@ export function DashboardAnalytics() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Sales Trend (spans 2) */}
-        <Card className="lg:col-span-2">
+      <div className="grid gap-4">
+        {/* Sales Trend */}
+        <Card>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
@@ -257,51 +243,9 @@ export function DashboardAnalytics() {
             )}
           </CardContent>
         </Card>
-
-        {/* Asset Value */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <Wallet className="h-4 w-4" /> Total Asset Value
-            </CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">Current snapshot</p>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold mb-2">{peso(totalAssets)}</div>
-            {totalAssets > 0 ? (
-              <ChartContainer
-                config={Object.fromEntries(assetBreakdown.map((a) => [a.name, { label: a.name, color: a.fill }]))}
-                className="h-[180px] w-full"
-              >
-                <PieChart>
-                  <ChartTooltip content={<ChartTooltipContent formatter={(v, name) => [peso(Number(v)), String(name)]} />} />
-                  <Pie data={assetBreakdown} dataKey="value" nameKey="name" innerRadius={45} outerRadius={70} strokeWidth={2}>
-                    {assetBreakdown.map((a) => (
-                      <Cell key={a.name} fill={a.fill} />
-                    ))}
-                  </Pie>
-                  <Legend verticalAlign="bottom" height={24} iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ChartContainer>
-            ) : (
-              <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground">No asset data</div>
-            )}
-            <div className="mt-2 space-y-1 text-xs">
-              {assetBreakdown.map((a) => (
-                <div key={a.name} className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-2 rounded-sm" style={{ background: a.fill }} />
-                    {a.name}
-                  </span>
-                  <span className="font-medium tabular-nums">{peso(a.value)}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      {isAdmin && <AssetTrendChart />}
+      {isAdmin && <NetAssetValueChart />}
     </div>
   );
 }

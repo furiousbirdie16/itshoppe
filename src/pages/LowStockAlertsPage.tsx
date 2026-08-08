@@ -18,7 +18,7 @@ import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
-import { createPurchaseOrder, createPOItems, generatePONumber, createOverseasPurchaseOrder, createOverseasPOItems, generateOverseasPONumber } from "@/lib/api";
+import { createPurchaseOrder, createPOItems, generatePONumber, createOverseasPurchaseOrder, createOverseasPOItems, generateOverseasPONumber, getItemsWithStock } from "@/lib/api";
 import { listItemSuppliersForItems, upsertItemSupplier, type ItemSupplierRow } from "@/lib/itemSuppliers";
 import type { Supplier, OverseasSupplier } from "@/types/database";
 import { toast } from "sonner";
@@ -96,13 +96,11 @@ export default function LowStockAlertsPage() {
   const [recentlyCreatedPoItems, setRecentlyCreatedPoItems] = useState<Set<string>>(new Set());
 
   // 1. Items
+  // items.quantity is frozen at the per-branch migration; item_branch_stock is
+  // the live figure. Reading the old column made every alert here wrong.
   const { data: items = [], isLoading } = useQuery<Item[]>({
-    queryKey: ["lowstock-items"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("items").select("*").order("name");
-      if (error) throw error;
-      return data as Item[];
-    },
+    queryKey: ["lowstock-items-with-stock"],
+    queryFn: () => getItemsWithStock(),
   });
 
   // 2. Variations (for unit conversion)
