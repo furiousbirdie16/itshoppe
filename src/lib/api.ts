@@ -842,7 +842,9 @@ const NON_LEDGER_PAYMENT_METHODS = ["Credit Card", "Others", "Other"];
  */
 const resolvePaymentAccount = async (paymentMethod: string) => {
   if (NON_LEDGER_PAYMENT_METHODS.includes(paymentMethod)) return null;
-  const { data } = await from("cash_accounts").select("id, name, account_type").eq("is_active", true);
+  // Via the options function, not a direct select: staff cannot read bank accounts
+  // but must still be able to post an invoice payment into one.
+  const { data } = await _sb.rpc("cash_account_options");
   const accounts = (data as any[]) || [];
   if (paymentMethod === "Cash") {
     return accounts.find((a) => a.account_type === "petty_cash") || null;

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccounts } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,11 +76,12 @@ export default function InvoicesPage() {
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   const { data: items = [] } = useQuery({ queryKey: ["items"], queryFn: getItems });
-  const { data: cashAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  // Names-only list, so staff (who cannot read bank accounts) still get them as
+  // payment options.
+  const { data: cashAccounts = [] } = useQuery({ queryKey: ["cash-account-options"], queryFn: getCashAccountOptions });
   // Payment options come from the Cash and Bank pages so the three stay in step.
-  const activeAccounts = cashAccounts.filter((a) => a.is_active);
-  const cashPaymentOptions = activeAccounts.filter((a) => a.account_type === "petty_cash");
-  const bankPaymentOptions = activeAccounts.filter((a) => a.account_type === "bank");
+  const cashPaymentOptions = cashAccounts.filter((a) => a.account_type === "petty_cash");
+  const bankPaymentOptions = cashAccounts.filter((a) => a.account_type === "bank");
   const { data: invItems = [] } = useQuery({ queryKey: ["invoice_items", viewInv], queryFn: () => getInvoiceItems(viewInv!), enabled: !!viewInv });
   const { data: invItemFinancials = [] } = useQuery({
     queryKey: ["invoice_item_financials", viewInv],
