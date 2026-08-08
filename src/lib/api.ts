@@ -953,6 +953,13 @@ export const markInvoicePaid = async (
   } catch (e) {
     console.warn("Invoice paid, but posting to the cash ledger failed:", e);
   }
+  // Fire-and-forget: a notification failure must never fail the payment. Sent
+  // after the ledger post so the balance in the message is the updated one.
+  try {
+    await supabase.functions.invoke("notify-payment", { body: { invoice_id: invoiceId } });
+  } catch (e) {
+    console.warn("Invoice paid, but the Telegram notification failed:", e);
+  }
   await logActivity(wasShipped ? "completed_invoice" : "marked_invoice_paid", "invoice", invoiceId);
 };
 
@@ -1787,6 +1794,12 @@ export const createCashTransaction = async (t: Partial<CashTransaction>) => {
   await logActivity("created_cash_transaction", "cash_transaction", created.id, {
     amount: created.amount, direction: created.direction,
   });
+  // Fire-and-forget: a notification failure must never undo a recorded entry.
+  try {
+    await supabase.functions.invoke("notify-cash", { body: { transaction_id: created.id } });
+  } catch (e) {
+    console.warn("Cash entry saved, but the Telegram notification failed:", e);
+  }
   return created;
 };
 
@@ -1843,6 +1856,11 @@ export const createCashTransfer = async (args: {
   });
   if (error) throw error;
   await logActivity("created_cash_transfer", "cash_transaction", String(data || ""), { amount: args.amount });
+  try {
+    await supabase.functions.invoke("notify-cash", { body: { transfer_group_id: data } });
+  } catch (e) {
+    console.warn("Transfer saved, but the Telegram notification failed:", e);
+  }
 };
 
 export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> => {
