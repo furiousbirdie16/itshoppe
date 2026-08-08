@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getCashAccounts, getCashTransactions, createCashTransaction,
   updateCashTransaction, deleteCashTransaction, createCashTransfer,
-  createCashAccount, updateCashAccount, deleteCashAccount,
+  createCashAccount, updateCashAccount, deleteCashAccount, getCashAccountOptions,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +74,8 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   const [accountForm, setAccountForm] = useState(emptyAccount());
 
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  // Names only, so a transfer can target a bank the user cannot otherwise read.
+  const { data: transferTargets = [] } = useQuery({ queryKey: ["cash-account-options"], queryFn: getCashAccountOptions });
   // Active accounts drive the pickers and totals...
   const accounts = useMemo(
     () => allAccounts.filter((a) => a.account_type === accountType && a.is_active),
@@ -297,8 +299,12 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     else createMut.mutate(data);
   };
 
-  const transferFrom = accountById[transfer.from_account_id];
-  const transferTo = accountById[transfer.to_account_id];
+  const targetById = useMemo(
+    () => Object.fromEntries(transferTargets.map((a) => [a.id, a])),
+    [transferTargets],
+  );
+  const transferFrom = accountById[transfer.from_account_id] || targetById[transfer.from_account_id];
+  const transferTo = accountById[transfer.to_account_id] || targetById[transfer.to_account_id];
   const transferCurrenciesDiffer =
     !!transferFrom && !!transferTo &&
     (transferFrom.currency || BASE_CURRENCY) !== (transferTo.currency || BASE_CURRENCY);
@@ -316,7 +322,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     // An exchange: both sides differ, and the implied rate is what was really paid.
     const amountTo = Number(transfer.amount_to);
     if (!amountTo || amountTo <= 0) { toast.error(`Enter the ${transferTo?.currency} amount received`); return; }
-    const toIsForeign = isForeign(transferTo!);
+    const toIsForeign = isForeign(transferTo as any);
     transferMut.mutate({
       ...transfer,
       amount,
@@ -556,7 +562,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                 <Select value={transfer.from_account_id} onValueChange={(v) => setTransfer({ ...transfer, from_account_id: v })}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Account" /></SelectTrigger>
                   <SelectContent>
-                    {allAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                    {transferTargets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -565,7 +571,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                 <Select value={transfer.to_account_id} onValueChange={(v) => setTransfer({ ...transfer, to_account_id: v })}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Account" /></SelectTrigger>
                   <SelectContent>
-                    {allAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                    {transferTargets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

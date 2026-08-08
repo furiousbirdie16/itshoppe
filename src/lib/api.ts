@@ -1767,6 +1767,18 @@ export const deleteCashTransaction = async (id: string) => {
 };
 
 /** Move money between two accounts as a linked pair of ledger rows. */
+/**
+ * Account id/name/type only — no balances. Lets staff pick a bank as a transfer
+ * destination or invoice payment method without being able to read bank accounts.
+ */
+export const getCashAccountOptions = async (): Promise<
+  Pick<CashAccount, "id" | "name" | "account_type" | "currency">[]
+> => {
+  const { data, error } = await _sb.rpc("cash_account_options");
+  if (error) throw error;
+  return (data as any[]) || [];
+};
+
 export const createCashTransfer = async (args: {
   from_account_id: string;
   to_account_id: string;
@@ -1778,28 +1790,19 @@ export const createCashTransfer = async (args: {
   txn_date: string;
   notes?: string;
 }) => {
-  const groupId = crypto.randomUUID();
-  const actor = await currentActor();
-  const shared = {
-    txn_date: args.txn_date,
-    category: "Transfer",
-    notes: args.notes || "",
-    transfer_group_id: groupId,
-    created_by: actor.id,
-    created_by_email: actor.email,
-  };
-  const { error } = await from("cash_transactions").insert([
-    { ...shared, account_id: args.from_account_id, direction: "out", amount: args.amount },
-    {
-      ...shared,
-      account_id: args.to_account_id,
-      direction: "in",
-      amount: args.amount_to ?? args.amount,
-      fx_rate: args.fx_rate ?? null,
-    },
-  ]);
+  // Written by a SECURITY DEFINER function: the destination may be a bank the
+  // caller is not allowed to read, so the pair cannot be inserted from here.
+  const { data, error } = await _sb.rpc("create_cash_transfer", {
+    p_from_account_id: args.from_account_id,
+    p_to_account_id: args.to_account_id,
+    p_amount: args.amount,
+    p_amount_to: args.amount_to ?? args.amount,
+    p_fx_rate: args.fx_rate ?? null,
+    p_txn_date: args.txn_date,
+    p_notes: args.notes || "",
+  });
   if (error) throw error;
-  await logActivity("created_cash_transfer", "cash_transaction", groupId, { amount: args.amount });
+  await logActivity("created_cash_transfer", "cash_transaction", String(data || ""), { amount: args.amount });
 };
 
 export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> => {
