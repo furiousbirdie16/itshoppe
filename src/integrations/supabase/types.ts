@@ -50,12 +50,17 @@ export type Database = {
       asset_snapshots: {
         Row: {
           accounts_payable_value: number
+          bills_payable_value: number
           captured_at: string
+          cash_value: number
           created_at: string
           id: string
           incoming_assets_value: number
           incoming_stock_value: number
           inventory_value: number
+          loans_outstanding_value: number
+          net_asset_value: number
+          owner_due_value: number
           payable_assets_value: number
           receivables_value: number
           snapshot_date: string
@@ -63,12 +68,17 @@ export type Database = {
         }
         Insert: {
           accounts_payable_value?: number
+          bills_payable_value?: number
           captured_at?: string
+          cash_value?: number
           created_at?: string
           id?: string
           incoming_assets_value?: number
           incoming_stock_value?: number
           inventory_value?: number
+          loans_outstanding_value?: number
+          net_asset_value?: number
+          owner_due_value?: number
           payable_assets_value?: number
           receivables_value?: number
           snapshot_date: string
@@ -76,12 +86,17 @@ export type Database = {
         }
         Update: {
           accounts_payable_value?: number
+          bills_payable_value?: number
           captured_at?: string
+          cash_value?: number
           created_at?: string
           id?: string
           incoming_assets_value?: number
           incoming_stock_value?: number
           inventory_value?: number
+          loans_outstanding_value?: number
+          net_asset_value?: number
+          owner_due_value?: number
           payable_assets_value?: number
           receivables_value?: number
           snapshot_date?: string
@@ -127,6 +142,7 @@ export type Database = {
           account_number: string
           account_type: string
           created_at: string
+          currency: string
           id: string
           is_active: boolean
           name: string
@@ -139,6 +155,7 @@ export type Database = {
           account_number?: string
           account_type?: string
           created_at?: string
+          currency?: string
           id?: string
           is_active?: boolean
           name?: string
@@ -151,6 +168,7 @@ export type Database = {
           account_number?: string
           account_type?: string
           created_at?: string
+          currency?: string
           id?: string
           is_active?: boolean
           name?: string
@@ -168,7 +186,9 @@ export type Database = {
           category: string
           created_at: string
           created_by: string | null
+          created_by_email: string
           direction: string
+          fx_rate: number | null
           id: string
           notes: string
           payee: string
@@ -177,6 +197,8 @@ export type Database = {
           transfer_group_id: string | null
           txn_date: string
           updated_at: string
+          updated_by: string | null
+          updated_by_email: string
         }
         Insert: {
           account_id: string
@@ -184,7 +206,9 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: string | null
+          created_by_email?: string
           direction?: string
+          fx_rate?: number | null
           id?: string
           notes?: string
           payee?: string
@@ -193,6 +217,8 @@ export type Database = {
           transfer_group_id?: string | null
           txn_date?: string
           updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string
         }
         Update: {
           account_id?: string
@@ -200,7 +226,9 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: string | null
+          created_by_email?: string
           direction?: string
+          fx_rate?: number | null
           id?: string
           notes?: string
           payee?: string
@@ -209,6 +237,8 @@ export type Database = {
           transfer_group_id?: string | null
           txn_date?: string
           updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string
         }
         Relationships: [
           {
@@ -2458,6 +2488,15 @@ export type Database = {
         Args: { _reason: string; _transfer_id: string }
         Returns: undefined
       }
+      cash_account_options: {
+        Args: never
+        Returns: {
+          account_type: string
+          currency: string
+          id: string
+          name: string
+        }[]
+      }
       compute_variation_cost: {
         Args: {
           _factor: number
@@ -2466,32 +2505,23 @@ export type Database = {
         }
         Returns: number
       }
+      create_cash_transfer: {
+        Args: {
+          p_amount: number
+          p_amount_to?: number
+          p_from_account_id: string
+          p_fx_rate?: number
+          p_notes?: string
+          p_to_account_id: string
+          p_txn_date?: string
+        }
+        Returns: string
+      }
       dispatch_stock_transfer: {
         Args: { _transfer_id: string }
         Returns: undefined
       }
-      generate_asset_snapshot: {
-        Args: never
-        Returns: {
-          accounts_payable_value: number
-          captured_at: string
-          created_at: string
-          id: string
-          incoming_assets_value: number
-          incoming_stock_value: number
-          inventory_value: number
-          payable_assets_value: number
-          receivables_value: number
-          snapshot_date: string
-          total_asset_value: number
-        }
-        SetofOptions: {
-          from: "*"
-          to: "asset_snapshots"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      generate_asset_snapshot: { Args: never; Returns: undefined }
       get_default_branch_id: { Args: never; Returns: string }
       has_role: {
         Args: {
