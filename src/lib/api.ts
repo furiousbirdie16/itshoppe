@@ -953,13 +953,10 @@ export const markInvoicePaid = async (
   } catch (e) {
     console.warn("Invoice paid, but posting to the cash ledger failed:", e);
   }
-  // Fire-and-forget: a notification failure must never fail the payment. Sent
-  // after the ledger post so the balance in the message is the updated one.
-  try {
-    await supabase.functions.invoke("notify-payment", { body: { invoice_id: invoiceId } });
-  } catch (e) {
-    console.warn("Invoice paid, but the Telegram notification failed:", e);
-  }
+  // Genuinely fire-and-forget: not awaited, so the user is never left waiting on
+  // an edge-function cold start and a round trip to Telegram. Sent after the
+  // ledger post so the balance in the message is the updated one.
+  notify("notify-payment", { invoice_id: invoiceId });
   await logActivity(wasShipped ? "completed_invoice" : "marked_invoice_paid", "invoice", invoiceId);
 };
 
@@ -1778,6 +1775,24 @@ export const getCashTransactions = async (accountIds?: string[]): Promise<CashTr
   return data;
 };
 
+/**
+ * Sends a Telegram notification without blocking the caller.
+ *
+ * Deliberately not awaited: waiting on an edge-function cold start plus a round
+ * trip to Telegram added seconds to recording a payment. The trade-off is that a
+ * tab closed within a second of the action may cancel the request and lose that
+ * one message — the record itself is already saved by then. Failures are logged
+ * to the console rather than surfaced, since they must never interrupt the user.
+ */
+const notify = (fn: "notify-payment" | "notify-cash", body: Record<string, unknown>) => {
+  void supabase.functions
+    .invoke(fn, { body })
+    .then(({ error }) => {
+      if (error) console.warn(`${fn} failed:`, error);
+    })
+    .catch((e) => console.warn(`${fn} failed:`, e));
+};
+
 /** Current user's id and email, for stamping who touched a ledger row. */
 const currentActor = async () => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -1794,12 +1809,7 @@ export const createCashTransaction = async (t: Partial<CashTransaction>) => {
   await logActivity("created_cash_transaction", "cash_transaction", created.id, {
     amount: created.amount, direction: created.direction,
   });
-  // Fire-and-forget: a notification failure must never undo a recorded entry.
-  try {
-    await supabase.functions.invoke("notify-cash", { body: { transaction_id: created.id } });
-  } catch (e) {
-    console.warn("Cash entry saved, but the Telegram notification failed:", e);
-  }
+  notify("notify-cash", { transaction_id: created.id });
   return created;
 };
 
@@ -1856,11 +1866,7 @@ export const createCashTransfer = async (args: {
   });
   if (error) throw error;
   await logActivity("created_cash_transfer", "cash_transaction", String(data || ""), { amount: args.amount });
-  try {
-    await supabase.functions.invoke("notify-cash", { body: { transfer_group_id: data } });
-  } catch (e) {
-    console.warn("Transfer saved, but the Telegram notification failed:", e);
-  }
+  notify("notify-cash", { transfer_group_id: data });
 };
 
 export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> => {
