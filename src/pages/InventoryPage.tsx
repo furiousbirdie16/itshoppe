@@ -1032,7 +1032,7 @@ export default function InventoryPage() {
                 onTransfer={() => setTransferItem(item)}
                 onAdjust={() => setAdjustItem(item)}
                 onHistory={() => setHistoryItem(item)}
-                onPricing={() => setCostHistoryItem(item)}
+                onPricing={isAdmin ? () => setCostHistoryItem(item) : undefined}
                 onSuppliers={() => setSuppliersItem(item)}
                 onBundles={() => setVariationsItem(item)}
                 onEdit={() => openEdit(item)}
@@ -1196,9 +1196,11 @@ export default function InventoryPage() {
                     <Button variant="ghost" size="icon" onClick={() => setHistoryItem(item)} className="h-7 w-7 rounded-md" title="Stock history">
                       <History className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setCostHistoryItem(item)} className="h-7 w-7 rounded-md" title="Cost history">
-                      <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
+                    {isAdmin && (
+                      <Button variant="ghost" size="icon" onClick={() => setCostHistoryItem(item)} className="h-7 w-7 rounded-md" title="Cost history">
+                        <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => setSuppliersItem(item)} className="h-7 w-7 rounded-md" title="Suppliers">
                       <Truck className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -1244,7 +1246,7 @@ export default function InventoryPage() {
       <TransferStockDialog item={transferItem} open={!!transferItem} onOpenChange={(o) => { if (!o) setTransferItem(null); }} />
       <AdjustStockDialog item={adjustItem} open={!!adjustItem} onOpenChange={(o) => { if (!o) setAdjustItem(null); }} />
       <ItemHistoryDialog item={historyItem} open={!!historyItem} onOpenChange={(o) => { if (!o) setHistoryItem(null); }} />
-      <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }} />
+      {isAdmin && <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }} />}
       <ItemSuppliersDialog item={suppliersItem} open={!!suppliersItem} onOpenChange={(o) => { if (!o) setSuppliersItem(null); }} />
     </div>
   );

@@ -31,7 +31,8 @@ interface Props {
   onTransfer: () => void;
   onAdjust: () => void;
   onHistory: () => void;
-  onPricing: () => void;
+  /** Omitted for non-admins — cost history is admin-only. */
+  onPricing?: () => void;
   onSuppliers: () => void;
   onBundles: () => void;
   onEdit: () => void;
@@ -129,7 +130,7 @@ export function InventoryMobileCard({
           </>
         )}
         <IconAction icon={History} label="Stock history" onClick={onHistory} />
-        <IconAction icon={DollarSign} label="Pricing" onClick={onPricing} />
+        {onPricing && <IconAction icon={DollarSign} label="Pricing" onClick={onPricing} />}
         <IconAction icon={Truck} label="Purchase orders / suppliers" onClick={onSuppliers} />
         {!viewArchived && <IconAction icon={Layers} label="Bundles" onClick={onBundles} />}
         {isAdmin && !viewArchived && (

@@ -728,7 +728,7 @@ export default function LowStockAlertsPage() {
                             money={money}
                             isAdmin={isAdmin}
                             onHistory={() => setHistoryItem(r.item)}
-                            onCostHistory={() => setCostHistoryItem(r.item)}
+                            onCostHistory={isAdmin ? () => setCostHistoryItem(r.item) : undefined}
                           />
                         </TableCell>
                       </TableRow>
@@ -742,7 +742,7 @@ export default function LowStockAlertsPage() {
       </Card>
 
       <ItemHistoryDialog item={historyItem} open={!!historyItem} onOpenChange={(o) => !o && setHistoryItem(null)} />
-      <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => !o && setCostHistoryItem(null)} />
+      {isAdmin && <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => !o && setCostHistoryItem(null)} />}
 
       <BulkPODialog
         open={bulkOpen}
@@ -1184,7 +1184,8 @@ function ExpandedDetails({
   money: (n: number) => string;
   isAdmin: boolean;
   onHistory: () => void;
-  onCostHistory: () => void;
+  /** Omitted for non-admins — cost history is admin-only. */
+  onCostHistory?: () => void;
 }) {
   const baseUnit = row.item.base_unit || "pcs";
   const ups = Number(row.item.units_per_stock || 1) || 1;
@@ -1285,9 +1286,11 @@ function ExpandedDetails({
         <Button size="sm" variant="outline" onClick={onHistory}>
           <History className="h-3.5 w-3.5 mr-1.5" /> Inventory History
         </Button>
-        <Button size="sm" variant="outline" onClick={onCostHistory}>
-          <DollarSign className="h-3.5 w-3.5 mr-1.5" /> Cost History
-        </Button>
+        {onCostHistory && (
+          <Button size="sm" variant="outline" onClick={onCostHistory}>
+            <DollarSign className="h-3.5 w-3.5 mr-1.5" /> Cost History
+          </Button>
+        )}
       </div>
     </div>
   );
