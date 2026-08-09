@@ -21,6 +21,7 @@ import { DocumentPreview } from "@/components/DocumentPreview";
 import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
+import { OverseasPOMobileCard } from "@/components/OverseasPOMobileCard";
 import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
 import type { DocumentData } from "@/lib/pdf";
@@ -632,6 +633,52 @@ export default function OverseasPurchaseOrdersPage() {
     else createMut.mutate();
   };
 
+  /**
+   * Row actions for one overseas PO. Shared by the desktop table and the
+   * mobile card so behaviour cannot diverge between them.
+   */
+  const renderOverseasPOActions = (po: any) => (
+    <>
+                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>}
+                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {po.status !== "received" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => { setReceiveOpen(po.id); setReceiveBranchId((po as any).branch_id || activeBranchId || ""); setReceiveQtys({}); }}
+                        className="h-7 w-7 rounded-md"
+                        title="Receive items"
+                      >
+                        <PackageCheck className="h-3.5 w-3.5 text-success" />
+                      </Button>
+                    )}
+                    {isAdmin && ["unpaid", "draft", "sent", "paid_not_shipped", "shipped_not_paid", "shipped"].includes(po.status) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFlag(po, "shipped")}
+                          className="h-7 w-7 rounded-md"
+                          title={isShippedStatus(po.status) ? "Unmark as shipped" : "Mark as shipped"}
+                        >
+                          <Truck className={`h-3.5 w-3.5 ${isShippedStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFlag(po, "paid")}
+                          className="h-7 w-7 rounded-md"
+                          title={isPaidStatus(po.status) ? "Unmark as paid" : "Mark as paid"}
+                        >
+                          <BadgeDollarSign className={`h-3.5 w-3.5 ${isPaidStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
+                        </Button>
+                      </>
+                    )}
+                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
+                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
+    </>
+  );
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="orders" className="space-y-6">
@@ -1204,7 +1251,49 @@ export default function OverseasPurchaseOrdersPage() {
       )}
 
       <div className="data-table-wrapper">
-        <Table>
+        {/* Phones get stacked cards; the eleven-column table below pushes amount
+            and ETA off-screen on a narrow display. */}
+        <div className="md:hidden space-y-2 p-2">
+          {isLoading ? (
+            <div className="h-32 flex items-center justify-center">
+              <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : sortedOrders.length === 0 ? (
+            <div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div>
+          ) : (
+            sortedOrders.map((po) => {
+              const poItems = itemsByPo.get(po.id) || [];
+              const totalItems = poItems.length;
+              const fullyReceived = poItems.filter((i) => (i.received_quantity || 0) >= i.quantity).length;
+              const partialItems = poItems.filter((i) => (i.received_quantity || 0) > 0 && (i.received_quantity || 0) < i.quantity).length;
+              const totalOrderedQty = poItems.reduce((s, i) => s + (i.quantity || 0), 0);
+              const totalReceivedQty = poItems.reduce((s, i) => s + (i.received_quantity || 0), 0);
+              return (
+                <OverseasPOMobileCard
+                  key={po.id}
+                  po={po}
+                  branchName={branchNameById.get((po as any).branch_id) || ""}
+                  arrival={arrivalFor(po.id, po.expected_delivery)}
+                  isAdmin={isAdmin}
+                  selected={selectedIds.has(po.id)}
+                  onToggleSelect={() => toggleOne(po.id)}
+                  actions={renderOverseasPOActions(po)}
+                  itemsSummary={
+                    totalItems === 0 ? "—" : (
+                      <>
+                        {fullyReceived}/{totalItems} items
+                        {partialItems > 0 && <span className="text-warning"> · {partialItems} partial</span>}
+                        <span className="font-mono"> · {totalReceivedQty}/{totalOrderedQty} qty</span>
+                      </>
+                    )
+                  }
+                />
+              );
+            })
+          )}
+        </div>
+
+        <Table className="hidden md:table">
           <TableHeader>
             <TableRow>
               {isAdmin && <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>}
@@ -1289,43 +1378,7 @@ export default function OverseasPurchaseOrdersPage() {
                 )}
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>}
-                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {po.status !== "received" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => { setReceiveOpen(po.id); setReceiveBranchId((po as any).branch_id || activeBranchId || ""); setReceiveQtys({}); }}
-                        className="h-7 w-7 rounded-md"
-                        title="Receive items"
-                      >
-                        <PackageCheck className="h-3.5 w-3.5 text-success" />
-                      </Button>
-                    )}
-                    {isAdmin && ["unpaid", "draft", "sent", "paid_not_shipped", "shipped_not_paid", "shipped"].includes(po.status) && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleFlag(po, "shipped")}
-                          className="h-7 w-7 rounded-md"
-                          title={isShippedStatus(po.status) ? "Unmark as shipped" : "Mark as shipped"}
-                        >
-                          <Truck className={`h-3.5 w-3.5 ${isShippedStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleFlag(po, "paid")}
-                          className="h-7 w-7 rounded-md"
-                          title={isPaidStatus(po.status) ? "Unmark as paid" : "Mark as paid"}
-                        >
-                          <BadgeDollarSign className={`h-3.5 w-3.5 ${isPaidStatus(po.status) ? "text-success" : "text-muted-foreground"}`} />
-                        </Button>
-                      </>
-                    )}
-                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
-                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
+                    {renderOverseasPOActions(po)}
                   </div>
                 </TableCell>
               </TableRow>
