@@ -309,6 +309,23 @@ export default function BusinessInsightsPage() {
     ),
   });
 
+  // Real on-hand quantities. items.quantity stopped being maintained when
+  // per-branch stock arrived, so it reports figures frozen at that migration.
+  const { data: branchStockRaw = [] } = useQuery({
+    queryKey: ["bi_branch_stock"],
+    queryFn: async () => fetchAll<any>(() =>
+      supabase.from("item_branch_stock").select("item_id, quantity")
+    ),
+  });
+
+  const stockByItem = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of branchStockRaw as any[]) {
+      m.set(r.item_id, (m.get(r.item_id) || 0) + Number(r.quantity || 0));
+    }
+    return m;
+  }, [branchStockRaw]);
+
   // Supplier links for every item (used by the Supplier filter)
   const { data: itemSupplierLinks = [] } = useQuery({
     queryKey: ["bi_item_suppliers"],
@@ -365,9 +382,17 @@ export default function BusinessInsightsPage() {
     return ids;
   }, [categoryFilter, brandFilter, supplierFilter, itemsAllRaw, itemSupplierLinks]);
 
+  // Overlay the real quantity here so every downstream figure — inventory value,
+  // the stock column, days of stock, GMROI and the Dead classification — is based
+  // on it rather than the stale column.
   const itemsAll = useMemo(
-    () => (allowedItemIds ? (itemsAllRaw as any[]).filter((i) => allowedItemIds.has(i.id)) : (itemsAllRaw as any[])),
-    [itemsAllRaw, allowedItemIds],
+    () => {
+      const base = allowedItemIds
+        ? (itemsAllRaw as any[]).filter((i) => allowedItemIds.has(i.id))
+        : (itemsAllRaw as any[]);
+      return base.map((i) => ({ ...i, quantity: stockByItem.get(i.id) ?? 0 }));
+    },
+    [itemsAllRaw, allowedItemIds, stockByItem],
   );
   const variationsAll = useMemo(
     () => (allowedItemIds ? (variationsAllRaw as any[]).filter((v) => allowedItemIds.has(v.item_id)) : (variationsAllRaw as any[])),
