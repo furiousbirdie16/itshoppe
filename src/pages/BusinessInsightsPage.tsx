@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
@@ -9,14 +9,20 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatCard } from "@/components/StatCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, TrendingUp, TrendingDown, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { FilterCombobox } from "@/components/FilterCombobox";
+import { InsightsProductCard } from "@/components/InsightsProductCard";
+import type { ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -25,22 +31,59 @@ type SourceFilter = "all" | "online" | "invoice";
 type PaymentFilter = "all" | "paid" | "unpaid";
 type ProductSourceFilter = "all" | "local" | "import";
 
-interface SaleTxn {
-  date: string;
-  customer: string;
-  agent: string;
-  source: "online" | "invoice";
-  reference: string;
-  quantity: number;
-  unitPrice: number;
-  amount: number;
-  invoiceId?: string | null;
-  itemId?: string | null;
-  variationId?: string | null;
-  variationName?: string | null;
-  cost?: number;
-  profit?: number;
-  paymentStatus?: "paid" | "unpaid";
+const RANGE_OPTIONS: { v: RangePreset; l: string }[] = [
+  { v: "today", l: "Today" },
+  { v: "7d", l: "7d" },
+  { v: "30d", l: "30d" },
+  { v: "month", l: "This month" },
+  { v: "all", l: "All" },
+  { v: "custom", l: "Custom" },
+];
+const SOURCE_OPTIONS: { v: SourceFilter; l: string }[] = [
+  { v: "all", l: "All sources" },
+  { v: "online", l: "Online only" },
+  { v: "invoice", l: "Invoice only" },
+];
+const PAYMENT_OPTIONS: { v: PaymentFilter; l: string }[] = [
+  { v: "all", l: "All payments" },
+  { v: "paid", l: "Paid only" },
+  { v: "unpaid", l: "Unpaid only" },
+];
+const PRODUCT_SOURCE_OPTIONS: { v: ProductSourceFilter; l: string }[] = [
+  { v: "all", l: "All types" },
+  { v: "local", l: "Local" },
+  { v: "import", l: "Import" },
+];
+
+/** Segmented chip row shared by the desktop filter bar and the mobile filter drawer. */
+function ChipGroup<T extends string>({
+  value,
+  onChange,
+  options,
+  fill,
+}: {
+  value: T;
+  /** Typed as a state setter so T infers from the setter, not widening to string. */
+  onChange: Dispatch<SetStateAction<T>>;
+  options: { v: T; l: string }[];
+  /** Stretch chips to fill the row — used inside the mobile drawer. */
+  fill?: boolean;
+}) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1", fill && "gap-1.5")}>
+      {options.map((o) => (
+        <Button
+          key={o.v}
+          variant={value === o.v ? "default" : "outline"}
+          size="sm"
+          className={cn("h-7 text-xs", fill && "h-9 flex-1 min-w-[30%]")}
+          onClick={() => onChange(o.v)}
+        >
+          {o.l}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 interface ItemAgg {
@@ -61,11 +104,11 @@ interface ItemAgg {
 }
 
 // Sortable <th> for plain HTML tables
-function SortableTh({ sortKey, label, sort, onToggle, align = "left" }: { sortKey: string; label: string; sort: { key: string | null; dir: "asc" | "desc" }; onToggle: (k: string) => void; align?: "left" | "right" }) {
+function SortableTh({ sortKey, label, sort, onToggle, align = "left", className }: { sortKey: string; label: string; sort: { key: string | null; dir: "asc" | "desc" }; onToggle: (k: string) => void; align?: "left" | "right"; className?: string }) {
   const active = sort.key === sortKey;
   const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
   return (
-    <th className={cn("px-3 py-2 font-medium select-none", align === "right" && "text-right")}>
+    <th className={cn("px-3 py-2 font-medium select-none", align === "right" && "text-right", className)}>
       <button type="button" onClick={() => onToggle(sortKey)} className={cn("inline-flex items-center gap-1 hover:text-foreground transition-colors", align === "right" && "ml-auto flex-row-reverse", active ? "text-foreground" : "text-muted-foreground")}>
         <span>{label}</span>
         <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-50")} />
@@ -89,6 +132,7 @@ export default function BusinessInsightsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [expandedProduct, setExpandedProduct] = useState<Set<string>>(new Set());
   const toggleExpandProduct = (id: string) => {
@@ -776,31 +820,9 @@ export default function BusinessInsightsPage() {
     return m;
   }, [aggregated]);
 
-  // Enhanced product metrics — one row per parent product AND one row per variation.
-  interface ProductMetric {
-    key: string;
-    itemId: string;
-    variationId: string | null;
-    kind: "parent" | "variation";
-    name: string;              // parent name, or "parent — variation" for variation rows
-    sku: string;
-    variationLabel: string | null;
-    source: string;
-    stock: number;
-    cost: number;
-    sellingPrice: number;
-    threshold: number;
-    qtySold: number;
-    revenue: number;
-    totalCost: number;
-    grossProfit: number;
-    margin: number;
-    dailySales: number;
-    daysRemaining: number;
-    gmroi: number | null;
-    avgInventoryValue: number | null;
-    action: "Buy" | "Maintain" | "Reduce" | "Dead" | "Overstock";
-  }
+  // Enhanced product metrics — one row per parent product AND one row per
+  // variation. The ProductMetric shape lives in @/types/insights so the mobile
+  // card component can consume it too.
 
   // Build per-item indices for movements (signed) and cost history (sorted asc).
   const { movementsByItem, costHistoryByItem } = useMemo(() => {
@@ -984,64 +1006,6 @@ export default function BusinessInsightsPage() {
     return list;
   }, [productMetrics, productSource, productSearch]);
 
-  // Inventory categorized lists
-  const inventoryBuckets = useMemo(() => {
-    const lowStock = productMetrics.filter((p) => p.stock <= p.threshold && p.threshold > 0);
-    const dead = productMetrics.filter((p) => p.action === "Dead");
-    const slow = productMetrics.filter((p) => p.action === "Reduce");
-    const overstock = productMetrics.filter((p) => p.action === "Overstock");
-    return { lowStock, dead, slow, overstock };
-  }, [productMetrics]);
-
-  // Purchasing recommendations (target 30 days coverage)
-  const purchasing = useMemo(() => {
-    const TARGET = 30;
-    const recs = productMetrics
-      .filter((p) => p.dailySales > 0)
-      .map((p) => {
-        const suggestedQty = Math.max(0, Math.ceil(p.dailySales * TARGET - p.stock));
-        const capital = suggestedQty * p.cost;
-        const expectedGP = suggestedQty * Math.max(0, p.sellingPrice - p.cost);
-        const roi = capital > 0 ? (expectedGP / capital) * 100 : 0;
-        return { ...p, suggestedQty, capital, expectedGP, roi };
-      })
-      .filter((p) => p.suggestedQty > 0)
-      .sort((a, b) => b.roi - a.roi);
-    const totalCapital = recs.reduce((s, r) => s + r.capital, 0);
-    const totalGP = recs.reduce((s, r) => s + r.expectedGP, 0);
-    return { recs, totalCapital, totalGP };
-  }, [productMetrics]);
-
-  // Customer lifetime value (admin, per invoice customer) — profit by customer via financials
-  const customerProfit = useMemo(() => {
-    if (!isAdmin) return new Map<string, number>();
-    const invoiceMap = new Map<string, string>();
-    for (const r of invoiceRows as any[]) {
-      const inv = r._invoice || {};
-      if (inv.id && inv.customer_id) invoiceMap.set(inv.id, inv.customer_id);
-    }
-    const m = new Map<string, number>();
-    for (const f of financialsRows as any[]) {
-      const cid = invoiceMap.get(f.invoice_id);
-      if (!cid) continue;
-      m.set(cid, (m.get(cid) || 0) + Number(f.line_profit || 0));
-    }
-    return m;
-  }, [isAdmin, invoiceRows, financialsRows]);
-
-  const actionBadge = (a: ProductMetric["action"]) => {
-    const map: Record<ProductMetric["action"], string> = {
-      Buy: "bg-red-500/10 text-red-600 border-red-500/30",
-      Maintain: "bg-green-500/10 text-green-600 border-green-500/30",
-      Reduce: "bg-amber-500/10 text-amber-600 border-amber-500/30",
-      Overstock: "bg-orange-500/10 text-orange-600 border-orange-500/30",
-      Dead: "bg-muted text-muted-foreground border-border",
-    };
-    return <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium", map[a])}>{a}</span>;
-  };
-
-  const fmtDays = (d: number) => (d === Infinity ? "∞" : d > 999 ? ">999" : Math.round(d).toString());
-
   const productSort = useSort(filteredProducts, {
     name: (r) => r.name,
     sku: (r) => r.sku,
@@ -1078,117 +1042,69 @@ export default function BusinessInsightsPage() {
     avg: (r) => r.avg,
   }, { key: "revenue", dir: "desc" });
 
-  // Inventory bucket sort (one shared sort state applied per-bucket via useSort factory would create a hook loop — use per-bucket sorts)
-  const bucketAccessors = {
-    name: (r: ProductMetric) => r.name,
-    stock: (r: ProductMetric) => r.stock,
-    threshold: (r: ProductMetric) => r.threshold,
-    qtySold: (r: ProductMetric) => r.qtySold,
-    daysRemaining: (r: ProductMetric) => (r.daysRemaining === Infinity ? Number.MAX_SAFE_INTEGER : r.daysRemaining),
-    invValue: (r: ProductMetric) => r.stock * r.cost,
+  // Filters that live in the mobile drawer — the count drives the badge on the
+  // "Filters" button so nothing silently stays applied while hidden.
+  const drawerFilterCount = [
+    source !== "all",
+    payment !== "all",
+    categoryFilter !== "all",
+    brandFilter !== "all",
+    supplierFilter !== "all",
+    productSource !== "all",
+  ].filter(Boolean).length;
+
+  const resetDrawerFilters = () => {
+    setSource("all");
+    setPayment("all");
+    setCategoryFilter("all");
+    setBrandFilter("all");
+    setSupplierFilter("all");
+    setProductSource("all");
   };
-  const lowStockSort = useSort(inventoryBuckets.lowStock, bucketAccessors, { key: "stock", dir: "asc" });
-  const deadSort = useSort(inventoryBuckets.dead, bucketAccessors, { key: "invValue", dir: "desc" });
-  const slowSort = useSort(inventoryBuckets.slow, bucketAccessors, { key: "daysRemaining", dir: "desc" });
-  const overstockSort = useSort(inventoryBuckets.overstock, bucketAccessors, { key: "daysRemaining", dir: "desc" });
 
-  // Purchasing sort
-  const purchaseSort = useSort(purchasing.recs, {
-    name: (r) => r.name,
-    stock: (r) => r.stock,
-    dailySales: (r) => r.dailySales,
-    suggestedQty: (r) => r.suggestedQty,
-    cost: (r) => r.cost,
-    capital: (r) => r.capital,
-    expectedGP: (r) => r.expectedGP,
-    roi: (r) => r.roi,
-  }, { key: "roi", dir: "desc" });
-
+  const customRangePickers = (
+    <div className="flex items-center gap-1">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !customFrom && "text-muted-foreground")}>
+            <CalendarIcon className="h-3 w-3 mr-1" />
+            {customFrom ? format(customFrom, "MM/dd/yyyy") : "From"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} initialFocus className="p-3 pointer-events-auto" />
+        </PopoverContent>
+      </Popover>
+      <span className="text-xs text-muted-foreground">—</span>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !customTo && "text-muted-foreground")}>
+            <CalendarIcon className="h-3 w-3 mr-1" />
+            {customTo ? format(customTo, "MM/dd/yyyy") : "To"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar mode="single" selected={customTo} onSelect={setCustomTo} initialFocus className="p-3 pointer-events-auto" />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div className="page-header">
         <h1 className="page-title">Business Insights</h1>
         <p className="page-description">All sales (online + invoices) per item. Click a row to see when, who, and how many.</p>
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border bg-card p-3 sm:p-4 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 flex-wrap">
-          {([
-            { v: "today", l: "Today" },
-            { v: "7d", l: "7d" },
-            { v: "30d", l: "30d" },
-            { v: "month", l: "This month" },
-            { v: "all", l: "All" },
-            { v: "custom", l: "Custom" },
-          ] as { v: RangePreset; l: string }[]).map((p) => (
-            <Button
-              key={p.v}
-              variant={preset === p.v ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setPreset(p.v)}
-            >
-              {p.l}
-            </Button>
-          ))}
-        </div>
-        {preset === "custom" && (
-          <div className="flex items-center gap-1">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("h-7 text-xs w-[120px] justify-start", !customFrom && "text-muted-foreground")}>
-                  <CalendarIcon className="h-3 w-3 mr-1" />
-                  {customFrom ? format(customFrom, "MM/dd/yyyy") : "From"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} initialFocus className="p-3 pointer-events-auto" />
-              </PopoverContent>
-            </Popover>
-            <span className="text-xs text-muted-foreground">—</span>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("h-7 text-xs w-[120px] justify-start", !customTo && "text-muted-foreground")}>
-                  <CalendarIcon className="h-3 w-3 mr-1" />
-                  {customTo ? format(customTo, "MM/dd/yyyy") : "To"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={customTo} onSelect={setCustomTo} initialFocus className="p-3 pointer-events-auto" />
-              </PopoverContent>
-            </Popover>
-          </div>
-        )}
+      {/* Filters — desktop: everything inline. */}
+      <div className="rounded-xl border bg-card p-3 sm:p-4 hidden md:flex flex-wrap items-center gap-2">
+        <ChipGroup value={preset} onChange={setPreset} options={RANGE_OPTIONS} />
+        {preset === "custom" && customRangePickers}
         <div className="h-5 w-px bg-border mx-1" />
-        <div className="flex items-center gap-1 flex-wrap">
-          {(["all", "online", "invoice"] as SourceFilter[]).map((s) => (
-            <Button
-              key={s}
-              variant={source === s ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs capitalize"
-              onClick={() => setSource(s)}
-            >
-              {s === "all" ? "All sources" : s === "online" ? "Online only" : "Invoice only"}
-            </Button>
-          ))}
-        </div>
+        <ChipGroup value={source} onChange={setSource} options={SOURCE_OPTIONS} />
         <div className="h-5 w-px bg-border mx-1" />
-        <div className="flex items-center gap-1 flex-wrap">
-          {(["all", "paid", "unpaid"] as PaymentFilter[]).map((p) => (
-            <Button
-              key={p}
-              variant={payment === p ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs capitalize"
-              onClick={() => setPayment(p)}
-            >
-              {p === "all" ? "All payments" : p === "paid" ? "Paid only" : "Unpaid only"}
-            </Button>
-          ))}
-        </div>
+        <ChipGroup value={payment} onChange={setPayment} options={PAYMENT_OPTIONS} />
         <div className="h-5 w-px bg-border mx-1" />
         <div className="flex items-center gap-1 flex-wrap">
           <FilterCombobox value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} allLabel="All categories" className="h-7 text-xs w-[150px]" />
@@ -1212,12 +1128,90 @@ export default function BusinessInsightsPage() {
         </div>
       </div>
 
+      {/* Filters — mobile: one scrollable row of date presets plus a drawer, so
+          the controls take ~2 rows instead of ~8 before any data is reachable. */}
+      <div className="md:hidden space-y-2">
+        <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {RANGE_OPTIONS.map((p) => (
+            <Button
+              key={p.v}
+              variant={preset === p.v ? "default" : "outline"}
+              size="sm"
+              className="h-8 shrink-0 rounded-full px-3 text-xs"
+              onClick={() => setPreset(p.v)}
+            >
+              {p.l}
+            </Button>
+          ))}
+        </div>
+        {preset === "custom" && customRangePickers}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search item or SKU..."
+              className="h-9 text-sm pl-8"
+            />
+          </div>
+          <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 shrink-0 px-3 text-xs" aria-label="Filters">
+                <Filter className="h-4 w-4" />
+                {drawerFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 h-5 min-w-5 px-1.5">{drawerFilterCount}</Badge>
+                )}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Filters</SheetTitle>
+              </SheetHeader>
+              <div className="space-y-5 py-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Sales source</Label>
+                  <ChipGroup value={source} onChange={setSource} options={SOURCE_OPTIONS} fill />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Payment status</Label>
+                  <ChipGroup value={payment} onChange={setPayment} options={PAYMENT_OPTIONS} fill />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Product type</Label>
+                  <ChipGroup value={productSource} onChange={setProductSource} options={PRODUCT_SOURCE_OPTIONS} fill />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Category</Label>
+                  <FilterCombobox value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} allLabel="All categories" className="h-9 w-full text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Brand</Label>
+                  <FilterCombobox value={brandFilter} onChange={setBrandFilter} options={brandOptions} allLabel="All brands" className="h-9 w-full text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Supplier</Label>
+                  <FilterCombobox value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} allLabel="All suppliers" className="h-9 w-full text-sm" />
+                </div>
+              </div>
+              <SheetFooter className="flex-row justify-between gap-2">
+                <Button variant="ghost" onClick={resetDrawerFilters}>Clear all</Button>
+                <Button onClick={() => setFilterDrawerOpen(false)}>Done</Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+          <Button variant="outline" size="sm" className="h-9 shrink-0 px-3 text-xs" onClick={handleExport} aria-label="Export">
+            <Download className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       <div className="text-xs text-muted-foreground">
         {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches"} · {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto">
+        <TabsList className="grid w-full grid-cols-3 md:inline-flex md:w-auto">
           <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>
           <TabsTrigger value="customers"><Users className="h-3.5 w-3.5 mr-1.5" />Customers</TabsTrigger>
@@ -1294,7 +1288,8 @@ export default function BusinessInsightsPage() {
                     <SortableTh sortKey="name" label="Item" sort={top5Sort.sort} onToggle={top5Sort.toggle} />
                     <SortableTh sortKey="qtySold" label="Units Sold" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />
                     {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
-                    {isAdmin && <SortableTh sortKey="grossProfit" label="Gross Profit" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
+                    {/* Gross Profit would be clipped on a phone — the wrapper is overflow-hidden. */}
+                    {isAdmin && <SortableTh sortKey="grossProfit" label="Gross Profit" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" className="hidden sm:table-cell" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -1306,7 +1301,7 @@ export default function BusinessInsightsPage() {
                       </td>
                       <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
                       {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(p.revenue)}</td>}
-                      {isAdmin && <td className="px-3 py-1.5 text-right text-green-600">{money(p.grossProfit)}</td>}
+                      {isAdmin && <td className="px-3 py-1.5 text-right text-green-600 hidden sm:table-cell">{money(p.grossProfit)}</td>}
                     </tr>
                   ))}
                   {productMetrics.every((p) => p.qtySold === 0) && (
@@ -1334,25 +1329,70 @@ export default function BusinessInsightsPage() {
             </div>
           )}
 
-          <div className="rounded-xl border bg-card overflow-hidden">
+          {/* Mobile: card list — the desktop table needs sideways scrolling to
+              reach Revenue/GP/Margin, which is the main pain on a phone. */}
+          <div className="md:hidden space-y-2.5">
+            <div className="flex items-center gap-2">
+              <Select
+                value={productSort.sort.key ?? "revenue"}
+                onValueChange={(v) => productSort.setSort({ key: v, dir: productSort.sort.dir })}
+              >
+                <SelectTrigger className="h-9 flex-1 text-xs">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="stock">Stock</SelectItem>
+                  <SelectItem value="qtySold">Units sold</SelectItem>
+                  {isAdmin && <SelectItem value="revenue">Revenue</SelectItem>}
+                  {isAdmin && <SelectItem value="grossProfit">Gross profit</SelectItem>}
+                  {isAdmin && <SelectItem value="margin">Margin</SelectItem>}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 px-3 text-xs"
+                onClick={() =>
+                  productSort.setSort({
+                    key: productSort.sort.key ?? "revenue",
+                    dir: productSort.sort.dir === "asc" ? "desc" : "asc",
+                  })
+                }
+              >
+                {productSort.sort.dir === "asc" ? <ArrowUp className="h-3.5 w-3.5 mr-1" /> : <ArrowDown className="h-3.5 w-3.5 mr-1" />}
+                {productSort.sort.dir === "asc" ? "Asc" : "Desc"}
+              </Button>
+            </div>
+
+            <div className="px-1 text-xs text-muted-foreground">
+              {productSort.sorted.length} row{productSort.sorted.length === 1 ? "" : "s"} · tap a card for sales history
+            </div>
+
+            {productSort.sorted.length === 0 ? (
+              <div className="rounded-xl border bg-card py-10 text-center text-xs text-muted-foreground">No items.</div>
+            ) : (
+              productSort.sorted.slice(0, 500).map((p) => (
+                <InsightsProductCard
+                  key={p.key}
+                  product={p}
+                  txns={perUnitTxns.get(p.key) || []}
+                  isAdmin={isAdmin}
+                  money={money}
+                  isOpen={expandedProduct.has(p.key)}
+                  onToggle={() => toggleExpandProduct(p.key)}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-card overflow-hidden hidden md:block">
             <div className="p-3 border-b flex flex-wrap items-center gap-2">
               <div className="flex-1 min-w-[200px]">
                 <h2 className="text-sm font-semibold">Product Performance</h2>
                 <p className="text-xs text-muted-foreground">One row per product. Click a row to see per-order sales{isAdmin ? " and gross profit" : ""}.</p>
               </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {(["all", "local", "import"] as ProductSourceFilter[]).map((s) => (
-                  <Button
-                    key={s}
-                    variant={productSource === s ? "default" : "outline"}
-                    size="sm"
-                    className="h-7 text-xs capitalize"
-                    onClick={() => setProductSource(s)}
-                  >
-                    {s === "all" ? "All types" : s}
-                  </Button>
-                ))}
-              </div>
+              <ChipGroup value={productSource} onChange={setProductSource} options={PRODUCT_SOURCE_OPTIONS} />
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExport}>
                 <Download className="h-3.5 w-3.5 mr-1" />Export
               </Button>
@@ -1515,7 +1555,7 @@ export default function BusinessInsightsPage() {
                       <SortableTh sortKey="name" label="Channel" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} />
                       <SortableTh sortKey="orders" label="Orders" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />
                       {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
-                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
+                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" className="hidden sm:table-cell" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -1526,7 +1566,7 @@ export default function BusinessInsightsPage() {
                         <td className="px-3 py-1.5 capitalize">{c.name}</td>
                         <td className="px-3 py-1.5 text-right">{c.orders}</td>
                         {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
-                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>}
+                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground hidden sm:table-cell">{money(c.avg)}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -1562,7 +1602,7 @@ export default function BusinessInsightsPage() {
                       <SortableTh sortKey="name" label="Customer" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} />
                       <SortableTh sortKey="orders" label="Orders" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />
                       {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
-                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
+                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" className="hidden sm:table-cell" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -1573,7 +1613,7 @@ export default function BusinessInsightsPage() {
                         <td className="px-3 py-1.5">{c.name}</td>
                         <td className="px-3 py-1.5 text-right">{c.orders}</td>
                         {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
-                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground">{money(c.avg)}</td>}
+                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground hidden sm:table-cell">{money(c.avg)}</td>}
                       </tr>
                     ))}
                   </tbody>

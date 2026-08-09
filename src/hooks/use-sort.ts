@@ -43,5 +43,7 @@ export function useSort<T>(rows: T[], accessors: SortAccessors<T>, initial?: Sor
     return copy;
   }, [rows, sort, accessors]);
 
-  return { sort, toggle, sorted };
+  // setSort is exposed for pickers (e.g. the mobile sort dropdown) that need to
+  // select a key/direction directly rather than cycle through toggle's states.
+  return { sort, setSort, toggle, sorted };
 }
