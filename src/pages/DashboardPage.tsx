@@ -34,6 +34,11 @@ export default function DashboardPage() {
     finance.billsAndChecks + Math.max(finance.dueToOwner, 0) + finance.loansOutstanding;
   const netAssetValue = assetsTotal - liabilitiesTotal;
 
+  // What is genuinely free to spend: cash on hand less everything already
+  // committed to suppliers and bills. Can go negative, which is the point —
+  // that means commitments already exceed the cash to cover them.
+  const cashForPurchasing = finance.totalCashAvailable - supplierPOs - finance.billsAndChecks;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -155,6 +160,19 @@ export default function DashboardPage() {
             icon={PiggyBank}
             tone="liability"
             description={`${peso(finance.monthlyLoanPayment)}/mo`}
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            title="Cash Available for Purchase"
+            value={peso(cashForPurchasing)}
+            icon={Wallet}
+            tone={cashForPurchasing >= 0 ? "asset" : "liability"}
+            description={
+              cashForPurchasing >= 0
+                ? "Cash less supplier POs and bills"
+                : "Commitments exceed cash on hand"
+            }
           />
         )}
         {isAdmin && (
