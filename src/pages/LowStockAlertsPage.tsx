@@ -138,24 +138,53 @@ export default function LowStockAlertsPage() {
     return (v.factor * qty) / ups;
   };
 
+  /**
+   * Reads every row, a page at a time.
+   *
+   * PostgREST caps a response at 1000 rows. Ninety days of sales is well past
+   * that, so an unpaginated read silently dropped most of it and every
+   * days-left figure on this page came out far too optimistic.
+   */
+  async function fetchAllRows<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
+    const out: T[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await build().range(from, from + pageSize - 1);
+      if (error) throw error;
+      const page = (data as T[]) || [];
+      out.push(...page);
+      if (page.length < pageSize) return out;
+    }
+  }
+
   // 3. Last 90 days sales
   const since90 = useMemo(() => subDays(new Date(), 90).toISOString(), []);
   const { data: salesRows = [] } = useQuery<SaleRow[]>({
     queryKey: ["lowstock-sales", since90, items.length, variations.length],
     enabled: items.length > 0,
     queryFn: async () => {
-      const [invRes, onlRes] = await Promise.all([
-        supabase
-          .from("invoice_items")
-          .select("item_id, variation_id, quantity, unit_price, invoices!inner(invoice_date, status)")
-          .gte("invoices.invoice_date", since90.slice(0, 10))
-          .neq("invoices.status", "draft"),
-        supabase
-          .from("online_sales")
-          .select("item_id, variation_id, quantity, deal_price, order_date, status")
-          .gte("order_date", since90.slice(0, 10))
-          .eq("status", "completed"),
+      const [invRows, onlRows] = await Promise.all([
+        fetchAllRows<any>(() =>
+          supabase
+            .from("invoice_items")
+            .select("item_id, variation_id, quantity, unit_price, invoices!inner(invoice_date, status)")
+            .gte("invoices.invoice_date", since90.slice(0, 10))
+            // Cancelled orders never sold, and reserved ones have not sold yet —
+            // counting either as demand shortens days-left and triggers early
+            // reorders. A reserved order is counted once it becomes a real sale.
+            .not("invoices.status", "in", "(draft,cancelled,reserved)")
+            .order("id"),
+        ),
+        fetchAllRows<any>(() =>
+          supabase
+            .from("online_sales")
+            .select("item_id, variation_id, quantity, deal_price, order_date, status")
+            .gte("order_date", since90.slice(0, 10))
+            .eq("status", "completed")
+            .order("id"),
+        ),
       ]);
+      const invRes = { data: invRows };
+      const onlRes = { data: onlRows };
       const out: SaleRow[] = [];
       for (const r of (invRes.data as any[]) || []) {
         if (!r.item_id) continue;
