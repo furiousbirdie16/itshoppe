@@ -305,7 +305,10 @@ export default function BusinessInsightsPage() {
   const { data: variationsAllRaw = [] } = useQuery({
     queryKey: ["bi_variations_all"],
     queryFn: async () => fetchAll<any>(() =>
-      supabase.from("item_variations").select("id, item_id, name, sku, quantity, cost_price, selling_price")
+      // No quantity column here — variations do not hold their own stock, it sits
+      // on the parent. Selecting it made PostgREST reject the whole request, so
+      // this returned nothing and no variation rows were built at all.
+      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price")
     ),
   });
 
@@ -998,7 +1001,8 @@ export default function BusinessInsightsPage() {
         sku: v.sku || parent.sku || "—",
         variationLabel: v.name,
         source: parent.source || "local",
-        stock: Number(v.quantity || 0),
+        // Stock lives on the parent item, not the variation.
+        stock: 0,
         cost: Number(v.cost_price || 0),
         sellingPrice: Number(v.selling_price || 0),
         threshold: 0,
