@@ -298,7 +298,8 @@ export interface CashTransaction {
   updated_by_email: string;
   created_at: string;
   updated_at: string;
-  cash_accounts?: CashAccount;
+  /** Joined for display only — the query selects the name alone. */
+  cash_accounts?: Pick<CashAccount, "name">;
 }
 
 export interface OwnerTransaction {

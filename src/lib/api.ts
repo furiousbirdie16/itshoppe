@@ -1763,7 +1763,9 @@ export const deleteCashAccount = async (id: string) => {
 /** Ledger rows, newest first. Pass accountIds to scope to petty cash or banks. */
 export const getCashTransactions = async (accountIds?: string[]): Promise<CashTransaction[]> => {
   let q = from("cash_transactions")
-    .select("*, cash_accounts(*)")
+    // Only the account name is rendered; joining every account column repeated
+    // the whole account row onto each transaction for nothing.
+    .select("*, cash_accounts(name)")
     .order("txn_date", { ascending: false })
     .order("created_at", { ascending: false });
   if (accountIds) {
@@ -1793,10 +1795,17 @@ const notify = (fn: "notify-payment" | "notify-cash", body: Record<string, unkno
     .catch((e) => console.warn(`${fn} failed:`, e));
 };
 
-/** Current user's id and email, for stamping who touched a ledger row. */
+/**
+ * Current user's id and email, for stamping who touched a ledger row.
+ *
+ * Reads the cached session rather than calling `getUser`, which hits the auth
+ * server over the network every time and sat in front of every ledger write.
+ * These columns are only an audit stamp — access is enforced by RLS on the
+ * server, which trusts the JWT rather than anything sent from here.
+ */
 const currentActor = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  return { id: user?.id || null, email: user?.email || "" };
+  const { data: { session } } = await supabase.auth.getSession();
+  return { id: session?.user?.id || null, email: session?.user?.email || "" };
 };
 
 export const createCashTransaction = async (t: Partial<CashTransaction>) => {
