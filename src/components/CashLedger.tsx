@@ -16,7 +16,7 @@ import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark } from "lucide-react";
 import { toast } from "sonner";
-import { format, parse, isValid } from "date-fns";
+import { format, parse, isValid, subDays, startOfDay } from "date-fns";
 import { peso } from "@/lib/currency";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
@@ -69,6 +69,10 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   const [transfer, setTransfer] = useState(emptyTransfer());
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
+  const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const [rangePreset, setRangePreset] = useState<"all" | "7d" | "30d" | "custom">("all");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CashAccount | null>(null);
   const [accountForm, setAccountForm] = useState(emptyAccount());
@@ -99,11 +103,43 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     [txns, accountFilter],
   );
 
-  const filtered = scoped.filter((t) => {
+  // Resolved date window. Presets are relative to today; custom uses whatever is
+  // filled in, so a half-finished range still narrows from one side.
+  const { fromDate, toDate } = useMemo(() => {
+    if (rangePreset === "7d") return { fromDate: format(startOfDay(subDays(new Date(), 6)), "yyyy-MM-dd"), toDate: "" };
+    if (rangePreset === "30d") return { fromDate: format(startOfDay(subDays(new Date(), 29)), "yyyy-MM-dd"), toDate: "" };
+    if (rangePreset === "custom") return { fromDate: rangeFrom, toDate: rangeTo };
+    return { fromDate: "", toDate: "" };
+  }, [rangePreset, rangeFrom, rangeTo]);
+
+  const inRange = useMemo(
+    () => scoped.filter((t) => {
+      if (fromDate && t.txn_date < fromDate) return false;
+      if (toDate && t.txn_date > toDate) return false;
+      return true;
+    }),
+    [scoped, fromDate, toDate],
+  );
+
+  const searched = useMemo(() => inRange.filter((t) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return [t.category, t.payee, t.reference, t.notes].some((v) => (v || "").toLowerCase().includes(q));
-  });
+  }), [inRange, search]);
+
+  // The in/out toggle narrows the list only. Totals stay computed over both
+  // directions, since showing "Total Outflow ₱0.00" while filtered to inflows
+  // would be worse than useless.
+  const filtered = useMemo(
+    () => (directionFilter === "all" ? searched : searched.filter((t) => t.direction === directionFilter)),
+    [searched, directionFilter],
+  );
+
+  const rangeLabel =
+    rangePreset === "7d" ? "Last 7 days"
+    : rangePreset === "30d" ? "Last 30 days"
+    : rangePreset === "custom" && (rangeFrom || rangeTo) ? `${rangeFrom || "start"} → ${rangeTo || "today"}`
+    : "All time";
 
   const { sort, toggle, sorted } = useSort<CashTransaction>(filtered, {
     txn_date: (r) => r.txn_date,
@@ -154,8 +190,8 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
 
   const visibleAccounts = accountFilter === "all" ? accounts : accounts.filter((a) => a.id === accountFilter);
   const totalBalance = visibleAccounts.reduce((sum, a) => sum + phpBalanceOf(a), 0);
-  const totalIn = scoped.filter((t) => t.direction === "in").reduce((s, t) => s + Number(t.amount || 0), 0);
-  const totalOut = scoped.filter((t) => t.direction === "out").reduce((s, t) => s + Number(t.amount || 0), 0);
+  const totalIn = searched.filter((t) => t.direction === "in").reduce((s, t) => s + Number(t.amount || 0), 0);
+  const totalOut = searched.filter((t) => t.direction === "out").reduce((s, t) => s + Number(t.amount || 0), 0);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
@@ -353,8 +389,8 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
 
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Current Balance" value={peso(totalBalance)} icon={Wallet} description={accountFilter === "all" ? "All accounts" : visibleAccounts[0]?.name || ""} />
-        <StatCard title="Total Inflow" value={peso(totalIn)} icon={TrendingUp} description="Money in" />
-        <StatCard title="Total Outflow" value={peso(totalOut)} icon={TrendingDown} description="Money out" />
+        <StatCard title="Total Inflow" value={peso(totalIn)} icon={TrendingUp} tone="asset" description={rangeLabel} />
+        <StatCard title="Total Outflow" value={peso(totalOut)} icon={TrendingDown} tone="liability" description={rangeLabel} />
       </div>
 
       {showAccountFilter && (
@@ -414,12 +450,39 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
         </div>
         {showAccountFilter && (
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="h-9 w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[150px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All accounts</SelectItem>
               {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
             </SelectContent>
           </Select>
+        )}
+
+        <Select value={directionFilter} onValueChange={(v) => setDirectionFilter(v as typeof directionFilter)}>
+          <SelectTrigger className="h-9 w-[130px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">In &amp; out</SelectItem>
+            <SelectItem value="in">Inflow only</SelectItem>
+            <SelectItem value="out">Outflow only</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={rangePreset} onValueChange={(v) => setRangePreset(v as typeof rangePreset)}>
+          <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All time</SelectItem>
+            <SelectItem value="7d">Last 7 days</SelectItem>
+            <SelectItem value="30d">Last 30 days</SelectItem>
+            <SelectItem value="custom">Custom range</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {rangePreset === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <DateField value={rangeFrom} onChange={setRangeFrom} placeholder="From" />
+            <span className="text-xs text-muted-foreground">to</span>
+            <DateField value={rangeTo} onChange={setRangeTo} placeholder="To" />
+          </div>
         )}
       </div>
 

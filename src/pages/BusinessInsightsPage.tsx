@@ -26,7 +26,7 @@ import type { ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
-type RangePreset = "today" | "7d" | "30d" | "month" | "all" | "custom";
+type RangePreset = "today" | "7d" | "30d" | "60d" | "90d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
 type PaymentFilter = "all" | "paid" | "unpaid";
 type ProductSourceFilter = "all" | "local" | "import";
@@ -35,6 +35,8 @@ const RANGE_OPTIONS: { v: RangePreset; l: string }[] = [
   { v: "today", l: "Today" },
   { v: "7d", l: "7d" },
   { v: "30d", l: "30d" },
+  { v: "60d", l: "60d" },
+  { v: "90d", l: "90d" },
   { v: "month", l: "This month" },
   { v: "all", l: "All" },
   { v: "custom", l: "Custom" },
@@ -125,6 +127,10 @@ export default function BusinessInsightsPage() {
   const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
+  // Controlled so choosing a start date can open the end picker straight away —
+  // a range is two choices, and the second should not need a separate tap.
+  const [fromOpen, setFromOpen] = useState(false);
+  const [toOpen, setToOpen] = useState(false);
   const [source, setSource] = useState<SourceFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
@@ -157,6 +163,8 @@ export default function BusinessInsightsPage() {
     if (preset === "today") return { dateFrom: startOfDay(now), dateTo: endOfDay(now) };
     if (preset === "7d") return { dateFrom: startOfDay(subDays(now, 6)), dateTo: endOfDay(now) };
     if (preset === "30d") return { dateFrom: startOfDay(subDays(now, 29)), dateTo: endOfDay(now) };
+    if (preset === "60d") return { dateFrom: startOfDay(subDays(now, 59)), dateTo: endOfDay(now) };
+    if (preset === "90d") return { dateFrom: startOfDay(subDays(now, 89)), dateTo: endOfDay(now) };
     if (preset === "month") return { dateFrom: startOfMonth(now), dateTo: endOfMonth(now) };
     if (preset === "all") return { dateFrom: new Date(2000, 0, 1), dateTo: endOfDay(now) };
     return {
@@ -1093,7 +1101,7 @@ export default function BusinessInsightsPage() {
 
   const customRangePickers = (
     <div className="flex items-center gap-1">
-      <Popover>
+      <Popover open={fromOpen} onOpenChange={setFromOpen}>
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !customFrom && "text-muted-foreground")}>
             <CalendarIcon className="h-3 w-3 mr-1" />
@@ -1101,11 +1109,21 @@ export default function BusinessInsightsPage() {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} initialFocus className="p-3 pointer-events-auto" />
+          <Calendar
+            mode="single"
+            selected={customFrom}
+            onSelect={(d) => {
+              setCustomFrom(d);
+              setFromOpen(false);
+              if (d) setToOpen(true);
+            }}
+            initialFocus
+            className="p-3 pointer-events-auto"
+          />
         </PopoverContent>
       </Popover>
       <span className="text-xs text-muted-foreground">—</span>
-      <Popover>
+      <Popover open={toOpen} onOpenChange={setToOpen}>
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !customTo && "text-muted-foreground")}>
             <CalendarIcon className="h-3 w-3 mr-1" />
@@ -1113,7 +1131,18 @@ export default function BusinessInsightsPage() {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <Calendar mode="single" selected={customTo} onSelect={setCustomTo} initialFocus className="p-3 pointer-events-auto" />
+          <Calendar
+            mode="single"
+            selected={customTo}
+            defaultMonth={customFrom}
+            disabled={customFrom ? { before: customFrom } : undefined}
+            onSelect={(d) => {
+              setCustomTo(d);
+              setToOpen(false);
+            }}
+            initialFocus
+            className="p-3 pointer-events-auto"
+          />
         </PopoverContent>
       </Popover>
     </div>
