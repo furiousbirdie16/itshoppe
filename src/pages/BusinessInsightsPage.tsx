@@ -119,6 +119,77 @@ function SortableTh({ sortKey, label, sort, onToggle, align = "left", className 
   );
 }
 
+// Its own component, with its own open state, because the page renders this
+// twice — once in the desktop filter bar and once in the mobile one. Both are
+// always mounted (only CSS hides one), so sharing open state made the hidden
+// copy's dismissable layer treat the visible one's focus as an outside click
+// and shut both instantly.
+function CustomRangePickers({
+  from,
+  to,
+  onFrom,
+  onTo,
+}: {
+  from: Date | undefined;
+  to: Date | undefined;
+  onFrom: (d: Date | undefined) => void;
+  onTo: (d: Date | undefined) => void;
+}) {
+  // Controlled so choosing a start date can open the end picker straight away —
+  // a range is two choices, and the second should not need a separate tap.
+  const [fromOpen, setFromOpen] = useState(false);
+  const [toOpen, setToOpen] = useState(false);
+
+  return (
+    <div className="flex items-center gap-1">
+      <Popover open={fromOpen} onOpenChange={setFromOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !from && "text-muted-foreground")}>
+            <CalendarIcon className="h-3 w-3 mr-1" />
+            {from ? format(from, "MM/dd/yyyy") : "From"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={from}
+            onSelect={(d) => {
+              onFrom(d);
+              setFromOpen(false);
+              if (d) setToOpen(true);
+            }}
+            initialFocus
+            className="p-3 pointer-events-auto"
+          />
+        </PopoverContent>
+      </Popover>
+      <span className="text-xs text-muted-foreground">—</span>
+      <Popover open={toOpen} onOpenChange={setToOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !to && "text-muted-foreground")}>
+            <CalendarIcon className="h-3 w-3 mr-1" />
+            {to ? format(to, "MM/dd/yyyy") : "To"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={to}
+            defaultMonth={from}
+            disabled={from ? { before: from } : undefined}
+            onSelect={(d) => {
+              onTo(d);
+              setToOpen(false);
+            }}
+            initialFocus
+            className="p-3 pointer-events-auto"
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
@@ -127,10 +198,6 @@ export default function BusinessInsightsPage() {
   const [preset, setPreset] = useState<RangePreset>("today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
-  // Controlled so choosing a start date can open the end picker straight away —
-  // a range is two choices, and the second should not need a separate tap.
-  const [fromOpen, setFromOpen] = useState(false);
-  const [toOpen, setToOpen] = useState(false);
   const [source, setSource] = useState<SourceFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState("");
@@ -1100,52 +1167,7 @@ export default function BusinessInsightsPage() {
   };
 
   const customRangePickers = (
-    <div className="flex items-center gap-1">
-      <Popover open={fromOpen} onOpenChange={setFromOpen}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !customFrom && "text-muted-foreground")}>
-            <CalendarIcon className="h-3 w-3 mr-1" />
-            {customFrom ? format(customFrom, "MM/dd/yyyy") : "From"}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={customFrom}
-            onSelect={(d) => {
-              setCustomFrom(d);
-              setFromOpen(false);
-              if (d) setToOpen(true);
-            }}
-            initialFocus
-            className="p-3 pointer-events-auto"
-          />
-        </PopoverContent>
-      </Popover>
-      <span className="text-xs text-muted-foreground">—</span>
-      <Popover open={toOpen} onOpenChange={setToOpen}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className={cn("h-7 text-xs flex-1 md:w-[120px] md:flex-none justify-start", !customTo && "text-muted-foreground")}>
-            <CalendarIcon className="h-3 w-3 mr-1" />
-            {customTo ? format(customTo, "MM/dd/yyyy") : "To"}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={customTo}
-            defaultMonth={customFrom}
-            disabled={customFrom ? { before: customFrom } : undefined}
-            onSelect={(d) => {
-              setCustomTo(d);
-              setToOpen(false);
-            }}
-            initialFocus
-            className="p-3 pointer-events-auto"
-          />
-        </PopoverContent>
-      </Popover>
-    </div>
+    <CustomRangePickers from={customFrom} to={customTo} onFrom={setCustomFrom} onTo={setCustomTo} />
   );
 
   return (

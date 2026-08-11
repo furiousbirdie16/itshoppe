@@ -114,6 +114,20 @@ describe("BusinessInsightsPage", () => {
     expect(trigger.textContent).toBe("");
   });
 
+  it("opens only the date picker that was tapped", () => {
+    renderPage();
+    // Custom range renders in both the desktop and the mobile toolbar, and both
+    // stay mounted — only CSS hides one. Sharing open state made the hidden copy
+    // dismiss the visible one the moment it took focus.
+    fireEvent.click(screen.getAllByRole("button", { name: "Custom" })[0]);
+
+    const fromButtons = screen.getAllByRole("button", { name: "From" });
+    expect(fromButtons).toHaveLength(2);
+
+    fireEvent.click(fromButtons[0]);
+    expect(screen.getAllByRole("grid")).toHaveLength(1);
+  });
+
   it("offers a sort control on the Products tab so cards stay sortable without table headers", () => {
     renderPage();
     // Radix tabs activate on pointer-down, not click.
