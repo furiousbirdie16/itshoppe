@@ -1098,10 +1098,16 @@ export const getDashboardStats = async (branchId?: string | null) => {
   const todayIso = iso(now);
   const monthStartIso = iso(new Date(now.getFullYear(), now.getMonth(), 1));
 
+  // A sale counts once the customer has paid — the same rule getSalesTrend uses,
+  // so the cards and the trend chart on this page cannot disagree. Counting
+  // `confirmed`, `shipped` (both shipped-not-paid) and `reserved` (allocated
+  // stock on an unpaid order) booked revenue that had not been earned.
+  const SOLD_INVOICE_STATUSES = ["paid", "completed"];
+
   const periodSales = async (fromIso: string) => {
     let invQ = from("invoices")
       .select("total_amount")
-      .in("status", ["confirmed", "paid", "reserved", "shipped", "completed"])
+      .in("status", SOLD_INVOICE_STATUSES)
       .gte("invoice_date", fromIso)
       .lte("invoice_date", todayIso);
     if (branchId) invQ = invQ.eq("branch_id", branchId);
@@ -1128,7 +1134,9 @@ export const getDashboardStats = async (branchId?: string | null) => {
     .select("line_profit, invoices!inner(invoice_date, status, branch_id)")
     .gte("invoices.invoice_date", monthStartIso)
     .lte("invoices.invoice_date", todayIso)
-    .in("invoices.status", ["confirmed", "paid", "reserved", "shipped", "completed"]);
+    // Same basis as salesThisMonth above: profit on an unpaid order is not
+    // earned either, and mixing the two makes the margin look impossible.
+    .in("invoices.status", SOLD_INVOICE_STATUSES);
   if (branchId) gpQ = gpQ.eq("invoices.branch_id", branchId);
   const { data: gpRows } = await gpQ;
   const grossProfitMonth = ((gpRows as any[]) || []).reduce((s, r) => s + Number(r.line_profit || 0), 0);
