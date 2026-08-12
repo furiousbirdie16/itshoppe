@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
+import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
@@ -294,7 +295,50 @@ export default function PayablesPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
+      {/* Phones get stacked cards; the seven-column table hides the outstanding
+          balance and the status behind a horizontal scroll. */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="rounded-xl border bg-card">
+            <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No payables yet</p></div>
+          </div>
+        ) : (
+          sorted.map((p) => (
+            <FinanceMobileCard
+              key={p.id}
+              title={p.payee}
+              subtitle={
+                <>
+                  {p.category || "—"}
+                  {p.is_check && (
+                    <span> · Check {p.check_number || "—"}{p.check_bank ? ` · ${p.check_bank}` : ""}</span>
+                  )}
+                </>
+              }
+              amount={peso(outstandingOf(p))}
+              amountSub={`of ${peso(Number(p.amount))}`}
+              badge={<Badge variant={STATUS_VARIANT[p.status]} className="text-xs font-normal">{STATUS_LABELS[p.status]}</Badge>}
+              meta={<span>Due {formatDate(p.due_date)}</span>}
+              actions={
+                <>
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
+                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                  </Button>
+                </>
+              }
+            />
+          ))
+        )}
+      </div>
+
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>

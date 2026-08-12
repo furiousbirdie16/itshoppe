@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -443,14 +444,17 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
         </div>
       )}
 
+      {/* Phones give the search its own row and split the selects two-up; at the
+          fixed widths below they used to wrap one per line and push the ledger
+          most of a screen down. */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="relative max-w-sm flex-1 min-w-[180px]">
+        <div className="relative w-full sm:max-w-sm sm:flex-1 sm:min-w-[180px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search transactions..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         {showAccountFilter && (
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="h-9 w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 min-w-0 flex-1 sm:flex-none sm:w-[150px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All accounts</SelectItem>
               {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -459,7 +463,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
         )}
 
         <Select value={directionFilter} onValueChange={(v) => setDirectionFilter(v as typeof directionFilter)}>
-          <SelectTrigger className="h-9 w-[130px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-9 min-w-0 flex-1 sm:flex-none sm:w-[130px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">In &amp; out</SelectItem>
             <SelectItem value="in">Inflow only</SelectItem>
@@ -468,7 +472,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
         </Select>
 
         <Select value={rangePreset} onValueChange={(v) => setRangePreset(v as typeof rangePreset)}>
-          <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-9 min-w-0 flex-1 sm:flex-none sm:w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All time</SelectItem>
             <SelectItem value="7d">Last 7 days</SelectItem>
@@ -676,7 +680,62 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
+      {/* Phones get stacked cards; the table runs to nine columns with accounts
+          and a PHP-value column, which pushes the amount off-screen. */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="rounded-xl border bg-card">
+            <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div>
+          </div>
+        ) : (
+          sorted.map((t) => (
+            <FinanceMobileCard
+              key={t.id}
+              title={t.payee || "—"}
+              subtitle={
+                <>
+                  {t.category || "—"}
+                  {showAccountFilter && t.cash_accounts?.name && <span> · {t.cash_accounts.name}</span>}
+                </>
+              }
+              // Direction is a signed, coloured amount here — the table carries it
+              // by which of two columns the figure lands in, which needs both.
+              tone={t.direction === "in" ? "in" : "out"}
+              amount={`${t.direction === "in" ? "+" : "−"}${amountLabel(t)}`}
+              amountSub={
+                accountById[t.account_id] && isForeign(accountById[t.account_id])
+                  ? peso(phpAmountById[t.id] || 0)
+                  : undefined
+              }
+              meta={
+                <>
+                  <span>{formatDate(t.txn_date)}</span>
+                  {t.created_by_email && <span title={t.created_by_email}>· {shortUser(t.created_by_email)}</span>}
+                  {t.updated_by_email && t.updated_by_email !== t.created_by_email && (
+                    <span title={`Last edited by ${t.updated_by_email}`}>· edited by {shortUser(t.updated_by_email)}</span>
+                  )}
+                </>
+              }
+              actions={
+                <>
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
+                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                  </Button>
+                </>
+              }
+            />
+          ))
+        )}
+      </div>
+
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>

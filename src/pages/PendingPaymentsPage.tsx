@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
+import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { Eye, Filter, AlertCircle, Clock, Receipt, Plus, Pencil, Trash2, CheckCircle2, Search } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -456,7 +457,77 @@ export default function PendingPaymentsPage() {
           : `${filteredManual.length} manual entr${filteredManual.length === 1 ? "y" : "ies"} · ${peso(manualTotal)}`}
       </p>
 
-      <div className="data-table-wrapper">
+      {/* Phones get stacked cards; on a seven-column table the amount and the
+          overdue flag — the two reasons to open this page — scroll out of view. */}
+      <div className="md:hidden space-y-2">
+        {sortedRows.length === 0 ? (
+          <div className="rounded-xl border bg-card">
+            <div className="empty-state">
+              <Receipt className="empty-state-icon" />
+              <p className="text-sm">{tab === "invoices" ? "No pending invoices" : "No manual receivables"}</p>
+            </div>
+          </div>
+        ) : (
+          sortedRows.map((row) => {
+            const isInvoice = row.kind === "invoice";
+            const r = row.raw as any;
+            const overdue = isOverdue(r);
+            const dueDate = r.due_date;
+            return (
+              <FinanceMobileCard
+                key={`${isInvoice ? "inv" : "man"}-${r.id}`}
+                className={overdue ? "border-destructive/40 bg-destructive/5" : undefined}
+                title={
+                  isInvoice
+                    ? <span className="font-mono text-xs font-semibold">{r.invoice_number}</span>
+                    : r.description || "—"
+                }
+                subtitle={r.customers?.name || "—"}
+                amount={peso(Number(isInvoice ? r.total_amount : r.amount))}
+                badge={<StatusBadge status={r.status} context="invoice" />}
+                meta={
+                  <>
+                    <span>{isInvoice ? r.invoice_date : (r.created_at || "").split("T")[0]}</span>
+                    <span className={overdue || !dueDate ? "text-destructive font-medium" : ""}>
+                      {(overdue || !dueDate) && <AlertCircle className="h-3 w-3 inline mr-0.5" />}
+                      {dueDate ? `Due ${dueDate}` : "Due now"}
+                    </span>
+                  </>
+                }
+                actions={
+                  isInvoice ? (
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(r)} className="h-8 w-8 rounded-md" aria-label="Preview">
+                      <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(r.id)} className="h-8 w-8 rounded-md" aria-label="Mark as Paid">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(r)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => { if (confirm("Delete this pending payment?")) deleteManualMut.mutate(r.id); }}
+                          className="h-8 w-8 rounded-md"
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      )}
+                    </>
+                  )
+                }
+              />
+            );
+          })
+        )}
+      </div>
+
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>

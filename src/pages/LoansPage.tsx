@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
+import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { Plus, Pencil, Trash2, PiggyBank, Search, Wallet, Percent, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
@@ -193,7 +194,41 @@ export default function LoansPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
+      {/* Phones get stacked cards rather than a six-column horizontal scroll. */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sortedLoans.length === 0 ? (
+          <div className="rounded-xl border bg-card">
+            <div className="empty-state"><PiggyBank className="empty-state-icon" /><p className="text-sm">No loans yet</p></div>
+          </div>
+        ) : (
+          sortedLoans.map((l) => (
+            <FinanceMobileCard
+              key={l.id}
+              title={l.lender}
+              subtitle={`${peso(Number(l.monthly_payment))}/mo · ${Number(l.interest_rate).toFixed(2)}%`}
+              amount={peso(Number(l.principal_amount))}
+              amountSub="principal"
+              meta={<span>Due {formatDueDate(l.due_date)}</span>}
+              actions={
+                <>
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(l)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(l.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
+                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                  </Button>
+                </>
+              }
+            />
+          ))
+        )}
+      </div>
+
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>

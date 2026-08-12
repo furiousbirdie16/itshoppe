@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
+import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { Plus, Pencil, Trash2, Search, HandCoins, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid } from "date-fns";
@@ -215,7 +216,47 @@ export default function OwnerTransactionsPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
+      {/* Phones get stacked cards. Owner-paid and company-repaid are two columns
+          on desktop; here direction is a signed, coloured amount instead. */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="rounded-xl border bg-card">
+            <div className="empty-state"><HandCoins className="empty-state-icon" /><p className="text-sm">No owner transactions yet</p></div>
+          </div>
+        ) : (
+          sorted.map((t) => {
+            const ownerPaid = t.txn_type === "owner_paid";
+            return (
+              <FinanceMobileCard
+                key={t.id}
+                title={t.description}
+                subtitle={t.category || undefined}
+                tone={ownerPaid ? "in" : "out"}
+                amount={`${ownerPaid ? "+" : "−"}${peso(Number(t.amount))}`}
+                amountSub={ownerPaid ? "owner paid" : "company repaid"}
+                badge={<Badge variant="secondary" className="text-xs font-normal">{METHOD_LABELS[t.method]}</Badge>}
+                meta={<span>{formatDate(t.txn_date)}</span>}
+                actions={
+                  <>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
+                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                    </Button>
+                  </>
+                }
+              />
+            );
+          })
+        )}
+      </div>
+
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>

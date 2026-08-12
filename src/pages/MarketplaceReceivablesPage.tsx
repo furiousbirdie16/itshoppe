@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/StatCard";
+import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { DateField } from "@/components/DateField";
@@ -163,7 +164,42 @@ export default function MarketplaceReceivablesPage() {
         </div>
       )}
 
-      <div className="border rounded-lg overflow-x-auto">
+      {/* Phones get stacked cards; eight columns of an eight-column table put the
+          payout and the ageing off the right edge. */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : sorted.length === 0 ? (
+          <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">
+            No pending marketplace receivables
+          </div>
+        ) : (
+          sorted.map((r) => (
+            <FinanceMobileCard
+              key={r.id}
+              title={r.product_name}
+              subtitle={<span className="font-mono">{r.order_number}</span>}
+              amount={peso(r.estimatedPayout)}
+              amountSub={`of ${peso(r.totalSales)} · ${r.feePct}%${r.hasFeeOverride ? "" : " est"} fee`}
+              badge={
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelBadgeClass(r.sales_channel)}`}>
+                  {channelLabel(r.sales_channel)}
+                </span>
+              }
+              meta={
+                <>
+                  <span>{r.order_date}</span>
+                  <span className={r.daysOutstanding > 30 ? "text-destructive" : r.daysOutstanding > 14 ? "text-amber-600" : ""}>
+                    · {r.daysOutstanding}d outstanding
+                  </span>
+                </>
+              }
+            />
+          ))
+        )}
+      </div>
+
+      <div className="border rounded-lg overflow-x-auto hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
