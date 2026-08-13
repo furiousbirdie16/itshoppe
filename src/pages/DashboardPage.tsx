@@ -3,7 +3,7 @@ import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard } from "@/components/StatCard";
-import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp, Landmark, PiggyBank, HandCoins, Scale } from "lucide-react";
+import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp, Landmark, PiggyBank, HandCoins, Scale, BookmarkPlus } from "lucide-react";
 import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { useBranch } from "@/contexts/BranchContext";
@@ -27,9 +27,14 @@ export default function DashboardPage() {
   // it as a liability alone would understate net worth. Incoming Assets only picks
   // up overseas POs already paid and shipped.
   const inventoryValue = Number(stats?.totalValue || 0);
+  // Reserving an invoice deducts the stock, so it has already left
+  // inventoryValue. The goods are still ours until the sale completes — carried
+  // at cost, so reserving an order moves value sideways instead of destroying it.
+  const reservedStock = Number(stats?.reservedStockValue || 0);
   const incomingAssets = Number(stats?.incomingAssetsValue || 0);
   const supplierPOs = Number(stats?.accountsPayableValue || 0);
-  const assetsTotal = inventoryValue + finance.receivables + incomingAssets + finance.totalCashAvailable;
+  const assetsTotal =
+    inventoryValue + reservedStock + finance.receivables + incomingAssets + finance.totalCashAvailable;
   const liabilitiesTotal =
     finance.billsAndChecks + Math.max(finance.dueToOwner, 0) + finance.loansOutstanding;
   const netAssetValue = assetsTotal - liabilitiesTotal;
@@ -91,6 +96,15 @@ export default function DashboardPage() {
             icon={DollarSign}
             tone="asset"
             description="Goods on hand"
+          />
+        )}
+        {isAdmin && reservedStock > 0 && (
+          <StatCard
+            title="Reserved Stock"
+            value={peso(reservedStock)}
+            icon={BookmarkPlus}
+            tone="asset"
+            description="Allocated, at cost"
           />
         )}
         <StatCard

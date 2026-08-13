@@ -1087,6 +1087,16 @@ export const getDashboardStats = async (branchId?: string | null) => {
 
   const itemsList = ((items as any[]) || []).map((i: any) => ({ ...i, quantity: qtyByItem[i.id] ?? 0 }));
   const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
+
+  // Reserving an invoice takes the stock out of item_branch_stock, so it has
+  // already left totalValue above. It is still ours until the sale completes,
+  // so it is carried at cost — server-side, because invoice_items across all
+  // reserved invoices can exceed PostgREST's 1000-row cap and a client-side sum
+  // would silently return part of it.
+  const { data: reservedValue } = await supabase.rpc("reserved_stock_value", {
+    p_branch_id: branchId ?? null,
+  });
+  const reservedStockValue = Number(reservedValue || 0);
   const lowStockItems = itemsList
     .filter((i: any) => (i.low_stock_threshold ?? 0) > 0 && i.quantity <= i.low_stock_threshold)
     .map((i: any) => ({ ...i, on_order: onOrder[i.id] || { localQty: 0, overseasQty: 0, localPOs: [], overseasPOs: [] } }));
@@ -1152,6 +1162,7 @@ export const getDashboardStats = async (branchId?: string | null) => {
   return {
     totalItems: itemsList.length,
     totalValue,
+    reservedStockValue,
     incomingStockValue,
     incomingAssetsValue,
     payableAssetsValue,

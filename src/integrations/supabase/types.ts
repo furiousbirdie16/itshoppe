@@ -2522,6 +2522,7 @@ export type Database = {
         Returns: undefined
       }
       generate_asset_snapshot: { Args: never; Returns: undefined }
+      reserved_stock_value: { Args: { p_branch_id?: string | null }; Returns: number }
       get_default_branch_id: { Args: never; Returns: string }
       has_role: {
         Args: {
