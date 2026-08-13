@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOwnerTransactions, createOwnerTransaction, updateOwnerTransaction, deleteOwnerTransaction,
@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
+import { SuggestInput } from "@/components/SuggestInput";
 import { Plus, Pencil, Trash2, Search, HandCoins, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid } from "date-fns";
@@ -53,6 +54,12 @@ export default function OwnerTransactionsPage() {
     queryKey: ["owner-transactions"],
     queryFn: getOwnerTransactions,
   });
+
+  // Previously used values, offered back as suggestions. Drawn from every loaded
+  // transaction rather than the filtered view — a category is no less valid for
+  // being outside the current search.
+  const categorySuggestions = useMemo(() => txns.map((t) => t.category || ""), [txns]);
+  const descriptionSuggestions = useMemo(() => txns.map((t) => t.description || ""), [txns]);
 
   const filtered = txns.filter((t) => {
     const q = search.trim().toLowerCase();
@@ -169,7 +176,7 @@ export default function OwnerTransactionsPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Description *</Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-9" placeholder="e.g. Supplier deposit via personal card" />
+              <SuggestInput value={form.description} onChange={(v) => setForm({ ...form, description: v })} options={descriptionSuggestions} className="h-9" placeholder="e.g. Supplier deposit via personal card" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -195,7 +202,7 @@ export default function OwnerTransactionsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Category</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9" placeholder="e.g. Travel, Supplies" />
+                <SuggestInput value={form.category} onChange={(v) => setForm({ ...form, category: v })} options={categorySuggestions} className="h-9" placeholder="e.g. Travel, Supplies" />
               </div>
             </div>
             <div className="space-y-1.5">

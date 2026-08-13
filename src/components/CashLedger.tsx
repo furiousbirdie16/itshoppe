@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
+import { SuggestInput } from "@/components/SuggestInput";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -103,6 +104,12 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     () => (accountFilter === "all" ? txns : txns.filter((t) => t.account_id === accountFilter)),
     [txns, accountFilter],
   );
+
+  // What has been typed into these fields before, offered back as suggestions.
+  // Taken from every loaded transaction rather than the filtered view: a
+  // category is no less valid for being outside the date range on screen.
+  const categorySuggestions = useMemo(() => txns.map((t) => t.category || ""), [txns]);
+  const payeeSuggestions = useMemo(() => txns.map((t) => t.payee || ""), [txns]);
 
   // Resolved date window. Presets are relative to today; custom uses whatever is
   // filled in, so a half-finished range still narrows from one side.
@@ -542,13 +549,13 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Category</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9" placeholder="e.g. Supplies, Fuel" />
+                <SuggestInput value={form.category} onChange={(v) => setForm({ ...form, category: v })} options={categorySuggestions} className="h-9" placeholder="e.g. Supplies, Fuel" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payee / Source</Label>
-                <Input value={form.payee} onChange={(e) => setForm({ ...form, payee: e.target.value })} className="h-9" />
+                <SuggestInput value={form.payee} onChange={(v) => setForm({ ...form, payee: v })} options={payeeSuggestions} className="h-9" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Reference</Label>
