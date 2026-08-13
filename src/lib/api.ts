@@ -9,6 +9,31 @@ import { recordMovement } from "@/lib/inventoryLog";
 const _sb: any = supabase as any;
 const _from = (table: string) => _sb.from(table);
 
+/**
+ * Read every row of a query, a page at a time.
+ *
+ * PostgREST caps a response at 1000 rows and reports no error when it truncates,
+ * so an unpaginated read of a growing table silently starts losing its oldest
+ * rows. `build` is called once per page because a range has to be applied to a
+ * fresh builder.
+ *
+ * The query must order by something unique last — ties that straddle a page
+ * boundary can otherwise be served twice or skipped entirely.
+ */
+const fetchAllRows = async <T>(build: () => any): Promise<T[]> => {
+  const pageSize = 1000;
+  const all: T[] = [];
+  for (let page = 0; ; page++) {
+    const fromIdx = page * pageSize;
+    const { data, error } = await build().range(fromIdx, fromIdx + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...(data as T[]));
+    if (data.length < pageSize) break;
+  }
+  return all;
+};
+
 /** Read the branch-scoped stock row (returns zeros if missing). */
 async function getBranchStock(itemId: string, branchId: string) {
   const { data } = await _from("item_branch_stock")
@@ -1210,25 +1235,15 @@ export const generateShopeeOrderNumber = () => generateNextNumber("shopee_order"
 export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order");
 
 // Online Sales
-export const getOnlineSales = async (branchId?: string | null): Promise<OnlineSale[]> => {
-  const pageSize = 1000;
-  const all: any[] = [];
-  for (let page = 0; ; page++) {
-    const fromIdx = page * pageSize;
-    const toIdx = fromIdx + pageSize - 1;
+export const getOnlineSales = async (branchId?: string | null): Promise<OnlineSale[]> =>
+  fetchAllRows<OnlineSale>(() => {
     let q = from("online_sales")
       .select("*, items(*), item_variations(*)")
       .order("created_at", { ascending: false })
-      .range(fromIdx, toIdx);
+      .order("id", { ascending: false });
     if (branchId) q = q.eq("branch_id", branchId);
-    const { data, error } = await q;
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < pageSize) break;
-  }
-  return all as OnlineSale[];
-};
+    return q;
+  });
 
 export const createOnlineSale = async (sale: Partial<OnlineSale>) => {
   const { data, error } = await from("online_sales").insert(sale).select().single();
@@ -1781,19 +1796,20 @@ export const deleteCashAccount = async (id: string) => {
 
 /** Ledger rows, newest first. Pass accountIds to scope to petty cash or banks. */
 export const getCashTransactions = async (accountIds?: string[]): Promise<CashTransaction[]> => {
-  let q = from("cash_transactions")
-    // Only the account name is rendered; joining every account column repeated
-    // the whole account row onto each transaction for nothing.
-    .select("*, cash_accounts(name)")
-    .order("txn_date", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (accountIds) {
-    if (!accountIds.length) return [];
-    q = q.in("account_id", accountIds);
-  }
-  const { data, error } = await q;
-  if (error) throw error;
-  return data;
+  if (accountIds && !accountIds.length) return [];
+  return fetchAllRows<CashTransaction>(() => {
+    let q = from("cash_transactions")
+      // Only the account name is rendered; joining every account column repeated
+      // the whole account row onto each transaction for nothing.
+      .select("*, cash_accounts(name)")
+      .order("txn_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      // Unique tiebreak, so two rows sharing a date and timestamp cannot land on
+      // both sides of a page boundary.
+      .order("id", { ascending: false });
+    if (accountIds) q = q.in("account_id", accountIds);
+    return q;
+  });
 };
 
 /**
@@ -1897,14 +1913,14 @@ export const createCashTransfer = async (args: {
   notify("notify-cash", { transfer_group_id: data });
 };
 
-export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> => {
-  const { data, error } = await from("owner_transactions")
-    .select("*")
-    .order("txn_date", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
-};
+export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> =>
+  fetchAllRows<OwnerTransaction>(() =>
+    from("owner_transactions")
+      .select("*")
+      .order("txn_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }),
+  );
 
 export const createOwnerTransaction = async (t: Partial<OwnerTransaction>) => {
   const { data, error } = await from("owner_transactions").insert(t).select().single();
