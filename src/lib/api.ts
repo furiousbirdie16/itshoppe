@@ -737,13 +737,15 @@ export const convertQuotationToInvoice = async (quotationId: string) => {
 };
 
 // Invoices
-export const getInvoices = async (branchId?: string | null): Promise<Invoice[]> => {
-  let q = from("invoices").select("*, customers(*)").order("created_at", { ascending: false });
-  if (branchId) q = q.eq("branch_id", branchId);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data;
-};
+export const getInvoices = async (branchId?: string | null): Promise<Invoice[]> =>
+  fetchAllRows<Invoice>(() => {
+    let q = from("invoices")
+      .select("*, customers(*)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (branchId) q = q.eq("branch_id", branchId);
+    return q;
+  });
 
 export const createInvoice = async (inv: Partial<Invoice>) => {
   const { data, error } = await from("invoices").insert(inv).select().single();
@@ -1023,13 +1025,15 @@ export const revertInvoice = async (invoiceId: string) => {
 
 
 // Inventory Movements
-export const getInventoryMovements = async (itemId?: string): Promise<InventoryMovement[]> => {
-  let query = from("inventory_movements").select("*, items(*)").order("created_at", { ascending: false });
-  if (itemId) query = query.eq("item_id", itemId);
-  const { data, error } = await query;
-  if (error) throw error;
-  return data;
-};
+export const getInventoryMovements = async (itemId?: string): Promise<InventoryMovement[]> =>
+  fetchAllRows<InventoryMovement>(() => {
+    let query = from("inventory_movements")
+      .select("*, items(*)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (itemId) query = query.eq("item_id", itemId);
+    return query;
+  });
 
 // Dashboard stats
 export const getDashboardStats = async (branchId?: string | null) => {
@@ -1954,6 +1958,46 @@ export const getPayables = async (): Promise<Payable[]> => {
   return data;
 };
 
+/**
+ * Keeps the cash/bank side of a payable in step with its status.
+ *
+ * Marking a payable Paid takes the money out of the account it names; anything
+ * else — reverting to unpaid, a bounced check, a cancellation — puts it back.
+ * Deliberately keyed on `paid` alone: `cleared` is about the check reaching the
+ * bank, and posting on both would deduct twice.
+ *
+ * The posting is a normal cash transaction, so it shows in the ledger, the
+ * running balance and the Telegram notification like any other withdrawal.
+ * A unique index on payable_id makes the insert the source of truth about
+ * whether a payable has already been settled.
+ */
+const syncPayablePosting = async (p: Payable) => {
+  const { data: existing } = await from("cash_transactions")
+    .select("id").eq("payable_id", p.id).maybeSingle();
+
+  const shouldPost = p.status === "paid" && !!(p as any).cash_account_id;
+
+  if (!shouldPost) {
+    // Un-paid, bounced or cancelled: the money never left, so take the
+    // withdrawal back out of the ledger.
+    if (existing) await deleteCashTransaction((existing as any).id);
+    return;
+  }
+  if (existing) return;
+
+  await createCashTransaction({
+    account_id: (p as any).cash_account_id,
+    direction: "out",
+    amount: Number(p.amount) - Number(p.amount_paid || 0),
+    txn_date: new Date().toISOString().slice(0, 10),
+    category: p.category || "Payable",
+    payee: p.payee,
+    reference: p.is_check ? p.check_number || "" : "",
+    notes: `Payable settled${p.is_check && p.check_number ? ` · check ${p.check_number}` : ""}`,
+    payable_id: p.id,
+  } as Partial<CashTransaction>);
+};
+
 export const createPayable = async (p: Partial<Payable>) => {
   const { data, error } = await from("payables").insert(p).select().single();
   if (error) throw error;
@@ -1961,6 +2005,8 @@ export const createPayable = async (p: Partial<Payable>) => {
   await logActivity("created_payable", "payable", created.id, {
     payee: created.payee, amount: created.amount,
   });
+  // A payable can be entered already settled — a bill paid on the spot.
+  await syncPayablePosting(created);
   return created;
 };
 
@@ -1970,10 +2016,17 @@ export const updatePayable = async (id: string, p: Partial<Payable>) => {
   if (error) throw error;
   const updated = data as Payable;
   await logActivity("updated_payable", "payable", id, { payee: updated.payee });
+  await syncPayablePosting(updated);
   return updated;
 };
 
 export const deletePayable = async (id: string) => {
+  // Drop the withdrawal first: once the payable is gone its posting is
+  // unattributable, and ON DELETE SET NULL would strand it in the ledger.
+  const { data: posted } = await from("cash_transactions")
+    .select("id").eq("payable_id", id).maybeSingle();
+  if (posted) await deleteCashTransaction((posted as any).id);
+
   const { error } = await from("payables").delete().eq("id", id);
   if (error) throw error;
   await logActivity("deleted_payable", "payable", id);
