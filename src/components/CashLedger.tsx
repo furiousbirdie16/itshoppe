@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { SuggestInput } from "@/components/SuggestInput";
+import { runningBalances } from "@/lib/running-balance";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -179,6 +180,40 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   /** Balance in PHP, whatever the account's currency. */
   const phpBalanceOf = (a: CashAccount) =>
     isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
+
+  /**
+   * Balance after each transaction, for one account at a time.
+   *
+   * Only meaningful for a single account — a running total across several would
+   * add up movements from different balances. Computed over every transaction on
+   * that account, not the filtered view: a balance that ignored the rows above
+   * the date window would be a number that never existed.
+   */
+  const runningBalanceById = useMemo(() => {
+    if (accountFilter === "all") return {};
+    const account = accountById[accountFilter];
+    if (!account) return {};
+    return runningBalances(
+      Number(account.opening_balance || 0),
+      txns.filter((t) => t.account_id === accountFilter),
+    );
+  }, [txns, accountFilter, accountById]);
+
+  const showRunningBalance = accountFilter !== "all";
+
+  // Date, category, payee, inflow, outflow, recorded by, actions — plus the
+  // three that come and go. Kept in one place so an empty row always spans the
+  // whole table.
+  const ledgerColumnCount =
+    7 + (showAccountFilter ? 1 : 0) + (hasForeign ? 1 : 0) + (showRunningBalance ? 1 : 0);
+
+  /** Running balance in the account's own currency, matching the amount column. */
+  const balanceLabel = (t: CashTransaction) => {
+    const account = accountById[t.account_id];
+    const value = runningBalanceById[t.id];
+    if (value === undefined) return "—";
+    return account && isForeign(account) ? foreignAmount(value, account.currency) : peso(value);
+  };
 
   const hasForeign = managedAccounts.some(isForeign);
 
@@ -714,9 +749,12 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
               tone={t.direction === "in" ? "in" : "out"}
               amount={`${t.direction === "in" ? "+" : "−"}${amountLabel(t)}`}
               amountSub={
-                accountById[t.account_id] && isForeign(accountById[t.account_id])
-                  ? peso(phpAmountById[t.id] || 0)
-                  : undefined
+                <>
+                  {accountById[t.account_id] && isForeign(accountById[t.account_id]) && (
+                    <div>{peso(phpAmountById[t.id] || 0)}</div>
+                  )}
+                  {showRunningBalance && <div>bal {balanceLabel(t)}</div>}
+                </>
               }
               meta={
                 <>
@@ -753,15 +791,16 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
               <TableHead className="text-xs text-right">Inflow</TableHead>
               <TableHead className="text-xs text-right">Outflow</TableHead>
               {hasForeign && <TableHead className="text-xs text-right">PHP Value</TableHead>}
+              {showRunningBalance && <TableHead className="text-xs text-right">Balance</TableHead>}
               <SortableHeader sortKey="recorded_by" label="Recorded By" sort={sort} onToggle={toggle} />
               <TableHead className="text-xs text-right w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={showAccountFilter ? (hasForeign ? 9 : 8) : (hasForeign ? 8 : 7)} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={ledgerColumnCount} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sorted.length === 0 ? (
-              <TableRow><TableCell colSpan={showAccountFilter ? (hasForeign ? 9 : 8) : (hasForeign ? 8 : 7)}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={ledgerColumnCount}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div></TableCell></TableRow>
             ) : sorted.map((t) => (
               <TableRow key={t.id} className="hover:bg-muted/30">
                 <TableCell className="text-sm text-muted-foreground">{formatDate(t.txn_date)}</TableCell>
@@ -776,6 +815,9 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                       ? peso(phpAmountById[t.id] || 0)
                       : "—"}
                   </TableCell>
+                )}
+                {showRunningBalance && (
+                  <TableCell className="text-sm text-right font-medium tabular-nums">{balanceLabel(t)}</TableCell>
                 )}
                 <TableCell className="text-xs text-muted-foreground">
                   {t.created_by_email ? (

@@ -326,7 +326,10 @@ export interface Payable {
   status: 'unpaid' | 'partial' | 'paid' | 'cleared' | 'bounced' | 'cancelled';
   is_check: boolean;
   check_number: string;
+  /** The bank as written on the check face. Display only — the link is cash_account_id. */
   check_bank: string;
+  /** Account the payable is settled from; marking it Paid withdraws from here. */
+  cash_account_id: string | null;
   date_written: string | null;
   category: string;
   notes: string;

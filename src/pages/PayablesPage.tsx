@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPayables, createPayable, updatePayable, deletePayable, getSuppliers } from "@/lib/api";
+import { getPayables, createPayable, updatePayable, deletePayable, getSuppliers, getCashAccounts } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -22,11 +22,13 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
 const NO_SUPPLIER = "none";
+// Radix Select cannot hold an empty string, so "settles no account" needs a sentinel.
+const NO_ACCOUNT = "none";
 
 const emptyForm = () => ({
   payee: "", supplier_id: NO_SUPPLIER, amount: "", amount_paid: "", due_date: "",
   status: "unpaid" as Payable["status"], is_check: false,
-  check_number: "", check_bank: "", date_written: "", category: "", notes: "",
+  check_number: "", check_bank: "", cash_account_id: "", date_written: "", category: "", notes: "",
 });
 
 const STATUS_LABELS: Record<Payable["status"], string> = {
@@ -71,6 +73,9 @@ export default function PayablesPage() {
 
   const { data: payables = [], isLoading } = useQuery({ queryKey: ["payables"], queryFn: getPayables });
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
+  // Active accounts only — a payable should not be settled from a closed one.
+  const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  const accounts = allAccounts.filter((a) => a.is_active);
 
   const scoped = payables.filter((p) =>
     tab === "all" ? true : tab === "checks" ? p.is_check : !p.is_check,
@@ -99,7 +104,13 @@ export default function PayablesPage() {
   });
   const overdueTotal = overdue.reduce((s, p) => s + outstandingOf(p), 0);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["payables"] });
+  // Settling a payable writes a withdrawal into the ledger, so the Cash and
+  // Bank views have to be refetched or their balances go stale behind this one.
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["payables"] });
+    queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["cash-accounts"] });
+  };
 
   const createMut = useMutation({
     mutationFn: (data: Partial<Payable>) => createPayable(data),
@@ -133,6 +144,7 @@ export default function PayablesPage() {
       is_check: p.is_check,
       check_number: p.check_number || "",
       check_bank: p.check_bank || "",
+      cash_account_id: p.cash_account_id || "",
       date_written: p.date_written || "",
       category: p.category || "",
       notes: p.notes || "",
@@ -154,6 +166,7 @@ export default function PayablesPage() {
       is_check: form.is_check,
       check_number: form.is_check ? form.check_number.trim() : "",
       check_bank: form.is_check ? form.check_bank.trim() : "",
+      cash_account_id: form.cash_account_id || null,
       date_written: form.is_check && form.date_written ? form.date_written : null,
       category: form.category.trim(),
       notes: form.notes,
@@ -258,6 +271,28 @@ export default function PayablesPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Paid From</Label>
+              <Select
+                value={form.cash_account_id || NO_ACCOUNT}
+                onValueChange={(v) => setForm({ ...form, cash_account_id: v === NO_ACCOUNT ? "" : v })}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="No account" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_ACCOUNT}>No account — don't touch balances</SelectItem>
+                  {(accounts ?? []).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}{a.account_type === "bank" ? "" : " (cash)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {form.cash_account_id
+                  ? "Marking this Paid withdraws it from this account; un-paying puts it back."
+                  : "Without an account, marking this Paid leaves every balance untouched."}
+              </p>
             </div>
             {form.is_check && (
               <div className="grid gap-3 rounded-lg border p-3">
