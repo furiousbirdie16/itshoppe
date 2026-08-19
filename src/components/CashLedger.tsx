@@ -181,40 +181,6 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   const phpBalanceOf = (a: CashAccount) =>
     isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
 
-  /**
-   * Balance after each transaction, for one account at a time.
-   *
-   * Only meaningful for a single account — a running total across several would
-   * add up movements from different balances. Computed over every transaction on
-   * that account, not the filtered view: a balance that ignored the rows above
-   * the date window would be a number that never existed.
-   */
-  const runningBalanceById = useMemo(() => {
-    if (accountFilter === "all") return {};
-    const account = accountById[accountFilter];
-    if (!account) return {};
-    return runningBalances(
-      Number(account.opening_balance || 0),
-      txns.filter((t) => t.account_id === accountFilter),
-    );
-  }, [txns, accountFilter, accountById]);
-
-  const showRunningBalance = accountFilter !== "all";
-
-  // Date, category, payee, inflow, outflow, recorded by, actions — plus the
-  // three that come and go. Kept in one place so an empty row always spans the
-  // whole table.
-  const ledgerColumnCount =
-    7 + (showAccountFilter ? 1 : 0) + (hasForeign ? 1 : 0) + (showRunningBalance ? 1 : 0);
-
-  /** Running balance in the account's own currency, matching the amount column. */
-  const balanceLabel = (t: CashTransaction) => {
-    const account = accountById[t.account_id];
-    const value = runningBalanceById[t.id];
-    if (value === undefined) return "—";
-    return account && isForeign(account) ? foreignAmount(value, account.currency) : peso(value);
-  };
-
   const hasForeign = managedAccounts.some(isForeign);
 
   /** Amounts render in the account's own currency. */
@@ -230,6 +196,44 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   );
   const formAccount = accountById[form.account_id];
   const formIsForeign = formAccount ? isForeign(formAccount) : false;
+
+  /**
+   * Balance after each transaction, for one account at a time.
+   *
+   * Only meaningful for a single account — a running total across several would
+   * add up movements from different balances. Computed over every transaction on
+   * that account, not the filtered view: a balance that ignored the rows above
+   * the date window would be a number that never existed.
+   *
+   * Declared after accountById and hasForeign on purpose. Reading either one
+   * earlier is a temporal dead zone, which throws while rendering and blanks the
+   * whole page.
+   */
+  const runningBalanceById = useMemo(() => {
+    if (accountFilter === "all") return {};
+    const account = accountById[accountFilter];
+    if (!account) return {};
+    return runningBalances(
+      Number(account.opening_balance || 0),
+      txns.filter((t) => t.account_id === accountFilter),
+    );
+  }, [txns, accountFilter, accountById]);
+
+  const showRunningBalance = accountFilter !== "all";
+
+  /** Running balance in the account's own currency, matching the amount column. */
+  const balanceLabel = (t: CashTransaction) => {
+    const account = accountById[t.account_id];
+    const value = runningBalanceById[t.id];
+    if (value === undefined) return "—";
+    return account && isForeign(account) ? foreignAmount(value, account.currency) : peso(value);
+  };
+
+  // Date, category, payee, inflow, outflow, recorded by, actions — plus the
+  // three that come and go. Kept in one place so an empty row always spans the
+  // whole table.
+  const ledgerColumnCount =
+    7 + (showAccountFilter ? 1 : 0) + (hasForeign ? 1 : 0) + (showRunningBalance ? 1 : 0);
 
   const visibleAccounts = accountFilter === "all" ? accounts : accounts.filter((a) => a.id === accountFilter);
   const totalBalance = visibleAccounts.reduce((sum, a) => sum + phpBalanceOf(a), 0);
