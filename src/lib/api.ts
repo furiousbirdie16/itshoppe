@@ -3,6 +3,7 @@ import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOr
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
+import { payablePosting } from "@/lib/payable-posting";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1973,9 +1974,9 @@ export const getPayables = async (): Promise<Payable[]> => {
  */
 const syncPayablePosting = async (p: Payable) => {
   const { data: existing } = await from("cash_transactions")
-    .select("id").eq("payable_id", p.id).maybeSingle();
+    .select("id, amount, account_id").eq("payable_id", p.id).maybeSingle();
 
-  const shouldPost = p.status === "paid" && !!(p as any).cash_account_id;
+  const { shouldPost, accountId, amount } = payablePosting(p as any);
 
   if (!shouldPost) {
     // Un-paid, bounced or cancelled: the money never left, so take the
@@ -1983,12 +1984,21 @@ const syncPayablePosting = async (p: Payable) => {
     if (existing) await deleteCashTransaction((existing as any).id);
     return;
   }
-  if (existing) return;
+
+  if (existing) {
+    // Editing a settled payable — a corrected amount, or a different account —
+    // moves the posting with it rather than leaving a stale withdrawal behind.
+    const row = existing as any;
+    if (Number(row.amount) !== amount || row.account_id !== accountId) {
+      await updateCashTransaction(row.id, { amount, account_id: accountId } as Partial<CashTransaction>);
+    }
+    return;
+  }
 
   await createCashTransaction({
-    account_id: (p as any).cash_account_id,
+    account_id: accountId,
     direction: "out",
-    amount: Number(p.amount) - Number(p.amount_paid || 0),
+    amount,
     txn_date: new Date().toISOString().slice(0, 10),
     category: p.category || "Payable",
     payee: p.payee,
