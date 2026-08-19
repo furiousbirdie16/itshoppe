@@ -26,7 +26,7 @@ const NO_SUPPLIER = "none";
 const NO_ACCOUNT = "none";
 
 const emptyForm = () => ({
-  payee: "", supplier_id: NO_SUPPLIER, amount: "", amount_paid: "", due_date: "",
+  payee: "", supplier_id: NO_SUPPLIER, amount: "", due_date: "",
   status: "unpaid" as Payable["status"], is_check: false,
   check_number: "", check_bank: "", cash_account_id: "", date_written: "", category: "", notes: "",
 });
@@ -51,6 +51,12 @@ const STATUS_VARIANT: Record<Payable["status"], "default" | "secondary" | "destr
 
 /** Statuses that mean the payable is settled and no longer outstanding. */
 const SETTLED: Payable["status"][] = ["paid", "cleared", "cancelled"];
+
+/**
+ * Statuses that mean the whole amount has been handed over, so amount_paid is
+ * derived from them. Cancelled is absent: nothing was paid on a cancelled bill.
+ */
+const SETTLED_IN_FULL: Payable["status"][] = ["paid", "cleared"];
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -138,7 +144,6 @@ export default function PayablesPage() {
       payee: p.payee,
       supplier_id: p.supplier_id || NO_SUPPLIER,
       amount: String(p.amount ?? ""),
-      amount_paid: String(p.amount_paid ?? ""),
       due_date: p.due_date || "",
       status: p.status,
       is_check: p.is_check,
@@ -160,7 +165,13 @@ export default function PayablesPage() {
       payee: form.payee.trim(),
       supplier_id: form.supplier_id === NO_SUPPLIER ? null : form.supplier_id,
       amount,
-      amount_paid: Number(form.amount_paid) || 0,
+      // Settling pays the payable off in full. `partial` keeps whatever was
+      // recorded before, since there is no longer a box to express it with and
+      // zeroing it would silently rewrite history on old rows.
+      amount_paid:
+        SETTLED_IN_FULL.includes(form.status) ? amount
+        : form.status === "partial" ? Number(editing?.amount_paid ?? 0)
+        : 0,
       due_date: form.due_date || null,
       status: form.status,
       is_check: form.is_check,
@@ -245,15 +256,13 @@ export default function PayablesPage() {
               <Label className="text-xs font-medium">Payee *</Label>
               <Input value={form.payee} onChange={(e) => setForm({ ...form, payee: e.target.value })} className="h-9" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Amount *</Label>
-                <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Amount Paid</Label>
-                <Input type="number" step="0.01" min="0" value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} className="h-9" />
-              </div>
+            {/* No Amount Paid box: marking a payable Paid settles it in full,
+                so the figure is derived rather than typed. Keying them in by
+                hand only ever produced a payable that was Paid and still had a
+                balance outstanding. */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Amount *</Label>
+              <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="h-9" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
