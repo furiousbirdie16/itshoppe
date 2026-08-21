@@ -229,6 +229,20 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     return account && isForeign(account) ? foreignAmount(value, account.currency) : peso(value);
   };
 
+  /**
+   * The small print under a mobile card's amount: the peso value of a foreign
+   * transaction, the running balance, or neither. Undefined when empty, so the
+   * card leaves the line out instead of rendering a blank one.
+   */
+  const amountSubLines = (t: CashTransaction) => {
+    const account = accountById[t.account_id];
+    const lines = [
+      account && isForeign(account) ? peso(phpAmountById[t.id] || 0) : null,
+      showRunningBalance ? `bal ${balanceLabel(t)}` : null,
+    ].filter((line): line is string => !!line);
+    return lines.length ? lines.map((line) => <div key={line}>{line}</div>) : undefined;
+  };
+
   // Date, category, payee, inflow, outflow, recorded by, actions — plus the
   // three that come and go. Kept in one place so an empty row always spans the
   // whole table.
@@ -752,14 +766,10 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
               // by which of two columns the figure lands in, which needs both.
               tone={t.direction === "in" ? "in" : "out"}
               amount={`${t.direction === "in" ? "+" : "−"}${amountLabel(t)}`}
-              amountSub={
-                <>
-                  {accountById[t.account_id] && isForeign(accountById[t.account_id]) && (
-                    <div>{peso(phpAmountById[t.id] || 0)}</div>
-                  )}
-                  {showRunningBalance && <div>bal {balanceLabel(t)}</div>}
-                </>
-              }
+              // Returns undefined when there is nothing to show. A fragment
+              // would not do: it is always truthy, so an empty one still
+              // renders a blank sub-line under every amount.
+              amountSub={amountSubLines(t)}
               meta={
                 <>
                   <span>{formatDate(t.txn_date)}</span>

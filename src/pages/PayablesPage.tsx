@@ -363,8 +363,15 @@ export default function PayablesPage() {
                   )}
                 </>
               }
-              amount={peso(outstandingOf(p))}
-              amountSub={`of ${peso(Number(p.amount))}`}
+              // The payable's own amount leads. Outstanding is zero on anything
+              // settled, so leading with it showed a paid ₱35,000 bill as
+              // "₱0.00" — technically true, useless to scan.
+              amount={peso(Number(p.amount))}
+              amountSub={
+                outstandingOf(p) !== Number(p.amount)
+                  ? `${peso(outstandingOf(p))} outstanding`
+                  : undefined
+              }
               badge={<Badge variant={STATUS_VARIANT[p.status]} className="text-xs font-normal">{STATUS_LABELS[p.status]}</Badge>}
               meta={<span>Due {formatDate(p.due_date)}</span>}
               actions={
