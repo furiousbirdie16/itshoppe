@@ -63,6 +63,7 @@ export type Database = {
           owner_due_value: number
           payable_assets_value: number
           receivables_value: number
+          reserved_stock_value: number
           snapshot_date: string
           total_asset_value: number
         }

@@ -24,6 +24,8 @@ interface Snapshot {
   snapshot_date: string;
   net_asset_value: number;
   inventory_value: number;
+  /** Null on snapshots taken before reserved stock was carried as an asset. */
+  reserved_stock_value: number | null;
   receivables_value: number;
   incoming_assets_value: number | null;
   cash_value: number | null;
@@ -49,6 +51,9 @@ function Tooltip({ active, payload }: any) {
       <div className="font-medium mb-1.5">{format(parseISO(p.date), "EEE, MMM d yyyy")}</div>
       <div className="space-y-0.5">
         {row("Inventory", p.inventory, asset)}
+        {/* Reserved goods left inventory when the order was reserved but are
+            still ours, so without this line the parts do not sum to the net. */}
+        {p.reserved > 0 && row("Reserved stock", p.reserved, asset)}
         {row("Receivables", p.receivables, asset)}
         {row("Incoming", p.incoming, asset)}
         {row("Cash & bank", p.cash, asset)}
@@ -85,7 +90,7 @@ export default function NetAssetValueChart() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("asset_snapshots")
-        .select("snapshot_date, net_asset_value, inventory_value, receivables_value, incoming_assets_value, cash_value, bills_payable_value, owner_due_value, loans_outstanding_value")
+        .select("snapshot_date, net_asset_value, inventory_value, reserved_stock_value, receivables_value, incoming_assets_value, cash_value, bills_payable_value, owner_due_value, loans_outstanding_value")
         .gte("snapshot_date", format(fromDate, "yyyy-MM-dd"))
         .order("snapshot_date", { ascending: true });
       if (error) throw error;
@@ -116,6 +121,7 @@ export default function NetAssetValueChart() {
       label: format(parseISO(s.snapshot_date), "MMM d"),
       value: Number(s.net_asset_value),
       inventory: Number(s.inventory_value),
+      reserved: Number(s.reserved_stock_value ?? 0),
       receivables: Number(s.receivables_value),
       incoming: Number(s.incoming_assets_value ?? 0),
       cash: Number(s.cash_value ?? 0),
