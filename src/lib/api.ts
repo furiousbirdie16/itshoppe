@@ -1123,9 +1123,15 @@ export const getDashboardStats = async (branchId?: string | null) => {
   // so it is carried at cost — server-side, because invoice_items across all
   // reserved invoices can exceed PostgREST's 1000-row cap and a client-side sum
   // would silently return part of it.
-  const { data: reservedValue } = await supabase.rpc("reserved_stock_value", {
+  const { data: reservedValue, error: reservedError } = await supabase.rpc("reserved_stock_value", {
     p_branch_id: branchId ?? null,
   });
+  // Deliberately not fatal — the rest of the dashboard is still worth showing —
+  // but not silent either: falling back to zero quietly would drop a real asset
+  // out of Net Asset Value with nothing to say it had happened.
+  if (reservedError) {
+    console.error("reserved_stock_value failed; Net Asset Value is short by the reserved stock", reservedError);
+  }
   const reservedStockValue = Number(reservedValue || 0);
   const lowStockItems = itemsList
     .filter((i: any) => (i.low_stock_threshold ?? 0) > 0 && i.quantity <= i.low_stock_threshold)
