@@ -1038,12 +1038,21 @@ export const getInventoryMovements = async (itemId?: string): Promise<InventoryM
 
 // Dashboard stats
 export const getDashboardStats = async (branchId?: string | null) => {
-  const { data: items } = await from("items").select("*");
+  // Archived items are excluded, as getItems does. Counting them here made
+  // Inventory Value disagree with the Inventory page about the same stock.
+  const { data: items } = await from("items").select("*").neq("status", "archived");
 
   // Branch-scoped stock: item_branch_stock is the single source of truth.
-  let stockQ = from("item_branch_stock").select("item_id, quantity, branch_id");
-  if (branchId) stockQ = stockQ.eq("branch_id", branchId);
-  const { data: branchStock } = await stockQ;
+  // Paged, because this table holds one row per item per branch — a few hundred
+  // items across three branches already passes the 1000-row cap, and the
+  // shortfall would show up as a quietly smaller Inventory Value.
+  const branchStock = await fetchAllRows<{ item_id: string; quantity: number; branch_id: string }>(() => {
+    let stockQ = from("item_branch_stock")
+      .select("item_id, quantity, branch_id")
+      .order("id", { ascending: true });
+    if (branchId) stockQ = stockQ.eq("branch_id", branchId);
+    return stockQ;
+  });
   const qtyByItem: Record<string, number> = {};
   for (const r of (branchStock as any[]) || []) {
     qtyByItem[r.item_id] = (qtyByItem[r.item_id] || 0) + Number(r.quantity || 0);
@@ -1175,17 +1184,22 @@ export const getDashboardStats = async (branchId?: string | null) => {
     getAccountsReceivable(branchId),
   ]);
 
-  // Gross profit for the current month (invoice line financials)
-  let gpQ = from("invoice_item_financials")
-    .select("line_profit, invoices!inner(invoice_date, status, branch_id)")
-    .gte("invoices.invoice_date", monthStartIso)
-    .lte("invoices.invoice_date", todayIso)
-    // Same basis as salesThisMonth above: profit on an unpaid order is not
-    // earned either, and mixing the two makes the margin look impossible.
-    .in("invoices.status", SOLD_INVOICE_STATUSES);
-  if (branchId) gpQ = gpQ.eq("invoices.branch_id", branchId);
-  const { data: gpRows } = await gpQ;
-  const grossProfitMonth = ((gpRows as any[]) || []).reduce((s, r) => s + Number(r.line_profit || 0), 0);
+  // Gross profit for the current month (invoice line financials). Paged: a busy
+  // month can run past 1000 invoice lines, and the truncation would read as a
+  // plausibly smaller profit rather than an error.
+  const gpRows = await fetchAllRows<{ line_profit: number | null }>(() => {
+    let gpQ = from("invoice_item_financials")
+      .select("line_profit, invoices!inner(invoice_date, status, branch_id)")
+      .gte("invoices.invoice_date", monthStartIso)
+      .lte("invoices.invoice_date", todayIso)
+      // Same basis as salesThisMonth above: profit on an unpaid order is not
+      // earned either, and mixing the two makes the margin look impossible.
+      .in("invoices.status", SOLD_INVOICE_STATUSES)
+      .order("id", { ascending: true });
+    if (branchId) gpQ = gpQ.eq("invoices.branch_id", branchId);
+    return gpQ;
+  });
+  const grossProfitMonth = gpRows.reduce((s, r) => s + Number(r.line_profit || 0), 0);
 
   // Open purchase orders (local + overseas) count
   let poCountQ = from("purchase_orders").select("id", { count: "exact", head: true }).neq("status", "received");
