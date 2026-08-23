@@ -1065,17 +1065,25 @@ export const getDashboardStats = async (branchId?: string | null) => {
   if (branchId) recentInvQ = recentInvQ.eq("branch_id", branchId);
   const { data: recentInvoices } = await recentInvQ;
 
-  // Outstanding (not fully received) line items from local + overseas POs
-  let openPOQ = from("purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status, branch_id)")
-    .neq("purchase_orders.status", "received");
-  if (branchId) openPOQ = openPOQ.eq("purchase_orders.branch_id", branchId);
-  const { data: openPOItems } = await openPOQ;
-  let openOverseasQ = from("overseas_purchase_order_items")
-    .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate, branch_id)")
-    .neq("overseas_purchase_orders.status", "received");
-  if (branchId) openOverseasQ = openOverseasQ.eq("overseas_purchase_orders.branch_id", branchId);
-  const { data: openOverseasItems } = await openOverseasQ;
+  // Outstanding (not fully received) line items from local + overseas POs.
+  // Paged: truncation here would understate what is owed to suppliers, which
+  // reads as more cash available for purchasing than there really is.
+  const openPOItems = await fetchAllRows<any>(() => {
+    let openPOQ = from("purchase_order_items")
+      .select("item_id, quantity, received_quantity, unit_cost, purchase_orders!inner(po_number, status, branch_id)")
+      .neq("purchase_orders.status", "received")
+      .order("id", { ascending: true });
+    if (branchId) openPOQ = openPOQ.eq("purchase_orders.branch_id", branchId);
+    return openPOQ;
+  });
+  const openOverseasItems = await fetchAllRows<any>(() => {
+    let openOverseasQ = from("overseas_purchase_order_items")
+      .select("item_id, quantity, received_quantity, unit_cost, overseas_purchase_orders!inner(po_number, status, exchange_rate, branch_id)")
+      .neq("overseas_purchase_orders.status", "received")
+      .order("id", { ascending: true });
+    if (branchId) openOverseasQ = openOverseasQ.eq("overseas_purchase_orders.branch_id", branchId);
+    return openOverseasQ;
+  });
 
 
   const onOrder: Record<string, { localQty: number; overseasQty: number; localPOs: string[]; overseasPOs: string[] }> = {};

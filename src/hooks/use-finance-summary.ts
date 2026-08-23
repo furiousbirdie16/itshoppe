@@ -32,7 +32,11 @@ function plainBalance(account: CashAccount, txns: CashTransaction[]) {
  * average cost (see lib/fx).
  */
 export function useFinanceSummary() {
-  const { data: accounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  // Active accounts only, as the Cash and Bank pages total. A deactivated
+  // account was still counted here, so the Dashboard could claim more cash than
+  // the Bank page did — and money in a closed account is not available to spend.
+  const accounts = useMemo(() => allAccounts.filter((a) => a.is_active), [allAccounts]);
   const { data: txns = [] } = useQuery({ queryKey: ["cash-transactions", "all"], queryFn: () => getCashTransactions() });
   const { data: ownerTxns = [] } = useQuery({ queryKey: ["owner-transactions"], queryFn: getOwnerTransactions });
   const { data: payables = [] } = useQuery({ queryKey: ["payables"], queryFn: getPayables });
