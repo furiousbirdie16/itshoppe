@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
 import { peso } from "@/lib/currency";
 import type { Payable } from "@/types/database";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 
@@ -70,6 +71,13 @@ function outstandingOf(p: Payable) {
 }
 
 export default function PayablesPage() {
+  // Staff record and edit payables; settling one moves money out of a bank
+  // account, which only admins may do. RLS enforces the same split, so these
+  // checks are about not offering an action that would be refused.
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
+  /** A settled payable is admin-only to touch at all. */
+  const canEdit = (p: Payable) => isAdmin || !SETTLED_IN_FULL.includes(p.status);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Payable | null>(null);
@@ -274,7 +282,12 @@ export default function PayablesPage() {
                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as Payable["status"] })}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    {Object.entries(STATUS_LABELS)
+                      // Paid and Cleared withdraw from an account, so they are
+                      // admin-only. Offering them to staff would just produce a
+                      // refusal from the database.
+                      .filter(([value]) => isAdmin || !SETTLED_IN_FULL.includes(value as Payable["status"]))
+                      .map(([value, label]) => (
                       <SelectItem key={value} value={value}>{label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -376,12 +389,16 @@ export default function PayablesPage() {
               meta={<span>Due {formatDate(p.due_date)}</span>}
               actions={
                 <>
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-8 w-8 rounded-md" aria-label="Edit">
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
-                  </Button>
+                  {canEdit(p) && (
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  )}
+                  {isAdmin && (
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
+                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                    </Button>
+                  )}
                 </>
               }
             />
@@ -422,8 +439,12 @@ export default function PayablesPage() {
                 <TableCell><Badge variant={STATUS_VARIANT[p.status]} className="text-xs font-normal">{STATUS_LABELS[p.status]}</Badge></TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    {canEdit(p) && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    )}
+                    {isAdmin && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

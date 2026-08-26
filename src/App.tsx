@@ -82,7 +82,7 @@ function ProtectedRoutes() {
           <Route path="/petty-cash" element={<Navigate to="/cash" replace />} />
           <Route path="/bank" element={<AdminRoute><BankPage /></AdminRoute>} />
           <Route path="/owner-transactions" element={<AdminRoute><OwnerTransactionsPage /></AdminRoute>} />
-          <Route path="/payables" element={<AdminRoute><PayablesPage /></AdminRoute>} />
+          <Route path="/payables" element={<PayablesPage />} />
           <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />

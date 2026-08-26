@@ -74,7 +74,8 @@ const navGroups: NavGroup[] = [
       { title: "Receivables", url: "/pending-payments", icon: CircleDollarSign },
       { title: "Bank", url: "/bank", icon: Landmark, adminOnly: true },
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
-      { title: "Payables", url: "/payables", icon: Wallet, adminOnly: true },
+      // Staff can record and edit payables; only admins can settle one.
+      { title: "Payables", url: "/payables", icon: Wallet },
       { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
       { title: "Owner Transactions", url: "/owner-transactions", icon: HandCoins, adminOnly: true },
     ],
