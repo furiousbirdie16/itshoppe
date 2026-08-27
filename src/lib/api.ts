@@ -926,7 +926,6 @@ const resolvePaymentAccount = async (paymentMethod: string) => {
  */
 const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: string) => {
   const account = await resolvePaymentAccount(paymentMethod);
-  if (!account) return;
   const actor = await currentActor();
 
   const { data: inv } = await from("invoices")
@@ -934,9 +933,19 @@ const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: stri
     .eq("id", invoiceId)
     .maybeSingle();
   const amount = Number((inv as any)?.total_amount || 0);
-  if (amount <= 0) return;
 
-  const { error } = await from("cash_transactions").insert({
+  const { data: existing } = await from("cash_transactions")
+    .select("id").eq("source_invoice_id", invoiceId).maybeSingle();
+
+  // Nothing belongs in the ledger for this invoice — Credit Card, Others, a
+  // payment method matching no account, or a zero total. Clear anything a
+  // previous payment method left behind rather than stranding it.
+  if (!account || amount <= 0) {
+    if (existing) await removeInvoicePaymentFromLedger(invoiceId);
+    return;
+  }
+
+  const entry = {
     account_id: account.id,
     txn_date: (inv as any)?.invoice_date || new Date().toISOString().slice(0, 10),
     direction: "in",
@@ -945,18 +954,39 @@ const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: stri
     payee: (inv as any)?.customers?.name || "",
     reference: (inv as any)?.invoice_number || "",
     notes: `Auto-posted from invoice ${(inv as any)?.invoice_number || invoiceId}`,
+  };
+
+  // Already posted: move it rather than skipping it. An invoice edited after
+  // payment — a different customer, amount, or payment method — used to leave
+  // the money in the original account under the original customer's name,
+  // because the repeat insert looked like a harmless duplicate.
+  if (existing) {
+    const { error } = await from("cash_transactions")
+      .update({ ...entry, updated_at: new Date().toISOString(), updated_by: actor.id, updated_by_email: actor.email })
+      .eq("id", (existing as any).id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await from("cash_transactions").insert({
+    ...entry,
     source_invoice_id: invoiceId,
     created_by: actor.id,
     created_by_email: actor.email,
   });
-  // A duplicate means the invoice was already posted — not an error worth surfacing.
-  if (error && !String(error.message || "").toLowerCase().includes("duplicate")) throw error;
+  if (error) throw error;
 };
 
 /** Removes the auto-posted ledger entry for an invoice, if one exists. */
 const removeInvoicePaymentFromLedger = async (invoiceId: string) => {
   const { error } = await from("cash_transactions").delete().eq("source_invoice_id", invoiceId);
   if (error) throw error;
+  // RLS filters a DELETE rather than refusing it: a row the caller may not
+  // delete is simply not deleted, and no error is raised. Recalling an invoice
+  // looked like it worked while the payment stayed in the account.
+  const { data: left } = await from("cash_transactions")
+    .select("id").eq("source_invoice_id", invoiceId).maybeSingle();
+  if (left) throw new Error("The invoice's ledger entry could not be removed — it is still in the account.");
 };
 
 // Mark invoice as paid - also deducts stock if not yet deducted (handles draft → paid path).
@@ -975,10 +1005,14 @@ export const markInvoicePaid = async (
     payment_reference_url: payment.payment_reference_url || null,
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
-  // Never let a ledger problem block the invoice itself from being marked paid.
+  // Never let a ledger problem block the invoice itself from being marked paid —
+  // but never hide one either. The caller surfaces this, because a payment that
+  // silently failed to post is exactly how money goes missing from an account.
+  let ledgerWarning: string | undefined;
   try {
     await postInvoicePaymentToLedger(invoiceId, payment.payment_method);
-  } catch (e) {
+  } catch (e: any) {
+    ledgerWarning = e?.message || "The payment could not be posted to the cash ledger.";
     console.warn("Invoice paid, but posting to the cash ledger failed:", e);
   }
   // Genuinely fire-and-forget: not awaited, so the user is never left waiting on
@@ -986,6 +1020,7 @@ export const markInvoicePaid = async (
   // ledger post so the balance in the message is the updated one.
   notify("notify-payment", { invoice_id: invoiceId });
   await logActivity(wasShipped ? "completed_invoice" : "marked_invoice_paid", "invoice", invoiceId);
+  return { ledgerWarning };
 };
 
 // Revert invoice to draft - restore stock only if it was previously deducted

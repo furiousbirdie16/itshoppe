@@ -443,12 +443,18 @@ export default function InvoicesPage() {
   const markPaidMut = useMutation({
     mutationFn: ({ id, payment_method, payment_reference, payment_reference_url }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string }) =>
       markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
-      toast.success("Marked as paid — stock deducted if not already");
+      // The invoice is paid either way, but a payment that did not reach the
+      // account has to be said out loud rather than left in the console.
+      if (res?.ledgerWarning) {
+        toast.warning(`Marked as paid, but the payment was not recorded in the account: ${res.ledgerWarning}`);
+      } else {
+        toast.success("Marked as paid — stock deducted if not already");
+      }
     },
     onError: (e: any) => toast.error(e.message),
   });
