@@ -264,7 +264,12 @@ export default function InvoicesPage() {
             await reserveInvoice(id); ok++;
           } else if (action === "pay") {
             if (s === "cancelled" || s === "completed" || s === "paid") { skip++; continue; }
-            await markInvoicePaid(id, { payment_method: "Cash", payment_reference: null, payment_reference_url: null });
+            // The method comes from the same picker the single-invoice dialog
+            // uses. It used to be hardcoded to Cash, so a batch settled by bank
+            // transfer landed in petty cash and was stamped "Cash" on every
+            // invoice, with nothing on screen to say so.
+            const res = await markInvoicePaid(id, { payment_method: bulkPayMethod, payment_reference: null, payment_reference_url: null });
+            if (res?.ledgerWarning) errors.push(`${inv.invoice_number}: ${res.ledgerWarning}`);
             ok++;
           } else if (action === "ship") {
             if (s === "cancelled" || s === "completed" || s === "shipped" || s === "confirmed") { skip++; continue; }
@@ -461,6 +466,10 @@ export default function InvoicesPage() {
 
   const [payDialog, setPayDialog] = useState<{ id: string; afterShip?: boolean } | null>(null);
   const [payMethod, setPayMethod] = useState("Cash");
+  // Bulk settling asks for the account too — the same question the single
+  // invoice dialog asks, rather than assuming Cash on the customer's behalf.
+  const [bulkPayOpen, setBulkPayOpen] = useState(false);
+  const [bulkPayMethod, setBulkPayMethod] = useState("Cash");
   const [payReference, setPayReference] = useState("");
   const [payRefFile, setPayRefFile] = useState<File | null>(null);
   const [payUploading, setPayUploading] = useState(false);
@@ -1198,7 +1207,7 @@ export default function InvoicesPage() {
             <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("reserve")}>
               <BookmarkPlus className="h-3.5 w-3.5 mr-1 text-amber-600" /> Reserve
             </Button>
-            <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("pay")}>
+            <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => { setBulkPayMethod(cashPaymentOptions[0]?.name || "Cash"); setBulkPayOpen(true); }}>
               <DollarSign className="h-3.5 w-3.5 mr-1 text-primary" /> Paid
             </Button>
             <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("ship")}>
@@ -1311,6 +1320,45 @@ export default function InvoicesPage() {
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setPayDialog(null)}>Cancel</Button>
               <Button onClick={submitPayment} disabled={payUploading || markPaidMut.isPending}>{payUploading ? "Uploading..." : "Confirm Payment"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk settle: one account for the whole batch. No reference field —
+          a single reference number cannot describe several payments. */}
+      <Dialog open={bulkPayOpen} onOpenChange={setBulkPayOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mark {selectedIds.size} invoice{selectedIds.size === 1 ? "" : "s"} as Paid</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label>Payment Method</Label>
+            <Select value={bulkPayMethod} onValueChange={setBulkPayMethod}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {cashPaymentOptions.length === 0 && <SelectItem value="Cash">Cash</SelectItem>}
+                {cashPaymentOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
+                ))}
+                {bankPaymentOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>
+                ))}
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+                <SelectItem value="Others">Others</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Every selected invoice is recorded against this account.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setBulkPayOpen(false)}>Cancel</Button>
+              <Button
+                disabled={bulkStatusMut.isPending}
+                onClick={() => { setBulkPayOpen(false); bulkStatusMut.mutate("pay"); }}
+              >
+                Confirm Payment
+              </Button>
             </div>
           </div>
         </DialogContent>

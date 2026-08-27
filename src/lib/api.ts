@@ -912,10 +912,13 @@ const resolvePaymentAccount = async (paymentMethod: string) => {
   // but must still be able to post an invoice payment into one.
   const { data } = await _sb.rpc("cash_account_options");
   const accounts = (data as any[]) || [];
+
   if (paymentMethod === "Cash") {
     return accounts.find((a) => a.account_type === "petty_cash") || null;
   }
-  return accounts.find((a) => a.name.toLowerCase() === paymentMethod.toLowerCase()) || null;
+  // Trimmed, so a stray space in an account name is not an orphaned payment.
+  const wanted = (paymentMethod || "").trim().toLowerCase();
+  return accounts.find((a) => (a.name || "").trim().toLowerCase() === wanted) || null;
 };
 
 /**
@@ -924,8 +927,8 @@ const resolvePaymentAccount = async (paymentMethod: string) => {
  * index on source_invoice_id makes a repeated mark-as-paid a no-op rather than a
  * double-post.
  */
-const postInvoicePaymentToLedger = async (invoiceId: string, paymentMethod: string) => {
-  const account = await resolvePaymentAccount(paymentMethod);
+/** `account` is resolved by the caller, so the label is read once, at payment. */
+const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: string } | null) => {
   const actor = await currentActor();
 
   const { data: inv } = await from("invoices")
@@ -998,9 +1001,15 @@ export const markInvoicePaid = async (
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (paid)");
   const { data: invRow } = await from("invoices").select("status").eq("id", invoiceId).maybeSingle();
   const wasShipped = (invRow as any)?.status === "shipped";
+
+  // Resolved once, here, and recorded on the invoice. Renaming the account
+  // afterwards cannot orphan the payment, because nothing re-reads the label.
+  const account = await resolvePaymentAccount(payment.payment_method);
+
   await from("invoices").update({
     status: wasShipped ? "completed" : "paid",
     payment_method: payment.payment_method,
+    payment_account_id: account?.id ?? null,
     payment_reference: payment.payment_reference || null,
     payment_reference_url: payment.payment_reference_url || null,
     updated_at: new Date().toISOString(),
@@ -1010,7 +1019,7 @@ export const markInvoicePaid = async (
   // silently failed to post is exactly how money goes missing from an account.
   let ledgerWarning: string | undefined;
   try {
-    await postInvoicePaymentToLedger(invoiceId, payment.payment_method);
+    await postInvoicePaymentToLedger(invoiceId, account);
   } catch (e: any) {
     ledgerWarning = e?.message || "The payment could not be posted to the cash ledger.";
     console.warn("Invoice paid, but posting to the cash ledger failed:", e);
