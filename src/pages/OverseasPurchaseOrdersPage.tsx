@@ -274,6 +274,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [trackEditing, setTrackEditing] = useState<ShipmentTracking | null>(null);
   const [trackForm, setTrackForm] = useState(emptyTracking());
   const [trackSearch, setTrackSearch] = useState("");
+  const [trackStatusFilter, setTrackStatusFilter] = useState<"all" | ShipmentTracking["status"]>("all");
 
   const invalidateShipments = () => queryClient.invalidateQueries({ queryKey: ["shipments"] });
   const trackCreateMut = useMutation({
@@ -297,6 +298,17 @@ export default function OverseasPurchaseOrdersPage() {
     setTrackForm({ ...emptyTracking(), po_id: poId || "" });
     setTrackOpen(true);
   };
+  /**
+   * Tracking for one PO, from the Purchase Orders tab. Edits the shipment
+   * already against that PO if there is one, so the button does not quietly
+   * create a second record for the same order.
+   */
+  const openTrackFor = (po: OverseasPurchaseOrder) => {
+    const existing = shipmentByPo.get(po.id);
+    if (existing) openTrackEdit(existing);
+    else openTrackCreate(po.id);
+  };
+
   const openTrackEdit = (s: ShipmentTracking) => {
     setTrackEditing(s);
     setTrackForm({
@@ -345,13 +357,17 @@ export default function OverseasPurchaseOrdersPage() {
         supplier: po?.overseas_suppliers?.name || "—",
       };
     });
+    const byStatus = trackStatusFilter === "all"
+      ? rows
+      : rows.filter((r) => r.shipment.status === trackStatusFilter);
+
     const q = trackSearch.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
+    if (!q) return byStatus;
+    return byStatus.filter((r) =>
       [r.shipment.tracking_number, r.po_number, r.supplier, r.shipment.shipping_method]
         .some((v) => (v || "").toLowerCase().includes(q)),
     );
-  }, [shipments, orders, trackSearch]);
+  }, [shipments, orders, trackSearch, trackStatusFilter]);
   const shipmentByPo = useMemo(() => {
     const map = new Map<string, ShipmentTracking>();
     for (const s of shipments) {
@@ -810,6 +826,17 @@ export default function OverseasPurchaseOrdersPage() {
                         </Button>
                       </>
                     )}
+                    {/* Tracking is entered against the PO you are looking at,
+                        rather than picked from a list of PO numbers later. */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openTrackFor(po)}
+                      className="h-7 w-7 rounded-md"
+                      title={shipmentByPo.get(po.id) ? "Edit tracking" : "Add tracking"}
+                    >
+                      <Truck className={`h-3.5 w-3.5 ${shipmentByPo.get(po.id) ? "text-primary" : "text-muted-foreground"}`} />
+                    </Button>
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
     </>
@@ -1690,6 +1717,15 @@ export default function OverseasPurchaseOrdersPage() {
                     className="pl-9"
                   />
                 </div>
+                <Select value={trackStatusFilter} onValueChange={(v) => setTrackStatusFilter(v as typeof trackStatusFilter)}>
+                  <SelectTrigger className="h-9 w-[150px] shrink-0"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    {Object.entries(TRACKING_STATUS_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label} only</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button onClick={() => openTrackCreate()} className="rounded-lg h-9 px-4 text-sm font-medium shrink-0">
                   <Plus className="h-4 w-4 mr-1.5" /> Add Tracking
                 </Button>

@@ -71,7 +71,9 @@ export function StatusBadge({ status, className, context = "default" }: StatusBa
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider",
+        // whitespace-nowrap: the longer labels ("shipped, not paid") were
+        // wrapping to three lines in a narrow column and rendering as a blob.
+        "inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider",
         statusStyles[styleKey] || "bg-muted text-muted-foreground",
         className
       )}
