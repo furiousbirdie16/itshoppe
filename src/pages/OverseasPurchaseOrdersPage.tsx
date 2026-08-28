@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
+  createShipment, updateShipment, deleteShipment,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,43 @@ interface IncomingStockRow {
 }
 
 const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "", unit_cost: "", item_id: "" });
+
+// Radix Select cannot hold an empty string, so "no PO" needs a sentinel.
+const NO_PO = "__no_po__";
+
+const emptyTracking = () => ({
+  po_id: "",
+  tracking_number: "",
+  shipping_method: "",
+  warehouse_received_date: "",
+  ship_date: "",
+  estimated_arrival: "",
+  actual_arrival: "",
+  status: "in_transit" as ShipmentTracking["status"],
+  notes: "",
+});
+
+const TRACKING_STATUS_LABELS: Record<ShipmentTracking["status"], string> = {
+  in_transit: "In Transit",
+  customs: "At Customs",
+  delivered: "Delivered",
+};
+
+// Shipment statuses are their own vocabulary — StatusBadge maps PO and invoice
+// statuses, and teaching it these would mix two unrelated sets.
+const TRACKING_STATUS_STYLES: Record<ShipmentTracking["status"], string> = {
+  in_transit: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  customs: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  delivered: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+};
+
+function TrackingStatusBadge({ status }: { status: ShipmentTracking["status"] }) {
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TRACKING_STATUS_STYLES[status] || ""}`}>
+      {TRACKING_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
 
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
@@ -134,7 +172,10 @@ export default function OverseasPurchaseOrdersPage() {
     if (!viewPO) return;
     setUploadingReceipt(true);
     try {
-      const ext = file.name.split(".").pop() || "bin";
+      // A pasted screenshot often arrives with no filename, so fall back to the
+      // MIME type rather than saving a file with no extension.
+      const nameExt = file.name.includes(".") ? file.name.split(".").pop() : "";
+      const ext = nameExt || file.type.split("/").pop() || "bin";
       const path = `${viewPO.id}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from("overseas-po-receipts")
@@ -153,6 +194,17 @@ export default function OverseasPurchaseOrdersPage() {
       toast.error(e?.message || "Failed to upload receipt");
     } finally {
       setUploadingReceipt(false);
+    }
+  };
+
+  /** Screenshots are how these receipts usually arrive — from chat, not a scanner. */
+  const handleReceiptPaste = (e: React.ClipboardEvent) => {
+    if (uploadingReceipt) return;
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+    const file = item?.getAsFile();
+    if (file) {
+      e.preventDefault();
+      handleReceiptUpload(file);
     }
   };
 
@@ -216,6 +268,90 @@ export default function OverseasPurchaseOrdersPage() {
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
   const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
   const { data: shipments = [] } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
+
+  // ---- Tracking tab ----
+  const [trackOpen, setTrackOpen] = useState(false);
+  const [trackEditing, setTrackEditing] = useState<ShipmentTracking | null>(null);
+  const [trackForm, setTrackForm] = useState(emptyTracking());
+  const [trackSearch, setTrackSearch] = useState("");
+
+  const invalidateShipments = () => queryClient.invalidateQueries({ queryKey: ["shipments"] });
+  const trackCreateMut = useMutation({
+    mutationFn: (data: Partial<ShipmentTracking>) => createShipment(data),
+    onSuccess: () => { invalidateShipments(); setTrackOpen(false); toast.success("Tracking added"); },
+    onError: (e: any) => toast.error(e?.message || "Failed to save tracking"),
+  });
+  const trackUpdateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<ShipmentTracking> }) => updateShipment(id, data),
+    onSuccess: () => { invalidateShipments(); setTrackOpen(false); toast.success("Tracking updated"); },
+    onError: (e: any) => toast.error(e?.message || "Failed to save tracking"),
+  });
+  const trackDeleteMut = useMutation({
+    mutationFn: deleteShipment,
+    onSuccess: () => { invalidateShipments(); toast.success("Tracking deleted"); },
+    onError: (e: any) => toast.error(e?.message || "Failed to delete tracking"),
+  });
+
+  const openTrackCreate = (poId?: string) => {
+    setTrackEditing(null);
+    setTrackForm({ ...emptyTracking(), po_id: poId || "" });
+    setTrackOpen(true);
+  };
+  const openTrackEdit = (s: ShipmentTracking) => {
+    setTrackEditing(s);
+    setTrackForm({
+      po_id: s.po_id || "",
+      tracking_number: s.tracking_number || "",
+      shipping_method: s.shipping_method || "",
+      warehouse_received_date: s.warehouse_received_date || "",
+      ship_date: s.ship_date || "",
+      estimated_arrival: s.estimated_arrival || "",
+      actual_arrival: s.actual_arrival || "",
+      status: s.status,
+      notes: s.notes || "",
+    });
+    setTrackOpen(true);
+  };
+
+  const handleTrackSubmit = () => {
+    if (!trackForm.tracking_number.trim()) { toast.error("Tracking number is required"); return; }
+    if (trackForm.status === "delivered" && !trackForm.actual_arrival) {
+      toast.error("Set the arrival date when marking a shipment delivered");
+      return;
+    }
+    const data: Partial<ShipmentTracking> = {
+      po_id: trackForm.po_id || null,
+      tracking_number: trackForm.tracking_number.trim(),
+      shipping_method: trackForm.shipping_method.trim(),
+      warehouse_received_date: trackForm.warehouse_received_date || null,
+      ship_date: trackForm.ship_date || null,
+      estimated_arrival: trackForm.estimated_arrival || null,
+      actual_arrival: trackForm.actual_arrival || null,
+      status: trackForm.status,
+      notes: trackForm.notes,
+    };
+    if (trackEditing) trackUpdateMut.mutate({ id: trackEditing.id, data });
+    else trackCreateMut.mutate(data);
+  };
+
+  // Rows carry the PO and supplier names so the tab reads without opening a PO.
+  const trackingRows = useMemo(() => {
+    const byId = new Map(orders.map((o: any) => [o.id, o]));
+    const rows = shipments.map((s) => {
+      const po: any = s.po_id ? byId.get(s.po_id) : null;
+      return {
+        shipment: s,
+        po_number: po?.po_number || "—",
+        supplier: po?.overseas_suppliers?.name || "—",
+      };
+    });
+    const q = trackSearch.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.shipment.tracking_number, r.po_number, r.supplier, r.shipment.shipping_method]
+        .some((v) => (v || "").toLowerCase().includes(q)),
+    );
+  }, [shipments, orders, trackSearch]);
   const shipmentByPo = useMemo(() => {
     const map = new Map<string, ShipmentTracking>();
     for (const s of shipments) {
@@ -685,6 +821,7 @@ export default function OverseasPurchaseOrdersPage() {
         <TabsList>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
           <TabsTrigger value="incoming">Incoming Stock</TabsTrigger>
+          <TabsTrigger value="tracking">Tracking</TabsTrigger>
         </TabsList>
         <TabsContent value="orders" className="space-y-6 mt-0">
       <div className="page-toolbar">
@@ -1051,12 +1188,19 @@ export default function OverseasPurchaseOrdersPage() {
                 </div>
               )}
 
-              {/* Supplier receipt (hard copy) */}
-              <div className="rounded-lg border bg-card">
+              {/* Supplier receipt (hard copy). The whole panel takes a paste, so
+                  a screenshot from a chat thread can go straight in. */}
+              <div
+                className="rounded-lg border bg-card focus-within:ring-1 focus-within:ring-primary/40"
+                onPaste={handleReceiptPaste}
+                tabIndex={0}
+              >
                 <div className="border-b px-4 py-3 flex items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Supplier Receipt</h3>
-                    <p className="text-xs text-muted-foreground">Upload the hard-copy receipt provided by the supplier (image or PDF).</p>
+                    <p className="text-xs text-muted-foreground">
+                      Upload the receipt from the supplier (image or PDF), or click here and paste a screenshot.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <label className="inline-flex">
@@ -1084,8 +1228,9 @@ export default function OverseasPurchaseOrdersPage() {
                 </div>
                 <div className="p-4">
                   {!receiptPath ? (
-                    <div className="text-xs text-muted-foreground flex items-center gap-2 py-4">
-                      <ImageIcon className="h-4 w-4" /> No receipt uploaded yet.
+                    <div className="rounded-md border border-dashed px-3 py-6 text-xs text-muted-foreground flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4" />
+                      {uploadingReceipt ? "Uploading..." : "No receipt yet — paste a screenshot here (Ctrl/Cmd+V) or use Upload."}
                     </div>
                   ) : receiptSignedUrl ? (
                     receiptPath.toLowerCase().endsWith(".pdf") ? (
@@ -1525,7 +1670,201 @@ export default function OverseasPurchaseOrdersPage() {
         </div>
       </section>
         </TabsContent>
+
+        <TabsContent value="tracking" className="mt-0">
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Tracking</h2>
+                <p className="text-sm text-muted-foreground">
+                  {trackingRows.length} shipment{trackingRows.length === 1 ? "" : "s"} · warehouse receipt to arrival
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 sm:w-[240px] sm:flex-none">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search tracking, PO, supplier..."
+                    value={trackSearch}
+                    onChange={(e) => setTrackSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Button onClick={() => openTrackCreate()} className="rounded-lg h-9 px-4 text-sm font-medium shrink-0">
+                  <Plus className="h-4 w-4 mr-1.5" /> Add Tracking
+                </Button>
+              </div>
+            </div>
+
+            {/* Phones get stacked cards; the eight-column table below hides the
+                two dates this tab exists to show. */}
+            <div className="md:hidden space-y-2">
+              {trackingRows.length === 0 ? (
+                <div className="rounded-xl border bg-card">
+                  <div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No shipments tracked yet</p></div>
+                </div>
+              ) : (
+                trackingRows.map(({ shipment: s, po_number, supplier }) => (
+                  <div key={s.id} className="rounded-xl border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-mono text-xs font-semibold">{s.tracking_number || "—"}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {po_number} · {supplier}
+                        </div>
+                      </div>
+                      <TrackingStatusBadge status={s.status} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                      <div>
+                        <div className="text-muted-foreground">In China warehouse</div>
+                        <div className="font-medium">{s.warehouse_received_date || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Expected arrival</div>
+                        <div className="font-medium">{s.estimated_arrival || "—"}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
+                      <span className="text-[11px] text-muted-foreground">
+                        {s.actual_arrival ? `Arrived ${s.actual_arrival}` : s.shipping_method || "—"}
+                      </span>
+                      <div className="flex shrink-0 gap-0.5">
+                        <Button variant="ghost" size="icon" onClick={() => openTrackEdit(s)} className="h-8 w-8 rounded-md" aria-label="Edit">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => trackDeleteMut.mutate(s.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="data-table-wrapper hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Tracking #</TableHead>
+                    <TableHead className="text-xs">PO #</TableHead>
+                    <TableHead className="text-xs">Supplier</TableHead>
+                    <TableHead className="text-xs">Method</TableHead>
+                    <TableHead className="text-xs">In China Warehouse</TableHead>
+                    <TableHead className="text-xs">Expected Arrival</TableHead>
+                    <TableHead className="text-xs">Arrived</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
+                    <TableHead className="text-xs text-right w-24">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {trackingRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9}>
+                        <div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No shipments tracked yet</p></div>
+                      </TableCell>
+                    </TableRow>
+                  ) : trackingRows.map(({ shipment: s, po_number, supplier }) => (
+                    <TableRow key={s.id} className="hover:bg-muted/30">
+                      <TableCell className="font-mono text-xs font-medium">{s.tracking_number || "—"}</TableCell>
+                      <TableCell className="text-sm">{po_number}</TableCell>
+                      <TableCell className="text-sm">{supplier}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{s.shipping_method || "—"}</TableCell>
+                      <TableCell className="text-sm">{s.warehouse_received_date || "—"}</TableCell>
+                      <TableCell className="text-sm">{s.estimated_arrival || "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{s.actual_arrival || "—"}</TableCell>
+                      <TableCell><TrackingStatusBadge status={s.status} /></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-0.5">
+                          <Button variant="ghost" size="icon" onClick={() => openTrackEdit(s)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => trackDeleteMut.mutate(s.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </section>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={trackOpen} onOpenChange={setTrackOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{trackEditing ? "Edit Tracking" : "Add Tracking"}</DialogTitle></DialogHeader>
+          <div className="grid gap-3 pt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Purchase Order</Label>
+              <Select
+                value={trackForm.po_id || NO_PO}
+                onValueChange={(v) => setTrackForm({ ...trackForm, po_id: v === NO_PO ? "" : v })}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Not linked" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PO}>Not linked to a PO</SelectItem>
+                  {orders.map((o: any) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.po_number}{o.overseas_suppliers?.name ? ` · ${o.overseas_suppliers.name}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Tracking Number *</Label>
+                <Input value={trackForm.tracking_number} onChange={(e) => setTrackForm({ ...trackForm, tracking_number: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Method</Label>
+                <Input value={trackForm.shipping_method} onChange={(e) => setTrackForm({ ...trackForm, shipping_method: e.target.value })} className="h-9" placeholder="e.g. Sea, Air" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Received in China Warehouse</Label>
+                <DateField value={trackForm.warehouse_received_date} onChange={(v) => setTrackForm({ ...trackForm, warehouse_received_date: v })} placeholder="Optional" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Shipped Out</Label>
+                <DateField value={trackForm.ship_date} onChange={(v) => setTrackForm({ ...trackForm, ship_date: v })} placeholder="Optional" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Expected Arrival</Label>
+                <DateField value={trackForm.estimated_arrival} onChange={(v) => setTrackForm({ ...trackForm, estimated_arrival: v })} placeholder="Optional" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Arrived</Label>
+                <DateField value={trackForm.actual_arrival} onChange={(v) => setTrackForm({ ...trackForm, actual_arrival: v })} placeholder="Optional" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Status</Label>
+              <Select value={trackForm.status} onValueChange={(v) => setTrackForm({ ...trackForm, status: v as ShipmentTracking["status"] })}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TRACKING_STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={trackForm.notes} onChange={(e) => setTrackForm({ ...trackForm, notes: e.target.value })} className="resize-none" rows={2} />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setTrackOpen(false)}>Cancel</Button>
+              <Button onClick={handleTrackSubmit} disabled={trackCreateMut.isPending || trackUpdateMut.isPending}>
+                {trackEditing ? "Save Changes" : "Add Tracking"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

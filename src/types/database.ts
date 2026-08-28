@@ -219,6 +219,8 @@ export interface ShipmentTracking {
   po_id: string | null;
   tracking_number: string;
   shipping_method: string;
+  /** Received at the China warehouse, before onward shipping. */
+  warehouse_received_date: string | null;
   ship_date: string | null;
   estimated_arrival: string | null;
   actual_arrival: string | null;
