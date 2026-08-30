@@ -13,7 +13,6 @@ import LowStockAlertsPage from "@/pages/LowStockAlertsPage";
 import StockTransfersPage from "@/pages/StockTransfersPage";
 import SuppliersHubPage from "@/pages/SuppliersHubPage";
 import OverseasPurchaseOrdersPage from "@/pages/OverseasPurchaseOrdersPage";
-import ShipmentTrackingPage from "@/pages/ShipmentTrackingPage";
 import CustomersPage from "@/pages/CustomersPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";

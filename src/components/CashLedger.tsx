@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { SuggestInput } from "@/components/SuggestInput";
 import { runningBalances } from "@/lib/running-balance";
+import { FxRateHistoryDialog } from "@/components/FxRateHistoryDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -79,6 +80,7 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   const [accountOpen, setAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CashAccount | null>(null);
   const [accountForm, setAccountForm] = useState(emptyAccount());
+  const [rateHistoryAccount, setRateHistoryAccount] = useState<CashAccount | null>(null);
 
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   // Names only, so a transfer can target a bank the user cannot otherwise read.
@@ -477,10 +479,17 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                       </p>
                       <p className="text-lg font-semibold">{peso(phpBalanceOf(a))}</p>
                       {isForeign(a) ? (
-                        <p className="text-[11px] text-muted-foreground truncate">
+                        // The average is what the balance is carried at, so the
+                        // history behind it is one tap away rather than hidden.
+                        <button
+                          type="button"
+                          onClick={() => setRateHistoryAccount(a)}
+                          className="text-[11px] text-muted-foreground truncate hover:text-primary hover:underline text-left"
+                          title="Rate history"
+                        >
                           {foreignAmount(fxByAccount[a.id]?.quantity || 0, a.currency)}
                           {" · avg "}{(fxByAccount[a.id]?.averageRate || 0).toFixed(2)}
-                        </p>
+                        </button>
                       ) : a.account_number ? (
                         <p className="text-[11px] text-muted-foreground truncate">{a.account_number}</p>
                       ) : null}
@@ -854,6 +863,13 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
           </TableBody>
         </Table>
       </div>
+
+      <FxRateHistoryDialog
+        account={rateHistoryAccount}
+        transactions={txns}
+        open={!!rateHistoryAccount}
+        onOpenChange={(v) => { if (!v) setRateHistoryAccount(null); }}
+      />
     </div>
   );
 }
