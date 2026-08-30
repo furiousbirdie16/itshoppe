@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  getCashAccounts, getCashTransactions, getOwnerTransactions,
+  getCashAccounts, getCashTransactions,
   getPayables, getLoans, getAccountsReceivable,
 } from "@/lib/api";
 import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
@@ -38,7 +38,6 @@ export function useFinanceSummary() {
   // the Bank page did — and money in a closed account is not available to spend.
   const accounts = useMemo(() => allAccounts.filter((a) => a.is_active), [allAccounts]);
   const { data: txns = [] } = useQuery({ queryKey: ["cash-transactions", "all"], queryFn: () => getCashTransactions() });
-  const { data: ownerTxns = [] } = useQuery({ queryKey: ["owner-transactions"], queryFn: getOwnerTransactions });
   const { data: payables = [] } = useQuery({ queryKey: ["payables"], queryFn: getPayables });
   const { data: loans = [] } = useQuery({ queryKey: ["loans"], queryFn: getLoans });
   const { data: receivables = 0 } = useQuery({ queryKey: ["accounts-receivable"], queryFn: () => getAccountsReceivable() });
@@ -51,8 +50,12 @@ export function useFinanceSummary() {
     const phpBalanceOf = (a: CashAccount) =>
       isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : plainBalance(a, txns);
 
+    // The owner account is a liability living in the same ledger, so it is
+    // excluded from both totals. Counting it as cash would add what is owed to
+    // net worth instead of subtracting it — wrong by twice the balance.
     const cashAccounts = accounts.filter((a) => a.account_type === "petty_cash");
     const bankAccounts = accounts.filter((a) => a.account_type === "bank");
+    const ownerAccounts = accounts.filter((a) => a.account_type === "owner");
     const cashTotal = cashAccounts.reduce((s, a) => s + phpBalanceOf(a), 0);
     const bankTotal = bankAccounts.reduce((s, a) => s + phpBalanceOf(a), 0);
 
@@ -64,8 +67,19 @@ export function useFinanceSummary() {
       .map((h) => `${foreignAmount(h.quantity, h.account.currency)} @ ${h.averageRate.toFixed(2)}`)
       .join(" · ");
 
-    const ownerPaid = ownerTxns.filter((t) => t.txn_type === "owner_paid").reduce((s, t) => s + Number(t.amount || 0), 0);
-    const ownerRepaid = ownerTxns.filter((t) => t.txn_type === "company_repaid").reduce((s, t) => s + Number(t.amount || 0), 0);
+    // Owed to the owner: what they spent for the company, less what has been
+    // repaid. Money out of the owner account is the owner spending on the
+    // company's behalf; money in is the company paying them back — the
+    // direction a transfer into the account produces.
+    const ownerIds = new Set(ownerAccounts.map((a) => a.id));
+    const ownerLedger = txns.filter((t) => ownerIds.has(t.account_id));
+    const ownerPaid = ownerLedger
+      .filter((t) => t.direction === "out")
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+    const ownerRepaid = ownerLedger
+      .filter((t) => t.direction === "in")
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+    const ownerOpening = ownerAccounts.reduce((s, a) => s + Number(a.opening_balance || 0), 0);
 
     const billsAndChecks = payables.reduce((s, p) => s + payableOutstanding(p), 0);
 
@@ -85,11 +99,11 @@ export function useFinanceSummary() {
       foreignNote,
       receivables: Number(receivables || 0),
       /** Net still owed to the owner; negative means the owner was overpaid. */
-      dueToOwner: ownerPaid - ownerRepaid,
+      dueToOwner: ownerPaid - ownerRepaid - ownerOpening,
       /** Outstanding bills and post-dated checks — NOT supplier purchase orders. */
       billsAndChecks,
       loansOutstanding: loans.reduce((s, l) => s + Number(l.principal_amount || 0), 0),
       monthlyLoanPayment: loans.reduce((s, l) => s + Number(l.monthly_payment || 0), 0),
     };
-  }, [accounts, txns, ownerTxns, payables, loans, receivables]);
+  }, [accounts, txns, payables, loans, receivables]);
 }

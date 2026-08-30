@@ -22,7 +22,6 @@ import MarketplaceReceivablesPage from "@/pages/MarketplaceReceivablesPage";
 import LoansPage from "@/pages/LoansPage";
 import CashPage from "@/pages/CashPage";
 import BankPage from "@/pages/BankPage";
-import OwnerTransactionsPage from "@/pages/OwnerTransactionsPage";
 import PayablesPage from "@/pages/PayablesPage";
 import FinancialDashboardPage from "@/pages/FinancialDashboardPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
@@ -80,7 +79,7 @@ function ProtectedRoutes() {
           <Route path="/cash" element={<CashPage />} />
           <Route path="/petty-cash" element={<Navigate to="/cash" replace />} />
           <Route path="/bank" element={<AdminRoute><BankPage /></AdminRoute>} />
-          <Route path="/owner-transactions" element={<AdminRoute><OwnerTransactionsPage /></AdminRoute>} />
+          <Route path="/owner-transactions" element={<Navigate to="/bank" replace />} />
           <Route path="/payables" element={<PayablesPage />} />
           <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />

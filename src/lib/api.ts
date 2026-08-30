@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, OwnerTransaction, Payable } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
@@ -1990,38 +1990,9 @@ export const createCashTransfer = async (args: {
   notify("notify-cash", { transfer_group_id: data });
 };
 
-export const getOwnerTransactions = async (): Promise<OwnerTransaction[]> =>
-  fetchAllRows<OwnerTransaction>(() =>
-    from("owner_transactions")
-      .select("*")
-      .order("txn_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false }),
-  );
-
-export const createOwnerTransaction = async (t: Partial<OwnerTransaction>) => {
-  const { data, error } = await from("owner_transactions").insert(t).select().single();
-  if (error) throw error;
-  const created = data as OwnerTransaction;
-  await logActivity("created_owner_transaction", "owner_transaction", created.id, {
-    amount: created.amount, txn_type: created.txn_type,
-  });
-  return created;
-};
-
-export const updateOwnerTransaction = async (id: string, t: Partial<OwnerTransaction>) => {
-  const { data, error } = await from("owner_transactions")
-    .update({ ...t, updated_at: new Date().toISOString() }).eq("id", id).select().single();
-  if (error) throw error;
-  await logActivity("updated_owner_transaction", "owner_transaction", id);
-  return data as OwnerTransaction;
-};
-
-export const deleteOwnerTransaction = async (id: string) => {
-  const { error } = await from("owner_transactions").delete().eq("id", id);
-  if (error) throw error;
-  await logActivity("deleted_owner_transaction", "owner_transaction", id);
-};
+// owner_transactions is no longer read: the owner is a cash account, so paying
+// them is a transfer like any other. The table remains as a backup of the
+// records copied across in 20260825000000_owner_as_cash_account.sql.
 
 export const getPayables = async (): Promise<Payable[]> => {
   const { data, error } = await from("payables")

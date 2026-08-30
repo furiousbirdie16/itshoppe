@@ -39,6 +39,10 @@ export default function FinancialDashboardPage() {
     receivables, dueToOwner, billsAndChecks, loansOutstanding, monthlyLoanPayment,
   } = useFinanceSummary();
 
+  // The owner account is money owed, not a balance held, and the Due to Owner
+  // card above already reports it. Listing it here would read as a third bank.
+  const balanceAccounts = accounts.filter((a) => a.account_type !== "owner");
+
   // Anything unsettled with a due date, soonest first.
   const upcoming = payables
     .filter((p) => p.due_date && !SETTLED.includes(p.status))
@@ -80,9 +84,9 @@ export default function FinancialDashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.length === 0 ? (
+              {balanceAccounts.length === 0 ? (
                 <TableRow><TableCell colSpan={3}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No accounts yet</p></div></TableCell></TableRow>
-              ) : accounts.map((a) => (
+              ) : balanceAccounts.map((a) => (
                 <TableRow key={a.id} className="hover:bg-muted/30">
                   <TableCell className="text-sm font-medium">
                     {a.name}

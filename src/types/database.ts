@@ -265,7 +265,12 @@ export interface InventoryMovement {
   items?: Item;
 }
 
-export type CashAccountType = 'petty_cash' | 'bank';
+/**
+ * `owner` is the owner's running position, kept alongside the banks so paying
+ * them is a transfer rather than two hand-entered records. It is a liability,
+ * not cash, so it is excluded from every cash and bank total.
+ */
+export type CashAccountType = 'petty_cash' | 'bank' | 'owner';
 
 export interface CashAccount {
   id: string;

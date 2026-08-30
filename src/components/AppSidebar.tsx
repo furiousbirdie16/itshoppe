@@ -77,7 +77,6 @@ const navGroups: NavGroup[] = [
       // Staff can record and edit payables; only admins can settle one.
       { title: "Payables", url: "/payables", icon: Wallet },
       { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
-      { title: "Owner Transactions", url: "/owner-transactions", icon: HandCoins, adminOnly: true },
     ],
   },
   {

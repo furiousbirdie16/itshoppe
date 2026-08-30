@@ -57,14 +57,24 @@ function balanceOf(account: CashAccount, txns: CashTransaction[]) {
 }
 
 interface CashLedgerProps {
+  /** The type new accounts are created as, and the ledger's primary type. */
   accountType: CashAccountType;
+  /**
+   * Other types shown alongside. Bank passes "owner" so the owner's position
+   * sits next to the banks and can be transferred to — while staying out of the
+   * balance total, since it is a liability rather than money held.
+   */
+  alsoShow?: CashAccountType[];
   title: string;
   description: string;
   /** Show the per-account filter and transfer button (used by Bank, not Petty Cash). */
   showAccountFilter?: boolean;
 }
 
-export function CashLedger({ accountType, title, description, showAccountFilter = false }: CashLedgerProps) {
+/** Owner is a liability: never counted in a cash or bank balance. */
+const isOwnerAccount = (a: Pick<CashAccount, "account_type">) => a.account_type === "owner";
+
+export function CashLedger({ accountType, alsoShow, title, description, showAccountFilter = false }: CashLedgerProps) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -85,20 +95,24 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   // Names only, so a transfer can target a bank the user cannot otherwise read.
   const { data: transferTargets = [] } = useQuery({ queryKey: ["cash-account-options"], queryFn: getCashAccountOptions });
+  const shownTypes = useMemo(
+    () => [accountType, ...(alsoShow ?? [])],
+    [accountType, alsoShow],
+  );
   // Active accounts drive the pickers and totals...
   const accounts = useMemo(
-    () => allAccounts.filter((a) => a.account_type === accountType && a.is_active),
-    [allAccounts, accountType],
+    () => allAccounts.filter((a) => shownTypes.includes(a.account_type) && a.is_active),
+    [allAccounts, shownTypes],
   );
   // ...while the management cards also show deactivated ones so they can be restored.
   const managedAccounts = useMemo(
-    () => allAccounts.filter((a) => a.account_type === accountType),
-    [allAccounts, accountType],
+    () => allAccounts.filter((a) => shownTypes.includes(a.account_type)),
+    [allAccounts, shownTypes],
   );
   const accountIds = useMemo(() => accounts.map((a) => a.id), [accounts]);
 
   const { data: txns = [], isLoading } = useQuery({
-    queryKey: ["cash-transactions", accountType, accountIds],
+    queryKey: ["cash-transactions", shownTypes, accountIds],
     queryFn: () => getCashTransactions(accountIds),
     enabled: accounts.length > 0,
   });
@@ -252,7 +266,11 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
     7 + (showAccountFilter ? 1 : 0) + (hasForeign ? 1 : 0) + (showRunningBalance ? 1 : 0);
 
   const visibleAccounts = accountFilter === "all" ? accounts : accounts.filter((a) => a.id === accountFilter);
-  const totalBalance = visibleAccounts.reduce((sum, a) => sum + phpBalanceOf(a), 0);
+  // The owner's position is money owed, not money held, so it never joins a
+  // balance total — including when its own filter is selected.
+  const totalBalance = visibleAccounts
+    .filter((a) => !isOwnerAccount(a))
+    .reduce((sum, a) => sum + phpBalanceOf(a), 0);
   const totalIn = searched.filter((t) => t.direction === "in").reduce((s, t) => s + Number(t.amount || 0), 0);
   const totalOut = searched.filter((t) => t.direction === "out").reduce((s, t) => s + Number(t.amount || 0), 0);
 
@@ -475,10 +493,19 @@ export function CashLedger({ accountType, title, description, showAccountFilter 
                   <div className="flex items-start justify-between gap-1">
                     <div className="min-w-0">
                       <p className="text-xs text-muted-foreground truncate">
-                        {a.name}{!a.is_active && " (inactive)"}
+                        {isOwnerAccount(a) ? "Owed to owner" : a.name}{!a.is_active && " (inactive)"}
                       </p>
-                      <p className="text-lg font-semibold">{peso(phpBalanceOf(a))}</p>
-                      {isForeign(a) ? (
+                      {/* The owner account runs negative when money is owed —
+                          that is the sign a transfer produces. Flipped here, so
+                          the card reads as the debt it represents. */}
+                      <p className="text-lg font-semibold">
+                        {isOwnerAccount(a) ? peso(-phpBalanceOf(a)) : peso(phpBalanceOf(a))}
+                      </p>
+                      {isOwnerAccount(a) ? (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {phpBalanceOf(a) > 0 ? "overpaid" : "not yet repaid"} · not counted as cash
+                        </p>
+                      ) : isForeign(a) ? (
                         // The average is what the balance is carried at, so the
                         // history behind it is one tap away rather than hidden.
                         <button
