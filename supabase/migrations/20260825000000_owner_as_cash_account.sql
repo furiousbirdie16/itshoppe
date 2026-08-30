@@ -44,11 +44,13 @@ SELECT
   -- more. company_repaid: money reached the owner.
   CASE WHEN o.txn_type = 'owner_paid' THEN 'out' ELSE 'in' END,
   o.amount,
-  NULLIF(o.category, ''),
-  NULLIF(o.description, ''),
-  NULLIF(o.reference, ''),
-  NULLIF(btrim(COALESCE(o.notes, '') || CASE WHEN COALESCE(o.method, '') <> ''
-    THEN ' (' || replace(o.method, '_', ' ') || ')' ELSE '' END), ''),
+  -- These four are NOT NULL DEFAULT '' on cash_transactions, so blanks are
+  -- empty strings rather than nulls — the same thing the app writes.
+  COALESCE(o.category, ''),
+  COALESCE(o.description, ''),
+  COALESCE(o.reference, ''),
+  btrim(COALESCE(o.notes, '') || CASE WHEN COALESCE(o.method, '') <> ''
+    THEN ' (' || replace(o.method, '_', ' ') || ')' ELSE '' END),
   o.id,
   o.created_at
 FROM public.owner_transactions o
