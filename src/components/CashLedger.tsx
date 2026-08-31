@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { SuggestInput } from "@/components/SuggestInput";
 import { runningBalances } from "@/lib/running-balance";
+import { matchesTransactionSearch } from "@/lib/txn-search";
 import { FxRateHistoryDialog } from "@/components/FxRateHistoryDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -146,11 +147,10 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     [scoped, fromDate, toDate],
   );
 
-  const searched = useMemo(() => inRange.filter((t) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [t.category, t.payee, t.reference, t.notes].some((v) => (v || "").toLowerCase().includes(q));
-  }), [inRange, search]);
+  const searched = useMemo(
+    () => inRange.filter((t) => matchesTransactionSearch(t, search)),
+    [inRange, search],
+  );
 
   // The in/out toggle narrows the list only. Totals stay computed over both
   // directions, since showing "Total Outflow ₱0.00" while filtered to inflows
