@@ -950,7 +950,6 @@ const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: stri
 
   const entry = {
     account_id: account.id,
-    txn_date: (inv as any)?.invoice_date || new Date().toISOString().slice(0, 10),
     direction: "in",
     amount,
     category: "Invoice Payment",
@@ -964,6 +963,9 @@ const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: stri
   // the money in the original account under the original customer's name,
   // because the repeat insert looked like a harmless duplicate.
   if (existing) {
+    // txn_date is deliberately absent: the posting keeps the date the money
+    // actually moved. Correcting a customer or an amount afterwards should not
+    // shuffle the payment to whenever the correction was made.
     const { error } = await from("cash_transactions")
       .update({ ...entry, updated_at: new Date().toISOString(), updated_by: actor.id, updated_by_email: actor.email })
       .eq("id", (existing as any).id);
@@ -973,6 +975,11 @@ const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: stri
 
   const { error } = await from("cash_transactions").insert({
     ...entry,
+    // The day the invoice was marked paid, not the day it was raised. An
+    // invoice written on the 3rd and settled on the 31st put the money into the
+    // bank on the 3rd, so the balance was wrong for four weeks and the ledger
+    // disagreed with the statement.
+    txn_date: new Date().toISOString().slice(0, 10),
     source_invoice_id: invoiceId,
     created_by: actor.id,
     created_by_email: actor.email,
