@@ -2061,6 +2061,18 @@ export const getCashAccountOptions = async (): Promise<
   return (data as any[]) || [];
 };
 
+/**
+ * Every active branch, names only. Used for a transfer's destination: stock can
+ * be sent to a branch the user does not work at and therefore cannot read.
+ */
+export const getBranchOptions = async (): Promise<
+  { id: string; branch_name: string; branch_code: string }[]
+> => {
+  const { data, error } = await _sb.rpc("branch_options");
+  if (error) throw error;
+  return (data as any[]) || [];
+};
+
 export const createCashTransfer = async (args: {
   from_account_id: string;
   to_account_id: string;

@@ -15,7 +15,7 @@ import { Plus, Trash2, ArrowRight, ClipboardList, Send, CheckCircle2, PackageChe
 import { cn } from "@/lib/utils";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getItems, getItemsWithStock } from "@/lib/api";
+import { getItems, getItemsWithStock, getBranchOptions } from "@/lib/api";
 import type { Item, ItemVariation } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import {
@@ -40,9 +40,11 @@ interface LineDraft {
   variation_id: string | null;
   variation_name?: string;
   quantity: string;
-  source_location: "warehouse" | "store";
-  destination_location: "warehouse" | "store";
+  source_location: LineLocation;
+  destination_location: LineLocation;
 }
+
+type LineLocation = "warehouse" | "store";
 
 const emptyLine = (): LineDraft => ({
   id: crypto.randomUUID(),
@@ -70,6 +72,11 @@ export default function StockTransfersPage() {
     queryFn: () => listStockTransfers(activeBranchId),
   });
 
+  // Destinations come from every active branch. `branches` is where this user
+  // works, which is the right list for the source and the wrong one for where
+  // the stock is going.
+  const { data: branchOptions = [] } = useQuery({ queryKey: ["branch-options"], queryFn: getBranchOptions });
+
   // Stock shown by ItemSearch must come from item_branch_stock, not items.quantity.
   const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
 
@@ -89,6 +96,10 @@ export default function StockTransfersPage() {
   const [dstBranch, setDstBranch] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
+
+  /** Applies one location to every line, from or to. */
+  const setAllLocations = (field: "source_location" | "destination_location", value: LineLocation) =>
+    setLines((prev) => prev.map((l) => ({ ...l, [field]: value })));
 
   const resetCreate = () => {
     setSrcBranch(activeBranchId ?? "");
@@ -252,26 +263,48 @@ export default function StockTransfersPage() {
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select destination" />
                   </SelectTrigger>
+                  {/* Every active branch, not just the ones this user works at:
+                      a Manila-only user had no destination to choose, so they
+                      could not send stock anywhere. */}
                   <SelectContent>
-                    {(isAdmin
-                      ? branches.filter((b) => b.id !== srcBranch)
-                      : branches.filter((b) => b.id !== srcBranch)
-                    ).map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.branch_name} ({b.branch_code})
-                      </SelectItem>
-                    ))}
+                    {branchOptions
+                      .filter((b) => b.id !== srcBranch)
+                      .map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.branch_name} ({b.branch_code})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                 <Label className="text-xs">Line Items</Label>
-                <Button type="button" size="sm" variant="outline" onClick={() => setLines((l) => [...l, emptyLine()])}>
-                  <Plus className="h-3 w-3 mr-1" /> Add Line
-                </Button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Setting From and To line by line is the slow part of a
+                      transfer: a whole shipment usually leaves one place and
+                      arrives at one place. */}
+                  <span className="text-[11px] text-muted-foreground">Set all</span>
+                  <Select value="" onValueChange={(v) => setAllLocations("source_location", v as LineLocation)}>
+                    <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="From..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="warehouse">From Warehouse</SelectItem>
+                      <SelectItem value="store">From Store</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value="" onValueChange={(v) => setAllLocations("destination_location", v as LineLocation)}>
+                    <SelectTrigger className="h-8 w-[120px] text-xs"><SelectValue placeholder="To..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="warehouse">To Warehouse</SelectItem>
+                      <SelectItem value="store">To Store</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setLines((l) => [...l, emptyLine()])}>
+                    <Plus className="h-3 w-3 mr-1" /> Add Line
+                  </Button>
+                </div>
               </div>
               <div className="border rounded-md overflow-hidden">
                 <Table>
