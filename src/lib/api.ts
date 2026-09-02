@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
@@ -404,6 +404,97 @@ export const deleteLoan = async (id: string) => {
   const { error } = await from("loans").delete().eq("id", id);
   if (error) throw error;
   await logActivity("deleted_loan", "loan", id);
+};
+
+// ---- Loan interest payments -------------------------------------------------
+
+export const getLoanPayments = async (): Promise<LoanPayment[]> =>
+  fetchAllRows<LoanPayment>(() =>
+    from("loan_payments")
+      .select("*")
+      .order("payment_date", { ascending: false })
+      .order("id", { ascending: false }),
+  );
+
+/**
+ * Takes the interest out of the account it was paid from.
+ *
+ * A normal withdrawal, so it shows in the ledger and the running balance like
+ * any other. The unique index on loan_payment_id is what makes this safe to
+ * repeat: a second posting for the same payment fails rather than deducting the
+ * interest twice.
+ */
+const postLoanPayment = async (payment: LoanPayment) => {
+  const { data: existing } = await from("cash_transactions")
+    .select("id, amount, account_id, txn_date").eq("loan_payment_id", payment.id).maybeSingle();
+
+  const accountId = payment.cash_account_id;
+  const amount = Number(payment.amount || 0);
+
+  // Recorded without an account, or for nothing: no money moved, so no entry.
+  if (!accountId || amount <= 0) {
+    if (existing) await deleteCashTransaction((existing as any).id);
+    return;
+  }
+
+  // The lender is the payee, read from the loan so the ledger row says who was
+  // paid rather than carrying a loan id nobody can read.
+  const { data: loan } = await from("loans").select("lender").eq("id", payment.loan_id).maybeSingle();
+
+  const entry = {
+    account_id: accountId,
+    txn_date: payment.payment_date,
+    direction: "out",
+    amount,
+    category: "Loan Interest",
+    payee: (loan as any)?.lender || "",
+    reference: "",
+    notes: payment.notes || "Interest payment",
+  };
+
+  if (existing) {
+    const { error } = await from("cash_transactions")
+      .update({ ...entry, updated_at: new Date().toISOString() })
+      .eq("id", (existing as any).id);
+    if (error) throw error;
+    return;
+  }
+
+  const actor = await currentActor();
+  const { error } = await from("cash_transactions").insert({
+    ...entry,
+    loan_payment_id: payment.id,
+    created_by: actor.id,
+    created_by_email: actor.email,
+  });
+  if (error) throw error;
+};
+
+export const createLoanPayment = async (p: Partial<LoanPayment>) => {
+  const { data, error } = await from("loan_payments").insert({
+    loan_id: p.loan_id,
+    payment_date: p.payment_date,
+    amount: p.amount,
+    cash_account_id: p.cash_account_id || null,
+    notes: p.notes || "",
+  }).select().single();
+  if (error) throw error;
+  const created = data as LoanPayment;
+  await logActivity("created_loan_payment", "loan", created.loan_id, { amount: created.amount });
+  await postLoanPayment(created);
+  return created;
+};
+
+export const deleteLoanPayment = async (id: string) => {
+  // Remove the withdrawal first: once the payment is gone its posting is
+  // unattributable, and ON DELETE SET NULL would strand it in the ledger.
+  const { data: posted } = await from("cash_transactions")
+    .select("id").eq("loan_payment_id", id).maybeSingle();
+  if (posted) await deleteCashTransaction((posted as any).id);
+
+  const { error } = await from("loan_payments").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_loan_payment", "loan", id);
 };
 
 // Overseas Suppliers

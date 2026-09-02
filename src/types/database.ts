@@ -214,6 +214,22 @@ export interface OverseasPurchaseOrderItem {
   items?: Item;
 }
 
+/**
+ * Interest paid on a loan. Interest is a cost of borrowing and does not reduce
+ * what is owed, so nothing here touches the loan's principal.
+ */
+export interface LoanPayment {
+  id: string;
+  loan_id: string;
+  payment_date: string;
+  amount: number;
+  /** Account it was paid from; null records the payment without moving money. */
+  cash_account_id: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ShipmentTracking {
   id: string;
   po_id: string | null;
