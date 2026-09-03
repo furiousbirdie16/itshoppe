@@ -4,6 +4,7 @@ import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
+import { isForeign, fxPosition } from "@/lib/fx";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1496,6 +1497,76 @@ export const createOverseasPurchaseOrder = async (po: Partial<OverseasPurchaseOr
   return data as OverseasPurchaseOrder;
 };
 
+/** Overseas PO statuses that mean the supplier has been paid. */
+const OVERSEAS_PAID_STATUSES = new Set([
+  "paid_not_shipped", "shipped", "partially_received",
+  "pending_cargo_adjustment", "cargo_adjusted", "received",
+]);
+
+/**
+ * Takes an overseas PO's cost out of the account it was paid from, in that
+ * account's own currency.
+ *
+ * The amount is the PO total as ordered — RMB for an RMB order — because that
+ * is what actually left Alipay. The ledger already values a foreign outflow at
+ * the account's weighted average, so the peso cost follows from the rates
+ * actually paid for those units rather than a figure typed into the PO.
+ *
+ * The PO's exchange_rate is set to that same average, so the PO and the money
+ * used to pay it agree. Set only on payment: it records what the order cost,
+ * and later purchases at other rates must not rewrite history.
+ */
+const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
+  const accountId = (po as any).paid_from_account_id as string | null;
+
+  const { data: existing } = await from("cash_transactions")
+    .select("id, amount, account_id").eq("overseas_po_id", po.id).maybeSingle();
+
+  const paid = OVERSEAS_PAID_STATUSES.has(String(po.status));
+  const amount = Number(po.total_amount || 0);
+
+  if (!paid || !accountId || amount <= 0) {
+    // Un-paid again, or no account named: the money did not leave.
+    if (existing) await deleteCashTransaction((existing as any).id);
+    return;
+  }
+  if (existing) return;
+
+  const { data: account } = await from("cash_accounts").select("*").eq("id", accountId).maybeSingle();
+  const actor = await currentActor();
+
+  const { data: supplier } = await from("overseas_suppliers")
+    .select("name").eq("id", (po as any).supplier_id).maybeSingle();
+
+  const { error } = await from("cash_transactions").insert({
+    account_id: accountId,
+    txn_date: new Date().toISOString().slice(0, 10),
+    direction: "out",
+    amount,
+    category: "Overseas PO",
+    payee: (supplier as any)?.name || "",
+    reference: po.po_number || "",
+    notes: `Paid overseas PO ${po.po_number || po.id}`,
+    overseas_po_id: po.id,
+    created_by: actor.id,
+    created_by_email: actor.email,
+  });
+  if (error) throw error;
+
+  // Value the order at what the currency actually cost. Read after the
+  // withdrawal, though an outflow is consumed at the average and leaves it
+  // unchanged — so this is the same rate the payment was valued at.
+  if (account && isForeign(account as CashAccount)) {
+    const txns = await getCashTransactions([accountId]);
+    const { averageRate } = fxPosition(txns);
+    if (averageRate > 0) {
+      await from("overseas_purchase_orders")
+        .update({ exchange_rate: averageRate, updated_at: new Date().toISOString() })
+        .eq("id", po.id);
+    }
+  }
+};
+
 export const updateOverseasPurchaseOrder = async (id: string, po: Partial<OverseasPurchaseOrder>) => {
   // Detect a status transition into a "shipped" state so we can auto-create a shipment.
   const shippedStatuses = new Set(["shipped", "shipped_not_paid", "sent"]);
@@ -1533,10 +1604,24 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
       .eq("po_id", id);
   }
 
+  // Never let a ledger problem block the PO update itself, but do not hide it
+  // either: a payment that silently failed to post is how a balance goes wrong.
+  try {
+    await syncOverseasPoPayment(updatedPo);
+  } catch (e) {
+    console.warn("Overseas PO updated, but posting the payment failed:", e);
+  }
+
   return updatedPo;
 };
 
 export const deleteOverseasPurchaseOrder = async (id: string) => {
+  // Drop the withdrawal first: once the PO is gone its posting is
+  // unattributable, and ON DELETE SET NULL would strand it in the ledger.
+  const { data: posted } = await from("cash_transactions")
+    .select("id").eq("overseas_po_id", id).maybeSingle();
+  if (posted) await deleteCashTransaction((posted as any).id);
+
   const { error } = await from("overseas_purchase_orders").delete().eq("id", id);
   if (error) throw error;
 };

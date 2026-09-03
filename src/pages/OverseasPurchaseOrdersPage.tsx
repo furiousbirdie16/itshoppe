@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
-  createShipment, updateShipment, deleteShipment,
+  createShipment, updateShipment, deleteShipment, getCashAccounts,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,8 @@ const emptyLine = (): LineItem => ({ item_name: "", description: "", quantity: "
 
 // Radix Select cannot hold an empty string, so "no PO" needs a sentinel.
 const NO_PO = "__no_po__";
+// Same for "paid from no account".
+const NO_ACCOUNT = "__no_account__";
 
 const emptyTracking = () => ({
   po_id: "",
@@ -118,6 +120,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [branchId, setBranchId] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
   const [exchangeRate, setExchangeRate] = useState("1");
+  const [paidFromAccountId, setPaidFromAccountId] = useState("");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
@@ -268,6 +271,18 @@ export default function OverseasPurchaseOrdersPage() {
   const { data: inventoryItems = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
   const { data: allPOItems = [] } = useQuery<OverseasPurchaseOrderItem[]>({ queryKey: ["overseas_po_items_all"], queryFn: getAllOverseasPOItems });
   const { data: shipments = [] } = useQuery<ShipmentTracking[]>({ queryKey: ["shipments"], queryFn: getShipments });
+
+  // Accounts a PO can be paid from. The owner account is a liability, not money
+  // to spend; the currency match is listed first because an RMB order is
+  // normally paid in RMB.
+  const { data: allCashAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  const payFromAccounts = useMemo(() => {
+    const usable = allCashAccounts.filter((a) => a.is_active && a.account_type !== "owner");
+    return [
+      ...usable.filter((a) => a.currency === currency),
+      ...usable.filter((a) => a.currency !== currency),
+    ];
+  }, [allCashAccounts, currency]);
 
   // ---- Tracking tab ----
   const [trackOpen, setTrackOpen] = useState(false);
@@ -453,6 +468,7 @@ export default function OverseasPurchaseOrdersPage() {
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
+        paid_from_account_id: paidFromAccountId || null,
         branch_id: bId,
       } as any);
       const valid = normalized.filter(l => l.item_name);
@@ -485,6 +501,7 @@ export default function OverseasPurchaseOrdersPage() {
         total_amount: total,
         currency,
         exchange_rate: parseFloat(exchangeRate) || 1,
+        paid_from_account_id: paidFromAccountId || null,
         ...(branchId ? { branch_id: branchId } : {}),
       } as any);
       await deleteOverseasPOItems(editing.id);
@@ -522,6 +539,10 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      // Marking a PO paid withdraws from an account, so the Cash and Bank views
+      // go stale behind this page unless they are refetched.
+      queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["cash-accounts"] });
       toast.success("Status updated");
     },
     onError: (e: any) => toast.error(e.message),
@@ -605,6 +626,7 @@ export default function OverseasPurchaseOrdersPage() {
     setLines([emptyLine()]);
     setCurrency("USD");
     setExchangeRate("1");
+    setPaidFromAccountId("");
     setBranchId(activeBranchId || "");
     setOpen(true);
   };
@@ -618,6 +640,7 @@ export default function OverseasPurchaseOrdersPage() {
     setNotes(po.notes);
     setCurrency(po.currency);
     setExchangeRate(String(po.exchange_rate));
+    setPaidFromAccountId((po as any).paid_from_account_id || "");
     setBranchId((po as any).branch_id || "");
     const poItems = await getOverseasPOItems(po.id);
     setLines(poItems.length > 0 ? poItems.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
@@ -1041,6 +1064,25 @@ export default function OverseasPurchaseOrdersPage() {
                 <Label className="text-xs font-medium">Exchange Rate to PHP</Label>
                 <Input type="number" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} className="h-9" />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Paid From</Label>
+              <Select value={paidFromAccountId || NO_ACCOUNT} onValueChange={(v) => setPaidFromAccountId(v === NO_ACCOUNT ? "" : v)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="No account" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_ACCOUNT}>No account — don't touch balances</SelectItem>
+                  {payFromAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}{a.currency && a.currency !== "PHP" ? ` · ${a.currency}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {paidFromAccountId
+                  ? `Marking this paid withdraws ${foreignTotal.toLocaleString()} ${currency} from this account, and sets the rate above to what that currency has cost.`
+                  : "Without an account, marking this paid leaves every balance untouched."}
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
