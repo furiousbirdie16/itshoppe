@@ -95,6 +95,12 @@ function classify(type: string, reference_type: string | null): { category: Move
   if (type === "adjust_missing") return { category: "adjustment", label: "Adjustment (Missing)", direction: "out" };
   if (type === "transfer_w2s") return { category: "transfer", label: "Warehouse → Store", direction: "neutral" };
   if (type === "transfer_s2w") return { category: "transfer", label: "Store → Warehouse", direction: "neutral" };
+  // Branch-to-branch moves stock in or out of *this* branch, unlike the
+  // warehouse/store moves above which stay within one. Left unclassified they
+  // counted as neither, so a dispatch showed no quantity and its before and
+  // after balances came out identical.
+  if (type === "transfer_b2b_out") return { category: "transfer", label: "Transfer Out (Branch)", direction: "out" };
+  if (type === "transfer_b2b_in") return { category: "transfer", label: "Transfer In (Branch)", direction: "in" };
   return { category: "correction", label: type, direction: "neutral" };
 }
 
