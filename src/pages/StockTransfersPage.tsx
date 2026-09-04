@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, ArrowRight, ClipboardList, Send, CheckCircle2, PackageCheck, XCircle, Eye } from "lucide-react";
+import { Plus, Trash2, ArrowRight, ClipboardList, Send, CheckCircle2, PackageCheck, XCircle, Eye, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,6 +23,8 @@ import {
   getTransferItems,
   getTransferAudit,
   createTransfer,
+  updateTransfer,
+  EDITABLE_TRANSFER_STATUSES,
   transitionTransfer,
   dispatchTransfer,
   receiveTransfer,
@@ -65,6 +67,8 @@ export default function StockTransfersPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | StockTransferStatus>("all");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  // Set while the dialog is editing an existing transfer rather than making one.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
 
   const { data: transfers = [], isLoading } = useQuery({
@@ -110,6 +114,31 @@ export default function StockTransfersPage() {
 
   const openCreate = () => {
     resetCreate();
+    setEditingId(null);
+    setCreateOpen(true);
+  };
+
+  /** Loads an existing transfer back into the same dialog. */
+  const openEdit = async (t: StockTransfer) => {
+    setEditingId(t.id);
+    setSrcBranch(t.source_branch_id);
+    setDstBranch(t.destination_branch_id);
+    setNotes(t.notes || "");
+    const its = await getTransferItems(t.id);
+    setLines(
+      its.length > 0
+        ? its.map((i: any) => ({
+            id: crypto.randomUUID(),
+            item_id: i.item_id,
+            item_name: i.items?.name || "",
+            variation_id: i.variation_id ?? null,
+            variation_name: i.item_variations?.name,
+            quantity: String(i.quantity ?? ""),
+            source_location: i.source_location,
+            destination_location: i.destination_location,
+          }))
+        : [emptyLine()],
+    );
     setCreateOpen(true);
   };
 
@@ -119,7 +148,7 @@ export default function StockTransfersPage() {
       if (srcBranch === dstBranch) throw new Error("Source and destination must differ");
       const valid = lines.filter((l) => l.item_id && Number(l.quantity) > 0);
       if (valid.length === 0) throw new Error("Add at least one item with quantity");
-      await createTransfer({
+      const payload = {
         source_branch_id: srcBranch,
         destination_branch_id: dstBranch,
         notes,
@@ -130,14 +159,17 @@ export default function StockTransfersPage() {
           source_location: l.source_location,
           destination_location: l.destination_location,
         })),
-      });
+      };
+      if (editingId) await updateTransfer(editingId, payload);
+      else await createTransfer(payload);
     },
     onSuccess: () => {
-      toast.success("Transfer created");
+      toast.success(editingId ? "Transfer updated" : "Transfer created");
       qc.invalidateQueries({ queryKey: ["stock_transfers"] });
       setCreateOpen(false);
+      setEditingId(null);
     },
-    onError: (e: any) => toast.error(e?.message ?? "Failed to create transfer"),
+    onError: (e: any) => toast.error(e?.message ?? "Failed to save transfer"),
   });
 
   return (
@@ -222,6 +254,13 @@ export default function StockTransfersPage() {
                     <TableCell className="text-xs">{t.dispatched_at ? format(new Date(t.dispatched_at), "MMM d, yyyy") : "—"}</TableCell>
                     <TableCell className="text-xs">{t.received_at ? format(new Date(t.received_at), "MMM d, yyyy") : "—"}</TableCell>
                     <TableCell className="text-right">
+                      {/* Editable only before dispatch: after that the stock has
+                          already left the source branch. */}
+                      {EDITABLE_TRANSFER_STATUSES.includes(t.status) && (
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(t)} title="Edit transfer">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => setViewId(t.id)}>
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -238,7 +277,7 @@ export default function StockTransfersPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>New Stock Transfer</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Stock Transfer" : "New Stock Transfer"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -406,7 +445,7 @@ export default function StockTransfersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={() => createMut.mutate()} disabled={createMut.isPending}>
-              {createMut.isPending ? "Saving..." : "Create Transfer"}
+              {createMut.isPending ? "Saving..." : editingId ? "Save Changes" : "Create Transfer"}
             </Button>
           </DialogFooter>
         </DialogContent>

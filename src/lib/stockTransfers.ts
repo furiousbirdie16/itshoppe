@@ -161,6 +161,76 @@ export async function createTransfer(input: {
   return transfer;
 }
 
+/** Statuses at which nothing has moved yet, so the transfer can still be changed. */
+export const EDITABLE_TRANSFER_STATUSES = ["draft", "pending_approval", "approved"];
+
+/**
+ * Rewrites a transfer that has not been dispatched.
+ *
+ * Lines are replaced wholesale rather than diffed: they carry no history worth
+ * preserving before dispatch, and received_quantity is still zero throughout.
+ * Editing stops at dispatch because that is when stock actually leaves the
+ * source branch — the database enforces the same cut-off.
+ */
+export async function updateTransfer(
+  transferId: string,
+  input: {
+    source_branch_id: string;
+    destination_branch_id: string;
+    notes: string;
+    lines: Array<{ item_id: string; variation_id?: string | null; quantity: number; source_location: "warehouse" | "store"; destination_location: "warehouse" | "store" }>;
+  },
+) {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+
+  const { data: current } = await anySb
+    .from("stock_transfers").select("status").eq("id", transferId).maybeSingle();
+  const status = (current as any)?.status;
+  if (!EDITABLE_TRANSFER_STATUSES.includes(status)) {
+    throw new Error(`A transfer can only be edited before it is dispatched (this one is ${status}).`);
+  }
+
+  const { error } = await anySb
+    .from("stock_transfers")
+    .update({
+      source_branch_id: input.source_branch_id,
+      destination_branch_id: input.destination_branch_id,
+      notes: input.notes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", transferId);
+  if (error) throw error;
+
+  const { error: delErr } = await anySb.from("stock_transfer_items").delete().eq("transfer_id", transferId);
+  if (delErr) throw delErr;
+
+  if (input.lines.length > 0) {
+    const { error: liErr } = await anySb.from("stock_transfer_items").insert(
+      input.lines.map((l) => ({
+        transfer_id: transferId,
+        item_id: l.item_id,
+        variation_id: l.variation_id ?? null,
+        quantity: l.quantity,
+        source_location: l.source_location,
+        destination_location: l.destination_location,
+      })),
+    );
+    if (liErr) throw liErr;
+  }
+
+  // The audit trail is the only record that the contents changed, since the
+  // lines themselves were replaced.
+  await anySb.from("stock_transfer_audit").insert({
+    transfer_id: transferId,
+    action: "edited",
+    from_status: status,
+    to_status: status,
+    actor_id: user?.id ?? null,
+    actor_email: user?.email ?? null,
+  });
+}
+
 export async function transitionTransfer(transferId: string, toStatus: "pending_approval" | "approved") {
   const { error } = await anySb.rpc("transition_stock_transfer", {
     _transfer_id: transferId,
