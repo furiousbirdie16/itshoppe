@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/paginate";
 import { format, subDays, parseISO, differenceInDays } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -138,23 +139,9 @@ export default function LowStockAlertsPage() {
     return (v.factor * qty) / ups;
   };
 
-  /**
-   * Reads every row, a page at a time.
-   *
-   * PostgREST caps a response at 1000 rows. Ninety days of sales is well past
-   * that, so an unpaginated read silently dropped most of it and every
-   * days-left figure on this page came out far too optimistic.
-   */
-  async function fetchAllRows<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
-    const out: T[] = [];
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await build().range(from, from + pageSize - 1);
-      if (error) throw error;
-      const page = (data as T[]) || [];
-      out.push(...page);
-      if (page.length < pageSize) return out;
-    }
-  }
+  // Ninety days of sales is well past PostgREST's 1000-row cap, so these reads
+  // page through it — an unpaginated read silently dropped most of it and every
+  // days-left figure on this page came out far too optimistic.
 
   // 3. Last 90 days sales
   const since90 = useMemo(() => subDays(new Date(), 90).toISOString(), []);

@@ -5,36 +5,12 @@ import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
 import { isForeign, fxPosition } from "@/lib/fx";
+import { fetchAllRows } from "@/lib/paginate";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _sb: any = supabase as any;
 const _from = (table: string) => _sb.from(table);
-
-/**
- * Read every row of a query, a page at a time.
- *
- * PostgREST caps a response at 1000 rows and reports no error when it truncates,
- * so an unpaginated read of a growing table silently starts losing its oldest
- * rows. `build` is called once per page because a range has to be applied to a
- * fresh builder.
- *
- * The query must order by something unique last — ties that straddle a page
- * boundary can otherwise be served twice or skipped entirely.
- */
-const fetchAllRows = async <T>(build: () => any): Promise<T[]> => {
-  const pageSize = 1000;
-  const all: T[] = [];
-  for (let page = 0; ; page++) {
-    const fromIdx = page * pageSize;
-    const { data, error } = await build().range(fromIdx, fromIdx + pageSize - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    all.push(...(data as T[]));
-    if (data.length < pageSize) break;
-  }
-  return all;
-};
 
 /** Read the branch-scoped stock row (returns zeros if missing). */
 async function getBranchStock(itemId: string, branchId: string) {
@@ -85,11 +61,11 @@ async function applyBranchStockRpc(args: {
 
 // ---------- Item Variations ----------
 export const getItemVariations = async (itemId?: string): Promise<ItemVariation[]> => {
-  let q = from("item_variations").select("*, items(*)").order("name");
-  if (itemId) q = q.eq("item_id", itemId);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data as ItemVariation[];
+  return fetchAllRows<ItemVariation>(() => {
+    let q = from("item_variations").select("*, items(*)").order("name").order("id");
+    if (itemId) q = q.eq("item_id", itemId);
+    return q;
+  });
 };
 
 export const createItemVariation = async (v: Partial<ItemVariation>) => {
@@ -248,9 +224,9 @@ const from = (table: string) => db.from(table);
 
 // Items
 export const getItems = async (): Promise<Item[]> => {
-  const { data, error } = await from("items").select("*").neq("status", "archived").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Item>(() =>
+    from("items").select("*").neq("status", "archived").order("name").order("id"),
+  );
 };
 
 /**
@@ -265,10 +241,15 @@ export const getItems = async (): Promise<Item[]> => {
  */
 export const getItemsWithStock = async (branchId?: string | null): Promise<Item[]> => {
   const items = await getItems();
-  let stockQ = from("item_branch_stock").select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining");
-  if (branchId) stockQ = stockQ.eq("branch_id", branchId);
-  const { data: stock, error } = await stockQ;
-  if (error) throw error;
+  // One row per item per branch, so this passes 1000 sooner than any other read
+  // here — and a short read would understate stock on hand, not just a total.
+  const stock = await fetchAllRows<any>(() => {
+    let stockQ = from("item_branch_stock")
+      .select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining")
+      .order("id");
+    if (branchId) stockQ = stockQ.eq("branch_id", branchId);
+    return stockQ;
+  });
 
   const byItem: Record<string, { quantity: number; warehouse: number; store: number; open: number }> = {};
   for (const r of (stock as any[]) || []) {
@@ -292,15 +273,13 @@ export const getItemsWithStock = async (branchId?: string | null): Promise<Item[
 };
 
 export const getArchivedItems = async (): Promise<Item[]> => {
-  const { data, error } = await from("items").select("*").eq("status", "archived").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Item>(() =>
+    from("items").select("*").eq("status", "archived").order("name").order("id"),
+  );
 };
 
 export const getAllItems = async (): Promise<Item[]> => {
-  const { data, error } = await from("items").select("*").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Item>(() => from("items").select("*").order("name").order("id"));
 };
 
 export const archiveItems = async (ids: string[], email?: string | null) => {
@@ -356,9 +335,7 @@ export const deleteItem = async (id: string) => {
 
 // Suppliers
 export const getSuppliers = async (): Promise<Supplier[]> => {
-  const { data, error } = await from("suppliers").select("*").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Supplier>(() => from("suppliers").select("*").order("name").order("id"));
 };
 
 export const createSupplier = async (s: Partial<Supplier>) => {
@@ -380,9 +357,9 @@ export const deleteSupplier = async (id: string) => {
 
 // Loans
 export const getLoans = async (): Promise<Loan[]> => {
-  const { data, error } = await from("loans").select("*").order("due_date", { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Loan>(() =>
+    from("loans").select("*").order("due_date", { ascending: true, nullsFirst: false }).order("id"),
+  );
 };
 
 export const createLoan = async (l: Partial<Loan>) => {
@@ -500,9 +477,9 @@ export const deleteLoanPayment = async (id: string) => {
 
 // Overseas Suppliers
 export const getOverseasSuppliers = async (): Promise<OverseasSupplier[]> => {
-  const { data, error } = await from("overseas_suppliers").select("*").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<OverseasSupplier>(() =>
+    from("overseas_suppliers").select("*").order("name").order("id"),
+  );
 };
 
 export const createOverseasSupplier = async (s: Partial<OverseasSupplier>) => {
@@ -524,9 +501,7 @@ export const deleteOverseasSupplier = async (id: string) => {
 
 // Customers
 export const getCustomers = async (): Promise<Customer[]> => {
-  const { data, error } = await from("customers").select("*").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Customer>(() => from("customers").select("*").order("name").order("id"));
 };
 
 export const createCustomer = async (c: Partial<Customer>) => {
@@ -548,9 +523,9 @@ export const deleteCustomer = async (id: string) => {
 
 // Purchase Orders
 export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
-  const { data, error } = await from("purchase_orders").select("*, suppliers(*)").order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
+  return fetchAllRows<PurchaseOrder>(() =>
+    from("purchase_orders").select("*, suppliers(*)").order("created_at", { ascending: false }).order("id"),
+  );
 };
 
 export const createPurchaseOrder = async (po: Partial<PurchaseOrder>) => {
@@ -729,11 +704,12 @@ export const unreceivePO = async (
 
 // Quotations
 export const getQuotations = async (branchId?: string | null): Promise<Quotation[]> => {
-  let q = from("quotations").select("*, customers(*)").order("created_at", { ascending: false });
-  if (branchId) q = q.eq("branch_id", branchId);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data;
+  return fetchAllRows<Quotation>(() => {
+    let q = from("quotations").select("*, customers(*)")
+      .order("created_at", { ascending: false }).order("id");
+    if (branchId) q = q.eq("branch_id", branchId);
+    return q;
+  });
 };
 
 export const createQuotation = async (q: Partial<Quotation>) => {
@@ -1183,7 +1159,9 @@ export const getInventoryMovements = async (itemId?: string): Promise<InventoryM
 export const getDashboardStats = async (branchId?: string | null) => {
   // Archived items are excluded, as getItems does. Counting them here made
   // Inventory Value disagree with the Inventory page about the same stock.
-  const { data: items } = await from("items").select("*").neq("status", "archived");
+  const items = await fetchAllRows<any>(() =>
+    from("items").select("*").neq("status", "archived").order("id"),
+  );
 
   // Branch-scoped stock: item_branch_stock is the single source of truth.
   // Paged, because this table holds one row per item per branch — a few hundred
@@ -1486,9 +1464,10 @@ export const deleteOnlineSale = async (id: string) => {
 
 // Overseas Purchase Orders
 export const getOverseasPurchaseOrders = async (): Promise<OverseasPurchaseOrder[]> => {
-  const { data, error } = await from("overseas_purchase_orders").select("*, overseas_suppliers(*)").order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
+  return fetchAllRows<OverseasPurchaseOrder>(() =>
+    from("overseas_purchase_orders").select("*, overseas_suppliers(*)")
+      .order("created_at", { ascending: false }).order("id"),
+  );
 };
 
 export const createOverseasPurchaseOrder = async (po: Partial<OverseasPurchaseOrder>) => {
@@ -1633,9 +1612,9 @@ export const getOverseasPOItems = async (poId: string): Promise<OverseasPurchase
 };
 
 export const getAllOverseasPOItems = async (): Promise<OverseasPurchaseOrderItem[]> => {
-  const { data, error } = await from("overseas_purchase_order_items").select("*");
-  if (error) throw error;
-  return data as any;
+  return fetchAllRows<OverseasPurchaseOrderItem>(() =>
+    from("overseas_purchase_order_items").select("*").order("id"),
+  ) as any;
 };
 
 export const createOverseasPOItems = async (items: Partial<OverseasPurchaseOrderItem>[]) => {
@@ -1842,9 +1821,10 @@ export const unreceiveOverseasPO = async (
 
 // Shipment Tracking
 export const getShipments = async (): Promise<ShipmentTracking[]> => {
-  const { data, error } = await from("shipment_tracking").select("*, overseas_purchase_orders(*, overseas_suppliers(*))").order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
+  return fetchAllRows<ShipmentTracking>(() =>
+    from("shipment_tracking").select("*, overseas_purchase_orders(*, overseas_suppliers(*))")
+      .order("created_at", { ascending: false }).order("id"),
+  );
 };
 
 export const createShipment = async (s: Partial<ShipmentTracking>) => {
@@ -1866,9 +1846,7 @@ export const deleteShipment = async (id: string) => {
 
 // Sales Agents
 export const getSalesAgents = async (): Promise<{ id: string; name: string }[]> => {
-  const { data, error } = await from("sales_agents").select("*").order("name");
-  if (error) throw error;
-  return data;
+  return fetchAllRows<any>(() => from("sales_agents").select("*").order("name").order("id"));
 };
 
 export const createSalesAgent = async (name: string) => {
@@ -1913,15 +1891,20 @@ export const getLastSalesAgentForCustomer = async (customerId: string): Promise<
 /** Aggregates accounts receivable (unpaid invoices + manual receivables). */
 export const getAccountsReceivable = async (branchId?: string | null): Promise<number> => {
   // Mirrors the Pending Payments page: open, not-yet-paid invoices.
-  let invQ = from("invoices").select("total_amount, status").in("status", ["confirmed", "unpaid", "shipped"]);
-  if (branchId) invQ = invQ.eq("branch_id", branchId);
-  const { data: invs } = await invQ;
-  const invTotal = ((invs as any[]) || []).reduce((s, r) => s + Number(r.total_amount || 0), 0);
+  const invs = await fetchAllRows<any>(() => {
+    let invQ = from("invoices").select("total_amount, status")
+      .in("status", ["confirmed", "unpaid", "shipped"]).order("id");
+    if (branchId) invQ = invQ.eq("branch_id", branchId);
+    return invQ;
+  });
+  const invTotal = invs.reduce((s, r) => s + Number(r.total_amount || 0), 0);
   // Manual receivables have no branch column — only include when viewing all branches.
   let mrTotal = 0;
   if (!branchId) {
-    const { data: mr } = await from("manual_receivables").select("amount, status").neq("status", "paid");
-    mrTotal = ((mr as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+    const mr = await fetchAllRows<any>(() =>
+      from("manual_receivables").select("amount, status").neq("status", "paid").order("id"),
+    );
+    mrTotal = mr.reduce((s, r) => s + Number(r.amount || 0), 0);
   }
   return invTotal + mrTotal;
 };
@@ -1939,21 +1922,27 @@ export const getSalesTrend = async (
   toIso: string,
   branchId?: string | null,
 ): Promise<{ date: string; online: number; invoice: number; total: number }[]> => {
-  let onlineQ = from("online_sales")
-    .select("order_date, posted_price, quantity, branch_id, status")
-    .gte("order_date", fromIso)
-    .lte("order_date", toIso)
-    .not("status", "in", "(cancelled,returned)");
-  if (branchId) onlineQ = onlineQ.eq("branch_id", branchId);
-  const { data: online } = await onlineQ;
+  const online = await fetchAllRows<any>(() => {
+    let onlineQ = from("online_sales")
+      .select("order_date, posted_price, quantity, branch_id, status")
+      .gte("order_date", fromIso)
+      .lte("order_date", toIso)
+      .not("status", "in", "(cancelled,returned)")
+      .order("id");
+    if (branchId) onlineQ = onlineQ.eq("branch_id", branchId);
+    return onlineQ;
+  });
 
-  let invQ = from("invoices")
-    .select("invoice_date, total_amount, status, branch_id")
-    .gte("invoice_date", fromIso)
-    .lte("invoice_date", toIso)
-    .in("status", ["paid", "completed"]);
-  if (branchId) invQ = invQ.eq("branch_id", branchId);
-  const { data: invs } = await invQ;
+  const invs = await fetchAllRows<any>(() => {
+    let invQ = from("invoices")
+      .select("invoice_date, total_amount, status, branch_id")
+      .gte("invoice_date", fromIso)
+      .lte("invoice_date", toIso)
+      .in("status", ["paid", "completed"])
+      .order("id");
+    if (branchId) invQ = invQ.eq("branch_id", branchId);
+    return invQ;
+  });
 
   const map: Record<string, { online: number; invoice: number }> = {};
   for (const r of (online as any[]) || []) {

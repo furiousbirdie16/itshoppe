@@ -19,6 +19,7 @@ import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
 import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
@@ -244,28 +245,13 @@ export default function BusinessInsightsPage() {
   const toStr = format(dateTo, "yyyy-MM-dd");
 
   // Helper: fetch all rows in pages to bypass PostgREST's default 1000-row cap
-  async function fetchAll<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
-    const out: T[] = [];
-    let from = 0;
-    // Loop until a short page is returned
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data, error } = await build().range(from, from + pageSize - 1);
-      if (error) throw error;
-      const rows = (data || []) as T[];
-      out.push(...rows);
-      if (rows.length < pageSize) break;
-      from += pageSize;
-    }
-    return out;
-  }
 
   // Online sales — include ALL sales regardless of payment status so units/revenue
   // reflect actual sales volume. Cost & profit are only recognized for PAID sales.
   const { data: onlineRowsRaw = [] } = useQuery({
     queryKey: ["bi_online", fromStr, toStr, payment, activeBranchId],
     queryFn: async () => {
-      return fetchAll(() => {
+      return fetchAllRows(() => {
         let q = supabase
           .from("online_sales")
           .select("id, order_number, order_date, sales_channel, quantity, posted_price, amount_paid, item_id, variation_id, product_name, payment_status, paid_at, items(name, sku), item_variations(name, sku)")
@@ -299,7 +285,7 @@ export default function BusinessInsightsPage() {
       const out: any[] = [];
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
-        const rows = await fetchAll<any>(() =>
+        const rows = await fetchAllRows<any>(() =>
           supabase
             .from("online_sale_financials")
             .select("online_sale_id, cost_snapshot, line_total_cost, line_profit")
@@ -338,7 +324,7 @@ export default function BusinessInsightsPage() {
       const statuses =
         payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
 
-      const invs = await fetchAll<any>(() => {
+      const invs = await fetchAllRows<any>(() => {
         let q = supabase
           .from("invoices")
           .select("id, invoice_number, invoice_date, sales_agent, customer_id, status, customers(name)")
@@ -355,7 +341,7 @@ export default function BusinessInsightsPage() {
       const items: any[] = [];
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
-        const rows = await fetchAll<any>(() =>
+        const rows = await fetchAllRows<any>(() =>
           supabase
             .from("invoice_items")
             .select("id, invoice_id, quantity, unit_price, item_id, variation_id, item_name, items(name, sku), item_variations(name, sku)")
@@ -371,7 +357,7 @@ export default function BusinessInsightsPage() {
   // All items (for inventory / purchasing metrics)
   const { data: itemsAllRaw = [] } = useQuery({
     queryKey: ["bi_items_all"],
-    queryFn: async () => fetchAll<any>(() =>
+    queryFn: async () => fetchAllRows<any>(() =>
       supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at, category, brand")
     ),
   });
@@ -379,7 +365,7 @@ export default function BusinessInsightsPage() {
   // All variations — enable per-variation rows with independent stock/cost.
   const { data: variationsAllRaw = [] } = useQuery({
     queryKey: ["bi_variations_all"],
-    queryFn: async () => fetchAll<any>(() =>
+    queryFn: async () => fetchAllRows<any>(() =>
       // No quantity column here — variations do not hold their own stock, it sits
       // on the parent. Selecting it made PostgREST reject the whole request, so
       // this returned nothing and no variation rows were built at all.
@@ -391,7 +377,7 @@ export default function BusinessInsightsPage() {
   // per-branch stock arrived, so it reports figures frozen at that migration.
   const { data: branchStockRaw = [] } = useQuery({
     queryKey: ["bi_branch_stock"],
-    queryFn: async () => fetchAll<any>(() =>
+    queryFn: async () => fetchAllRows<any>(() =>
       supabase.from("item_branch_stock").select("item_id, quantity")
     ),
   });
@@ -408,7 +394,7 @@ export default function BusinessInsightsPage() {
   const { data: itemSupplierLinks = [] } = useQuery({
     queryKey: ["bi_item_suppliers"],
     queryFn: async () => {
-      const links = await fetchAll<any>(() =>
+      const links = await fetchAllRows<any>(() =>
         supabase.from("item_suppliers").select("item_id, supplier_id, overseas_supplier_id")
       );
       const [{ data: locals }, { data: overseas }] = await Promise.all([
@@ -489,7 +475,7 @@ export default function BusinessInsightsPage() {
   const { data: movementsAll = [] } = useQuery({
     queryKey: ["bi_movements_all"],
     enabled: isAdmin,
-    queryFn: async () => fetchAll<any>(() =>
+    queryFn: async () => fetchAllRows<any>(() =>
       supabase.from("inventory_movements").select("item_id, type, quantity, created_at")
     ),
   });
@@ -498,7 +484,7 @@ export default function BusinessInsightsPage() {
   const { data: costHistoryAll = [] } = useQuery({
     queryKey: ["bi_cost_history_all"],
     enabled: isAdmin,
-    queryFn: async () => fetchAll<any>(() =>
+    queryFn: async () => fetchAllRows<any>(() =>
       supabase.from("item_cost_history").select("item_id, new_cost, created_at")
     ),
   });
@@ -514,7 +500,7 @@ export default function BusinessInsightsPage() {
       const out: any[] = [];
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
-        const rows = await fetchAll<any>(() =>
+        const rows = await fetchAllRows<any>(() =>
           supabase
             .from("invoice_item_financials")
             .select("invoice_id, item_id, variation_id, cost_snapshot, quantity, unit_price, line_total_cost, line_profit")

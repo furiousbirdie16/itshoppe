@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/paginate";
 
 export type StockTransferStatus =
   | "draft"
@@ -68,16 +69,17 @@ export const STATUS_META: Record<StockTransferStatus, { label: string; className
 };
 
 export async function listStockTransfers(activeBranchId: string | null): Promise<StockTransfer[]> {
-  let q = anySb
-    .from("stock_transfers")
-    .select("*, source_branch:branches!stock_transfers_source_branch_id_fkey(branch_name, branch_code), destination_branch:branches!stock_transfers_destination_branch_id_fkey(branch_name, branch_code)")
-    .order("created_at", { ascending: false });
-  if (activeBranchId) {
-    q = q.or(`source_branch_id.eq.${activeBranchId},destination_branch_id.eq.${activeBranchId}`);
-  }
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data || []) as StockTransfer[];
+  return fetchAllRows<StockTransfer>(() => {
+    let q = anySb
+      .from("stock_transfers")
+      .select("*, source_branch:branches!stock_transfers_source_branch_id_fkey(branch_name, branch_code), destination_branch:branches!stock_transfers_destination_branch_id_fkey(branch_name, branch_code)")
+      .order("created_at", { ascending: false })
+      .order("id");
+    if (activeBranchId) {
+      q = q.or(`source_branch_id.eq.${activeBranchId},destination_branch_id.eq.${activeBranchId}`);
+    }
+    return q;
+  });
 }
 
 export async function getTransferItems(transferId: string): Promise<StockTransferItem[]> {

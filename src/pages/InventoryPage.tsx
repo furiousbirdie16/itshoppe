@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { fetchAllRows } from "@/lib/paginate";
 import { supabase } from "@/integrations/supabase/client";
 import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/components/ColumnVisibility";
 import { useBranch } from "@/contexts/BranchContext";
@@ -143,13 +144,16 @@ export default function InventoryPage() {
   const { data: branchStockRows = [] } = useQuery({
     queryKey: ["item_branch_stock", activeBranchId ?? "ALL"],
     queryFn: async () => {
-      let q = (supabase as any)
-        .from("item_branch_stock")
-        .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock");
-      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as any[]) || [];
+      // One row per item per branch — the read here most likely to pass 1000,
+      // and a short one understates stock on hand rather than just a total.
+      return fetchAllRows<any>(() => {
+        let q = (supabase as any)
+          .from("item_branch_stock")
+          .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+          .order("id");
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+        return q;
+      });
     },
   });
 
@@ -177,14 +181,15 @@ export default function InventoryPage() {
   const { data: reservedRows = [] } = useQuery({
     queryKey: ["inventory_reserved", activeBranchId ?? "ALL"],
     queryFn: async () => {
-      let q = (supabase as any)
-        .from("invoice_items")
-        .select("item_id, quantity, invoices!inner(status, branch_id)")
-        .eq("invoices.status", "reserved");
-      if (activeBranchId) q = q.eq("invoices.branch_id", activeBranchId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as any[]) || [];
+      return fetchAllRows<any>(() => {
+        let q = (supabase as any)
+          .from("invoice_items")
+          .select("item_id, quantity, invoices!inner(status, branch_id)")
+          .eq("invoices.status", "reserved")
+          .order("id");
+        if (activeBranchId) q = q.eq("invoices.branch_id", activeBranchId);
+        return q;
+      });
     },
   });
   const reservedMap = useMemo(() => {
@@ -217,10 +222,11 @@ export default function InventoryPage() {
         if (activeBranchId) q = q.eq("overseas_purchase_orders.branch_id", activeBranchId);
         return q;
       };
-      const [local, overseas] = await Promise.all([buildLocal(), buildOverseas()]);
-      if (local.error) throw local.error;
-      if (overseas.error) throw overseas.error;
-      return [...((local.data as any[]) || []), ...((overseas.data as any[]) || [])];
+      const [local, overseas] = await Promise.all([
+        fetchAllRows<any>(() => buildLocal().order("id")),
+        fetchAllRows<any>(() => buildOverseas().order("id")),
+      ]);
+      return [...local, ...overseas];
     },
   });
   const incomingMap = useMemo(() => {
