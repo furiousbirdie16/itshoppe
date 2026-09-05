@@ -1,5 +1,28 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface CustomerLastPrice {
+  customer_id: string;
+  item_id: string;
+  variation_id: string | null;
+  unit_price: number;
+  sold_at: string;
+  reference_number: string | null;
+  source: string | null;
+  times_bought: number;
+}
+
+/**
+ * The latest price every customer paid for every product, one row per pair.
+ *
+ * Resolved in the database rather than by loading history into the browser: the
+ * answer must not depend on how much history happened to be fetched.
+ */
+export async function getCustomerLastPrices(): Promise<CustomerLastPrice[]> {
+  const { data, error } = await (supabase as any).rpc("customer_last_prices");
+  if (error) throw error;
+  return (data as CustomerLastPrice[]) || [];
+}
+
 export interface CustomerPriceInfo {
   fixed: number | null;
   fixedNotes: string | null;
