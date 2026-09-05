@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/paginate";
 import { peso } from "@/lib/currency";
 import { format, differenceInCalendarDays, startOfDay, endOfDay, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History } from "lucide-react";
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Customer } from "@/types/database";
@@ -81,6 +83,7 @@ export default function CustomersPage() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Follow-up dialog state
   const [followDialog, setFollowDialog] = useState<{ customer: Customer; notes: string } | null>(null);
@@ -102,15 +105,20 @@ export default function CustomersPage() {
   const { data: customerStats = {} } = useQuery({
     queryKey: ["customer_invoice_stats", fromStr, toStr],
     queryFn: async () => {
-      let q = supabase
-        .from("invoices")
-        .select("id, customer_id, total_amount, invoice_date")
-        .in("status", ["confirmed", "paid"]);
-      if (fromStr) q = q.gte("invoice_date", fromStr);
-      if (toStr) q = q.lte("invoice_date", toStr);
-      const { data } = await q;
+      // Paged: a short read here would undercount a customer's orders and
+      // spend, which reads as a quiet customer rather than a missing page.
+      const data = await fetchAllRows<any>(() => {
+        let q = supabase
+          .from("invoices")
+          .select("id, customer_id, total_amount, invoice_date")
+          .in("status", ["confirmed", "paid"])
+          .order("id");
+        if (fromStr) q = q.gte("invoice_date", fromStr);
+        if (toStr) q = q.lte("invoice_date", toStr);
+        return q;
+      });
       const map: Record<string, { orders: number; total: number }> = {};
-      for (const inv of (data || []) as any[]) {
+      for (const inv of data) {
         if (!inv.customer_id) continue;
         const e = map[inv.customer_id] || { orders: 0, total: 0 };
         e.orders += 1;
@@ -342,6 +350,32 @@ export default function CustomersPage() {
 
   const presetRange = (days: number) => { setDateTo(new Date()); setDateFrom(subDays(new Date(), days)); };
 
+  // Filters that live in the drawer — the count drives the badge on the button
+  // so nothing silently stays applied while hidden. Search and the activity
+  // chips are excluded: they are visible on the page and speak for themselves.
+  const drawerFilterCount = [
+    agentFilter !== "all",
+    classFilter !== "all",
+    followUpFilter !== "all",
+    countryFilter !== "all",
+    provinceFilter !== "all",
+    cityFilter !== "all",
+    tagFilter.length > 0,
+    !!dateFrom || !!dateTo,
+  ].filter(Boolean).length;
+
+  const resetDrawerFilters = () => {
+    setAgentFilter("all");
+    setClassFilter("all");
+    setFollowUpFilter("all");
+    setCountryFilter("all");
+    setProvinceFilter("all");
+    setCityFilter("all");
+    setTagFilter([]);
+    setDateFrom(undefined);
+    setDateTo(undefined);
+  };
+
   const exportLocations = () => {
     const headers = ["Name","Contact","Email","Phone","Country","Province/State","City/Municipality","District","Barangay","Full Address","Postal Code"];
     const rows = sortedCustomers.map((c) => [
@@ -423,69 +457,115 @@ export default function CustomersPage() {
           ))}
         </div>
 
-        <FilterCombobox value={agentFilter} onChange={setAgentFilter} options={agentOptions} allLabel="All agents" placeholder="Search agent..." className="h-8 text-xs w-[170px]" emptyText="No agents" />
-
-        <Select value={classFilter} onValueChange={(v) => setClassFilter(v as typeof classFilter)}>
-          <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue placeholder="Classification" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            {CLASSIFICATIONS.map((c) => (
-              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={followUpFilter} onValueChange={(v) => setFollowUpFilter(v as typeof followUpFilter)}>
-          <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All follow-ups</SelectItem>
-            <SelectItem value="active">Active (≤14d)</SelectItem>
-            <SelectItem value="needs">Pending</SelectItem>
-            <SelectItem value="never">Missed</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <FilterCombobox value={countryFilter} onChange={(v) => { setCountryFilter(v); setProvinceFilter("all"); setCityFilter("all"); }} options={countryOptions} allLabel="All countries" placeholder="Search country..." className="h-8 text-xs w-[160px]" emptyText="No countries" />
-        <FilterCombobox value={provinceFilter} onChange={(v) => { setProvinceFilter(v); setCityFilter("all"); }} options={provinceOptions} allLabel="All provinces" placeholder="Search province..." className="h-8 text-xs w-[170px]" emptyText="No provinces" />
-        <FilterCombobox value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="All cities" placeholder="Search city..." className="h-8 text-xs w-[160px]" emptyText="No cities" />
-        <TagsFilter value={tagFilter} onChange={setTagFilter} options={tagOptions} />
-
-        <div className="flex items-center gap-1">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={cn("h-8 text-xs w-[130px] justify-start", !dateFrom && "text-muted-foreground")}>
-                <CalendarIcon className="h-3 w-3 mr-1" />
-                {dateFrom ? format(dateFrom, "MMM d, yyyy") : "From"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className="p-3 pointer-events-auto" />
-            </PopoverContent>
-          </Popover>
-          <span className="text-xs text-muted-foreground">—</span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className={cn("h-8 text-xs w-[130px] justify-start", !dateTo && "text-muted-foreground")}>
-                <CalendarIcon className="h-3 w-3 mr-1" />
-                {dateTo ? format(dateTo, "MMM d, yyyy") : "To"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className="p-3 pointer-events-auto" />
-            </PopoverContent>
-          </Popover>
-          {(dateFrom || dateTo) && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }} title="Clear range">
-              <X className="h-3.5 w-3.5" />
+        {/* Everything else lives in the drawer. Search and the activity chips
+            are what this page is opened for; the other seven filters were three
+            rows of chrome standing between you and the first customer. */}
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 text-xs">
+              <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
+              Filters
+              {drawerFilterCount > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                  {drawerFilterCount}
+                </span>
+              )}
             </Button>
-          )}
-        </div>
+          </SheetTrigger>
+          <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Filters</SheetTitle>
+            </SheetHeader>
+            <div className="mt-4 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Sales agent</Label>
+                <FilterCombobox value={agentFilter} onChange={setAgentFilter} options={agentOptions} allLabel="All agents" placeholder="Search agent..." className="h-9 text-sm w-full" emptyText="No agents" />
+              </div>
 
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(7)}>7d</Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(30)}>30d</Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(90)}>90d</Button>
-        </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Type</Label>
+                <Select value={classFilter} onValueChange={(v) => setClassFilter(v as typeof classFilter)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Classification" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All types</SelectItem>
+                    {CLASSIFICATIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Follow-ups</Label>
+                <Select value={followUpFilter} onValueChange={(v) => setFollowUpFilter(v as typeof followUpFilter)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All follow-ups</SelectItem>
+                    <SelectItem value="active">Active (≤14d)</SelectItem>
+                    <SelectItem value="needs">Pending</SelectItem>
+                    <SelectItem value="never">Missed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Location</Label>
+                <FilterCombobox value={countryFilter} onChange={(v) => { setCountryFilter(v); setProvinceFilter("all"); setCityFilter("all"); }} options={countryOptions} allLabel="All countries" placeholder="Search country..." className="h-9 text-sm w-full" emptyText="No countries" />
+                <FilterCombobox value={provinceFilter} onChange={(v) => { setProvinceFilter(v); setCityFilter("all"); }} options={provinceOptions} allLabel="All provinces" placeholder="Search province..." className="h-9 text-sm w-full" emptyText="No provinces" />
+                <FilterCombobox value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="All cities" placeholder="Search city..." className="h-9 text-sm w-full" emptyText="No cities" />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Tags</Label>
+                <TagsFilter value={tagFilter} onChange={setTagFilter} options={tagOptions} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Last order between</Label>
+                <div className="flex items-center gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn("h-9 text-xs flex-1 justify-start", !dateFrom && "text-muted-foreground")}>
+                        <CalendarIcon className="h-3 w-3 mr-1" />
+                        {dateFrom ? format(dateFrom, "MMM d, yyyy") : "From"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                  <span className="text-xs text-muted-foreground">—</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn("h-9 text-xs flex-1 justify-start", !dateTo && "text-muted-foreground")}>
+                        <CalendarIcon className="h-3 w-3 mr-1" />
+                        {dateTo ? format(dateTo, "MMM d, yyyy") : "To"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex items-center gap-1 pt-1">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(7)}>7d</Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(30)}>30d</Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => presetRange(90)}>90d</Button>
+                  {(dateFrom || dateTo) && (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>
+                      <X className="h-3.5 w-3.5 mr-1" /> Clear
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <SheetFooter className="mt-6">
+              <Button variant="outline" onClick={resetDrawerFilters} disabled={drawerFilterCount === 0}>
+                Clear all
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
 
         <div className="ml-auto">
           <ColumnVisibilityMenu columns={CUSTOMER_COLUMNS} visible={colVisible} onToggle={toggleCol} onReset={resetCols} />
