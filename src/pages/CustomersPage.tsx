@@ -161,6 +161,17 @@ export default function CustomersPage() {
     return Array.from(set).sort().map((v) => ({ value: v, label: v }));
   }, [enriched]);
 
+  /**
+   * A country tells you nothing when every customer is in the same one — it
+   * filled the Location column with "Philippines" on every row. Below one
+   * distinct country, only city and province are shown.
+   */
+  const locationChipFor = (c: { country?: string | null; province_state?: string | null; city_municipality?: string | null }) => {
+    const chip = formatLocationChip(c);
+    if (countryOptions.length <= 1 && chip === (c.country || "")) return "";
+    return chip;
+  };
+
   const provinceOptions = useMemo(() => {
     const set = new Set<string>();
     for (const c of enriched) {
@@ -680,7 +691,7 @@ export default function CustomersPage() {
             ) : (
               sortedCustomers.map((c) => {
                 const activity = activityFromDays(c._daysSince);
-                const locChip = formatLocationChip(c);
+                const locChip = locationChipFor(c);
                 const cls = classificationMeta(c.classification);
                 const fu = getFollowUpInfo(c.last_follow_up_at);
                 const rowBg = selectedIds.has(c.id) ? "bg-muted/40" : "bg-background hover:bg-muted/30";
@@ -689,11 +700,13 @@ export default function CustomersPage() {
                     <TableCell>
                       <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
                     </TableCell>
-                    <TableCell className="font-medium text-sm max-w-[180px]">
+                    {/* The name is what you scan a customer list for, so it sits
+                        a step above the rest of the row rather than level with it. */}
+                    <TableCell className="font-medium max-w-[220px]">
                       <div className="flex items-center gap-2">
                         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} title={fu.label} />
                         <div className="min-w-0">
-                          <div className="truncate">{c.name}</div>
+                          <div className="truncate text-[15px] leading-snug">{c.name}</div>
                           {!showCol("contact") && c.contact_person && (
                             <div className="text-[11px] text-muted-foreground truncate">{c.contact_person}</div>
                           )}
@@ -821,7 +834,7 @@ export default function CustomersPage() {
         ) : (
           sortedCustomers.map((c) => {
             const activity = activityFromDays(c._daysSince);
-            const locChip = formatLocationChip(c);
+            const locChip = locationChipFor(c);
             const cls = classificationMeta(c.classification);
             const fu = getFollowUpInfo(c.last_follow_up_at);
             return (
