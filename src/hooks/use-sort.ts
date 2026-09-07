@@ -24,22 +24,25 @@ export function useSort<T>(rows: T[], accessors: SortAccessors<T>, initial?: Sor
     if (!sort.key || !accessors[sort.key]) return rows;
     const acc = accessors[sort.key];
     const copy = [...rows];
+    // Direction is applied to the comparison rather than by reversing the
+    // result, so blanks stay at the bottom both ways. Reversing sent them to
+    // the top of a descending sort, burying the rows with real values.
+    const flip = sort.dir === "desc" ? -1 : 1;
     copy.sort((a, b) => {
       const va = acc(a);
       const vb = acc(b);
       const aN = va == null || va === "";
       const bN = vb == null || vb === "";
       if (aN && bN) return 0;
-      if (aN) return 1; // nulls last
+      if (aN) return 1; // blanks last
       if (bN) return -1;
-      if (typeof va === "number" && typeof vb === "number") return va - vb;
+      if (typeof va === "number" && typeof vb === "number") return flip * (va - vb);
       const sa = String(va).toLowerCase();
       const sb = String(vb).toLowerCase();
-      if (sa < sb) return -1;
-      if (sa > sb) return 1;
+      if (sa < sb) return -flip;
+      if (sa > sb) return flip;
       return 0;
     });
-    if (sort.dir === "desc") copy.reverse();
     return copy;
   }, [rows, sort, accessors]);
 

@@ -93,7 +93,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   const [accountForm, setAccountForm] = useState(emptyAccount());
   const [rateHistoryAccount, setRateHistoryAccount] = useState<CashAccount | null>(null);
 
-  const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+  const { data: allAccounts = [], isPending: accountsPending } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   // Names only, so a transfer can target a bank the user cannot otherwise read.
   const { data: transferTargets = [] } = useQuery({ queryKey: ["cash-account-options"], queryFn: getCashAccountOptions });
   const shownTypes = useMemo(
@@ -112,11 +112,16 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   );
   const accountIds = useMemo(() => accounts.map((a) => a.id), [accounts]);
 
-  const { data: txns = [], isLoading } = useQuery({
+  const { data: txns = [], isLoading: txnsLoading } = useQuery({
     queryKey: ["cash-transactions", shownTypes, accountIds],
     queryFn: () => getCashTransactions(accountIds),
     enabled: accounts.length > 0,
   });
+  // The ledger cannot be asked for until the accounts it belongs to are known,
+  // and a disabled query reports isLoading false — so without this the page
+  // renders "no transactions yet" before it has asked anything, which on a slow
+  // phone reads as an empty account list until the user reloads.
+  const isLoading = accountsPending || txnsLoading;
 
   const scoped = useMemo(
     () => (accountFilter === "all" ? txns : txns.filter((t) => t.account_id === accountFilter)),
@@ -482,7 +487,13 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               <Plus className="h-3.5 w-3.5 mr-1" /> Add Account
             </Button>
           </div>
-          {managedAccounts.length === 0 ? (
+          {accountsPending ? (
+            <div className="rounded-lg border bg-card">
+              <div className="empty-state">
+                <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            </div>
+          ) : managedAccounts.length === 0 ? (
             <div className="rounded-lg border bg-card">
               <div className="empty-state"><Landmark className="empty-state-icon" /><p className="text-sm">No accounts yet — add your first {accountType === "bank" ? "bank" : "cash account"}</p></div>
             </div>

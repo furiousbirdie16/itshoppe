@@ -398,6 +398,27 @@ export default function OverseasPurchaseOrdersPage() {
     }
     return map;
   }, [shipments]);
+  /**
+   * The arrival date to show for a PO, and whether it is confirmed or a forecast.
+   * A shipment marked delivered wins; otherwise the latest date the goods were
+   * actually received counts as arrival. Anything else is an estimate and is
+   * labelled as one, so a forecast is never mistaken for a real arrival.
+   *
+   * Declared above useSort on purpose: the ETA accessor calls it, and reading a
+   * const before its declaration is a temporal dead zone that throws the moment
+   * someone sorts by ETA, blanking the page.
+   */
+  const arrivalFor = (poId: string, expectedDelivery: string | null) => {
+    const shipment = shipmentByPo.get(poId);
+    if (shipment?.actual_arrival) return { date: shipment.actual_arrival, confirmed: true };
+    const receivedDates = (allPOItems as any[])
+      .filter((i) => i.po_id === poId && i.received_date)
+      .map((i) => i.received_date as string)
+      .sort();
+    if (receivedDates.length) return { date: receivedDates[receivedDates.length - 1], confirmed: true };
+    const estimate = shipment?.estimated_arrival || expectedDelivery;
+    return estimate ? { date: estimate, confirmed: false } : null;
+  };
   const { sort, toggle, sorted: sortedOrders } = useSort<OverseasPurchaseOrder>(filteredOrders, {
     po_number: (r) => r.po_number,
     supplier: (r: any) => r.overseas_suppliers?.name || "",
@@ -412,24 +433,10 @@ export default function OverseasPurchaseOrdersPage() {
       const a = arrivalFor(r.id, r.expected_delivery);
       return a ? new Date(a.date).getTime() : null;
     },
-  });
-  /**
-   * The arrival date to show for a PO, and whether it is confirmed or a forecast.
-   * A shipment marked delivered wins; otherwise the latest date the goods were
-   * actually received counts as arrival. Anything else is an estimate and is
-   * labelled as one, so a forecast is never mistaken for a real arrival.
-   */
-  const arrivalFor = (poId: string, expectedDelivery: string | null) => {
-    const shipment = shipmentByPo.get(poId);
-    if (shipment?.actual_arrival) return { date: shipment.actual_arrival, confirmed: true };
-    const receivedDates = (allPOItems as any[])
-      .filter((i) => i.po_id === poId && i.received_date)
-      .map((i) => i.received_date as string)
-      .sort();
-    if (receivedDates.length) return { date: receivedDates[receivedDates.length - 1], confirmed: true };
-    const estimate = shipment?.estimated_arrival || expectedDelivery;
-    return estimate ? { date: estimate, confirmed: false } : null;
-  };
+  },
+  // Most recent arrival first: the question this list is opened to answer is
+  // what has landed and what is still coming, not which PO was raised last.
+  { key: "eta", dir: "desc" });
 
   const itemsByPo = useMemo(() => {
     const map = new Map<string, OverseasPurchaseOrderItem[]>();
