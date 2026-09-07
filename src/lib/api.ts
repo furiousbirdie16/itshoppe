@@ -1211,9 +1211,21 @@ export const getDashboardStats = async (branchId?: string | null) => {
   let incomingAssetsValue = 0;   // Goods already shipped (in transit), local + overseas
   let payableAssetsValue = 0;    // Unpaid POs (unpaid / shipped / not yet shipped), local + overseas
 
-  // Statuses that mean "shipped / in transit" (incoming assets)
+  // Goods already paid for that have not arrived yet: an incoming asset.
+  //
+  // This used to be "shipped" alone, which meant paying a supplier dropped Net
+  // Asset Value by the whole payment — the cash left, and the goods it bought
+  // counted as nothing until someone changed the status. The same hole swallowed
+  // the unreceived half of a partially received PO. What matters is whether the
+  // money has gone and the goods have not arrived, not which label the PO wears.
   const LOCAL_SHIPPED = new Set<string>([]);
-  const OVERSEAS_SHIPPED = new Set(["shipped"]);
+  const OVERSEAS_SHIPPED = new Set([
+    "paid_not_shipped",
+    "shipped",
+    "partially_received",
+    "pending_cargo_adjustment",
+    "cargo_adjusted",
+  ]);
   // Statuses that mean "not yet paid"
   const OVERSEAS_UNPAID = new Set(["unpaid", "draft", "sent", "shipped_not_paid"]);
 
