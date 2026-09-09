@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 // Chainable + thenable stand-in for the PostgREST builder. Every method returns
 // itself, and awaiting anywhere in the chain yields an empty result set.
@@ -49,12 +50,15 @@ afterEach(() => {
   document.querySelectorAll("[aria-hidden='true']").forEach((el) => el.removeAttribute("aria-hidden"));
 });
 
-function renderPage() {
+/** `route` carries the query string, e.g. "/business-insights?item=SKU-1". */
+function renderPage(route = "/business-insights") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}>
-      <BusinessInsightsPage />
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={[route]}>
+      <QueryClientProvider client={client}>
+        <BusinessInsightsPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -126,6 +130,19 @@ describe("BusinessInsightsPage", () => {
 
     fireEvent.click(fromButtons[0]);
     expect(screen.getAllByRole("grid")).toHaveLength(1);
+  });
+
+  // A "Sales History" link elsewhere in the app arrives with ?item=<sku>. It
+  // used to land on today's Overview with the item nowhere in sight.
+  it("opens on the product with its full history when linked to with ?item", () => {
+    renderPage("/business-insights?item=SKU-42");
+    expect(screen.getByRole("tab", { name: /Products/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByDisplayValue("SKU-42").length).toBeGreaterThan(0);
+  });
+
+  it("opens on Overview for today when no item is linked", () => {
+    renderPage();
+    expect(screen.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
   });
 
   it("offers a sort control on the Products tab so cards stay sortable without table headers", () => {

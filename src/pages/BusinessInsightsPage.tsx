@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
@@ -196,12 +197,18 @@ export default function BusinessInsightsPage() {
   const isAdmin = role === "admin";
   const { activeBranchId, activeBranch } = useBranch();
   const money = (n: number) => (isAdmin ? peso(n) : "—");
-  const [preset, setPreset] = useState<RangePreset>("today");
+  // Arriving from a "Sales History" link elsewhere in the app: ?item=<sku>.
+  // The page opens on the product with its whole history in view, rather than
+  // today's overview with the item nowhere to be seen.
+  const [searchParams] = useSearchParams();
+  const itemParam = searchParams.get("item") || "";
+  const [tab, setTab] = useState(itemParam ? "products" : "overview");
+  const [preset, setPreset] = useState<RangePreset>(itemParam ? "all" : "today");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [source, setSource] = useState<SourceFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(itemParam);
   const [productSource, setProductSource] = useState<ProductSourceFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
@@ -1276,7 +1283,7 @@ export default function BusinessInsightsPage() {
         {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches"} · {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 md:inline-flex md:w-auto">
           <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>

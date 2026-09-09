@@ -1294,7 +1294,14 @@ function ExpandedDetails({
         <Link to="/purchase-orders">
           <Button size="sm"><ShoppingCart className="h-3.5 w-3.5 mr-1.5" /> Create Purchase Order</Button>
         </Link>
-        <Link to={`/business-insights?item=${encodeURIComponent(row.item.sku)}`}>
+        {/* A new tab, so the low-stock list you were working through is still
+            there when you have finished reading the history. Falls back to the
+            name: an item without a SKU would otherwise search for nothing. */}
+        <Link
+          to={`/business-insights?item=${encodeURIComponent(row.item.sku || row.item.name)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <Button size="sm" variant="outline"><BarChart3 className="h-3.5 w-3.5 mr-1.5" /> Sales History</Button>
         </Link>
         <Button size="sm" variant="outline" onClick={onHistory}>
