@@ -30,6 +30,7 @@ import { formatLocationChip } from "@/lib/locations";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
 import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
+import { SuggestInput } from "@/components/SuggestInput";
 import { Tag as TagIcon } from "lucide-react";
 
 const CUSTOMER_COLUMNS: ColumnDef[] = [
@@ -69,7 +70,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; classification: ClassificationValue; tags: string[] }>({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
+  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; channel: string; classification: ClassificationValue; tags: string[] }>({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [] });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -191,6 +192,13 @@ export default function CustomersPage() {
     return Array.from(set).sort().map((v) => ({ value: v, label: v }));
   }, [enriched, countryFilter, provinceFilter]);
 
+  // Channels people have already been recorded under, offered back so the
+  // vocabulary settles without needing a fixed list in the schema.
+  const channelOptions = useMemo(
+    () => (customers as Customer[]).map((c) => c.channel || ""),
+    [customers],
+  );
+
   const tagOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of customers) {
@@ -311,13 +319,13 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
+    setForm({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [] });
     setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [] });
+    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, channel: c.channel || "", classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [] });
     setAddress({
       country: c.country || "Philippines",
       province_state: c.province_state || "",
@@ -343,8 +351,12 @@ export default function CustomersPage() {
       seen.add(k);
       cleanTags.push(c);
     }
+    // An individual customer has no company name, so the contact person becomes
+    // the name every other screen already prints — invoices included.
+    const name = form.name.trim() || form.contact_person.trim();
     const payload: Partial<Customer> = {
       ...form,
+      name,
       tags: cleanTags,
       country: address.country || null,
       province_state: address.province_state || null,
@@ -590,23 +602,34 @@ export default function CustomersPage() {
           </DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-9" />
+              <Label className="text-xs font-medium">Company Name</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-9" placeholder="Leave blank for an individual" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Contact Person</Label>
+              <Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
+              <p className="text-[10px] text-muted-foreground">Used as the customer's name when there is no company name.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Contact Person</Label>
-                <Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Phone</Label>
+                <Label className="text-xs font-medium">Contact Number</Label>
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="h-9" />
               </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Email</Label>
                 <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Channel</Label>
+                <SuggestInput
+                  value={form.channel}
+                  onChange={(channel) => setForm({ ...form, channel })}
+                  options={channelOptions}
+                  placeholder="e.g. Viber, Messenger, Walk-in"
+                  className="h-9"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Classification</Label>
@@ -614,12 +637,7 @@ export default function CustomersPage() {
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CLASSIFICATIONS.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{c.label}</span>
-                          <span className="text-[10px] text-muted-foreground">{c.description}</span>
-                        </div>
-                      </SelectItem>
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

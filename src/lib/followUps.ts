@@ -90,9 +90,9 @@ export async function getFollowUpHistory(customerId: string): Promise<FollowUpEn
 }
 
 export const CLASSIFICATIONS = [
-  { value: "retail", label: "Retail", className: "bg-primary/15 text-primary border-primary/30", description: "Walk-in, one-time, or small qty" },
-  { value: "wholesale", label: "Wholesale", className: "bg-accent/30 text-accent-foreground border-accent/50", description: "Bulk buyers or resellers" },
-  { value: "recurring", label: "Recurring", className: "bg-success/15 text-success border-success/30", description: "Repeat customers" },
+  { value: "retail", label: "Retail", className: "bg-primary/15 text-primary border-primary/30" },
+  { value: "wholesale", label: "Wholesale", className: "bg-accent/30 text-accent-foreground border-accent/50" },
+  { value: "recurring", label: "Recurring", className: "bg-success/15 text-success border-success/30" },
 ] as const;
 
 export type ClassificationValue = (typeof CLASSIFICATIONS)[number]["value"];

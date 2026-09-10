@@ -817,7 +817,10 @@ export const getInvoices = async (branchId?: string | null): Promise<Invoice[]> 
   });
 
 export const createInvoice = async (inv: Partial<Invoice>) => {
-  const { data, error } = await from("invoices").insert(inv).select().single();
+  // The customer comes back joined, as getInvoices returns it. The PDF preview
+  // opens on this row the moment the invoice is created, and without the join
+  // it printed "Bill To —" for an invoice that had a customer all along.
+  const { data, error } = await from("invoices").insert(inv).select("*, customers(*)").single();
   if (error) throw error;
   const created = data as Invoice;
   await logActivity("created_invoice", "invoice", created.id, { invoice_number: created.invoice_number });

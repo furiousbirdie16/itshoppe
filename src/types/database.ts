@@ -83,6 +83,8 @@ export interface Customer {
   latitude?: number | null;
   longitude?: number | null;
   classification?: "retail" | "wholesale" | "recurring" | null;
+  /** Where the conversation happens: Viber, Messenger, walk-in, Shopee... */
+  channel?: string | null;
   last_follow_up_at?: string | null;
   tags?: string[] | null;
   created_at: string;

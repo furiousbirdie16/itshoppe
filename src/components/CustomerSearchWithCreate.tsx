@@ -13,6 +13,7 @@ import type { Customer } from "@/types/database";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { CLASSIFICATIONS, type ClassificationValue } from "@/lib/followUps";
 import { TagsInput, normalizeTag, tagKey } from "@/components/TagsInput";
+import { SuggestInput } from "@/components/SuggestInput";
 
 interface Props {
   customers: Customer[];
@@ -23,10 +24,15 @@ interface Props {
 export function CustomerSearchWithCreate({ customers, value, onChange }: Props) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; classification: ClassificationValue; tags: string[] }>({
-    name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [],
+  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; channel: string; classification: ClassificationValue; tags: string[] }>({
+    name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [],
   });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
+
+  const channelSuggestions = useMemo(
+    () => customers.map((c) => (c as any).channel || ""),
+    [customers],
+  );
 
   const tagSuggestions = useMemo(() => {
     const map = new Map<string, string>();
@@ -43,7 +49,7 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
   }, [customers]);
 
   const reset = () => {
-    setForm({ name: "", contact_person: "", email: "", phone: "", classification: "retail", tags: [] });
+    setForm({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [] });
     setAddress(emptyAddress());
   };
 
@@ -60,7 +66,10 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
   });
 
   const handleSubmit = () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    // An individual has no company name; the contact person stands in for it,
+    // as it does on the Customers page.
+    const name = form.name.trim() || form.contact_person.trim();
+    if (!name) { toast.error("Enter a company name or a contact person"); return; }
     const composedLegacy = [address.full_address, address.barangay_village, address.district_area, address.city_municipality, address.province_state, address.country, address.postal_code]
       .filter(Boolean).join(", ");
     const seen = new Set<string>();
@@ -74,6 +83,7 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
     }
     createMut.mutate({
       ...form,
+      name,
       tags: cleanTags,
       country: address.country || null,
       province_state: address.province_state || null,
@@ -100,22 +110,33 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
           <DialogHeader><DialogTitle className="text-lg">New Customer</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Name</Label>
-              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" />
+              <Label className="text-xs font-medium">Company Name</Label>
+              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" placeholder="Leave blank for an individual" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Contact Person</Label>
+              <Input value={form.contact_person} onChange={e => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
+              <p className="text-[10px] text-muted-foreground">Used as the customer's name when there is no company name.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Contact Person</Label>
-                <Input value={form.contact_person} onChange={e => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
+                <Label className="text-xs font-medium">Contact Number</Label>
+                <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="h-9" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Phone</Label>
-                <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="h-9" />
+                <Label className="text-xs font-medium">Email</Label>
+                <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="h-9" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Email</Label>
-              <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="h-9" />
+              <Label className="text-xs font-medium">Channel</Label>
+              <SuggestInput
+                value={form.channel}
+                onChange={(channel) => setForm({ ...form, channel })}
+                options={channelSuggestions}
+                placeholder="e.g. Viber, Messenger, Walk-in"
+                className="h-9"
+              />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">

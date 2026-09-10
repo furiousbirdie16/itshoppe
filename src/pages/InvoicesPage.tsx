@@ -324,6 +324,9 @@ export default function InvoicesPage() {
 
   const openPreview = async (inv: any) => {
     const lineItems = await getInvoiceItems(inv.id);
+    // A row that arrived without its join still knows its customer id, and the
+    // customer list is already loaded — so the name never has to be missing.
+    const customer = inv.customers || customers.find((c: any) => c.id === inv.customer_id);
     setPreviewData({
       type: "invoice",
       number: inv.invoice_number,
@@ -331,11 +334,11 @@ export default function InvoicesPage() {
       status: inv.status,
       notes: inv.notes,
       recipientLabel: "Customer",
-      recipientName: inv.customers?.name || "—",
-      recipientContact: inv.customers?.contact_person,
-      recipientEmail: inv.customers?.email,
-      recipientPhone: inv.customers?.phone,
-      recipientAddress: inv.customers?.address,
+      recipientName: customer?.name || "—",
+      recipientContact: customer?.contact_person,
+      recipientEmail: customer?.email,
+      recipientPhone: customer?.phone,
+      recipientAddress: customer?.address,
       extraFields: [
         ...(inv.due_date ? [{ label: "Due Date", value: inv.due_date }] : []),
         ...(inv.sales_agent ? [{ label: "Sales Agent", value: inv.sales_agent }] : []),
