@@ -1003,10 +1003,14 @@ const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: stri
   const actor = await currentActor();
 
   const { data: inv } = await from("invoices")
-    .select("total_amount, invoice_date, invoice_number, customers(name)")
+    .select("total_amount, amount_received, invoice_date, invoice_number, customers(name)")
     .eq("id", invoiceId)
     .maybeSingle();
-  const amount = Number((inv as any)?.total_amount || 0);
+  // What actually reached the account. Usually the total; more when a staff
+  // member quoted above the store price and the customer paid that. The total
+  // stays the store's price, so sales and profit are untouched by this.
+  const received = (inv as any)?.amount_received;
+  const amount = Number(received ?? (inv as any)?.total_amount ?? 0);
 
   const { data: existing } = await from("cash_transactions")
     .select("id").eq("source_invoice_id", invoiceId).maybeSingle();
@@ -1074,7 +1078,13 @@ const removeInvoicePaymentFromLedger = async (invoiceId: string) => {
 // If invoice was already shipped -> auto-complete instead of "paid".
 export const markInvoicePaid = async (
   invoiceId: string,
-  payment: { payment_method: string; payment_reference?: string | null; payment_reference_url?: string | null },
+  payment: {
+    payment_method: string;
+    payment_reference?: string | null;
+    payment_reference_url?: string | null;
+    /** Cash that arrived, when it differs from the total. Omit for "the total". */
+    amount_received?: number | null;
+  },
 ) => {
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (paid)");
   const { data: invRow } = await from("invoices").select("status").eq("id", invoiceId).maybeSingle();
@@ -1090,6 +1100,7 @@ export const markInvoicePaid = async (
     payment_account_id: account?.id ?? null,
     payment_reference: payment.payment_reference || null,
     payment_reference_url: payment.payment_reference_url || null,
+    amount_received: payment.amount_received ?? null,
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
   // Never let a ledger problem block the invoice itself from being marked paid —

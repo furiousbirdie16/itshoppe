@@ -449,8 +449,8 @@ export default function InvoicesPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: ({ id, payment_method, payment_reference, payment_reference_url }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string }) =>
-      markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null }),
+    mutationFn: ({ id, payment_method, payment_reference, payment_reference_url, amount_received }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string; amount_received?: number | null }) =>
+      markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null, amount_received: amount_received ?? null }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -474,6 +474,13 @@ export default function InvoicesPage() {
   const [bulkPayOpen, setBulkPayOpen] = useState(false);
   const [bulkPayMethod, setBulkPayMethod] = useState("Cash");
   const [payReference, setPayReference] = useState("");
+  // What actually arrived. Prefilled with the invoice total, since most orders
+  // carry no markup; changed only when a staff member quoted above the store
+  // price and the customer paid that into the account.
+  const [payReceived, setPayReceived] = useState("");
+  const payInvoiceTotal = payDialog
+    ? Number((invoices as any[]).find((i) => i.id === payDialog.id)?.total_amount || 0)
+    : 0;
   const [payRefFile, setPayRefFile] = useState<File | null>(null);
   const [payUploading, setPayUploading] = useState(false);
 
@@ -485,6 +492,8 @@ export default function InvoicesPage() {
     setPayMethod(cashPaymentOptions[0]?.name || "Cash");
     setPayReference("");
     setPayRefFile(null);
+    const total = Number((invoices as any[]).find((i) => i.id === id)?.total_amount || 0);
+    setPayReceived(total ? String(total) : "");
     setPayDialog({ id });
   };
 
@@ -498,6 +507,11 @@ export default function InvoicesPage() {
 
   const submitPayment = async () => {
     if (!payDialog) return;
+    const received = parseFloat(payReceived);
+    if (payReceived.trim() && (!Number.isFinite(received) || received < 0)) {
+      toast.error("Enter a valid amount received");
+      return;
+    }
     if (!isCashMethod(payMethod) && !payReference.trim() && !payRefFile) {
       toast.error("Please provide a reference number or image");
       return;
@@ -518,7 +532,17 @@ export default function InvoicesPage() {
       }
       setPayUploading(false);
     }
-    markPaidMut.mutate({ id: payDialog.id, payment_method: payMethod, payment_reference: payReference, payment_reference_url: url });
+    // Stored only when it differs from the total. An untouched box means "the
+    // total arrived", which is what NULL already says — so ordinary invoices
+    // stay exactly as they were.
+    const differs = payReceived.trim() !== "" && Math.abs(received - payInvoiceTotal) > 0.005;
+    markPaidMut.mutate({
+      id: payDialog.id,
+      payment_method: payMethod,
+      payment_reference: payReference,
+      payment_reference_url: url,
+      amount_received: differs ? received : null,
+    });
     setPayDialog(null);
   };
 
@@ -1303,6 +1327,25 @@ export default function InvoicesPage() {
                 <SelectItem value="Others">Others</SelectItem>
               </SelectContent>
             </Select>
+            <Label>Amount Received</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={payReceived}
+              onChange={(e) => setPayReceived(e.target.value)}
+            />
+            {(() => {
+              const r = parseFloat(payReceived);
+              if (!Number.isFinite(r) || Math.abs(r - payInvoiceTotal) <= 0.005) {
+                return <p className="text-[11px] text-muted-foreground -mt-1">Invoice total {peso(payInvoiceTotal)}. Change this only if a different amount arrived.</p>;
+              }
+              const diff = r - payInvoiceTotal;
+              return (
+                <p className="text-[11px] text-amber-600 -mt-1">
+                  {peso(Math.abs(diff))} {diff > 0 ? "above" : "below"} the {peso(payInvoiceTotal)} invoice. The account gets {peso(r)}; sales stay at {peso(payInvoiceTotal)}.
+                </p>
+              );
+            })()}
             {!isCashMethod(payMethod) && (
               <>
                 <Label>Reference Number</Label>
