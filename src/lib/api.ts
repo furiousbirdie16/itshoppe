@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
@@ -1262,6 +1262,31 @@ export const getDashboardStats = async (branchId?: string | null) => {
     if (num && !e.overseasPOs.includes(num)) e.overseasPOs.push(num);
   }
 
+  // Deposits on orders not yet fully paid. The money has left the bank but the
+  // goods only count once the PO is paid, so without this every down payment
+  // would drop Net Asset Value by its full amount. Paid POs are excluded: their
+  // whole value already counts as incoming above.
+  // Not fatal, like reserved stock: if this fails (say the payments table has
+  // not been created yet) the rest of the dashboard is still worth showing.
+  // Logged rather than silent, since Net Asset Value is short by the deposits.
+  let depositsValue = 0;
+  try {
+    const deposits = await fetchAllRows<any>(() => {
+      let depQ = from("overseas_po_payments")
+        .select("php_amount, overseas_purchase_orders!inner(status, branch_id)")
+        .in("overseas_purchase_orders.status", [...OVERSEAS_UNPAID])
+        .order("id", { ascending: true });
+      if (branchId) depQ = depQ.eq("overseas_purchase_orders.branch_id", branchId);
+      return depQ;
+    });
+    depositsValue = deposits.reduce((s, d) => s + Number(d.php_amount || 0), 0);
+  } catch (e) {
+    console.error("overseas_po_payments failed; Net Asset Value is short by PO deposits", e);
+  }
+  incomingAssetsValue += depositsValue;
+  // What is still owed on those orders is the balance, not the full total.
+  payableAssetsValue = Math.max(payableAssetsValue - depositsValue, 0);
+
   // Accounts Payable = everything we still owe suppliers
   const accountsPayableValue = payableAssetsValue;
   // Legacy combined "incoming stock" used by charts
@@ -1517,14 +1542,30 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
     .select("id, amount, account_id").eq("overseas_po_id", po.id).maybeSingle();
 
   const paid = OVERSEAS_PAID_STATUSES.has(String(po.status));
-  const amount = Number(po.total_amount || 0);
+  // Down payments already took their share out, each as its own withdrawal.
+  // Marking the PO paid settles only the balance — otherwise a deposit would be
+  // paid twice, once when it was made and again inside the full total.
+  const { data: downRows } = await from("overseas_po_payments")
+    .select("amount").eq("po_id", po.id);
+  const downPaid = ((downRows as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  const amount = Math.max(Number(po.total_amount || 0) - downPaid, 0);
 
   if (!paid || !accountId || amount <= 0) {
-    // Un-paid again, or no account named: the money did not leave.
+    // Un-paid again, no account named, or deposits already cover it all.
     if (existing) await deleteCashTransaction((existing as any).id);
     return;
   }
-  if (existing) return;
+  if (existing) {
+    // A deposit recorded after the PO was marked paid shrinks the balance, so
+    // the settling withdrawal follows it rather than staying at the old figure.
+    if (Number((existing as any).amount) !== amount) {
+      const { error } = await from("cash_transactions")
+        .update({ amount, updated_at: new Date().toISOString() })
+        .eq("id", (existing as any).id);
+      if (error) throw error;
+    }
+    return;
+  }
 
   const { data: account } = await from("cash_accounts").select("*").eq("id", accountId).maybeSingle();
   const actor = await currentActor();
@@ -1558,6 +1599,117 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
         .update({ exchange_rate: averageRate, updated_at: new Date().toISOString() })
         .eq("id", po.id);
     }
+  }
+};
+
+// ---- Overseas PO down payments --------------------------------------------
+
+export const getOverseasPoPayments = async (): Promise<OverseasPoPayment[]> =>
+  fetchAllRows<OverseasPoPayment>(() =>
+    from("overseas_po_payments")
+      .select("*")
+      .order("payment_date", { ascending: true })
+      .order("id", { ascending: true }),
+  );
+
+/**
+ * Records a payment toward an overseas PO and takes it out of the account.
+ *
+ * The peso cost is fixed here, at what the account's currency cost on the day:
+ * the deposit sits on the books as an asset until the goods arrive, and valuing
+ * it later at another rate would rewrite what it cost.
+ */
+export const createOverseasPoPayment = async (p: {
+  po_id: string;
+  amount: number;
+  payment_date: string;
+  cash_account_id: string | null;
+  notes?: string;
+}) => {
+  const amount = Number(p.amount || 0);
+  if (amount <= 0) throw new Error("Enter an amount above zero");
+
+  const { data: po } = await from("overseas_purchase_orders")
+    .select("po_number, total_amount, exchange_rate, supplier_id").eq("id", p.po_id).single();
+  const rate = Number((po as any)?.exchange_rate || 1);
+
+  // Peso cost of this payment.
+  let phpAmount = amount * rate;
+  let account: CashAccount | null = null;
+  if (p.cash_account_id) {
+    const { data } = await from("cash_accounts").select("*").eq("id", p.cash_account_id).maybeSingle();
+    account = (data as CashAccount) || null;
+    if (account && isForeign(account)) {
+      const { averageRate } = fxPosition(await getCashTransactions([account.id]));
+      if (averageRate > 0) phpAmount = amount * averageRate;
+    } else if (account) {
+      // Paid in pesos: the peso cost is the amount itself.
+      phpAmount = amount;
+    }
+  }
+
+  const { data, error } = await from("overseas_po_payments").insert({
+    po_id: p.po_id,
+    amount,
+    payment_date: p.payment_date,
+    cash_account_id: p.cash_account_id || null,
+    php_amount: Math.round(phpAmount * 100) / 100,
+    notes: p.notes || "",
+  }).select().single();
+  if (error) throw error;
+  const created = data as OverseasPoPayment;
+
+  if (account) {
+    const { data: supplier } = await from("overseas_suppliers")
+      .select("name").eq("id", (po as any)?.supplier_id).maybeSingle();
+    const actor = await currentActor();
+    const { error: postError } = await from("cash_transactions").insert({
+      account_id: account.id,
+      txn_date: p.payment_date,
+      direction: "out",
+      amount,
+      category: "Overseas PO",
+      payee: (supplier as any)?.name || "",
+      reference: (po as any)?.po_number || "",
+      notes: p.notes || `Down payment on ${(po as any)?.po_number || "overseas PO"}`,
+      overseas_po_payment_id: created.id,
+      created_by: actor.id,
+      created_by_email: actor.email,
+    });
+    if (postError) {
+      // Do not leave a payment on record whose money never left the account.
+      await from("overseas_po_payments").delete().eq("id", created.id);
+      throw postError;
+    }
+  }
+
+  await logActivity("created_overseas_po_payment", "overseas_purchase_order", p.po_id, { amount });
+
+  // If the PO is already marked paid, its settling withdrawal must shrink by
+  // what this payment just covered.
+  const { data: fresh } = await from("overseas_purchase_orders").select("*").eq("id", p.po_id).single();
+  if (fresh) await syncOverseasPoPayment(fresh as OverseasPurchaseOrder);
+
+  return created;
+};
+
+export const deleteOverseasPoPayment = async (id: string) => {
+  const { data: payment } = await from("overseas_po_payments").select("po_id").eq("id", id).maybeSingle();
+
+  // Take the money back first: once the payment is gone its posting would be
+  // unattributable, and ON DELETE SET NULL would strand it in the ledger.
+  const { data: posted } = await from("cash_transactions")
+    .select("id").eq("overseas_po_payment_id", id).maybeSingle();
+  if (posted) await deleteCashTransaction((posted as any).id);
+
+  const { error } = await from("overseas_po_payments").delete().eq("id", id);
+  if (error) throw error;
+  await logActivity("deleted_overseas_po_payment", "overseas_purchase_order", (payment as any)?.po_id || id);
+
+  // A paid PO's balance grows back by what this payment had covered.
+  if (payment) {
+    const { data: fresh } = await from("overseas_purchase_orders").select("*").eq("id", (payment as any).po_id).single();
+    if (fresh) await syncOverseasPoPayment(fresh as OverseasPurchaseOrder);
   }
 };
 

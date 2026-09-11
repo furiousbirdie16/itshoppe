@@ -4,6 +4,7 @@ import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
   createShipment, updateShipment, deleteShipment, getCashAccounts,
+  getOverseasPoPayments, createOverseasPoPayment, deleteOverseasPoPayment,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins } from "lucide-react";
 
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -149,6 +150,69 @@ export default function OverseasPurchaseOrdersPage() {
 
   // View dialog
   const [viewPO, setViewPO] = useState<OverseasPurchaseOrder | null>(null);
+
+  // Down payments. A supplier often takes a deposit and the balance later; each
+  // payment is its own withdrawal, and marking the PO paid settles only the rest.
+  const [payPO, setPayPO] = useState<OverseasPurchaseOrder | null>(null);
+  const [payForm, setPayForm] = useState({
+    amount: "",
+    payment_date: new Date().toISOString().slice(0, 10),
+    cash_account_id: "",
+    notes: "",
+  });
+  const { data: poPayments = [] } = useQuery({
+    queryKey: ["overseas_po_payments"],
+    queryFn: getOverseasPoPayments,
+  });
+  const paymentsByPo = useMemo(() => {
+    const map = new Map<string, typeof poPayments>();
+    for (const pmt of poPayments) {
+      const arr = map.get(pmt.po_id) || [];
+      arr.push(pmt);
+      map.set(pmt.po_id, arr);
+    }
+    return map;
+  }, [poPayments]);
+  const paidSoFar = (poId: string) =>
+    (paymentsByPo.get(poId) || []).reduce((sum, pmt) => sum + Number(pmt.amount || 0), 0);
+  const invalidatePayments = () => {
+    queryClient.invalidateQueries({ queryKey: ["overseas_po_payments"] });
+    queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    // Each payment is a withdrawal, so the Cash and Bank views go stale too.
+    queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["cash-accounts"] });
+  };
+  const payCreateMut = useMutation({
+    mutationFn: () => createOverseasPoPayment({
+      po_id: payPO!.id,
+      amount: parseFloat(payForm.amount),
+      payment_date: payForm.payment_date,
+      cash_account_id: payForm.cash_account_id || null,
+      notes: payForm.notes,
+    }),
+    onSuccess: () => {
+      invalidatePayments();
+      setPayForm((f) => ({ ...f, amount: "", notes: "" }));
+      toast.success("Payment recorded");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const payDeleteMut = useMutation({
+    mutationFn: deleteOverseasPoPayment,
+    onSuccess: () => { invalidatePayments(); toast.success("Payment removed"); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const openPay = (po: OverseasPurchaseOrder) => {
+    setPayPO(po);
+    setPayForm({
+      amount: "",
+      payment_date: new Date().toISOString().slice(0, 10),
+      // Default to the account this PO would be paid from in full.
+      cash_account_id: (po as any).paid_from_account_id || "",
+      notes: "",
+    });
+  };
 
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState<string | null>(null);
@@ -834,6 +898,18 @@ export default function OverseasPurchaseOrdersPage() {
                         <PackageCheck className="h-3.5 w-3.5 text-success" />
                       </Button>
                     )}
+                    {/* Deposits only make sense before the order is fully paid. */}
+                    {isAdmin && ["unpaid", "draft", "sent", "shipped_not_paid"].includes(po.status) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openPay(po)}
+                        className="h-7 w-7 rounded-md"
+                        title={paidSoFar(po.id) > 0 ? "Down payments" : "Record down payment"}
+                      >
+                        <HandCoins className={`h-3.5 w-3.5 ${paidSoFar(po.id) > 0 ? "text-primary" : "text-muted-foreground"}`} />
+                      </Button>
+                    )}
                     {isAdmin && ["unpaid", "draft", "sent", "paid_not_shipped", "shipped_not_paid", "shipped"].includes(po.status) && (
                       <>
                         <Button
@@ -1087,7 +1163,7 @@ export default function OverseasPurchaseOrdersPage() {
               </Select>
               <p className="text-[11px] text-muted-foreground">
                 {paidFromAccountId
-                  ? `Marking this paid withdraws ${foreignTotal.toLocaleString()} ${currency} from this account, and sets the rate above to what that currency has cost.`
+                  ? `Marking this paid withdraws ${Math.max(foreignTotal - (editing ? paidSoFar(editing.id) : 0), 0).toLocaleString()} ${currency} from this account${editing && paidSoFar(editing.id) > 0 ? " — the balance after down payments" : ""}, and sets the rate above to what that currency has cost.`
                   : "Without an account, marking this paid leaves every balance untouched."}
               </p>
             </div>
@@ -1169,6 +1245,108 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {/* View Dialog */}
+      <Dialog open={!!payPO} onOpenChange={(o) => { if (!o) setPayPO(null); }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-lg">Down payments · {payPO?.po_number}</DialogTitle></DialogHeader>
+          {payPO && (() => {
+            const sym = payPO.currency === "USD" ? "$" : "¥";
+            const fmt = (n: number) => `${sym}${n.toLocaleString("en", { minimumFractionDigits: 2 })}`;
+            const paid = paidSoFar(payPO.id);
+            const balance = Math.max(payPO.total_amount - paid, 0);
+            const rows = paymentsByPo.get(payPO.id) || [];
+            const accounts = allCashAccounts.filter((a) => a.is_active && a.account_type !== "owner");
+            const orderedAccounts = [
+              ...accounts.filter((a) => a.currency === payPO.currency),
+              ...accounts.filter((a) => a.currency !== payPO.currency),
+            ];
+            const accountName = (id: string | null) => accounts.find((a) => a.id === id)?.name || allCashAccounts.find((a) => a.id === id)?.name;
+            return (
+              <div className="space-y-4 pt-1">
+                <div className="rounded-lg bg-muted/50 p-3 space-y-1 text-sm">
+                  <div className="flex justify-between"><span>PO total</span><span className="font-medium">{fmt(payPO.total_amount)}</span></div>
+                  <div className="flex justify-between"><span>Paid so far</span><span className="font-medium">{fmt(paid)}</span></div>
+                  <div className="flex justify-between border-t pt-1"><span>Balance</span><span className="font-semibold">{fmt(balance)}</span></div>
+                </div>
+
+                {rows.length > 0 && (
+                  <div className="space-y-1.5">
+                    {rows.map((pmt) => (
+                      <div key={pmt.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="font-medium">{fmt(Number(pmt.amount))}</div>
+                          <div className="text-[11px] text-muted-foreground truncate">
+                            {pmt.payment_date} · {accountName(pmt.cash_account_id) || "No account"}{pmt.notes ? ` · ${pmt.notes}` : ""}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          title="Remove payment — puts the money back in the account"
+                          disabled={payDeleteMut.isPending}
+                          onClick={() => payDeleteMut.mutate(pmt.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Amount ({payPO.currency})</Label>
+                    <Input
+                      type="number"
+                      value={payForm.amount}
+                      onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+                      className="h-9"
+                      placeholder={balance > 0 ? String(balance) : "0"}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Date</Label>
+                    <DateField value={payForm.payment_date} onChange={(v) => setPayForm({ ...payForm, payment_date: v })} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Paid From</Label>
+                  <Select value={payForm.cash_account_id || NO_ACCOUNT} onValueChange={(v) => setPayForm({ ...payForm, cash_account_id: v === NO_ACCOUNT ? "" : v })}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="No account" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_ACCOUNT}>No account — don't touch balances</SelectItem>
+                      {orderedAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}{a.currency && a.currency !== "PHP" ? ` · ${a.currency}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Notes</Label>
+                  <Input value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} className="h-9" placeholder="e.g. 30% deposit" />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  When you mark this PO paid, only the balance is withdrawn.
+                </p>
+                <Button
+                  className="w-full h-9"
+                  disabled={payCreateMut.isPending || !(parseFloat(payForm.amount) > 0)}
+                  onClick={() => {
+                    const amt = parseFloat(payForm.amount);
+                    if (amt > balance + 0.005) { toast.error(`That is more than the ${fmt(balance)} balance`); return; }
+                    payCreateMut.mutate();
+                  }}
+                >
+                  {payCreateMut.isPending ? "Recording..." : "Record Payment"}
+                </Button>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">PO {viewPO?.po_number}</DialogTitle></DialogHeader>
@@ -1261,6 +1439,18 @@ export default function OverseasPurchaseOrdersPage() {
                     <span>Total (PHP)</span>
                     <span className="font-semibold text-primary">{peso(viewPO.total_amount * viewPO.exchange_rate)}</span>
                   </div>
+                  {paidSoFar(viewPO.id) > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm pt-1 border-t">
+                        <span>Paid so far</span>
+                        <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{paidSoFar(viewPO.id).toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Balance</span>
+                        <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{Math.max(viewPO.total_amount - paidSoFar(viewPO.id), 0).toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

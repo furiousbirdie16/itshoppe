@@ -232,6 +232,25 @@ export interface LoanPayment {
   updated_at: string;
 }
 
+/**
+ * A payment toward an overseas PO — typically a deposit before the balance.
+ * Marking the PO paid then withdraws only what these have not already covered.
+ */
+export interface OverseasPoPayment {
+  id: string;
+  po_id: string;
+  payment_date: string;
+  /** In the PO's own currency. */
+  amount: number;
+  /** Account it was paid from; null records the payment without moving money. */
+  cash_account_id: string | null;
+  /** Peso cost, fixed when the payment was made. */
+  php_amount: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ShipmentTracking {
   id: string;
   po_id: string | null;
