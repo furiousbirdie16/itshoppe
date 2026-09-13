@@ -175,6 +175,15 @@ export default function OverseasPurchaseOrdersPage() {
   }, [poPayments]);
   const paidSoFar = (poId: string) =>
     (paymentsByPo.get(poId) || []).reduce((sum, pmt) => sum + Number(pmt.amount || 0), 0);
+  /**
+   * Pesos still owed on a PO after its deposits. Deposits are taken off at the
+   * peso cost fixed when each was paid — the same figure the Supplier POs card
+   * subtracts — so the list and the card agree.
+   */
+  const phpBalance = (po: OverseasPurchaseOrder) => {
+    const paidPhp = (paymentsByPo.get(po.id) || []).reduce((sum, pmt) => sum + Number(pmt.php_amount || 0), 0);
+    return Math.max(Number(po.total_amount) * Number(po.exchange_rate || 1) - paidPhp, 0);
+  };
   const invalidatePayments = () => {
     queryClient.invalidateQueries({ queryKey: ["overseas_po_payments"] });
     queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -1689,6 +1698,7 @@ export default function OverseasPurchaseOrdersPage() {
                   selected={selectedIds.has(po.id)}
                   onToggleSelect={() => toggleOne(po.id)}
                   actions={renderOverseasPOActions(po)}
+                  balanceLeft={paidSoFar(po.id) > 0 ? phpBalance(po) : null}
                   itemsSummary={
                     totalItems === 0 ? "—" : (
                       <>
@@ -1785,6 +1795,9 @@ export default function OverseasPurchaseOrdersPage() {
                 {isAdmin && (
                   <TableCell className="text-sm text-right font-mono text-primary">
                     {peso(po.total_amount * po.exchange_rate)}
+                    {paidSoFar(po.id) > 0 && (
+                      <div className="text-[11px] text-muted-foreground font-sans">{peso(phpBalance(po))} left</div>
+                    )}
                   </TableCell>
                 )}
                 <TableCell className="text-right">

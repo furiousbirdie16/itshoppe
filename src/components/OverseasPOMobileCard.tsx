@@ -14,6 +14,8 @@ interface Props {
   onToggleSelect: () => void;
   /** The same actions the desktop table renders, passed in so they cannot drift. */
   actions: React.ReactNode;
+  /** Pesos still owed after down payments; null when nothing has been paid yet. */
+  balanceLeft?: number | null;
 }
 
 const fmtDate = (d: string) =>
@@ -27,7 +29,7 @@ const fmtDate = (d: string) =>
  * and arrival stacked beneath, so nothing needs horizontal scrolling.
  */
 export function OverseasPOMobileCard({
-  po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions,
+  po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions, balanceLeft,
 }: Props) {
   return (
     <div className={cn("rounded-xl border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
@@ -38,8 +40,11 @@ export function OverseasPOMobileCard({
           <div className="flex items-start justify-between gap-2">
             <span className="truncate font-mono text-xs font-semibold">{po.po_number}</span>
             {isAdmin && (
-              <span className="shrink-0 text-sm font-semibold tabular-nums">
+              <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
                 {peso(Number(po.total_amount) * Number(po.exchange_rate || 1))}
+                {balanceLeft != null && (
+                  <span className="block text-[11px] font-normal text-muted-foreground">{peso(balanceLeft)} left</span>
+                )}
               </span>
             )}
           </div>
