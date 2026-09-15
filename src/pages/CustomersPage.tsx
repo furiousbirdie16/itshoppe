@@ -17,7 +17,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Customer } from "@/types/database";
@@ -50,6 +51,15 @@ const CUSTOMER_COLUMNS: ColumnDef[] = [
 ];
 
 type ActivityBucket = "7" | "14" | "21" | "30" | "dormant" | "never";
+
+const ACTIVITY_PRESETS: { v: "all" | ActivityBucket; l: string }[] = [
+  { v: "all", l: "All" },
+  { v: "7", l: "≤7d" },
+  { v: "14", l: "≤14d" },
+  { v: "21", l: "≤21d" },
+  { v: "30", l: "≤30d" },
+  { v: "dormant", l: "Dormant" },
+];
 
 function activityFromDays(days: number | null): { bucket: ActivityBucket; label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   if (days === null) return { bucket: "never", label: "No orders", variant: "outline", className: "text-muted-foreground" };
@@ -465,20 +475,28 @@ export default function CustomersPage() {
           <Input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
 
-        <div className="flex items-center gap-1 rounded-lg border bg-card p-1 flex-wrap">
-          {([
-            { v: "all", l: "All" },
-            { v: "7", l: "≤7d" },
-            { v: "14", l: "≤14d" },
-            { v: "21", l: "≤21d" },
-            { v: "30", l: "≤30d" },
-            { v: "dormant", l: "Dormant" },
-          ] as { v: "all" | ActivityBucket; l: string }[]).map((p) => (
+        {/* Six chips wrapped to two rows on a phone. Desktop keeps them; mobile
+            gets the same choices folded into one control. */}
+        <div className="hidden md:flex items-center gap-1 rounded-lg border bg-card p-1 flex-wrap">
+          {ACTIVITY_PRESETS.map((p) => (
             <Button key={p.v} variant={activityFilter === p.v ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setActivityFilter(p.v)}>
               {p.l}
             </Button>
           ))}
         </div>
+
+        <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as "all" | ActivityBucket)}>
+          <SelectTrigger className="h-8 w-[130px] text-xs md:hidden">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ACTIVITY_PRESETS.map((p) => (
+              <SelectItem key={p.v} value={p.v} className="text-xs">
+                {p.v === "all" ? "All activity" : p.l}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Everything else lives in the drawer. Search and the activity chips
             are what this page is opened for; the other seven filters were three
@@ -590,7 +608,7 @@ export default function CustomersPage() {
           </SheetContent>
         </Sheet>
 
-        <div className="ml-auto">
+        <div className="ml-auto hidden md:block">
           <ColumnVisibilityMenu columns={CUSTOMER_COLUMNS} visible={colVisible} onToggle={toggleCol} onReset={resetCols} />
         </div>
       </div>
@@ -855,61 +873,66 @@ export default function CustomersPage() {
             const locChip = locationChipFor(c);
             const cls = classificationMeta(c.classification);
             const fu = getFollowUpInfo(c.last_follow_up_at);
+            // One badge, not three. A missed or pending follow-up is the thing
+            // you act on, so it wins; otherwise the order activity speaks.
+            const status = fu.status === "never" || fu.status === "needs" ? fu : activity;
+            // Only render what the customer actually has. A brand-new customer
+            // used to spend half a card showing four labels over three dashes.
+            const identity = [cls.label, locChip, c.contact_person].filter(Boolean);
+            const order = [
+              c._lastAgent,
+              c._lastDate ? format(new Date(c._lastDate), "MMM d, yyyy") : null,
+            ].filter(Boolean);
             return (
-              <div key={c.id} className={cn("rounded-lg border p-3 space-y-2", selectedIds.has(c.id) ? "bg-muted/40" : "bg-card")}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <Checkbox className="mt-1" checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} />
-                        <span className="font-medium text-sm truncate">{c.name}</span>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium", cls.className)}>{cls.label}</Badge>
-                      </div>
-                      {c.contact_person && (
-                        <div className="text-[11px] text-muted-foreground truncate mt-0.5">{c.contact_person}</div>
-                      )}
+              <div key={c.id} className={cn("rounded-lg border px-3 py-2.5", selectedIds.has(c.id) ? "bg-muted/40" : "bg-card")}>
+                <div className="flex items-start gap-2">
+                  <Checkbox className="mt-0.5 shrink-0" checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium text-sm leading-snug min-w-0 break-words">{c.name}</span>
+                      <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0 whitespace-nowrap", status.className)}>
+                        {status.label}
+                      </Badge>
                     </div>
-                  </div>
-                  <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0 whitespace-nowrap", activity.className)}>{activity.label}</Badge>
-                </div>
 
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  <div className="col-span-2 flex items-center gap-1 text-muted-foreground">
-                    <MapPin className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{locChip || "No location"}</span>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-muted-foreground">Sales Agent</div>
-                    <div className="truncate">{c._lastAgent || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-muted-foreground">Last Order</div>
-                    <div className="truncate">{c._lastDate ? format(new Date(c._lastDate), "MMM d, yyyy") : "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-muted-foreground">Follow-up</div>
-                    <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", fu.className)}>{fu.label}</Badge>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase text-muted-foreground">Total</div>
-                    <div className="font-semibold">{c._total ? peso(c._total) : "—"}</div>
+                    {identity.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {identity.join(" \u00b7 ")}
+                      </div>
+                    )}
+
+                    {(order.length > 0 || !!c._total) && (
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {order.join(" \u00b7 ")}
+                        {order.length > 0 && !!c._total && " \u00b7 "}
+                        {!!c._total && <span className="font-semibold text-foreground">{peso(c._total)}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-1 pt-1 border-t">
-                  <Button variant="ghost" size="sm" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-8 px-2">
+                <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t">
+                  <Button variant="ghost" size="sm" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-8 px-2 text-xs">
                     <BellRing className="h-4 w-4 text-primary mr-1" /> Follow up
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setHistoryDialog(c)} className="h-8 w-8 p-0" title="History">
-                    <History className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(c)} className="h-8 w-8 p-0" title="Edit">
-                    <Pencil className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate(c.id)} className="h-8 w-8 p-0" title="Delete">
-                    <Trash2 className="h-4 w-4 text-destructive/70" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="More">
+                        <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setHistoryDialog(c)}>
+                        <History className="h-4 w-4 mr-2 text-muted-foreground" /> History
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openEdit(c)}>
+                        <Pencil className="h-4 w-4 mr-2 text-muted-foreground" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => deleteMut.mutate(c.id)} className="text-destructive focus:text-destructive">
+                        <Trash2 className="h-4 w-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             );
