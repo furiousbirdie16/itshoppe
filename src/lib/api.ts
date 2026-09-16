@@ -222,6 +222,25 @@ export const setBranchQuantities = async (params: {
 const db = (supabase as any);
 const from = (table: string) => db.from(table);
 
+/**
+ * A sale counts once the customer has paid. Shared so the dashboard, the trend
+ * chart and the customer list cannot drift into three different answers.
+ */
+export const SOLD_INVOICE_STATUSES: Invoice["status"][] = ["paid", "completed"];
+
+/**
+ * Every status that means the customer actually placed an order — anything but
+ * a draft or a cancellation.
+ *
+ * Used for "when did they last order", which is a question about contact, not
+ * about money: an order that is confirmed, reserved or shipped is still an
+ * order. `completed` was missing, so a customer whose invoices had all been
+ * fulfilled looked dormant.
+ */
+export const ORDERED_INVOICE_STATUSES: Invoice["status"][] = [
+  "confirmed", "unpaid", "reserved", "shipped", "paid", "completed",
+];
+
 // Items
 export const getItems = async (): Promise<Item[]> => {
   return fetchAllRows<Item>(() =>
@@ -1333,12 +1352,6 @@ export const getDashboardStats = async (branchId?: string | null) => {
   const todayIso = iso(now);
   const monthStartIso = iso(new Date(now.getFullYear(), now.getMonth(), 1));
 
-  // A sale counts once the customer has paid — the same rule getSalesTrend uses,
-  // so the cards and the trend chart on this page cannot disagree. Counting
-  // `confirmed`, `shipped` (both shipped-not-paid) and `reserved` (allocated
-  // stock on an unpaid order) booked revenue that had not been earned.
-  const SOLD_INVOICE_STATUSES = ["paid", "completed"];
-
   const periodSales = async (fromIso: string) => {
     let invQ = from("invoices")
       .select("total_amount")
@@ -2034,28 +2047,73 @@ export const createSalesAgent = async (name: string) => {
 };
 
 /** Returns last sales agent + last order date for each given customer. */
+/**
+ * Per customer: when they last paid for an order, and who last served them.
+ *
+ * The date is the last payment, not the last order raised — an invoice sitting
+ * unpaid says the customer owes money, which is the Receivables page's job, not
+ * a sign of recent business. Payment date comes from invoice_financials.paid_at,
+ * stamped by the database the moment an invoice turns paid or completed; older
+ * invoices from before that trigger fall back to their invoice date.
+ *
+ * The agent is read more widely — any order or even a quotation — because it
+ * exists to prefill "who handles this customer", where an unpaid order is still
+ * the most recent answer.
+ */
 export const getCustomerSalesActivity = async (
   customerIds: string[],
 ): Promise<Record<string, { lastAgent: string | null; lastDate: string | null }>> => {
   const out: Record<string, { lastAgent: string | null; lastDate: string | null }> = {};
   if (!customerIds.length) return out;
-  const apply = (cid: string, agent: string | null, date: string | null) => {
-    const cur = out[cid];
-    if (!cur || (date && (!cur.lastDate || date > cur.lastDate))) {
-      out[cid] = { lastAgent: agent || cur?.lastAgent || null, lastDate: date || cur?.lastDate || null };
-    }
+
+  const lastPaid: Record<string, string> = {};
+  const lastAgent: Record<string, { date: string; agent: string | null }> = {};
+  const noteAgent = (cid: string, date: string | null, agent: string | null) => {
+    if (!date) return;
+    const cur = lastAgent[cid];
+    if (!cur || date > cur.date) lastAgent[cid] = { date, agent };
   };
-  const { data: invs } = await from("invoices")
-    .select("customer_id, sales_agent, invoice_date")
-    .in("customer_id", customerIds)
-    .in("status", ["confirmed", "paid", "unpaid"])
-    .order("invoice_date", { ascending: false });
-  for (const r of (invs as any[]) || []) if (r.customer_id) apply(r.customer_id, r.sales_agent || null, r.invoice_date || null);
-  const { data: quotes } = await from("quotations")
-    .select("customer_id, sales_agent, quotation_date")
-    .in("customer_id", customerIds)
-    .order("quotation_date", { ascending: false });
-  for (const r of (quotes as any[]) || []) if (r.customer_id) apply(r.customer_id, r.sales_agent || null, r.quotation_date || null);
+
+  // Paged: past a thousand invoices the oldest page would drop out, and a
+  // customer whose only orders fell in it would read as never having ordered.
+  const invs = await fetchAllRows<any>(() =>
+    from("invoices")
+      .select("customer_id, sales_agent, invoice_date, status, invoice_financials(paid_at)")
+      .in("customer_id", customerIds)
+      .in("status", ORDERED_INVOICE_STATUSES)
+      .order("invoice_date", { ascending: false })
+      .order("id", { ascending: false }),
+  );
+  for (const r of invs) {
+    if (!r.customer_id) continue;
+    noteAgent(r.customer_id, r.invoice_date || null, r.sales_agent || null);
+    if (!SOLD_INVOICE_STATUSES.includes(r.status)) continue;
+    // The embed comes back as a row or a one-element array depending on how
+    // PostgREST reads the relationship, so both shapes are handled.
+    const fin = Array.isArray(r.invoice_financials) ? r.invoice_financials[0] : r.invoice_financials;
+    const paidOn = fin?.paid_at ? String(fin.paid_at).slice(0, 10) : null;
+    const date = paidOn || r.invoice_date || null;
+    if (date && (!lastPaid[r.customer_id] || date > lastPaid[r.customer_id])) {
+      lastPaid[r.customer_id] = date;
+    }
+  }
+
+  const quotes = await fetchAllRows<any>(() =>
+    from("quotations")
+      .select("customer_id, sales_agent, quotation_date")
+      .in("customer_id", customerIds)
+      .order("quotation_date", { ascending: false })
+      .order("id", { ascending: false }),
+  );
+  for (const r of quotes) {
+    if (r.customer_id) noteAgent(r.customer_id, r.quotation_date || null, r.sales_agent || null);
+  }
+
+  for (const cid of customerIds) {
+    const date = lastPaid[cid] || null;
+    const agent = lastAgent[cid]?.agent || null;
+    if (date || agent) out[cid] = { lastAgent: agent, lastDate: date };
+  }
   return out;
 };
 

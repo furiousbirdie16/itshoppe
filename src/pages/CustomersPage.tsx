@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity } from "@/lib/api";
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity, SOLD_INVOICE_STATUSES } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { peso } from "@/lib/currency";
@@ -40,7 +40,7 @@ const CUSTOMER_COLUMNS: ColumnDef[] = [
   { key: "tags", label: "Tags", defaultVisible: true },
   { key: "location", label: "Location", defaultVisible: true },
   { key: "agent", label: "Sales Agent", defaultVisible: true },
-  { key: "lastOrder", label: "Last Order", defaultVisible: true },
+  { key: "lastOrder", label: "Last Paid", defaultVisible: true },
   { key: "activity", label: "Activity", defaultVisible: true },
   { key: "followUp", label: "Last Follow-up", defaultVisible: true },
   { key: "orders", label: "# Orders", defaultVisible: false },
@@ -70,7 +70,7 @@ const ACTIVITY_PRESETS: { v: "all" | ActivityBucket; l: string }[] = [
  * which already prints the exact number of days.
  */
 function activityFromDays(days: number | null): { bucket: ActivityBucket; label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string; dotClass: string } {
-  if (days === null) return { bucket: "never", label: "No orders", variant: "outline", className: "text-muted-foreground", dotClass: "bg-muted-foreground/40" };
+  if (days === null) return { bucket: "never", label: "Not yet paid", variant: "outline", className: "text-muted-foreground", dotClass: "bg-muted-foreground/40" };
   if (days <= 7) return { bucket: "7", label: "Active", variant: "default", className: "bg-success/15 text-success border-success/30", dotClass: "bg-success" };
   if (days <= 14) return { bucket: "14", label: "Active", variant: "secondary", className: "bg-success/15 text-success border-success/30", dotClass: "bg-success" };
   if (days <= 21) return { bucket: "21", label: "Active", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30", dotClass: "bg-warning" };
@@ -78,7 +78,7 @@ function activityFromDays(days: number | null): { bucket: ActivityBucket; label:
   return { bucket: "dormant", label: "Dormant", variant: "destructive", className: "bg-destructive/15 text-destructive border-destructive/30", dotClass: "bg-destructive" };
 }
 
-/** A customer counts as active while their last order is inside this window. */
+/** A customer counts as active while their last payment is inside this window. */
 const ACTIVE_WINDOW_DAYS = 30;
 type CustomerTab = "all" | "active" | "inactive";
 
@@ -135,7 +135,10 @@ export default function CustomersPage() {
         let q = supabase
           .from("invoices")
           .select("id, customer_id, total_amount, invoice_date")
-          .in("status", ["confirmed", "paid"])
+          // What the customer has actually bought, on the same basis as the
+          // dashboard's sales figures. "completed" was missing, so a customer
+          // whose orders had all been fulfilled showed no spend at all.
+          .in("status", SOLD_INVOICE_STATUSES)
           .order("id");
         if (fromStr) q = q.gte("invoice_date", fromStr);
         if (toStr) q = q.lte("invoice_date", toStr);
@@ -253,8 +256,8 @@ export default function CustomersPage() {
       if (!hit) return false;
     }
     if (tab !== "all") {
-      // Never ordered counts as inactive: there is nothing to have lapsed from,
-      // but they are certainly not buying.
+      // Never paid counts as inactive: an order still awaiting payment is not
+      // evidence the customer is currently buying.
       const isActive = customer._daysSince !== null && customer._daysSince <= ACTIVE_WINDOW_DAYS;
       if (tab === "active" && !isActive) return false;
       if (tab === "inactive" && isActive) return false;
@@ -499,25 +502,38 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {/* Active means "ordered in the last 30 days". Never-ordered customers sit
-          in Inactive: there is nothing for them to have lapsed from, but they
-          are not buying either. */}
-      <div className="grid grid-cols-3 gap-1 rounded-lg border bg-card p-1 sm:inline-grid sm:w-auto">
+      {/* Active means "paid for an order in the last 30 days". A customer who
+          has never paid sits in Inactive: an unpaid order is money owed, which
+          the Receivables page chases, not a sign of recent business. */}
+      <div className="flex items-center gap-5 border-b sm:gap-7">
         {([
-          { v: "all", l: "All customers", n: tabCounts.all },
+          { v: "all", l: "All", n: tabCounts.all },
           { v: "active", l: "Active", n: tabCounts.active },
           { v: "inactive", l: "Inactive", n: tabCounts.inactive },
         ] as { v: CustomerTab; l: string; n: number }[]).map((t) => (
-          <Button
+          <button
             key={t.v}
-            variant={tab === t.v ? "default" : "ghost"}
-            size="sm"
-            className="h-8 px-3 text-xs sm:px-4"
+            type="button"
             onClick={() => setTab(t.v)}
+            className={cn(
+              // -mb-px pulls the underline onto the container's border so the
+              // active tab reads as continuous with the table below it.
+              "-mb-px flex items-center gap-2 border-b-2 pb-2.5 text-sm transition-colors",
+              tab === t.v
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
           >
-            <span className="truncate">{t.l}</span>
-            <span className={cn("ml-1.5 tabular-nums", tab === t.v ? "opacity-80" : "text-muted-foreground")}>{t.n}</span>
-          </Button>
+            {t.l}
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-px text-[11px] tabular-nums",
+                tab === t.v ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+              )}
+            >
+              {t.n}
+            </span>
+          </button>
         ))}
       </div>
 
@@ -550,7 +566,7 @@ export default function CustomersPage() {
             </SheetHeader>
             <div className="mt-4 space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Ordered within</Label>
+                <Label className="text-xs font-medium">Paid within</Label>
                 <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as "all" | ActivityBucket)}>
                   <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -741,7 +757,7 @@ export default function CustomersPage() {
               {showCol("phone") && <SortableHeader sortKey="phone" label="Phone" sort={sort} onToggle={toggle} />}
               {showCol("location") && <SortableHeader sortKey="city_municipality" label="Location" sort={sort} onToggle={toggle} />}
               {showCol("agent") && <SortableHeader sortKey="_lastAgent" label="Sales Agent" sort={sort} onToggle={toggle} />}
-              {showCol("lastOrder") && <SortableHeader sortKey="_lastDate" label="Last Order" sort={sort} onToggle={toggle} />}
+              {showCol("lastOrder") && <SortableHeader sortKey="_lastDate" label="Last Paid" sort={sort} onToggle={toggle} />}
               {showCol("activity") && <TableHead className="text-xs">Activity</TableHead>}
               {showCol("followUp") && <SortableHeader sortKey="last_follow_up_at" label="Last Follow-up" sort={sort} onToggle={toggle} />}
               {showCol("orders") && <SortableHeader sortKey="_orders" label="# Orders" sort={sort} onToggle={toggle} align="right" />}
@@ -856,7 +872,7 @@ export default function CustomersPage() {
                       <TableCell>
                         <span
                           className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs"
-                          title={c._daysSince === null ? "No orders yet" : `Last ordered ${c._daysSince} days ago`}
+                          title={c._daysSince === null ? "No paid orders yet" : `Last paid ${c._daysSince} days ago`}
                         >
                           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", activity.dotClass)} />
                           <span className={activity.bucket === "never" ? "text-muted-foreground" : ""}>{activity.label}</span>
