@@ -61,14 +61,26 @@ const ACTIVITY_PRESETS: { v: "all" | ActivityBucket; l: string }[] = [
   { v: "dormant", l: "Dormant" },
 ];
 
-function activityFromDays(days: number | null): { bucket: ActivityBucket; label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
-  if (days === null) return { bucket: "never", label: "No orders", variant: "outline", className: "text-muted-foreground" };
-  if (days <= 7) return { bucket: "7", label: "< 7", variant: "default", className: "bg-success/15 text-success border-success/30" };
-  if (days <= 14) return { bucket: "14", label: "< 14", variant: "secondary", className: "bg-primary/15 text-primary border-primary/30" };
-  if (days <= 21) return { bucket: "21", label: "< 21", variant: "secondary", className: "bg-accent/20 text-accent-foreground border-accent/40" };
-  if (days <= 30) return { bucket: "30", label: "< 30", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30" };
-  return { bucket: "dormant", label: "Dormant", variant: "destructive", className: "bg-destructive/15 text-destructive border-destructive/30" };
+/**
+ * How recently a customer ordered.
+ *
+ * The label says what it means — "Active", "Dormant" — rather than "< 7", which
+ * read as a threshold nobody could place without the filter row next to it. How
+ * recent within that is carried by the dot colour and the Last Order column,
+ * which already prints the exact number of days.
+ */
+function activityFromDays(days: number | null): { bucket: ActivityBucket; label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string; dotClass: string } {
+  if (days === null) return { bucket: "never", label: "No orders", variant: "outline", className: "text-muted-foreground", dotClass: "bg-muted-foreground/40" };
+  if (days <= 7) return { bucket: "7", label: "Active", variant: "default", className: "bg-success/15 text-success border-success/30", dotClass: "bg-success" };
+  if (days <= 14) return { bucket: "14", label: "Active", variant: "secondary", className: "bg-success/15 text-success border-success/30", dotClass: "bg-success" };
+  if (days <= 21) return { bucket: "21", label: "Active", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30", dotClass: "bg-warning" };
+  if (days <= 30) return { bucket: "30", label: "Active", variant: "secondary", className: "bg-warning/15 text-warning border-warning/30", dotClass: "bg-warning" };
+  return { bucket: "dormant", label: "Dormant", variant: "destructive", className: "bg-destructive/15 text-destructive border-destructive/30", dotClass: "bg-destructive" };
 }
+
+/** A customer counts as active while their last order is inside this window. */
+const ACTIVE_WINDOW_DAYS = 30;
+type CustomerTab = "all" | "active" | "inactive";
 
 function csvCell(v: unknown): string {
   const s = v === null || v === undefined ? "" : String(v);
@@ -85,6 +97,7 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
+  const [tab, setTab] = useState<CustomerTab>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [classFilter, setClassFilter] = useState<"all" | ClassificationValue>("all");
   const [followUpFilter, setFollowUpFilter] = useState<"all" | "active" | "needs" | "never">("all");
@@ -223,6 +236,14 @@ export default function CustomersPage() {
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [customers]);
 
+  const tabCounts = useMemo(() => {
+    let active = 0;
+    for (const c of enriched) {
+      if (c._daysSince !== null && c._daysSince <= ACTIVE_WINDOW_DAYS) active++;
+    }
+    return { all: enriched.length, active, inactive: enriched.length - active };
+  }, [enriched]);
+
   const filtered = enriched.filter((customer) => {
     const q = search.trim().toLowerCase();
     if (q) {
@@ -230,6 +251,13 @@ export default function CustomersPage() {
       const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address, cls]
         .some((value) => (value || "").toLowerCase().includes(q));
       if (!hit) return false;
+    }
+    if (tab !== "all") {
+      // Never ordered counts as inactive: there is nothing to have lapsed from,
+      // but they are certainly not buying.
+      const isActive = customer._daysSince !== null && customer._daysSince <= ACTIVE_WINDOW_DAYS;
+      if (tab === "active" && !isActive) return false;
+      if (tab === "inactive" && isActive) return false;
     }
     if (activityFilter !== "all") {
       const b = activityFromDays(customer._daysSince).bucket;
@@ -387,6 +415,7 @@ export default function CustomersPage() {
   // so nothing silently stays applied while hidden. Search and the activity
   // chips are excluded: they are visible on the page and speak for themselves.
   const drawerFilterCount = [
+    activityFilter !== "all",
     agentFilter !== "all",
     classFilter !== "all",
     followUpFilter !== "all",
@@ -398,6 +427,7 @@ export default function CustomersPage() {
   ].filter(Boolean).length;
 
   const resetDrawerFilters = () => {
+    setActivityFilter("all");
     setAgentFilter("all");
     setClassFilter("all");
     setFollowUpFilter("all");
@@ -469,34 +499,35 @@ export default function CustomersPage() {
         </div>
       </div>
 
+      {/* Active means "ordered in the last 30 days". Never-ordered customers sit
+          in Inactive: there is nothing for them to have lapsed from, but they
+          are not buying either. */}
+      <div className="grid grid-cols-3 gap-1 rounded-lg border bg-card p-1 sm:inline-grid sm:w-auto">
+        {([
+          { v: "all", l: "All customers", n: tabCounts.all },
+          { v: "active", l: "Active", n: tabCounts.active },
+          { v: "inactive", l: "Inactive", n: tabCounts.inactive },
+        ] as { v: CustomerTab; l: string; n: number }[]).map((t) => (
+          <Button
+            key={t.v}
+            variant={tab === t.v ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-3 text-xs sm:px-4"
+            onClick={() => setTab(t.v)}
+          >
+            <span className="truncate">{t.l}</span>
+            <span className={cn("ml-1.5 tabular-nums", tab === t.v ? "opacity-80" : "text-muted-foreground")}>{t.n}</span>
+          </Button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
 
-        {/* Six chips wrapped to two rows on a phone. Desktop keeps them; mobile
-            gets the same choices folded into one control. */}
-        <div className="hidden md:flex items-center gap-1 rounded-lg border bg-card p-1 flex-wrap">
-          {ACTIVITY_PRESETS.map((p) => (
-            <Button key={p.v} variant={activityFilter === p.v ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setActivityFilter(p.v)}>
-              {p.l}
-            </Button>
-          ))}
-        </div>
 
-        <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as "all" | ActivityBucket)}>
-          <SelectTrigger className="h-8 w-[130px] text-xs md:hidden">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ACTIVITY_PRESETS.map((p) => (
-              <SelectItem key={p.v} value={p.v} className="text-xs">
-                {p.v === "all" ? "All activity" : p.l}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
         {/* Everything else lives in the drawer. Search and the activity chips
             are what this page is opened for; the other seven filters were three
@@ -518,6 +549,18 @@ export default function CustomersPage() {
               <SheetTitle>Filters</SheetTitle>
             </SheetHeader>
             <div className="mt-4 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Ordered within</Label>
+                <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as "all" | ActivityBucket)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ACTIVITY_PRESETS.map((pre) => (
+                      <SelectItem key={pre.v} value={pre.v}>{pre.v === "all" ? "Any time" : pre.l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales agent</Label>
                 <FilterCombobox value={agentFilter} onChange={setAgentFilter} options={agentOptions} allLabel="All agents" placeholder="Search agent..." className="h-9 text-sm w-full" emptyText="No agents" />
@@ -811,19 +854,33 @@ export default function CustomersPage() {
                     )}
                     {showCol("activity") && (
                       <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium whitespace-nowrap", activity.className)}>
-                          {activity.label}
-                        </Badge>
+                        <span
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs"
+                          title={c._daysSince === null ? "No orders yet" : `Last ordered ${c._daysSince} days ago`}
+                        >
+                          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", activity.dotClass)} />
+                          <span className={activity.bucket === "never" ? "text-muted-foreground" : ""}>{activity.label}</span>
+                        </span>
                       </TableCell>
                     )}
+                    {/* A red badge on every row made the whole column read as an
+                        alarm. The date is what you want at a glance; the dot
+                        carries the warning, and hovering gives the timestamp. */}
                     {showCol("followUp") && (
                       <TableCell className="text-sm">
-                        <div className="flex flex-col gap-0.5">
-                          <Badge variant="outline" className={cn("text-[10px] font-medium w-fit whitespace-nowrap", fu.className)}>{fu.label}</Badge>
-                          {c.last_follow_up_at && (
-                            <span className="text-[10px] text-muted-foreground">{format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}</span>
-                          )}
-                        </div>
+                        {c.last_follow_up_at ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs"
+                            title={`Followed up ${format(new Date(c.last_follow_up_at), "MMM d, yyyy HH:mm")}`}
+                          >
+                            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} />
+                            <span className={fu.status === "needs" ? "text-destructive" : ""}>
+                              {fu.days === 0 ? "Today" : `${fu.days}d ago`}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Never</span>
+                        )}
                       </TableCell>
                     )}
                     {showCol("orders") && (
