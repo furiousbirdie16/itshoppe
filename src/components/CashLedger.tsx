@@ -425,10 +425,27 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     !!transferFrom && !!transferTo &&
     (transferFrom.currency || BASE_CURRENCY) !== (transferTo.currency || BASE_CURRENCY);
 
+  /**
+   * A transfer leg names the account at the other end in `payee`, and which end
+   * that is comes from the direction. Rendered as a route so either row says
+   * where the money actually went, rather than only which account it touched.
+   */
+  const transferRoute = (t: CashTransaction) => {
+    if (!t.transfer_group_id) return null;
+    const other = (t.payee || "").trim();
+    // Legs recorded before the counterparty was stored have nothing to point at.
+    if (!other) return null;
+    const own = t.cash_accounts?.name || "This account";
+    return t.direction === "out" ? `${own} \u2192 ${other}` : `${other} \u2192 ${own}`;
+  };
+
   const handleTransfer = () => {
     const amount = Number(transfer.amount);
     if (!transfer.from_account_id || !transfer.to_account_id) { toast.error("Pick both accounts"); return; }
     if (transfer.from_account_id === transfer.to_account_id) { toast.error("Pick two different accounts"); return; }
+    // Without it the ledger shows money moving with no explanation, which is
+    // the thing this pair of rows is least able to reconstruct later.
+    if (!transfer.notes.trim()) { toast.error("Say what the transfer is for"); return; }
     if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
 
     if (!transferCurrenciesDiffer) {
@@ -770,8 +787,17 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={transfer.notes} onChange={(e) => setTransfer({ ...transfer, notes: e.target.value })} className="resize-none" rows={2} />
+              <Label className="text-xs font-medium">Reason *</Label>
+              <Textarea
+                value={transfer.notes}
+                onChange={(e) => setTransfer({ ...transfer, notes: e.target.value })}
+                className="resize-none"
+                rows={2}
+                placeholder="e.g. Fund payroll, top up for supplier payment"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Shown on both sides of the transfer in the ledger.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -796,12 +822,18 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
           sorted.map((t) => (
             <FinanceMobileCard
               key={t.id}
-              title={t.payee || "—"}
+              title={transferRoute(t) || t.payee || "—"}
               subtitle={
-                <>
-                  {t.category || "—"}
-                  {showAccountFilter && t.cash_accounts?.name && <span> · {t.cash_accounts.name}</span>}
-                </>
+                transferRoute(t) ? (
+                  // The route above already names both accounts, so the reason
+                  // is the one thing left worth the line.
+                  <>{(t.notes || "").trim() || "Transfer"}</>
+                ) : (
+                  <>
+                    {t.category || "—"}
+                    {showAccountFilter && t.cash_accounts?.name && <span> · {t.cash_accounts.name}</span>}
+                  </>
+                )
               }
               // Direction is a signed, coloured amount here — the table carries it
               // by which of two columns the figure lands in, which needs both.
@@ -861,7 +893,12 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                 <TableCell className="text-sm text-muted-foreground">{formatDate(t.txn_date)}</TableCell>
                 {showAccountFilter && <TableCell className="text-sm">{t.cash_accounts?.name || "—"}</TableCell>}
                 <TableCell className="text-sm">{t.category || "—"}</TableCell>
-                <TableCell className="text-sm font-medium">{t.payee || "—"}</TableCell>
+                <TableCell className="text-sm font-medium">
+                  {transferRoute(t) || t.payee || "—"}
+                  {!!t.transfer_group_id && !!(t.notes || "").trim() && (
+                    <span className="block text-[11px] font-normal text-muted-foreground">{(t.notes || "").trim()}</span>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm text-right text-emerald-600">{t.direction === "in" ? amountLabel(t) : "—"}</TableCell>
                 <TableCell className="text-sm text-right text-destructive/80">{t.direction === "out" ? amountLabel(t) : "—"}</TableCell>
                 {hasForeign && (
