@@ -193,6 +193,8 @@ export interface OverseasPurchaseOrder {
   status: 'unpaid' | 'paid_not_shipped' | 'shipped_not_paid' | 'shipped' | 'partially_received' | 'pending_cargo_adjustment' | 'cargo_adjusted' | 'received' | 'draft' | 'sent';
   order_date: string;
   expected_delivery: string | null;
+  /** When the supplier expects payment. Distinct from when the goods arrive. */
+  payment_due_date?: string | null;
   notes: string;
   total_amount: number;
   currency: 'USD' | 'RMB';

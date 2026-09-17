@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity, SOLD_INVOICE_STATUSES } from "@/lib/api";
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity, SOLD_INVOICE_STATUSES, getCustomerOrders } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { peso } from "@/lib/currency";
@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal, Receipt } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -356,6 +356,13 @@ export default function CustomersPage() {
     queryKey: ["follow_up_history", historyDialog?.id],
     queryFn: () => getFollowUpHistory(historyDialog!.id),
     enabled: !!historyDialog,
+  });
+
+  const [ordersDialog, setOrdersDialog] = useState<Customer | null>(null);
+  const { data: customerOrders = [], isPending: ordersPending } = useQuery({
+    queryKey: ["customer_orders", ordersDialog?.id],
+    queryFn: () => getCustomerOrders(ordersDialog!.id),
+    enabled: !!ordersDialog,
   });
 
   const openCreate = () => {
@@ -801,7 +808,16 @@ export default function CustomersPage() {
                       <div className="flex items-center gap-2">
                         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", fu.dotClass)} title={fu.label} />
                         <div className="min-w-0">
-                          <div className="truncate text-[15px] leading-snug">{c.name}</div>
+                          {/* The name is the obvious thing to click for "what has
+                              this customer bought", so it opens the orders. */}
+                          <button
+                            type="button"
+                            onClick={() => setOrdersDialog(c)}
+                            className="block max-w-full truncate text-left text-[15px] leading-snug hover:text-primary hover:underline"
+                            title="Order history"
+                          >
+                            {c.name}
+                          </button>
                           {!showCol("contact") && c.contact_person && (
                             <div className="text-[11px] text-muted-foreground truncate">{c.contact_person}</div>
                           )}
@@ -962,7 +978,13 @@ export default function CustomersPage() {
                   <Checkbox className="mt-0.5 shrink-0" checked={selectedIds.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-sm leading-snug min-w-0 break-words">{c.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setOrdersDialog(c)}
+                        className="min-w-0 break-words text-left text-sm font-medium leading-snug hover:text-primary hover:underline"
+                      >
+                        {c.name}
+                      </button>
                       <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0 whitespace-nowrap", status.className)}>
                         {status.label}
                       </Badge>
@@ -1050,6 +1072,68 @@ export default function CustomersPage() {
       </Dialog>
 
       {/* History */}
+      <Dialog open={!!ordersDialog} onOpenChange={(o) => !o && setOrdersDialog(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Order History · {ordersDialog?.name}</DialogTitle>
+          </DialogHeader>
+          {ordersPending ? (
+            <div className="flex justify-center py-10">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : customerOrders.length === 0 ? (
+            <div className="empty-state py-8">
+              <Receipt className="empty-state-icon" />
+              <p className="text-sm">No orders yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs text-muted-foreground">
+                {customerOrders.length} order{customerOrders.length === 1 ? "" : "s"} ·{" "}
+                {peso(customerOrders.reduce((sum, o) => sum + o.total_amount, 0))} total
+              </p>
+              {customerOrders.map((o) => (
+                <div key={o.id} className="rounded-lg border bg-card">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-3 py-2">
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className="font-mono text-sm font-medium">{o.invoice_number}</span>
+                      <Badge variant="outline" className="text-[10px] font-medium capitalize whitespace-nowrap">
+                        {o.status.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(o.invoice_date), "MMM d, yyyy")}
+                      {/* Only worth showing when it differs from the order date. */}
+                      {o.paid_on && o.paid_on !== o.invoice_date && ` · paid ${format(new Date(o.paid_on), "MMM d, yyyy")}`}
+                    </div>
+                  </div>
+                  <div className="divide-y">
+                    {o.items.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">No items on this invoice</div>
+                    ) : (
+                      o.items.map((li) => (
+                        <div key={li.id} className="flex items-baseline justify-between gap-3 px-3 py-1.5 text-sm">
+                          <span className="min-w-0 break-words">
+                            <span className="text-muted-foreground tabular-nums">{li.quantity}×</span> {li.name}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {peso(li.quantity * li.unit_price)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex justify-between border-t px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Total</span>
+                    <span className="font-semibold tabular-nums">{peso(o.total_amount)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!historyDialog} onOpenChange={(o) => !o && setHistoryDialog(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>

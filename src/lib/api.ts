@@ -2117,6 +2117,68 @@ export const getCustomerSalesActivity = async (
   return out;
 };
 
+export interface CustomerOrder {
+  id: string;
+  invoice_number: string;
+  invoice_date: string;
+  status: string;
+  total_amount: number;
+  /** When the money arrived, if it has. */
+  paid_on: string | null;
+  items: { id: string; name: string; quantity: number; unit_price: number }[];
+}
+
+/**
+ * Every order a customer has placed, newest first, with the lines on each.
+ *
+ * Drafts and cancellations are left out: an order that was never issued, or was
+ * called off, is not part of what this customer bought.
+ */
+export const getCustomerOrders = async (customerId: string): Promise<CustomerOrder[]> => {
+  if (!customerId) return [];
+  const invs = await fetchAllRows<any>(() =>
+    from("invoices")
+      .select("id, invoice_number, invoice_date, status, total_amount, invoice_financials(paid_at)")
+      .eq("customer_id", customerId)
+      .in("status", ORDERED_INVOICE_STATUSES)
+      .order("invoice_date", { ascending: false })
+      .order("id", { ascending: false }),
+  );
+  if (!invs.length) return [];
+
+  // One query for every line, rather than one per invoice: a long-standing
+  // customer would otherwise fire fifty round trips to open a dialog.
+  const items = await fetchAllRows<any>(() =>
+    from("invoice_items")
+      .select("id, invoice_id, quantity, unit_price, item_name, items(name), item_variations(name)")
+      .in("invoice_id", invs.map((i) => i.id))
+      .order("id", { ascending: true }),
+  );
+  const byInvoice = new Map<string, CustomerOrder["items"]>();
+  for (const li of items) {
+    const arr = byInvoice.get(li.invoice_id) || [];
+    // A line can name a catalogue item, a variation of one, or nothing at all
+    // when it was typed in free-hand.
+    const base = li.items?.name || li.item_name || "Item";
+    const name = li.item_variations?.name ? `${base} · ${li.item_variations.name}` : base;
+    arr.push({ id: li.id, name, quantity: Number(li.quantity || 0), unit_price: Number(li.unit_price || 0) });
+    byInvoice.set(li.invoice_id, arr);
+  }
+
+  return invs.map((inv) => {
+    const fin = Array.isArray(inv.invoice_financials) ? inv.invoice_financials[0] : inv.invoice_financials;
+    return {
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      status: inv.status,
+      total_amount: Number(inv.total_amount || 0),
+      paid_on: fin?.paid_at ? String(fin.paid_at).slice(0, 10) : null,
+      items: byInvoice.get(inv.id) || [],
+    };
+  });
+};
+
 /** Returns the most-recently-used sales agent for a single customer. */
 export const getLastSalesAgentForCustomer = async (customerId: string): Promise<string | null> => {
   if (!customerId) return null;

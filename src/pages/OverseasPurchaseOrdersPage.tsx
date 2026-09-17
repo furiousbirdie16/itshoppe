@@ -117,6 +117,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [status, setStatus] = useState<string>("unpaid");
   const [orderDate, setOrderDate] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
+  const [paymentDueDate, setPaymentDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const [branchId, setBranchId] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
@@ -544,6 +545,7 @@ export default function OverseasPurchaseOrdersPage() {
         status: status as any,
         order_date: orderDate || new Date().toISOString().slice(0, 10),
         expected_delivery: expectedDelivery || null,
+        payment_due_date: paymentDueDate || null,
         notes,
         total_amount: total,
         currency,
@@ -577,6 +579,7 @@ export default function OverseasPurchaseOrdersPage() {
         status: status as any,
         order_date: orderDate || null,
         expected_delivery: expectedDelivery || null,
+        payment_due_date: paymentDueDate || null,
         notes,
         total_amount: total,
         currency,
@@ -703,6 +706,7 @@ export default function OverseasPurchaseOrdersPage() {
     setOrderDate(new Date().toISOString().slice(0, 10));
     setExpectedDelivery("");
     setNotes("");
+    setPaymentDueDate("");
     setLines([emptyLine()]);
     setCurrency("USD");
     setExchangeRate("1");
@@ -718,6 +722,7 @@ export default function OverseasPurchaseOrdersPage() {
     setOrderDate(po.order_date || "");
     setExpectedDelivery(po.expected_delivery || "");
     setNotes(po.notes);
+    setPaymentDueDate((po as any).payment_due_date || "");
     setCurrency(po.currency);
     setExchangeRate(String(po.exchange_rate));
     setPaidFromAccountId((po as any).paid_from_account_id || "");
@@ -1186,6 +1191,15 @@ export default function OverseasPurchaseOrdersPage() {
                 <DateField value={expectedDelivery} onChange={setExpectedDelivery} />
               </div>
             </div>
+            {/* Separate from arrival: when the supplier ships first and expects
+                the money later, that promise has its own date. */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Payment Due Date</Label>
+              <DateField value={paymentDueDate} onChange={setPaymentDueDate} />
+              <p className="text-[11px] text-muted-foreground">
+                Optional. For orders shipped before they are paid for.
+              </p>
+            </div>
 
             {/* Line items */}
             <div>
@@ -1366,7 +1380,28 @@ export default function OverseasPurchaseOrdersPage() {
                 <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
                 {isAdmin && <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>}
                 {isAdmin && <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>}
+                {(viewPO as any).payment_due_date && (() => {
+                  const due = (viewPO as any).payment_due_date as string;
+                  // Only unpaid orders can be late; once paid the date is history.
+                  const overdue = !isPaidStatus(viewPO.status) && due < new Date().toISOString().slice(0, 10);
+                  return (
+                    <div>
+                      <span className="text-muted-foreground">Payment due:</span>{" "}
+                      <span className={overdue ? "font-medium text-destructive" : "font-medium"}>
+                        {new Date(due).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {overdue && " · overdue"}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
+              {viewPO.notes && (
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                  {/* Kept as typed: these are usually short lists a line each. */}
+                  <p className="mt-1 whitespace-pre-wrap text-sm">{viewPO.notes}</p>
+                </div>
+              )}
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border bg-card p-4">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Products</p>
