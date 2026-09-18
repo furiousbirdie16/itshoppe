@@ -106,6 +106,16 @@ export default function InvoicesPage() {
     for (const f of invItemFinancials) m.set(`${f.item_id}::${f.variation_id || ""}`, f);
     return m;
   }, [invItemFinancials]);
+  // A hand-typed line has no item_id to key on, so cost rows also point at the
+  // invoice line itself. Older rows may not carry it yet, hence the fallback.
+  const finByLine = useMemo(() => {
+    const m = new Map<string, typeof invItemFinancials[number]>();
+    for (const f of invItemFinancials) {
+      const lineId = (f as any).invoice_item_id;
+      if (lineId) m.set(lineId, f);
+    }
+    return m;
+  }, [invItemFinancials]);
   const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
   const [newAgentName, setNewAgentName] = useState("");
   const [addingAgent, setAddingAgent] = useState(false);
@@ -1147,7 +1157,9 @@ export default function InvoicesPage() {
               </TableRow></TableHeader>
               <TableBody>
                 {invItems.map(ii => {
-                  const fin = isAdmin ? finByItem.get(`${(ii as any).item_id}::${(ii as any).variation_id || ""}`) : undefined;
+                  const fin = isAdmin
+                    ? (finByLine.get(ii.id) ?? finByItem.get(`${(ii as any).item_id}::${(ii as any).variation_id || ""}`))
+                    : undefined;
                   return (
                     <TableRow key={ii.id}>
                        <TableCell className="font-mono text-xs text-primary font-medium">{(ii as any).item_variations?.sku || ii.items?.sku || "—"}</TableCell>
@@ -1491,7 +1503,7 @@ function SelectedInvoiceCostBulkEdit({
       if (selectedIds.length === 0) return [];
       const { data, error } = await (supabase as any)
         .from("invoice_items")
-        .select("invoice_id,item_id,variation_id,item_name,items(name,sku),item_variations(name,sku)")
+        .select("id,invoice_id,item_id,variation_id,item_name,items(name,sku),item_variations(name,sku)")
         .in("invoice_id", selectedIds);
       if (error) return [];
       return (data || []) as any[];
@@ -1508,6 +1520,13 @@ function SelectedInvoiceCostBulkEdit({
   const lineNameByKey = useMemo(() => {
     const m = new Map<string, any>();
     for (const li of lineNames) m.set(`${li.invoice_id}::${li.item_id || ""}::${li.variation_id || ""}`, li);
+    return m;
+  }, [lineNames]);
+  // Hand-typed lines share the same key (no item_id), so they have to be found
+  // by the line id the cost row points at.
+  const lineNameById = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const li of lineNames) m.set(li.id, li);
     return m;
   }, [lineNames]);
 
@@ -1599,7 +1618,7 @@ function SelectedInvoiceCostBulkEdit({
                 <div className="p-4 text-center text-xs text-muted-foreground">No cost records found for the selected invoices.</div>
               ) : fins.map((f: any) => {
                 const inv = invoiceById.get(f.invoice_id);
-                const li = lineNameByKey.get(`${f.invoice_id}::${f.item_id || ""}::${f.variation_id || ""}`);
+                const li = lineNameById.get(f.invoice_item_id) ?? lineNameByKey.get(`${f.invoice_id}::${f.item_id || ""}::${f.variation_id || ""}`);
                 const itemName = li?.item_variations?.name || li?.item_name || li?.items?.name || "Item";
                 const sku = li?.item_variations?.sku || li?.items?.sku;
                 return (
