@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -82,6 +82,7 @@ export type Database = {
           owner_due_value?: number
           payable_assets_value?: number
           receivables_value?: number
+          reserved_stock_value?: number
           snapshot_date: string
           total_asset_value?: number
         }
@@ -100,6 +101,7 @@ export type Database = {
           owner_due_value?: number
           payable_assets_value?: number
           receivables_value?: number
+          reserved_stock_value?: number
           snapshot_date?: string
           total_asset_value?: number
         }
@@ -191,10 +193,15 @@ export type Database = {
           direction: string
           fx_rate: number | null
           id: string
+          loan_payment_id: string | null
           notes: string
+          overseas_po_id: string | null
+          overseas_po_payment_id: string | null
+          payable_id: string | null
           payee: string
           reference: string
           source_invoice_id: string | null
+          source_owner_txn_id: string | null
           transfer_group_id: string | null
           txn_date: string
           updated_at: string
@@ -211,10 +218,15 @@ export type Database = {
           direction?: string
           fx_rate?: number | null
           id?: string
+          loan_payment_id?: string | null
           notes?: string
+          overseas_po_id?: string | null
+          overseas_po_payment_id?: string | null
+          payable_id?: string | null
           payee?: string
           reference?: string
           source_invoice_id?: string | null
+          source_owner_txn_id?: string | null
           transfer_group_id?: string | null
           txn_date?: string
           updated_at?: string
@@ -231,10 +243,15 @@ export type Database = {
           direction?: string
           fx_rate?: number | null
           id?: string
+          loan_payment_id?: string | null
           notes?: string
+          overseas_po_id?: string | null
+          overseas_po_payment_id?: string | null
+          payable_id?: string | null
           payee?: string
           reference?: string
           source_invoice_id?: string | null
+          source_owner_txn_id?: string | null
           transfer_group_id?: string | null
           txn_date?: string
           updated_at?: string
@@ -247,6 +264,34 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "cash_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_transactions_loan_payment_id_fkey"
+            columns: ["loan_payment_id"]
+            isOneToOne: false
+            referencedRelation: "loan_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_transactions_overseas_po_id_fkey"
+            columns: ["overseas_po_id"]
+            isOneToOne: false
+            referencedRelation: "overseas_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_transactions_overseas_po_payment_id_fkey"
+            columns: ["overseas_po_payment_id"]
+            isOneToOne: false
+            referencedRelation: "overseas_po_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_transactions_payable_id_fkey"
+            columns: ["payable_id"]
+            isOneToOne: false
+            referencedRelation: "payables"
             referencedColumns: ["id"]
           },
           {
@@ -376,6 +421,7 @@ export type Database = {
         Row: {
           address: string | null
           barangay_village: string | null
+          channel: string
           city_municipality: string | null
           classification: string
           contact_person: string | null
@@ -397,6 +443,7 @@ export type Database = {
         Insert: {
           address?: string | null
           barangay_village?: string | null
+          channel?: string
           city_municipality?: string | null
           classification?: string
           contact_person?: string | null
@@ -418,6 +465,7 @@ export type Database = {
         Update: {
           address?: string | null
           barangay_village?: string | null
+          channel?: string
           city_municipality?: string | null
           classification?: string
           contact_person?: string | null
@@ -713,6 +761,48 @@ export type Database = {
           },
         ]
       }
+      invoice_item_financials_backup_20260809: {
+        Row: {
+          cost_snapshot: number | null
+          created_at: string | null
+          id: string | null
+          invoice_id: string | null
+          item_id: string | null
+          line_profit: number | null
+          line_total_cost: number | null
+          quantity: number | null
+          unit_price: number | null
+          updated_at: string | null
+          variation_id: string | null
+        }
+        Insert: {
+          cost_snapshot?: number | null
+          created_at?: string | null
+          id?: string | null
+          invoice_id?: string | null
+          item_id?: string | null
+          line_profit?: number | null
+          line_total_cost?: number | null
+          quantity?: number | null
+          unit_price?: number | null
+          updated_at?: string | null
+          variation_id?: string | null
+        }
+        Update: {
+          cost_snapshot?: number | null
+          created_at?: string | null
+          id?: string | null
+          invoice_id?: string | null
+          item_id?: string | null
+          line_profit?: number | null
+          line_total_cost?: number | null
+          quantity?: number | null
+          unit_price?: number | null
+          updated_at?: string | null
+          variation_id?: string | null
+        }
+        Relationships: []
+      }
       invoice_items: {
         Row: {
           id: string
@@ -767,6 +857,7 @@ export type Database = {
       }
       invoices: {
         Row: {
+          amount_received: number | null
           branch_id: string
           cancelled_at: string | null
           created_at: string | null
@@ -777,6 +868,7 @@ export type Database = {
           invoice_date: string | null
           invoice_number: string
           notes: string | null
+          payment_account_id: string | null
           payment_method: string | null
           payment_reference: string | null
           payment_reference_url: string | null
@@ -788,6 +880,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          amount_received?: number | null
           branch_id?: string
           cancelled_at?: string | null
           created_at?: string | null
@@ -798,6 +891,7 @@ export type Database = {
           invoice_date?: string | null
           invoice_number: string
           notes?: string | null
+          payment_account_id?: string | null
           payment_method?: string | null
           payment_reference?: string | null
           payment_reference_url?: string | null
@@ -809,6 +903,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          amount_received?: number | null
           branch_id?: string
           cancelled_at?: string | null
           created_at?: string | null
@@ -819,6 +914,7 @@ export type Database = {
           invoice_date?: string | null
           invoice_number?: string
           notes?: string | null
+          payment_account_id?: string | null
           payment_method?: string | null
           payment_reference?: string | null
           payment_reference_url?: string | null
@@ -842,6 +938,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_payment_account_id_fkey"
+            columns: ["payment_account_id"]
+            isOneToOne: false
+            referencedRelation: "cash_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -1157,6 +1260,54 @@ export type Database = {
         }
         Relationships: []
       }
+      loan_payments: {
+        Row: {
+          amount: number
+          cash_account_id: string | null
+          created_at: string
+          id: string
+          loan_id: string
+          notes: string
+          payment_date: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          cash_account_id?: string | null
+          created_at?: string
+          id?: string
+          loan_id: string
+          notes?: string
+          payment_date?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          cash_account_id?: string | null
+          created_at?: string
+          id?: string
+          loan_id?: string
+          notes?: string
+          payment_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loan_payments_cash_account_id_fkey"
+            columns: ["cash_account_id"]
+            isOneToOne: false
+            referencedRelation: "cash_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_payments_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "loans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       loans: {
         Row: {
           created_at: string
@@ -1395,6 +1546,63 @@ export type Database = {
           },
         ]
       }
+      online_sale_financials_backup_20260809: {
+        Row: {
+          amount_paid: number | null
+          cost_snapshot: number | null
+          created_at: string | null
+          gross_margin: number | null
+          has_cost: boolean | null
+          id: string | null
+          is_paid: boolean | null
+          item_id: string | null
+          line_profit: number | null
+          line_total_cost: number | null
+          online_sale_id: string | null
+          paid_at: string | null
+          quantity: number | null
+          unit_price: number | null
+          updated_at: string | null
+          variation_id: string | null
+        }
+        Insert: {
+          amount_paid?: number | null
+          cost_snapshot?: number | null
+          created_at?: string | null
+          gross_margin?: number | null
+          has_cost?: boolean | null
+          id?: string | null
+          is_paid?: boolean | null
+          item_id?: string | null
+          line_profit?: number | null
+          line_total_cost?: number | null
+          online_sale_id?: string | null
+          paid_at?: string | null
+          quantity?: number | null
+          unit_price?: number | null
+          updated_at?: string | null
+          variation_id?: string | null
+        }
+        Update: {
+          amount_paid?: number | null
+          cost_snapshot?: number | null
+          created_at?: string | null
+          gross_margin?: number | null
+          has_cost?: boolean | null
+          id?: string | null
+          is_paid?: boolean | null
+          item_id?: string | null
+          line_profit?: number | null
+          line_total_cost?: number | null
+          online_sale_id?: string | null
+          paid_at?: string | null
+          quantity?: number | null
+          unit_price?: number | null
+          updated_at?: string | null
+          variation_id?: string | null
+        }
+        Relationships: []
+      }
       online_sales: {
         Row: {
           amount_paid: number
@@ -1483,6 +1691,57 @@ export type Database = {
           },
         ]
       }
+      overseas_po_payments: {
+        Row: {
+          amount: number
+          cash_account_id: string | null
+          created_at: string
+          id: string
+          notes: string
+          payment_date: string
+          php_amount: number
+          po_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          cash_account_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string
+          payment_date?: string
+          php_amount?: number
+          po_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          cash_account_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string
+          payment_date?: string
+          php_amount?: number
+          po_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overseas_po_payments_cash_account_id_fkey"
+            columns: ["cash_account_id"]
+            isOneToOne: false
+            referencedRelation: "cash_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overseas_po_payments_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "overseas_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       overseas_purchase_order_items: {
         Row: {
           allocated_cargo_per_unit: number
@@ -1565,6 +1824,8 @@ export type Database = {
           notes: string | null
           order_date: string | null
           paid_at: string | null
+          paid_from_account_id: string | null
+          payment_due_date: string | null
           payment_status: string
           po_number: string
           receipt_url: string | null
@@ -1595,6 +1856,8 @@ export type Database = {
           notes?: string | null
           order_date?: string | null
           paid_at?: string | null
+          paid_from_account_id?: string | null
+          payment_due_date?: string | null
           payment_status?: string
           po_number: string
           receipt_url?: string | null
@@ -1625,6 +1888,8 @@ export type Database = {
           notes?: string | null
           order_date?: string | null
           paid_at?: string | null
+          paid_from_account_id?: string | null
+          payment_due_date?: string | null
           payment_status?: string
           po_number?: string
           receipt_url?: string | null
@@ -1643,6 +1908,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overseas_purchase_orders_paid_from_account_id_fkey"
+            columns: ["paid_from_account_id"]
+            isOneToOne: false
+            referencedRelation: "cash_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -1745,6 +2017,7 @@ export type Database = {
         Row: {
           amount: number
           amount_paid: number
+          cash_account_id: string | null
           category: string
           check_bank: string
           check_number: string
@@ -1762,6 +2035,7 @@ export type Database = {
         Insert: {
           amount?: number
           amount_paid?: number
+          cash_account_id?: string | null
           category?: string
           check_bank?: string
           check_number?: string
@@ -1779,6 +2053,7 @@ export type Database = {
         Update: {
           amount?: number
           amount_paid?: number
+          cash_account_id?: string | null
           category?: string
           check_bank?: string
           check_number?: string
@@ -1794,6 +2069,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payables_cash_account_id_fkey"
+            columns: ["cash_account_id"]
+            isOneToOne: false
+            referencedRelation: "cash_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payables_supplier_id_fkey"
             columns: ["supplier_id"]
@@ -2123,6 +2405,7 @@ export type Database = {
           status: string
           tracking_number: string | null
           updated_at: string | null
+          warehouse_received_date: string | null
         }
         Insert: {
           actual_arrival?: string | null
@@ -2136,6 +2419,7 @@ export type Database = {
           status?: string
           tracking_number?: string | null
           updated_at?: string | null
+          warehouse_received_date?: string | null
         }
         Update: {
           actual_arrival?: string | null
@@ -2149,6 +2433,7 @@ export type Database = {
           status?: string
           tracking_number?: string | null
           updated_at?: string | null
+          warehouse_received_date?: string | null
         }
         Relationships: [
           {
@@ -2432,6 +2717,18 @@ export type Database = {
         }
         Relationships: []
       }
+      v_reserved: {
+        Row: {
+          coalesce: number | null
+        }
+        Insert: {
+          coalesce?: number | null
+        }
+        Update: {
+          coalesce?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -2481,6 +2778,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      branch_options: {
+        Args: never
+        Returns: {
+          branch_code: string
+          branch_name: string
+          id: string
+        }[]
+      }
       bulk_set_online_sale_cost: {
         Args: { _ids: string[]; _new_cost: number }
         Returns: number
@@ -2518,12 +2823,24 @@ export type Database = {
         }
         Returns: string
       }
+      customer_last_prices: {
+        Args: never
+        Returns: {
+          customer_id: string
+          item_id: string
+          reference_number: string
+          sold_at: string
+          source: string
+          times_bought: number
+          unit_price: number
+          variation_id: string
+        }[]
+      }
       dispatch_stock_transfer: {
         Args: { _transfer_id: string }
         Returns: undefined
       }
       generate_asset_snapshot: { Args: never; Returns: undefined }
-      reserved_stock_value: { Args: { p_branch_id?: string | null }; Returns: number }
       get_default_branch_id: { Args: never; Returns: string }
       has_role: {
         Args: {
@@ -2558,6 +2875,7 @@ export type Database = {
         }
         Returns: string
       }
+      reserved_stock_value: { Args: { p_branch_id?: string }; Returns: number }
       set_invoice_item_cost:
         | {
             Args: { _financial_id: string; _new_cost: number }
@@ -2574,6 +2892,10 @@ export type Database = {
       set_online_sale_cost: {
         Args: { _new_cost: number; _online_sale_id: string }
         Returns: undefined
+      }
+      stock_transfer_is_editable: {
+        Args: { _transfer_id: string }
+        Returns: boolean
       }
       transition_stock_transfer: {
         Args: { _to_status: string; _transfer_id: string }
@@ -2632,12 +2954,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2661,11 +2983,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2686,11 +3008,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2711,11 +3033,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2728,11 +3050,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
