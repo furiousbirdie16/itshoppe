@@ -40,14 +40,14 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, branches } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewQ, setViewQ] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" });
   const [agentAutoFilled, setAgentAutoFilled] = useState(false);
   const handleCustomerChange = async (v: string) => {
     setForm((f) => ({ ...f, customer_id: v }));
@@ -76,7 +76,12 @@ export default function QuotationsPage() {
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations", activeBranchId], queryFn: () => getQuotations(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   // Stock shown in the picker must come from item_branch_stock, not items.quantity.
-  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
+  // The branch this quotation is for: the one picked in the form, else the
+  // page's. Asking in the form means a half-typed quotation is never lost to a
+  // toolbar the user forgot to set first.
+  const quotationBranchId = form.branch_id || activeBranchId;
+  // Stock in the item picker follows the quotation's branch, not the toolbar.
+  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", quotationBranchId], queryFn: () => getItemsWithStock(quotationBranchId) });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
   const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
   const [newAgentName, setNewAgentName] = useState("");
@@ -229,6 +234,7 @@ export default function QuotationsPage() {
       sales_agent: q.sales_agent || "",
       payment_terms: q.payment_terms != null ? String(q.payment_terms) : "",
       payment_due_date: q.payment_due_date || "",
+      branch_id: (q as any).branch_id || "",
     });
     setLines(
       lineItems.length > 0
@@ -284,8 +290,8 @@ export default function QuotationsPage() {
       const payload = buildPayload();
       payload.quotation_number = await generateQuotationNumber();
       payload.total_amount = total;
-      if (!activeBranchId) throw new Error("Select a branch before creating a quotation.");
-      payload.branch_id = activeBranchId;
+      if (!quotationBranchId) throw new Error("Pick which branch this quotation is for.");
+      payload.branch_id = quotationBranchId;
       const q = await createQuotation(payload);
       await createQuotationItems(saved.map(l => ({ quotation_id: q.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
@@ -339,7 +345,7 @@ export default function QuotationsPage() {
     });
   }, [selectedIds, quotations]);
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -501,6 +507,26 @@ export default function QuotationsPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Quotation" : "New Quotation"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
+            {/* Only when the toolbar says "All branches"; with one already
+                chosen there is nothing to ask. */}
+            {!activeBranchId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Branch</Label>
+                <Select value={form.branch_id} onValueChange={(v) => setForm({ ...form, branch_id: v })}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Which branch is this quotation for?" /></SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!form.branch_id && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Needed before this quotation can be saved. Stock shown below follows your choice.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>

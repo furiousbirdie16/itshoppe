@@ -22,28 +22,51 @@ interface Props {
 
 export function TransferStockDialog({ item, open, onOpenChange }: Props) {
   const qc = useQueryClient();
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, branches } = useBranch();
   const [direction, setDirection] = useState<Direction>("w2s");
   const [qty, setQty] = useState("1");
   const [notes, setNotes] = useState("");
+  // Asked for here when the toolbar says "All branches": the branch switcher is
+  // behind this dialog and cannot be reached without closing it.
+  const [pickedBranchId, setPickedBranchId] = useState("");
+  const branchId = activeBranchId || pickedBranchId;
 
   useEffect(() => {
     if (open) {
       setDirection("w2s");
       setQty("1");
       setNotes("");
+      setPickedBranchId("");
     }
   }, [open, item?.id]);
+
+  // On "All branches" the quantities on `item` are every branch added together,
+  // so moving stock would be checked against a total that exists nowhere. Once a
+  // branch is picked, read that branch's own figures.
+  const { data: branchStock } = useQuery({
+    queryKey: ["item_branch_stock", item?.id, pickedBranchId],
+    enabled: !!item && !!pickedBranchId && !activeBranchId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("item_branch_stock")
+        .select("warehouse_quantity, store_quantity")
+        .eq("item_id", item!.id)
+        .eq("branch_id", pickedBranchId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { warehouse_quantity: number; store_quantity: number } | null;
+    },
+  });
 
   const transferMut = useMutation({
     mutationFn: async () => {
       if (!item) throw new Error("No item selected");
-      if (!activeBranchId) throw new Error("Select a specific branch (not 'All branches') before transferring stock");
+      if (!branchId) throw new Error("Pick which branch's stock you are moving");
       const n = parseInt(qty);
       if (Number.isNaN(n) || n <= 0) throw new Error("Enter a quantity greater than 0");
 
-      const wh = Number(item.warehouse_quantity ?? 0);
-      const st = Number(item.store_quantity ?? 0);
+      const wh = Number((branchStock?.warehouse_quantity ?? item.warehouse_quantity) ?? 0);
+      const st = Number((branchStock?.store_quantity ?? item.store_quantity) ?? 0);
 
       if (direction === "w2s" && n > wh) throw new Error(`Warehouse only has ${wh} in stock`);
       if (direction === "s2w" && n > st) throw new Error(`Store only has ${st} in stock`);
@@ -53,7 +76,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
 
       // Deduct from source
       const { data: srcData, error: srcErr } = await (supabase as any).rpc("apply_branch_stock_change", {
-        _item_id: item.id, _branch_id: activeBranchId, _location: src,
+        _item_id: item.id, _branch_id: branchId, _location: src,
         _delta_stock: -n, _delta_open: 0, _units_per_stock: null,
       });
       if (srcErr) throw srcErr;
@@ -61,7 +84,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
 
       // Add to destination
       const { data: dstData, error: dstErr } = await (supabase as any).rpc("apply_branch_stock_change", {
-        _item_id: item.id, _branch_id: activeBranchId, _location: dst,
+        _item_id: item.id, _branch_id: branchId, _location: dst,
         _delta_stock: n, _delta_open: 0, _units_per_stock: null,
       });
       if (dstErr) throw dstErr;
@@ -75,7 +98,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
       const { recordMovement } = await import("@/lib/inventoryLog");
       await recordMovement({
         itemId: item.id,
-        branchId: activeBranchId,
+        branchId,
         type: direction === "w2s" ? "transfer_w2s" : "transfer_s2w",
         quantity: n,
         unit: item.base_unit || "pcs",
@@ -116,8 +139,8 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
   });
 
   if (!item) return null;
-  const wh = Number(item.warehouse_quantity ?? 0);
-  const st = Number(item.store_quantity ?? 0);
+  const wh = Number((branchStock?.warehouse_quantity ?? item.warehouse_quantity) ?? 0);
+  const st = Number((branchStock?.store_quantity ?? item.store_quantity) ?? 0);
   const sourceQty = direction === "w2s" ? wh : st;
 
   return (
@@ -133,6 +156,24 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
         </DialogHeader>
 
         <div className="grid gap-4 pt-2">
+          {!activeBranchId && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch</Label>
+              <Select value={pickedBranchId} onValueChange={setPickedBranchId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Whose stock are you moving?" /></SelectTrigger>
+                <SelectContent>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!pickedBranchId && (
+                <p className="text-[11px] text-muted-foreground">
+                  The quantities below are every branch added together until you choose one.
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase text-muted-foreground">Warehouse</div>

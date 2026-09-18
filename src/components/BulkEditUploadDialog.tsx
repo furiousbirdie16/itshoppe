@@ -1,6 +1,8 @@
 import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Upload, FileSpreadsheet, AlertCircle, Check, Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -66,7 +68,11 @@ const numOrNull = (v: unknown): number | null => {
 };
 
 export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmin, onSuccess }: BulkEditUploadDialogProps) {
-  const { activeBranchId, activeBranch } = useBranch();
+  const { activeBranchId, activeBranch, branches } = useBranch();
+  // Asked for here when the toolbar says "All branches": the branch switcher is
+  // behind this dialog, so requiring it outside would throw away the parsed file.
+  const [pickedBranchId, setPickedBranchId] = useState("");
+  const qtyBranchId = activeBranchId || pickedBranchId;
   const [rows, setRows] = useState<DiffRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -373,8 +379,8 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
     const toUpdate = rows.filter(r => r.status === "matched" && r.targetId);
     if (toUpdate.length === 0) { toast.error("Nothing to update"); return; }
     const hasQtyChange = toUpdate.some(r => r.kind === "item" && ("warehouse_quantity" in r.patch || "store_quantity" in r.patch));
-    if (hasQtyChange && !activeBranchId) {
-      toast.error("Select a specific branch to update quantities (quantities are per branch)");
+    if (hasQtyChange && !qtyBranchId) {
+      toast.error("Pick which branch these quantities are for — stock is kept per branch.");
       return;
     }
     setBusy(true);
@@ -393,7 +399,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
           if (wh !== undefined || st !== undefined) {
             await setBranchQuantities({
               itemId: r.targetId!,
-              branchId: activeBranchId!,
+              branchId: qtyBranchId!,
               warehouse: wh ?? null,
               store: st ?? null,
               notes: "Bulk edit upload",
@@ -437,10 +443,24 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
           <DialogTitle className="text-lg flex items-center gap-2">
             <Pencil className="h-5 w-5" /> Bulk Edit
             <span className="text-xs font-normal text-muted-foreground">
-              · Quantities apply to {activeBranch ? activeBranch.branch_name : "— select a branch"}
+              · Quantities apply to {activeBranch ? activeBranch.branch_name : (branches.find((b) => b.id === pickedBranchId)?.branch_name || "— pick a branch below")}
             </span>
           </DialogTitle>
         </DialogHeader>
+
+        {!activeBranchId && (
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Branch (for quantities)</Label>
+            <Select value={pickedBranchId} onValueChange={setPickedBranchId}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Which branch do the quantities belong to?" /></SelectTrigger>
+              <SelectContent>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-4">

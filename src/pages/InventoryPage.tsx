@@ -128,7 +128,12 @@ export default function InventoryPage() {
   const setF = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
     setFilters(prev => ({ ...prev, [key]: value }));
 
-  const { activeBranchId, activeBranch } = useBranch();
+  const { activeBranchId, activeBranch, branches } = useBranch();
+  // Which branch the quantity fields refer to, asked for in the dialog when the
+  // toolbar says "All branches": the branch switcher sits behind the dialog and
+  // cannot be reached without throwing the form away.
+  const [formBranchId, setFormBranchId] = useState("");
+  const qtyBranchId = activeBranchId || formBranchId;
   const { data: activeItems = [], isLoading: loadingActive } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: archivedItemsData = [], isLoading: loadingArchived } = useQuery({
     queryKey: ["items", "archived"],
@@ -295,8 +300,9 @@ export default function InventoryPage() {
     mutationFn: async (data: Partial<Item>) => {
       const { rest, wh, st } = splitQty(data);
       const created = await createItem(rest);
-      if ((wh || st) && activeBranchId) {
-        await setBranchQuantities({ itemId: created.id, branchId: activeBranchId, warehouse: wh ?? 0, store: st ?? 0, notes: "Item created" });
+      if (wh || st) {
+        if (!qtyBranchId) throw new Error("Pick which branch these quantities are for.");
+        await setBranchQuantities({ itemId: created.id, branchId: qtyBranchId, warehouse: wh ?? 0, store: st ?? 0, notes: "Item created" });
       }
       return created;
     },
@@ -309,8 +315,8 @@ export default function InventoryPage() {
       const { rest, wh, st } = splitQty(data);
       const res = await updateItem(id, rest);
       if (wh !== undefined || st !== undefined) {
-        if (!activeBranchId) throw new Error("Select a specific branch to edit quantities");
-        await setBranchQuantities({ itemId: id, branchId: activeBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
+        if (!qtyBranchId) throw new Error("Pick which branch these quantities are for.");
+        await setBranchQuantities({ itemId: id, branchId: qtyBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
       }
       return res;
     },
@@ -595,6 +601,11 @@ export default function InventoryPage() {
                   { key: "base_unit", label: "Base Unit (e.g. pcs, m, kg)", type: "text" },
                   { key: "units_per_stock", label: "Units Per Stock", type: "number", transform: (v) => parseFloat(v) || 1 },
                   { key: "open_roll_remaining", label: "Open Roll Remaining", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  // Stock is per branch, so on "All branches" the bulk edit has
+                  // to be told which one before it can touch quantities.
+                  ...(isAdmin && !activeBranchId ? [
+                    { key: "_branch", label: "Branch (tick this to edit quantities)", type: "select", options: branches.map((b) => ({ value: b.id, label: `${b.branch_name} (${b.branch_code})` })) },
+                  ] : []),
                   ...(isAdmin ? [
                     { key: "warehouse_quantity", label: "Warehouse Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
                     { key: "store_quantity", label: "Store Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
@@ -609,10 +620,14 @@ export default function InventoryPage() {
                 ]) as BulkField[]}
                 updateOne={async (id, patch) => {
                   const { rest, wh, st } = splitQty(patch as any);
+                  // Not a column on items — it only says where the quantities go.
+                  const pickedBranch = (rest as any)._branch as string | undefined;
+                  delete (rest as any)._branch;
                   if (Object.keys(rest).length > 0) await updateItem(id, rest as Partial<Item>);
                   if (wh !== undefined || st !== undefined) {
-                    if (!activeBranchId) throw new Error("Select a specific branch to edit quantities");
-                    await setBranchQuantities({ itemId: id, branchId: activeBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
+                    const branchId = activeBranchId || pickedBranch;
+                    if (!branchId) throw new Error("Tick Branch and choose one — stock is kept per branch.");
+                    await setBranchQuantities({ itemId: id, branchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
                   }
                 }}
                 onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setSelectedIds(new Set()); }}
@@ -943,6 +958,22 @@ export default function InventoryPage() {
                 )}
               </div>
             </div>
+            {!activeBranchId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Branch (for quantities)</Label>
+                <Select value={formBranchId} onValueChange={setFormBranchId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Which branch do these quantities belong to?" /></SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Stock is kept per branch. Only needed if you change the quantities below.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">{editing ? "Warehouse Qty (Manual Adjust)" : "Initial Warehouse Qty"}</Label>

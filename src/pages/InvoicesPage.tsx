@@ -48,7 +48,7 @@ export default function InvoicesPage() {
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "" });
   const [agentAutoFilled, setAgentAutoFilled] = useState(false);
   const handleCustomerChange = async (v: string) => {
     setForm((f) => ({ ...f, customer_id: v }));
@@ -77,7 +77,13 @@ export default function InvoicesPage() {
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
   // Stock shown in the picker must come from item_branch_stock, not items.quantity.
-  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
+  // The branch this invoice belongs to. Normally the page's active branch; when
+  // that is "All branches" the form asks, so a half-typed invoice is never lost
+  // to a toolbar the user forgot to set first.
+  const invoiceBranchId = form.branch_id || activeBranchId;
+  // Stock in the item picker follows the invoice's branch, not the toolbar, or
+  // the quantities offered would be some other branch's.
+  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", invoiceBranchId], queryFn: () => getItemsWithStock(invoiceBranchId) });
   // Names-only list, so staff (who cannot read bank accounts) still get them as
   // payment options.
   const { data: cashAccounts = [] } = useQuery({ queryKey: ["cash-account-options"], queryFn: getCashAccountOptions });
@@ -378,6 +384,7 @@ export default function InvoicesPage() {
       due_date: inv.due_date || "",
       sales_agent: inv.sales_agent || "",
       payment_terms: "",
+      branch_id: (inv as any).branch_id || "",
     });
     setLines(
       lineItems.length > 0
@@ -410,8 +417,8 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       const saved = validateLines();
       const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
-      if (!activeBranchId) throw new Error("Select a branch before creating an invoice.");
-      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: activeBranchId } as any);
+      if (!invoiceBranchId) throw new Error("Pick which branch this invoice is for.");
+      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: invoiceBranchId } as any);
       await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
       return inv;
     },
@@ -602,7 +609,7 @@ export default function InvoicesPage() {
   });
 
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
@@ -941,6 +948,27 @@ export default function InvoicesPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Invoice" : "New Invoice"}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
+            {/* Only when the toolbar says "All branches". With a branch already
+                chosen there is nothing to ask, and asking twice invites the two
+                to disagree. */}
+            {!activeBranchId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Branch</Label>
+                <Select value={form.branch_id} onValueChange={(v) => setForm({ ...form, branch_id: v })}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Which branch is this invoice for?" /></SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!form.branch_id && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Needed before this invoice can be saved. Stock shown below follows your choice.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>

@@ -45,6 +45,8 @@ interface SaleForm {
   notes: string;
   /** Optional marketplace fee % override (blank = default 22%). */
   marketplace_fee_pct: string;
+  /** Branch this sale belongs to; asked for only when the toolbar says "All". */
+  branch_id: string;
   lines: SaleLine[];
 }
 
@@ -62,6 +64,7 @@ const emptyForm: SaleForm = {
   sales_channel: "shopee",
   notes: "",
   marketplace_fee_pct: "",
+  branch_id: "",
   lines: [{ ...emptyLine }],
 };
 
@@ -154,11 +157,9 @@ export default function OnlineSalesPage() {
   const qc = useQueryClient();
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, branches } = useBranch();
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales", activeBranchId], queryFn: () => getOnlineSales(activeBranchId) });
-  // Stock shown by ItemSearch must come from item_branch_stock, not items.quantity.
-  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", activeBranchId], queryFn: () => getItemsWithStock(activeBranchId) });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
 
   // Admin-only: cost snapshots & gross profit per online sale (mirrors invoice financials).
@@ -198,6 +199,14 @@ export default function OnlineSalesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<OnlineSale | null>(null);
   const [form, setForm] = useState<SaleForm>(emptyForm);
+  // The branch a new sale belongs to: the one picked in the form, else the
+  // page's. Asking in the form means a half-typed sale is never lost to a
+  // toolbar the user forgot to set first. Declared after `form` on purpose —
+  // reading it earlier is a temporal dead zone that blanks the page.
+  const saleBranchId = form.branch_id || activeBranchId;
+  // Stock shown by ItemSearch must come from item_branch_stock, not
+  // items.quantity, and follows the sale's branch rather than the toolbar.
+  const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", saleBranchId], queryFn: () => getItemsWithStock(saleBranchId) });
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -249,6 +258,9 @@ export default function OnlineSalesPage() {
   const [bulkPayRows, setBulkPayRows] = useState<{ order_id: string; amount_paid: number; matched_ids: string[]; expected: number; valid: boolean; duplicate?: boolean; error?: string }[]>([]);
   const [bulkPayUploading, setBulkPayUploading] = useState(false);
   const [bulkPayFileName, setBulkPayFileName] = useState("");
+  // Asked for inside the bulk dialog, so a parsed file is not thrown away for
+  // want of a branch.
+  const [bulkBranchId, setBulkBranchId] = useState("");
   const payFileRef = useRef<HTMLInputElement>(null);
 
   const deleteMut = useMutation({ mutationFn: deleteOnlineSale, onSuccess: () => { qc.invalidateQueries({ queryKey: ["online_sales"] }); qc.invalidateQueries({ queryKey: ["items"] }); toast.success("Deleted"); } });
@@ -266,6 +278,7 @@ export default function OnlineSalesPage() {
         (s as any).marketplace_fee_pct === null || (s as any).marketplace_fee_pct === undefined
           ? ""
           : String((s as any).marketplace_fee_pct),
+      branch_id: (s as any).branch_id || "",
       lines: [{
         product_name: s.product_name,
         quantity: s.quantity || 1,
@@ -330,7 +343,7 @@ export default function OnlineSalesPage() {
         } as any);
         toast.success("Updated");
       } else {
-        if (!activeBranchId) { toast.error("Select a branch before creating an online sale."); setSaving(false); return; }
+        if (!saleBranchId) { toast.error("Pick which branch this sale is for."); setSaving(false); return; }
         const orderNumber = form.order_number.trim() || await generateOrderNumber(form.sales_channel);
         for (const line of cleanLines) {
           await createOnlineSale({
@@ -344,7 +357,7 @@ export default function OnlineSalesPage() {
             notes: form.notes,
             item_id: line.item_id || null,
             variation_id: line.variation_id || null,
-            branch_id: activeBranchId,
+            branch_id: saleBranchId,
           } as any);
         }
         toast.success(cleanLines.length > 1 ? `Created order with ${cleanLines.length} items` : "Created");
@@ -657,7 +670,8 @@ export default function OnlineSalesPage() {
   const handleBulkUpload = async () => {
     const valid = bulkRows.filter(r => r.valid);
     if (valid.length === 0) return;
-    if (!activeBranchId) { toast.error("Select a branch before bulk uploading online sales."); return; }
+    const uploadBranchId = bulkBranchId || activeBranchId;
+    if (!uploadBranchId) { toast.error("Pick which branch these sales are for."); return; }
     setBulkUploading(true);
     let success = 0;
     let failed = 0;
@@ -665,7 +679,7 @@ export default function OnlineSalesPage() {
     for (const row of valid) {
       try {
         const orderNumber = row.order_id || await generateOrderNumber(row.sales_channel);
-        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, variation_id: row.variation_id, notes: "", branch_id: activeBranchId } as any);
+        await createOnlineSale({ order_number: orderNumber, product_name: row.product_name, quantity: row.quantity, sales_channel: row.sales_channel, posted_price: row.posted_price, deal_price: 0, order_date: row.order_date, item_id: row.item_id, variation_id: row.variation_id, notes: "", branch_id: uploadBranchId } as any);
         success++;
       } catch (e: any) {
         failed++;
@@ -1571,6 +1585,25 @@ export default function OnlineSalesPage() {
             <DialogTitle>{editingSale ? "Edit Sale" : "New Online Sale"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Only when the toolbar says "All branches". */}
+            {!activeBranchId && !editingSale && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Branch</Label>
+                <Select value={form.branch_id} onValueChange={(v) => setForm(f => ({ ...f, branch_id: v }))}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Which branch is this sale for?" /></SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!form.branch_id && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Needed before this sale can be saved. Stock shown below follows your choice.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Order ID <span className="text-muted-foreground font-normal">(optional)</span></Label>
@@ -1686,6 +1719,20 @@ export default function OnlineSalesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5" /> Bulk Upload Sales</DialogTitle>
           </DialogHeader>
+
+          {!activeBranchId && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Branch</Label>
+              <Select value={bulkBranchId} onValueChange={setBulkBranchId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Which branch are these sales for?" /></SelectTrigger>
+                <SelectContent>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {bulkRows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-4">
