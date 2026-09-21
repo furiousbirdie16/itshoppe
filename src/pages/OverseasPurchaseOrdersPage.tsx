@@ -242,10 +242,12 @@ export default function OverseasPurchaseOrdersPage() {
       const { data } = await supabase.storage.from("overseas-po-receipts").createSignedUrl(receiptPath, 3600);
       return data?.signedUrl || null;
     },
-    enabled: !!viewPO && !!receiptPath,
+    // Staff must never mint a URL for the supplier's receipt, panel or not.
+    enabled: isAdmin && !!viewPO && !!receiptPath,
   });
 
   const handleReceiptUpload = async (file: File) => {
+    if (!isAdmin) return;
     if (!viewPO) return;
     setUploadingReceipt(true);
     try {
@@ -276,7 +278,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   /** Screenshots are how these receipts usually arrive — from chat, not a scanner. */
   const handleReceiptPaste = (e: React.ClipboardEvent) => {
-    if (uploadingReceipt) return;
+    if (!isAdmin || uploadingReceipt) return;
     const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
     const file = item?.getAsFile();
     if (file) {
@@ -286,6 +288,7 @@ export default function OverseasPurchaseOrdersPage() {
   };
 
   const handleReceiptRemove = async () => {
+    if (!isAdmin) return;
     if (!viewPO || !receiptPath) return;
     try {
       await supabase.storage.from("overseas-po-receipts").remove([receiptPath]);
@@ -1498,8 +1501,11 @@ export default function OverseasPurchaseOrdersPage() {
                 </div>
               )}
 
-              {/* Supplier receipt (hard copy). The whole panel takes a paste, so
-                  a screenshot from a chat thread can go straight in. */}
+              {/* Supplier receipt (hard copy). Admins only: it shows what we
+                  actually paid the supplier, which is the one number staff must
+                  not see. The whole panel takes a paste, so a screenshot from a
+                  chat thread can go straight in. */}
+              {isAdmin && (
               <div
                 className="rounded-lg border bg-card focus-within:ring-1 focus-within:ring-primary/40"
                 onPaste={handleReceiptPaste}
@@ -1560,6 +1566,7 @@ export default function OverseasPurchaseOrdersPage() {
                   )}
                 </div>
               </div>
+              )}
             </div>
 
           )}
