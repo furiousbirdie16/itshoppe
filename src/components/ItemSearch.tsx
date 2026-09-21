@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
@@ -26,7 +26,12 @@ interface ItemSearchProps {
 }
 
 export function ItemSearch({ items: itemsRaw, value, customName, variationId, onChange, placeholder = "Search by SKU or name...", className, allowCustom = false, sourceFilter, showVariations = true }: ItemSearchProps) {
-  const items = sourceFilter ? itemsRaw.filter(i => (i.source ?? 'local') === sourceFilter) : itemsRaw;
+  // Memoised so a filtered list keeps the same identity between renders and
+  // does not invalidate the result list below on every keystroke.
+  const items = useMemo(
+    () => (sourceFilter ? itemsRaw.filter(i => (i.source ?? 'local') === sourceFilter) : itemsRaw),
+    [itemsRaw, sourceFilter],
+  );
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -58,20 +63,62 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
 
   const matches = (text: string) => !q || text.toLowerCase().includes(q);
 
-  const filtered: Row[] = [];
-  for (const item of items) {
-    const itemMatches = matches(item.sku) || matches(item.name);
-    const itemVars = showVariations ? allVariations.filter(v => v.item_id === item.id) : [];
-    const matchingVars = itemVars.filter(v => matches(v.name) || (v.sku && matches(v.sku)));
-    const showItem = itemMatches || matchingVars.length > 0 || (!q && itemVars.length > 0);
-    if (showItem) {
-      filtered.push({ kind: 'item', item });
-      // If user typed something matching variations OR no query and item has variations, list them.
-      const varsToShow = q ? matchingVars : itemVars;
-      for (const v of varsToShow) filtered.push({ kind: 'variation', item, variation: v });
+  // Every keystroke re-runs this over the whole catalogue and its variations,
+  // and every line on an invoice holds one of these boxes. Without memoising,
+  // typing in one line re-filters the catalogue once per line, per character.
+  const varsByItem = useMemo(() => {
+    const m = new Map<string, ItemVariation[]>();
+    if (!showVariations) return m;
+    for (const v of allVariations) {
+      const arr = m.get(v.item_id) || [];
+      arr.push(v);
+      m.set(v.item_id, arr);
     }
-    if (filtered.length >= 30) break;
-  }
+    return m;
+  }, [allVariations, showVariations]);
+
+  const filtered: Row[] = useMemo(() => {
+    const rows: Row[] = [];
+    for (const item of items) {
+      const itemMatches = matches(item.sku) || matches(item.name);
+      const itemVars = varsByItem.get(item.id) || [];
+      const matchingVars = itemVars.filter(v => matches(v.name) || (v.sku && matches(v.sku)));
+      const showItem = itemMatches || matchingVars.length > 0 || (!q && itemVars.length > 0);
+      if (showItem) {
+        rows.push({ kind: 'item', item });
+        // If user typed something matching variations OR no query and item has variations, list them.
+        const varsToShow = q ? matchingVars : itemVars;
+        for (const v of varsToShow) rows.push({ kind: 'variation', item, variation: v });
+      }
+      if (rows.length >= 30) break;
+    }
+    return rows;
+  }, [items, varsByItem, q]);
+
+  // Hand the typed name up to the form. Called whenever focus or attention
+  // leaves the box, rather than on every keystroke: committing per character
+  // re-rendered every line on the invoice and made typing lag.
+  const commitRef = useRef<() => void>(() => {});
+  commitRef.current = () => {
+    if (allowCustom && query.trim() && !selectedItem && !selectedVariation) {
+      onChange("", null, query.trim(), null);
+    }
+  };
+
+  // Switching tab or app fires no click, so those are listened for directly —
+  // that is how a half-typed name used to be lost.
+  useEffect(() => {
+    const save = () => commitRef.current();
+    const onHide = () => { if (document.visibilityState === "hidden") save(); };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", save);
+    window.addEventListener("blur", save);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", save);
+      window.removeEventListener("blur", save);
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -99,16 +146,12 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
         <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
         <Input
           value={displayValue()}
-          onChange={e => {
-            const next = e.target.value;
-            setQuery(next);
-            if (!open) setOpen(true);
-            // Hand a custom name up on every keystroke rather than waiting for a
-            // click elsewhere. Switching tab or app fires no click, so the typed
-            // name used to exist only in this box and was lost on return.
-            if (allowCustom && !selectedItem && !selectedVariation) {
-              onChange("", null, next, null);
-            }
+          onChange={e => { setQuery(e.target.value); if (!open) setOpen(true); }}
+          onBlur={e => {
+            // Moving into this box's own dropdown is not leaving it; that click
+            // is about to choose a real item.
+            if (ref.current && e.relatedTarget && ref.current.contains(e.relatedTarget as Node)) return;
+            commitRef.current();
           }}
           onFocus={() => {
             setOpen(true);
