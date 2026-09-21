@@ -222,7 +222,7 @@ export default function InvoicesPage() {
     return c;
   }, [filtered]);
 
-  const { sort, toggle, sorted: sortedInvoices } = useSort<any>(quickFiltered, {
+  const { sort, toggle, sorted: sortedAll } = useSort<any>(quickFiltered, {
     invoice_number: (r) => r.invoice_number,
     customer: (r) => r.customers?.name || "",
     sales_agent: (r) => r.sales_agent || "",
@@ -230,6 +230,22 @@ export default function InvoicesPage() {
     status: (r) => r.status,
     total_amount: (r) => Number(r.total_amount),
   });
+
+  // Only a page of rows is rendered at a time.
+  //
+  // Every invoice used to render at once, twice over — cards for phones and a
+  // table for wider screens. Past a thousand invoices that is thousands of rows
+  // kept alive, and because the new-invoice form holds its state on this page,
+  // every keystroke in it re-rendered all of them. Typing lagged badly.
+  const PAGE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE);
+  // Back to the first page whenever the list being looked at changes; staying
+  // on page four of a search you just replaced would be disorienting.
+  useEffect(() => {
+    setVisibleCount(PAGE);
+  }, [searchQuery, filterCustomer, filterAgent, filterStatus, filterDateFrom, filterDateTo, quickFilter, activeBranchId]);
+  const sortedInvoices = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
+  const hiddenCount = sortedAll.length - sortedInvoices.length;
 
   // Statuses that count as a real sale (exclude reserved, draft, cancelled)
   const SALE_STATUSES = new Set(["confirmed", "paid", "unpaid", "shipped", "completed"]);
@@ -1359,6 +1375,24 @@ export default function InvoicesPage() {
           </TableBody>
         </Table>
       </div>
+
+      {hiddenCount > 0 && (
+        <div className="flex flex-col items-center gap-1.5 py-3">
+          <p className="text-xs text-muted-foreground">
+            Showing {sortedInvoices.length} of {sortedAll.length} invoices
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setVisibleCount((n) => n + PAGE)}>
+              Show {Math.min(PAGE, hiddenCount)} more
+            </Button>
+            {hiddenCount > PAGE && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setVisibleCount(sortedAll.length)}>
+                Show all {sortedAll.length}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
 

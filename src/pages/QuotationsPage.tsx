@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -150,7 +150,7 @@ export default function QuotationsPage() {
     });
   }, [dateFiltered, filterCustomer, filterAgent]);
 
-  const { sort, toggle, sorted: sortedQuotations } = useSort<any>(filtered, {
+  const { sort, toggle, sorted: sortedAll } = useSort<any>(filtered, {
     quotation_number: (r) => r.quotation_number,
     customer: (r) => r.customers?.name || "",
     sales_agent: (r) => r.sales_agent || "",
@@ -158,6 +158,16 @@ export default function QuotationsPage() {
     status: (r) => r.status,
     total_amount: (r) => Number(r.total_amount),
   });
+
+  // A page at a time. The new-quotation form keeps its state on this page, so
+  // every keystroke in it re-renders whatever rows are on screen.
+  const PAGE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE);
+  useEffect(() => {
+    setVisibleCount(PAGE);
+  }, [filterDateFrom, filterDateTo, filterCustomer, filterAgent, activeBranchId]);
+  const sortedQuotations = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
+  const hiddenCount = sortedAll.length - sortedQuotations.length;
 
   // Admin-only total: sum of accepted quotations in current filter
   const totalSales = useMemo(() => {
@@ -789,6 +799,24 @@ export default function QuotationsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {hiddenCount > 0 && (
+        <div className="flex flex-col items-center gap-1.5 py-3">
+          <p className="text-xs text-muted-foreground">
+            Showing {sortedQuotations.length} of {sortedAll.length} quotations
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setVisibleCount((n) => n + PAGE)}>
+              Show {Math.min(PAGE, hiddenCount)} more
+            </Button>
+            {hiddenCount > PAGE && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setVisibleCount(sortedAll.length)}>
+                Show all {sortedAll.length}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
 
