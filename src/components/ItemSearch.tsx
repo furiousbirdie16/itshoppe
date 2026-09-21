@@ -99,8 +99,23 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
         <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
         <Input
           value={displayValue()}
-          onChange={e => { setQuery(e.target.value); if (!open) setOpen(true); }}
-          onFocus={() => { setOpen(true); setQuery(""); }}
+          onChange={e => {
+            const next = e.target.value;
+            setQuery(next);
+            if (!open) setOpen(true);
+            // Hand a custom name up on every keystroke rather than waiting for a
+            // click elsewhere. Switching tab or app fires no click, so the typed
+            // name used to exist only in this box and was lost on return.
+            if (allowCustom && !selectedItem && !selectedVariation) {
+              onChange("", null, next, null);
+            }
+          }}
+          onFocus={() => {
+            setOpen(true);
+            // Clearing lets you search afresh over a chosen item, but a custom
+            // name has nowhere else to live, so it stays put.
+            setQuery(selectedItem || selectedVariation ? "" : (customName || ""));
+          }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="h-8 pl-7 text-sm"

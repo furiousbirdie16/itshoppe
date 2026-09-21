@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { InvoiceMobileCard } from "@/components/InvoiceMobileCard";
-import { Plus, Trash2, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -34,6 +34,7 @@ import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
 import { useBranch } from "@/contexts/BranchContext";
+import { moveItem } from "@/lib/reorder";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 
@@ -1042,8 +1043,10 @@ export default function InvoicesPage() {
                 {lines.map((line, idx) => {
                   const selectedItem = items.find(i => i.id === line.item_id);
                   return (
-                    <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0">
-                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_70px_90px_32px] gap-2">
+                    <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_70px_90px_96px] sm:items-center gap-2">
+                        {/* A number makes it possible to say "move line 3 up". */}
+                        <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
                         <ItemSearch
                           items={items}
                           value={line.item_id}
@@ -1069,12 +1072,23 @@ export default function InvoicesPage() {
                           placeholder="Search item or variation..."
                           allowCustom
                         />
-                        <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Enter quantity" />
-                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; updateLine(idx, "unit_price", v === "" ? "" : (parseFloat(v) || "")); }} className="h-9 text-sm" placeholder="Enter price" />
-                          <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
+                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm" placeholder="Qty" />
+                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; updateLine(idx, "unit_price", v === "" ? "" : (parseFloat(v) || "")); }} className="h-9 text-sm" placeholder="Price" />
+                          <div className="flex items-center gap-0.5">
+                            <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                          </div>
                         </div>
                       </div>
+                      {/* What this line comes to, so the arithmetic is visible
+                          rather than only in the total at the bottom. */}
+                      {Number(line.quantity) > 0 && Number(line.unit_price) > 0 && (
+                        <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
+                          {Number(line.quantity)} × {peso(Number(line.unit_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.unit_price))}</span>
+                        </p>
+                      )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
                       {(line.item_id || line.item_name) && (line.unit_price === "" || Number(line.unit_price) <= 0) && (
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
