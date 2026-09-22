@@ -32,6 +32,7 @@ import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, g
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
 import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
 import { SuggestInput } from "@/components/SuggestInput";
+import { DuplicateCustomerWarning } from "@/components/DuplicateCustomerWarning";
 import { Tag as TagIcon } from "lucide-react";
 
 const CUSTOMER_COLUMNS: ColumnDef[] = [
@@ -732,6 +733,13 @@ export default function CustomersPage() {
               <Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
               <p className="text-[10px] text-muted-foreground">Used as the customer's name when there is no company name.</p>
             </div>
+            {/* Whichever of the two becomes the customer's name is the one to
+                check, the same way the save does it. */}
+            <DuplicateCustomerWarning
+              name={form.name.trim() || form.contact_person.trim()}
+              customers={customers}
+              excludeId={editing?.id}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Contact Number</Label>

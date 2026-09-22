@@ -14,6 +14,7 @@ import { AddressSelector, emptyAddress, type AddressValue } from "@/components/A
 import { CLASSIFICATIONS, type ClassificationValue } from "@/lib/followUps";
 import { TagsInput, normalizeTag, tagKey } from "@/components/TagsInput";
 import { SuggestInput } from "@/components/SuggestInput";
+import { DuplicateCustomerWarning } from "@/components/DuplicateCustomerWarning";
 
 interface Props {
   customers: Customer[];
@@ -118,6 +119,13 @@ export function CustomerSearchWithCreate({ customers, value, onChange }: Props) 
               <Input value={form.contact_person} onChange={e => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
               <p className="text-[10px] text-muted-foreground">Used as the customer's name when there is no company name.</p>
             </div>
+            {/* Mid-invoice is where duplicates get made, so offer the existing
+                customer here rather than only warning about them. */}
+            <DuplicateCustomerWarning
+              name={form.name.trim() || form.contact_person.trim()}
+              customers={customers}
+              onUse={(c) => { onChange(c.id); setOpen(false); reset(); }}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Contact Number</Label>
