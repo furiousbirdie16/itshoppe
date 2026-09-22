@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
@@ -255,7 +256,21 @@ export default function OnlineSalesPage() {
 
   // Bulk payment upload state
   const [bulkPayOpen, setBulkPayOpen] = useState(false);
-  const [bulkPayRows, setBulkPayRows] = useState<{ order_id: string; amount_paid: number; matched_ids: string[]; expected: number; valid: boolean; duplicate?: boolean; error?: string }[]>([]);
+  const [bulkPayRows, setBulkPayRows] = useState<{
+    order_id: string;
+    amount_paid: number;
+    matched_ids: string[];
+    expected: number;
+    valid: boolean;
+    duplicate?: boolean;
+    error?: string;
+    /** The payout is a net loss — fees came to more than the order was worth. */
+    loss?: boolean;
+    /** The order was already settled and this changes what it was paid. */
+    adjustment?: boolean;
+    /** 'returned' / 'cancelled', shown so a fee on a returned order is obvious. */
+    orderStatus?: string;
+  }[]>([]);
   const [bulkPayUploading, setBulkPayUploading] = useState(false);
   const [bulkPayFileName, setBulkPayFileName] = useState("");
   // Asked for inside the bulk dialog, so a parsed file is not thrown away for
@@ -712,7 +727,9 @@ export default function OnlineSalesPage() {
   const submitPayment = async () => {
     if (!payTarget) return;
     const amt = parseFloat(payAmount);
-    if (!Number.isFinite(amt) || amt < 0) { toast.error("Enter a valid amount"); return; }
+    // Negative is allowed: a returned order can still cost shipping, leaving
+    // the shop out of pocket on it.
+    if (!Number.isFinite(amt)) { toast.error("Enter a valid amount"); return; }
     // Distribute amount proportionally across line items by their expected value
     const ids = payTarget.ids;
     if (ids.length === 1) {
@@ -728,7 +745,7 @@ export default function OnlineSalesPage() {
       for (let i = 0; i < lineSales.length; i++) {
         const s = lineSales[i];
         const share = i === lineSales.length - 1
-          ? Math.max(0, amt - allocated)
+          ? Math.round((amt - allocated) * 100) / 100
           : Math.round((amt * (expectedForItem(s) / totalExpected)) * 100) / 100;
         allocated += share;
         try {
@@ -786,6 +803,16 @@ export default function OnlineSalesPage() {
 
 
   // ── Bulk payment upload ─────────────────────────────────────────────
+  // A marketplace payout file covers the whole shop, not one branch, so match
+  // order IDs against every branch. Otherwise an order belonging to another
+  // branch reads as missing and its fees cannot be recorded.
+  const { data: allBranchSales = [] } = useQuery({
+    queryKey: ["online_sales", "all-branches-for-payments"],
+    queryFn: () => getOnlineSales(null),
+    enabled: bulkPayOpen,
+  });
+  const payMatchPool: any[] = allBranchSales.length ? allBranchSales : sales;
+
   const handleBulkPayFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -827,18 +854,34 @@ export default function OnlineSalesPage() {
             let duplicate = false;
             let matched_ids: string[] = [];
             let expected = 0;
-            const matches = sales.filter((s: any) => s.order_number === order_id);
+            let adjustment = false;
+            let orderStatus: string | undefined;
+            const matches = payMatchPool.filter((s: any) => s.order_number === order_id);
             if (matches.length === 0) error = `Order "${order_id}" not found`;
             else {
               matched_ids = matches.map((s: any) => s.id);
               expected = expectedForGroup(matches);
+              // Returned and cancelled orders are still payable: the platform
+              // charges the return shipping against them.
+              const returned = matches.find((s: any) => s.status === 'returned' || s.status === 'cancelled');
+              if (returned) orderStatus = returned.status;
+
               if (matches.every((s: any) => s.payment_status === 'paid')) {
-                duplicate = true;
-                error = "Already paid — skipped";
+                const already = matches.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
+                // Re-uploading the same figure is a duplicate. A different one
+                // is a correction — a return fee charged after the payout, say.
+                if (Math.abs(already - amount_paid) < 0.01) {
+                  duplicate = true;
+                  error = "Already paid — skipped";
+                } else {
+                  adjustment = true;
+                }
               }
             }
-            if (!error && amount_paid < 0) error = "Net amount is negative";
-            return { order_id, amount_paid, matched_ids, expected, valid: !error, duplicate, error };
+            // A negative net is real: the order came back and the shipping fee
+            // was still charged, so the shop is out of pocket on it.
+            const loss = !error && amount_paid < 0;
+            return { order_id, amount_paid, matched_ids, expected, valid: !error, duplicate, error, loss, adjustment, orderStatus };
           }),
           ...missingOrderRows.map(({ order_id, amount_paid }) => ({
             order_id, amount_paid, matched_ids: [], expected: 0, valid: false, duplicate: false,
@@ -870,8 +913,10 @@ export default function OnlineSalesPage() {
           let allocated = 0;
           for (let i = 0; i < lineSales.length; i++) {
             const s = lineSales[i];
+            // No clamping to zero: a net loss has to stay negative, and the
+            // last line carries whatever rounding is left over.
             const share = i === lineSales.length - 1
-              ? Math.max(0, row.amount_paid - allocated)
+              ? Math.round((row.amount_paid - allocated) * 100) / 100
               : Math.round((row.amount_paid * (expectedForItem(s) / totalExpected)) * 100) / 100;
             allocated += share;
             await updateOnlineSale(s.id, { amount_paid: share, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
@@ -909,6 +954,11 @@ export default function OnlineSalesPage() {
   const bulkPayValidCount = bulkPayRows.filter(r => r.valid).length;
   const bulkPayDuplicateCount = bulkPayRows.filter(r => r.duplicate).length;
   const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid && !r.duplicate).length;
+  const bulkPayLossCount = bulkPayRows.filter(r => r.valid && r.loss).length;
+  const bulkPayAdjustCount = bulkPayRows.filter(r => r.valid && r.adjustment).length;
+  const bulkPayLossTotal = bulkPayRows
+    .filter(r => r.valid && r.loss)
+    .reduce((sum, r) => sum + r.amount_paid, 0);
 
   const downloadTemplate = () => {
     const template = [
@@ -1819,8 +1869,11 @@ export default function OnlineSalesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Amount Paid (received from platform)</Label>
-                <Input type="number" min={0} step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="h-9" autoFocus />
-                <p className="text-[11px] text-muted-foreground">The difference between the selling total and the amount paid will be recorded as fees.</p>
+                <Input type="number" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="h-9" autoFocus />
+                <p className="text-[11px] text-muted-foreground">
+                  The difference between the selling total and the amount paid will be recorded as fees.
+                  Enter a negative amount if the order came back and the shipping fee was still charged.
+                </p>
               </div>
             </div>
           )}
@@ -1845,6 +1898,11 @@ export default function OnlineSalesPage() {
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
                 <p className="text-xs text-muted-foreground">Required columns: <strong>Order ID</strong> and <strong>Amount Paid</strong></p>
                 <p className="text-[11px] text-muted-foreground">Rows without an Order ID will be rejected.</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Negative nets are accepted — a returned order still charged shipping is
+                  recorded as a loss. Returned and cancelled orders can be paid, and an
+                  order already settled is updated if the amount has changed.
+                </p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={downloadPaymentsTemplate}><FileSpreadsheet className="h-4 w-4 mr-1" /> Download Template</Button>
@@ -1858,6 +1916,8 @@ export default function OnlineSalesPage() {
                 <span className="text-muted-foreground">{bulkPayFileName} — {bulkPayRows.length} rows</span>
                 <div className="flex gap-3">
                   {bulkPayValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkPayValidCount} valid</span>}
+                  {bulkPayAdjustCount > 0 && <span className="flex items-center gap-1 text-sky-600">{bulkPayAdjustCount} adjusted</span>}
+                  {bulkPayLossCount > 0 && <span className="flex items-center gap-1 text-destructive">{bulkPayLossCount} at a loss ({peso(bulkPayLossTotal)})</span>}
                   {bulkPayDuplicateCount > 0 && <span className="flex items-center gap-1 text-muted-foreground">{bulkPayDuplicateCount} already paid</span>}
                   {bulkPayInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkPayInvalidCount} invalid</span>}
                 </div>
@@ -1882,9 +1942,24 @@ export default function OnlineSalesPage() {
                           <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                           <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
                           <TableCell className="text-sm text-right tabular-nums">{row.matched_ids.length ? peso(row.expected) : "—"}</TableCell>
-                          <TableCell className="text-sm text-right tabular-nums">{peso(row.amount_paid)}</TableCell>
+                          <TableCell className={cn("text-sm text-right tabular-nums", row.amount_paid < 0 && "text-destructive font-medium")}>{peso(row.amount_paid)}</TableCell>
                           <TableCell className="text-sm text-right tabular-nums"><span className={!row.valid ? "text-muted-foreground" : fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{row.valid ? peso(fees) : "—"}</span></TableCell>
-                          <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : row.duplicate ? <span className="text-muted-foreground">{row.error}</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
+                          <TableCell className="text-xs">
+                            {row.valid ? (
+                              <span className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-green-600">✓</span>
+                                {row.loss && <span className="text-destructive font-medium">Loss</span>}
+                                {row.adjustment && <span className="text-sky-600">Adjusted</span>}
+                                {row.orderStatus && (
+                                  <span className="text-amber-600 capitalize">{row.orderStatus}</span>
+                                )}
+                              </span>
+                            ) : row.duplicate ? (
+                              <span className="text-muted-foreground">{row.error}</span>
+                            ) : (
+                              <span className="text-destructive">{row.error}</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
