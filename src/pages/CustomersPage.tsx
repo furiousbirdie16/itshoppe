@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity, SOLD_INVOICE_STATUSES, getCustomerOrders } from "@/lib/api";
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity, SOLD_INVOICE_STATUSES, getCustomerOrders, mergeCustomers } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { peso } from "@/lib/currency";
@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal, Receipt } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal, Receipt, Merge } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -305,6 +305,39 @@ export default function CustomersPage() {
     },
   });
 
+  // --- Merging duplicates -------------------------------------------------
+  // The same customer often gets entered twice, which splits their orders,
+  // their total and their last-paid date across two rows.
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeKeepId, setMergeKeepId] = useState<string>("");
+  const mergeCandidates = useMemo(
+    () => enriched.filter((c) => selectedIds.has(c.id)),
+    [enriched, selectedIds]
+  );
+
+  const openMerge = () => {
+    // Default to the record with the most history, as the one worth keeping.
+    const best = [...mergeCandidates].sort(
+      (a, b) => b._orders - a._orders || b._total - a._total
+    )[0];
+    setMergeKeepId(best?.id || "");
+    setMergeOpen(true);
+  };
+
+  const mergeMut = useMutation({
+    mutationFn: () => mergeCustomers(mergeKeepId, mergeCandidates.map((c) => c.id)),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-sales-activity"] });
+      setMergeOpen(false);
+      setSelectedIds(new Set());
+      toast.success(
+        `Merged ${res.merged} duplicate${res.merged === 1 ? "" : "s"} — ${res.invoices} invoice${res.invoices === 1 ? "" : "s"} moved over`
+      );
+    },
+    onError: (e: any) => toast.error(e.message || "Could not merge these customers"),
+  });
+
   const { sort, toggle, sorted: sortedCustomers } = useSort<CustomerRow>(filtered, {
     name: (r) => r.name,
     contact_person: (r) => r.contact_person,
@@ -495,6 +528,11 @@ export default function CustomersPage() {
                 updateOne={async (id, patch) => { await updateCustomer(id, patch as Partial<Customer>); }}
                 onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["customers"] }); setSelectedIds(new Set()); }}
               />
+              {selectedIds.size > 1 && (
+                <Button variant="outline" size="sm" className="h-9" onClick={openMerge}>
+                  <Merge className="h-4 w-4 mr-1.5" /> Merge {selectedIds.size}
+                </Button>
+              )}
               <Button variant="destructive" size="sm" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending}>
                 <Trash2 className="h-4 w-4 mr-1" /> Delete {selectedIds.size} selected
               </Button>
@@ -1160,6 +1198,72 @@ export default function CustomersPage() {
               ))}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Merge duplicates. One record is kept and the rest are folded into it,
+          so every order, quotation and fixed price follows along. */}
+      <Dialog open={mergeOpen} onOpenChange={(o) => !o && setMergeOpen(false)}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Merge {mergeCandidates.length} customers</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Pick the record to keep. The others are folded into it — their orders,
+            quotations, receivables, follow-ups and fixed prices all move across,
+            and any detail the kept record is missing is copied over. The duplicate
+            records are then removed.
+          </p>
+          <div className="space-y-2 pt-1">
+            {mergeCandidates.map((c) => {
+              const keep = c.id === mergeKeepId;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setMergeKeepId(c.id)}
+                  className={cn(
+                    "w-full text-left rounded-lg border p-3 transition-colors",
+                    keep ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "bg-card hover:bg-muted/40"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold truncate">{c.name}</span>
+                        {keep && <Badge className="text-[10px] px-1.5 py-0">Keep this one</Badge>}
+                      </div>
+                      {c.contact_person && (
+                        <p className="text-xs text-muted-foreground truncate">{c.contact_person}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {c._orders} order{c._orders === 1 ? "" : "s"} · last paid{" "}
+                        {c._lastDate ? format(new Date(c._lastDate), "MMM d, yyyy") : "never"}
+                        {c.phone ? ` · ${c.phone}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold shrink-0">{peso(c._total)}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-3 pt-2 flex-wrap">
+            <p className="text-xs text-muted-foreground">
+              This cannot be undone.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setMergeOpen(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                onClick={() => mergeMut.mutate()}
+                disabled={!mergeKeepId || mergeCandidates.length < 2 || mergeMut.isPending}
+              >
+                <Merge className="h-4 w-4 mr-1.5" />
+                {mergeMut.isPending ? "Merging..." : `Merge into ${mergeCandidates.find((c) => c.id === mergeKeepId)?.name || "selected"}`}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

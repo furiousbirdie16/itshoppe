@@ -2566,3 +2566,37 @@ export const deletePayable = async (id: string) => {
   if (error) throw error;
   await logActivity("deleted_payable", "payable", id);
 };
+
+export type MergeCustomersResult = {
+  merged: number;
+  invoices: number;
+  quotations: number;
+  receivables: number;
+  follow_ups: number;
+  prices: number;
+};
+
+/**
+ * Fold duplicate customer records into one, keeping all of their history.
+ *
+ * Done in one database function rather than here: invoices are ON DELETE SET
+ * NULL, so a half-finished merge would quietly detach orders from any customer.
+ */
+export const mergeCustomers = async (
+  keepId: string,
+  mergeIds: string[],
+): Promise<MergeCustomersResult> => {
+  const losers = mergeIds.filter((id) => id && id !== keepId);
+  if (!keepId || losers.length === 0) throw new Error("Pick a customer to keep and at least one to merge in.");
+
+  // Cast: the generated types are regenerated from the database, and this
+  // function is newer than the checked-in copy.
+  const { data, error } = await (supabase.rpc as any)("merge_customers", {
+    p_keep: keepId,
+    p_merge: losers,
+  });
+  if (error) throw error;
+
+  await logActivity("merged_customers", "customer", keepId, { merged_ids: losers });
+  return data as unknown as MergeCustomersResult;
+};
