@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, getCustomers, getInvoiceItems } from "@/lib/api";
+import { getInvoices, getCustomers, getInvoiceItems, getCashAccountOptions, markManualReceivablePaid, unmarkManualReceivablePaid } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,19 @@ export default function PendingPaymentsPage() {
       return data || [];
     },
   });
+
+  // Names only. Staff cannot read bank accounts or open the Bank page, but a
+  // customer who settles by transfer has to be bankable all the same.
+  const { data: accountOptions = [] } = useQuery({
+    queryKey: ["cash-account-options"],
+    queryFn: getCashAccountOptions,
+  });
+  const cashOptions = accountOptions.filter((a) => a.account_type === "petty_cash");
+  const bankOptions = accountOptions.filter((a) => a.account_type === "bank");
+
+  /** The receivable being collected, and the account picked for it. */
+  const [payTarget, setPayTarget] = useState<any | null>(null);
+  const [payAccountId, setPayAccountId] = useState<string>("");
 
   // Pending = invoices that are open and not yet paid (shipped/confirmed/unpaid).
   // Excludes reserved (not yet a sale), paid (already paid - pending shipment only),
@@ -177,14 +190,37 @@ export default function PendingPaymentsPage() {
     onError: (e: any) => toast.error(e.message || "Failed to save"),
   });
 
+  const refreshMoney = () => {
+    queryClient.invalidateQueries({ queryKey: ["manual_receivables"] });
+    queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["cash-accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["finance-summary"] });
+  };
+
+  const openMarkPaid = (r: any) => {
+    setPayTarget(r);
+    // Cash is the usual answer, so start there rather than on nothing.
+    setPayAccountId(cashOptions[0]?.id || bankOptions[0]?.id || "");
+  };
+
+  const undoPaidMut = useMutation({
+    mutationFn: (id: string) => unmarkManualReceivablePaid(id),
+    onSuccess: () => { refreshMoney(); toast.success("Put back to unpaid"); },
+    onError: (e: any) => toast.error(e.message || "Could not undo it"),
+  });
+
   const markPaidMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).from("manual_receivables").update({ status: "paid" }).eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["manual_receivables"] });
-      toast.success("Marked as paid");
+    mutationFn: ({ id, accountId }: { id: string; accountId: string }) =>
+      markManualReceivablePaid(id, accountId || null),
+    onSuccess: (_res, vars) => {
+      refreshMoney();
+      setPayTarget(null);
+      const account = accountOptions.find((a) => a.id === vars.accountId);
+      // Paid rows leave the list, so an undo has to be offered here or the
+      // wrong account cannot be corrected.
+      toast.success(account ? `Collected into ${account.name}` : "Marked as paid", {
+        action: { label: "Undo", onClick: () => undoPaidMut.mutate(vars.id) },
+      });
     },
     onError: (e: any) => toast.error(e.message || "Failed"),
   });
@@ -501,7 +537,7 @@ export default function PendingPaymentsPage() {
                     </Button>
                   ) : (
                     <>
-                      <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(r.id)} className="h-8 w-8 rounded-md" aria-label="Mark as Paid">
+                      <Button variant="ghost" size="icon" onClick={() => openMarkPaid(r)} className="h-8 w-8 rounded-md" aria-label="Mark as Paid">
                         <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(r)} className="h-8 w-8 rounded-md" aria-label="Edit">
@@ -593,7 +629,7 @@ export default function PendingPaymentsPage() {
                   <TableCell className="text-right text-sm font-medium">{peso(Number(m.amount))}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-0.5">
-                      <Button variant="ghost" size="icon" onClick={() => markPaidMut.mutate(m.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openMarkPaid(m)} title="Mark as Paid" className="h-7 w-7 rounded-md"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(m)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                       {isAdmin && (
                         <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this pending payment?")) deleteManualMut.mutate(m.id); }} title="Delete" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
@@ -606,6 +642,51 @@ export default function PendingPaymentsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Collecting a pending payment. The account list is names only, so a
+          staff member can bank it without the Bank page or any balance. */}
+      <Dialog open={!!payTarget} onOpenChange={(o) => { if (!o) setPayTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Mark as Paid</DialogTitle></DialogHeader>
+          {payTarget && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                <p className="font-medium">{payTarget.customers?.name || payTarget.description || "Pending payment"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {payTarget.description && payTarget.customers?.name ? `${payTarget.description} · ` : ""}
+                  {peso(Number(payTarget.amount || 0))}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Where did the money go?</Label>
+                <Select value={payAccountId} onValueChange={setPayAccountId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select an account" /></SelectTrigger>
+                  <SelectContent>
+                    {cashOptions.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                    {bankOptions.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  {peso(Number(payTarget.amount || 0))} is recorded as money in on this account.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayTarget(null)}>Cancel</Button>
+            <Button
+              onClick={() => payTarget && markPaidMut.mutate({ id: payTarget.id, accountId: payAccountId })}
+              disabled={!payAccountId || markPaidMut.isPending}
+            >
+              {markPaidMut.isPending ? "Saving..." : "Mark Paid"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
     </div>

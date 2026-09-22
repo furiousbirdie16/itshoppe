@@ -2600,3 +2600,96 @@ export const mergeCustomers = async (
   await logActivity("merged_customers", "customer", keepId, { merged_ids: losers });
   return data as unknown as MergeCustomersResult;
 };
+
+/**
+ * Collects a pending payment into an account.
+ *
+ * Marking one paid used to change a status and nothing else, so the money never
+ * showed up in cash or bank. The posting mirrors an invoice payment: keyed on
+ * the receivable, so a second click moves the entry rather than banking it
+ * twice, and written through the same rule that lets staff post into an account
+ * they cannot read.
+ */
+export const markManualReceivablePaid = async (
+  receivableId: string,
+  accountId: string | null,
+) => {
+  const actor = await currentActor();
+
+  const { data: row } = await from("manual_receivables")
+    .select("amount, description, customers(name)")
+    .eq("id", receivableId)
+    .maybeSingle();
+
+  const amount = Number((row as any)?.amount ?? 0);
+
+  const { error: upErr } = await from("manual_receivables").update({
+    status: "paid",
+    paid_account_id: accountId,
+    paid_at: new Date().toISOString(),
+  }).eq("id", receivableId);
+  if (upErr) throw upErr;
+
+  // No account chosen, or nothing to bank: leave the ledger alone, and clear
+  // any entry an earlier collection left behind.
+  if (!accountId || amount <= 0) {
+    await from("cash_transactions").delete().eq("source_manual_receivable_id", receivableId);
+    await logActivity("marked_receivable_paid", "receivable", receivableId);
+    return;
+  }
+
+  const entry = {
+    account_id: accountId,
+    direction: "in",
+    amount,
+    category: "Receivable Collection",
+    payee: (row as any)?.customers?.name || "",
+    reference: "",
+    notes: `Collected pending payment${(row as any)?.description ? `: ${(row as any).description}` : ""}`,
+  };
+
+  const { data: existing } = await from("cash_transactions")
+    .select("id").eq("source_manual_receivable_id", receivableId).maybeSingle();
+
+  if (existing) {
+    // txn_date is left as it was: correcting the account afterwards should not
+    // move the money to the day of the correction.
+    const { error } = await from("cash_transactions")
+      .update({ ...entry, updated_at: new Date().toISOString(), updated_by: actor.id, updated_by_email: actor.email })
+      .eq("id", (existing as any).id);
+    if (error) throw error;
+  } else {
+    const { error } = await from("cash_transactions").insert({
+      ...entry,
+      txn_date: new Date().toISOString().slice(0, 10),
+      source_manual_receivable_id: receivableId,
+      created_by: actor.id,
+      created_by_email: actor.email,
+    });
+    if (error) throw error;
+  }
+
+  await logActivity("marked_receivable_paid", "receivable", receivableId, { account_id: accountId, amount });
+};
+
+/** Puts a collected pending payment back to unpaid, taking the money out again. */
+export const unmarkManualReceivablePaid = async (receivableId: string) => {
+  const { error: delErr } = await from("cash_transactions")
+    .delete().eq("source_manual_receivable_id", receivableId);
+  if (delErr) throw delErr;
+
+  // RLS filters a DELETE instead of refusing it, so confirm the row is gone
+  // rather than trusting a silent success.
+  const { data: left } = await from("cash_transactions")
+    .select("id").eq("source_manual_receivable_id", receivableId).maybeSingle();
+  if (left) throw new Error("The collection could not be removed from the account.");
+
+  const { error } = await from("manual_receivables").update({
+    status: "unpaid",
+    paid_account_id: null,
+    paid_at: null,
+  }).eq("id", receivableId);
+  if (error) throw error;
+
+  await logActivity("unmarked_receivable_paid", "receivable", receivableId);
+};
