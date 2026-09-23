@@ -9,11 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, History, ExternalLink } from "lucide-react";
+import { Search, History, ExternalLink, AlertTriangle } from "lucide-react";
 import type { Item } from "@/types/database";
 import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
 import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
 import { useBranch } from "@/contexts/BranchContext";
+import { walkBalances } from "@/lib/ledger-balances";
 
 interface Props {
   item: Item | null;
@@ -36,9 +37,22 @@ interface LedgerRow {
   label: string;
   qty_in: number;
   qty_out: number;
+  /** Units moved, always positive — a transfer changes no total, but moves. */
+  quantity: number;
   signed_delta: number;
-  previous_balance: number;
-  new_balance: number;
+  /** Balance at each location after this movement; null until first seen. */
+  wh_after: number | null;
+  st_after: number | null;
+  wh_before: number | null;
+  st_before: number | null;
+  total_before: number | null;
+  total_after: number | null;
+  /**
+   * Stock that changed with no movement to explain it, found by comparing what
+   * this row says the balance was beforehand against what the previous
+   * movement left. This is the number that explains a count not matching.
+   */
+  discrepancy: number;
   open_before: number | null;
   open_after: number | null;
   dest_before: number | null;
@@ -56,6 +70,20 @@ interface LedgerRow {
   branch_label: string;
 }
 
+
+/**
+ * The filters, grouped the way stock is actually thought about: things moved
+ * between locations, things sold, things that came back in, and everything
+ * that was a correction rather than a transaction.
+ */
+type LedgerFilter = "all" | "transfers" | "sales" | "received" | "adjustments" | "unexplained";
+
+const FILTER_GROUPS: Record<Exclude<LedgerFilter, "all" | "unexplained">, MovementCategory[]> = {
+  transfers: ["transfer"],
+  sales: ["sale"],
+  received: ["stock_received", "return"],
+  adjustments: ["adjustment", "correction"],
+};
 
 const CATEGORY_LABELS: Record<MovementCategory, string> = {
   stock_received: "Stock Received",
@@ -188,27 +216,42 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
     return { m, info, qty, qtyIn, qtyOut, signed, ref };
   });
 
-  // Walk backward from current quantity to derive previous/new balances (fallback
-  // for legacy rows without snapshots). New rows carry their own balance snapshot.
-  let runningNew = currentQty;
-  const result: LedgerRow[] = [];
-  for (let i = enriched.length - 1; i >= 0; i--) {
-    const e = enriched[i];
+  // Walk forward through the movements keeping a balance per branch and per
+  // location, because that is what the snapshots on each row actually describe:
+  // a sale records the store's balance, a transfer records its source's. Shown
+  // in one column they looked like a single number jumping about at random.
+  //
+  // Each row states what the balance was before it. Where that disagrees with
+  // what the previous movement left, stock changed with nothing recording it —
+  // which is exactly what a count that does not match is made of.
+  const walked = walkBalances(enriched.map((e) => {
     const m: any = e.m;
-    const snapshotBefore = m.balance_before != null ? Number(m.balance_before) : null;
-    const snapshotAfter = m.balance_after != null ? Number(m.balance_after) : null;
-    const newBalance = snapshotAfter ?? runningNew;
-    const previousBalance = snapshotBefore ?? (newBalance - e.signed);
-    result.push({
+    return {
+      branch_id: m.branch_id || null,
+      location: m.location || null,
+      dest_location: m.dest_location || null,
+      balance_before: m.balance_before != null ? Number(m.balance_before) : null,
+      balance_after: m.balance_after != null ? Number(m.balance_after) : null,
+      dest_balance_before: m.dest_balance_before != null ? Number(m.dest_balance_before) : null,
+      dest_balance_after: m.dest_balance_after != null ? Number(m.dest_balance_after) : null,
+      signed: e.signed,
+    };
+  }));
+
+  const forward: LedgerRow[] = enriched.map((e, i) => {
+    const m: any = e.m;
+    const b = walked[i];
+    const ref = e.ref;
+    return {
       id: m.id,
       created_at: m.created_at,
       category: e.info.category,
       label: e.info.label,
       qty_in: e.qtyIn,
       qty_out: e.qtyOut,
+      quantity: e.qty,
       signed_delta: e.signed,
-      previous_balance: previousBalance,
-      new_balance: newBalance,
+      ...b,
       open_before: m.open_before != null ? Number(m.open_before) : null,
       open_after: m.open_after != null ? Number(m.open_after) : null,
       dest_before: m.dest_balance_before != null ? Number(m.dest_balance_before) : null,
@@ -216,24 +259,44 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
       location: m.location || null,
       dest_location: m.dest_location || null,
       unit: m.unit || null,
-      reference_no: e.ref?.number || "—",
-      reference_link: e.ref?.link || null,
-      reference_kind: e.ref?.kind || null,
+      reference_no: ref?.number || "—",
+      reference_link: ref?.link || null,
+      reference_kind: ref?.kind || null,
       reference_id: m.reference_id || null,
       notes: m.notes || "",
       user: m.user_email || "—",
       branch_id: m.branch_id || null,
       branch_label: m.branch_id ? (branchMap.get(m.branch_id) || "—") : "—",
-    });
-    runningNew = previousBalance;
-  }
+    };
+  });
+
+  const result = forward.reverse();
   return result; // newest first
 }
 
 
+/**
+ * One location's balance across a movement, as "before → after".
+ *
+ * Both halves are shown because the question being asked of this table is
+ * always "what did this row do to the stock", and a single number cannot say.
+ */
+function BalanceCell({ before, after, strong }: { before: number | null; after: number | null; strong?: boolean }) {
+  if (after == null) {
+    return <TableCell className="text-right text-xs text-muted-foreground">—</TableCell>;
+  }
+  const changed = before != null && before !== after;
+  return (
+    <TableCell className="text-right whitespace-nowrap tabular-nums">
+      {changed && <span className="text-xs text-muted-foreground">{before} → </span>}
+      <span className={strong ? "text-sm font-semibold" : "text-sm"}>{after}</span>
+    </TableCell>
+  );
+}
+
 export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | MovementCategory>("all");
+  const [categoryFilter, setCategoryFilter] = useState<LedgerFilter>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
@@ -248,7 +311,9 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
 
 
   const filtered = useMemo(() => ledger.filter((r) => {
-    if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
+    if (categoryFilter === "unexplained" && r.discrepancy === 0) return false;
+    if (categoryFilter !== "all" && categoryFilter !== "unexplained"
+        && !FILTER_GROUPS[categoryFilter].includes(r.category)) return false;
     const day = r.created_at.slice(0, 10);
     if (from && day < from) return false;
     if (to && day > to) return false;
@@ -263,7 +328,15 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     if (ledger.length === 0) return null;
     const totalIn = ledger.reduce((s, r) => s + r.qty_in, 0);
     const totalOut = ledger.reduce((s, r) => s + r.qty_out, 0);
-    return { totalIn, totalOut, current: item?.quantity ?? 0, count: ledger.length };
+    const unexplained = ledger.filter((r) => r.discrepancy !== 0);
+    return {
+      totalIn,
+      totalOut,
+      current: item?.quantity ?? 0,
+      count: ledger.length,
+      unexplainedCount: unexplained.length,
+      unexplainedNet: unexplained.reduce((s, r) => s + r.discrepancy, 0),
+    };
   }, [ledger, item]);
 
   return (
@@ -279,11 +352,34 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
         </DialogHeader>
 
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Movements</div><div className="text-lg font-semibold">{stats.count}</div></CardContent></Card>
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Total In</div><div className="text-lg font-semibold text-emerald-600">+{stats.totalIn}</div></CardContent></Card>
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Total Out</div><div className="text-lg font-semibold text-rose-600">−{stats.totalOut}</div></CardContent></Card>
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Current Stock</div><div className="text-lg font-semibold">{stats.current}</div></CardContent></Card>
+            {/* Stock that changed with nothing recording it. This is what a
+                physical count disagreeing with the system is made of. */}
+            <Card className={stats.unexplainedCount > 0 ? "border-amber-300 bg-amber-50/60" : undefined}>
+              <CardContent className="p-3">
+                <div className="text-[10px] uppercase text-muted-foreground">Unexplained</div>
+                {stats.unexplainedCount === 0 ? (
+                  <div className="text-lg font-semibold text-emerald-600">None</div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("unexplained")}
+                    className="text-left"
+                  >
+                    <div className="text-lg font-semibold text-amber-700">
+                      {stats.unexplainedNet > 0 ? "+" : ""}{stats.unexplainedNet}
+                    </div>
+                    <div className="text-[10px] text-amber-700/80 underline">
+                      {stats.unexplainedCount} point{stats.unexplainedCount === 1 ? "" : "s"} — show
+                    </div>
+                  </button>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -295,13 +391,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as any)}>
             <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Transactions</SelectItem>
-              <SelectItem value="stock_received">Stock Received</SelectItem>
-              <SelectItem value="sale">Sales</SelectItem>
-              <SelectItem value="return">Returns</SelectItem>
-              <SelectItem value="adjustment">Adjustments</SelectItem>
-              <SelectItem value="transfer">Transfers</SelectItem>
-              <SelectItem value="correction">Corrections</SelectItem>
+              <SelectItem value="all">All movements</SelectItem>
+              <SelectItem value="transfers">Transfers (warehouse ↔ store)</SelectItem>
+              <SelectItem value="sales">Sales (invoice &amp; online)</SelectItem>
+              <SelectItem value="received">Received (PO, returns, cancelled)</SelectItem>
+              <SelectItem value="adjustments">Adjustments &amp; corrections</SelectItem>
+              <SelectItem value="unexplained">Unexplained changes only</SelectItem>
             </SelectContent>
           </Select>
           <div>
@@ -322,25 +417,24 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 <TableHead className="text-xs">Branch</TableHead>
                 <TableHead className="text-xs">Transaction</TableHead>
                 <TableHead className="text-xs">Reference</TableHead>
-                <TableHead className="text-xs">Location</TableHead>
-                <TableHead className="text-xs text-right">Qty In</TableHead>
-                <TableHead className="text-xs text-right">Qty Out</TableHead>
-                <TableHead className="text-xs">Unit</TableHead>
-                <TableHead className="text-xs text-right">Bal Before</TableHead>
-                <TableHead className="text-xs text-right">Bal After</TableHead>
+                <TableHead className="text-xs text-right">Change</TableHead>
+                <TableHead className="text-xs text-right whitespace-nowrap">Warehouse</TableHead>
+                <TableHead className="text-xs text-right whitespace-nowrap">Store</TableHead>
+                <TableHead className="text-xs text-right whitespace-nowrap">Total</TableHead>
                 <TableHead className="text-xs">User</TableHead>
                 <TableHead className="text-xs">Remarks</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={12} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={12} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
               ) : filtered.map((r) => {
-                const locLabel = r.category === "transfer" && r.dest_location
-                  ? `${r.location || "?"} → ${r.dest_location}`
-                  : (r.location || "—");
+                const locShort = r.category === "transfer" && r.dest_location
+                  ? `${(r.location || "?")[0].toUpperCase()}→${r.dest_location[0].toUpperCase()}`
+                  : "";
+                const qtyMoved = r.quantity;
                 const transferDetail = r.category === "transfer" && r.dest_before != null && r.dest_after != null
                   ? ` · dest ${r.dest_before}→${r.dest_after}`
                   : "";
@@ -348,11 +442,20 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                   ? ` · open ${r.open_before}→${r.open_after}${r.unit || "m"}`
                   : "";
                 return (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} className={r.discrepancy !== 0 ? "bg-amber-50/70 hover:bg-amber-50" : undefined}>
                   <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</TableCell>
                   <TableCell className="text-xs font-mono">{r.branch_label}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
+                    {r.discrepancy !== 0 && (
+                      <div
+                        className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-700"
+                        title={`The stock was already ${r.discrepancy > 0 ? "higher" : "lower"} by ${Math.abs(r.discrepancy)} than the previous movement left it. Something changed it without being recorded — a sale entered late, a manual edit, or stock taken without a movement.`}
+                      >
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        {r.discrepancy > 0 ? "+" : ""}{r.discrepancy} unexplained
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs font-mono">
                     {r.reference_kind === "invoice" && r.reference_id ? (
@@ -381,12 +484,25 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       <span className="text-muted-foreground">{r.reference_no}</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs capitalize">{locLabel}</TableCell>
-                  <TableCell className="text-sm text-right text-emerald-600 font-medium">{r.qty_in > 0 ? `+${r.qty_in}` : ""}</TableCell>
-                  <TableCell className="text-sm text-right text-rose-600 font-medium">{r.qty_out > 0 ? `−${r.qty_out}` : ""}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.unit || "—"}</TableCell>
-                  <TableCell className="text-sm text-right tabular-nums">{r.previous_balance}</TableCell>
-                  <TableCell className="text-sm text-right tabular-nums font-semibold">{r.new_balance}</TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    {/* A transfer moves stock without changing the branch total,
+                        so it shows the quantity and where it went, not ± . */}
+                    {r.category === "transfer" && r.dest_location ? (
+                      <span className="text-sm font-medium text-slate-600">
+                        {qtyMoved} <span className="text-[10px] uppercase text-muted-foreground">{locShort}</span>
+                      </span>
+                    ) : r.qty_in > 0 ? (
+                      <span className="text-sm font-medium text-emerald-600">+{r.qty_in}</span>
+                    ) : r.qty_out > 0 ? (
+                      <span className="text-sm font-medium text-rose-600">−{r.qty_out}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                    {r.unit ? <span className="ml-1 text-[10px] text-muted-foreground">{r.unit}</span> : null}
+                  </TableCell>
+                  <BalanceCell before={r.wh_before} after={r.wh_after} />
+                  <BalanceCell before={r.st_before} after={r.st_after} />
+                  <BalanceCell before={r.total_before} after={r.total_after} strong />
                   <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={r.user}>{r.user}</TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={`${r.notes}${transferDetail}${openDetail}`}>
                     {r.notes}{transferDetail || openDetail ? <span className="text-[10px] italic">{transferDetail}{openDetail}</span> : null}
@@ -400,7 +516,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Running balance is calculated from the current stock ({item?.quantity ?? 0}) working backwards through every recorded movement. The newest row's New Balance always matches current inventory.
+          Balances are what each movement recorded at the time, read oldest to newest —
+          not worked backwards from today, so they can disagree with the current stock
+          ({item?.quantity ?? 0}) and show you where. A row marked{" "}
+          <span className="text-amber-700">unexplained</span> found the stock already
+          different from what the movement before it left behind: something changed it
+          without being recorded.
         </p>
       </DialogContent>
       <InvoiceDetailsDialog
