@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities } from "@/lib/api";
+import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities, notifyInventoryAdjustments } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -302,6 +302,8 @@ export default function InventoryPage() {
       const created = await createItem(rest);
       if (wh || st) {
         if (!qtyBranchId) throw new Error("Pick which branch these quantities are for.");
+        // Not announced: a new item's opening stock is not someone changing a
+        // count, and every item added would otherwise send a message.
         await setBranchQuantities({ itemId: created.id, branchId: qtyBranchId, warehouse: wh ?? 0, store: st ?? 0, notes: "Item created" });
       }
       return created;
@@ -316,7 +318,8 @@ export default function InventoryPage() {
       const res = await updateItem(id, rest);
       if (wh !== undefined || st !== undefined) {
         if (!qtyBranchId) throw new Error("Pick which branch these quantities are for.");
-        await setBranchQuantities({ itemId: id, branchId: qtyBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
+        const moved = await setBranchQuantities({ itemId: id, branchId: qtyBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
+        notifyInventoryAdjustments(moved);
       }
       return res;
     },
@@ -544,6 +547,8 @@ export default function InventoryPage() {
   const [mobileCount, setMobileCount] = useState(MOBILE_PAGE);
   useEffect(() => { setMobileCount(MOBILE_PAGE); }, [filters, viewArchived, sort.key, sort.dir, activeBranchId]);
   const mobileSentinelRef = useRef<HTMLDivElement | null>(null);
+  /** Adjustment movements made by a bulk edit, announced once it finishes. */
+  const bulkAdjustments = useRef<string[]>([]);
   useEffect(() => {
     const el = mobileSentinelRef.current;
     if (!el) return;
@@ -627,10 +632,18 @@ export default function InventoryPage() {
                   if (wh !== undefined || st !== undefined) {
                     const branchId = activeBranchId || pickedBranch;
                     if (!branchId) throw new Error("Tick Branch and choose one — stock is kept per branch.");
-                    await setBranchQuantities({ itemId: id, branchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
+                    const moved = await setBranchQuantities({ itemId: id, branchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
+                    bulkAdjustments.current.push(...moved);
                   }
                 }}
-                onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); setSelectedIds(new Set()); }}
+                onSuccess={() => {
+                  // One message for the whole edit, not one per item.
+                  notifyInventoryAdjustments(bulkAdjustments.current);
+                  bulkAdjustments.current = [];
+                  queryClient.invalidateQueries({ queryKey: ["items"] });
+                  queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] });
+                  setSelectedIds(new Set());
+                }}
               />
             );
           })()}

@@ -40,8 +40,11 @@ export interface MovementInput {
  * Insert a fully-audited inventory movement. Auto-attaches the current user's
  * id + email. All balance fields are optional — pass whichever apply.
  * `branchId` MUST match the transaction's branch (not the currently-viewed one).
+ *
+ * Returns the new row's id, so a caller that wants to announce the movement can
+ * hand it to a notification without having to look it up again.
  */
-export async function recordMovement(m: MovementInput) {
+export async function recordMovement(m: MovementInput): Promise<string | null> {
   let user_id: string | null = null;
   let user_email: string | null = null;
   try {
@@ -52,7 +55,7 @@ export async function recordMovement(m: MovementInput) {
     /* anon */
   }
 
-  await db.from("inventory_movements").insert({
+  const { data } = await db.from("inventory_movements").insert({
     item_id: m.itemId,
     variation_id: m.variationId ?? null,
     branch_id: m.branchId ?? null,
@@ -72,5 +75,7 @@ export async function recordMovement(m: MovementInput) {
     dest_balance_after: m.destBalanceAfter ?? null,
     user_id,
     user_email,
-  });
+  }).select("id").maybeSingle();
+
+  return (data as { id: string } | null)?.id ?? null;
 }

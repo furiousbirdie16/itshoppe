@@ -194,6 +194,7 @@ export const setBranchQuantities = async (params: {
   const { data: item } = await _from("items").select("base_unit").eq("id", itemId).maybeSingle();
   const baseUnit = (item as any)?.base_unit ?? "pcs";
 
+  const movementIds: string[] = [];
   for (const t of targets) {
     const delta = t.target - t.before;
     const result = await applyBranchStockRpc({
@@ -202,7 +203,7 @@ export const setBranchQuantities = async (params: {
       location: t.location,
       deltaStock: delta,
     });
-    await recordMovement({
+    const id = await recordMovement({
       itemId,
       branchId,
       type: delta > 0 ? "adjust_surplus" : "adjust_missing",
@@ -214,7 +215,25 @@ export const setBranchQuantities = async (params: {
       balanceBefore: t.before,
       balanceAfter: t.location === "warehouse" ? result.warehouse_quantity : result.store_quantity,
     });
+    if (id) movementIds.push(id);
   }
+
+  // Returned rather than announced here: a bulk edit calls this once per item,
+  // and one message per item would be unreadable. The caller batches.
+  return movementIds;
+};
+
+/**
+ * Announce stock adjustments over Telegram.
+ *
+ * Adjustments are the movements with no document behind them — someone saying
+ * the shelf holds a different number than the system does — so they are the
+ * ones worth seeing as they happen. Batched, because a bulk edit makes many.
+ */
+export const notifyInventoryAdjustments = (movementIds: string[]) => {
+  const ids = movementIds.filter(Boolean);
+  if (ids.length === 0) return;
+  notify("notify-inventory", { movement_ids: ids });
 };
 
 
@@ -2368,7 +2387,7 @@ export const getCashTransactions = async (accountIds?: string[]): Promise<CashTr
  * one message — the record itself is already saved by then. Failures are logged
  * to the console rather than surfaced, since they must never interrupt the user.
  */
-const notify = (fn: "notify-payment" | "notify-cash", body: Record<string, unknown>) => {
+const notify = (fn: "notify-payment" | "notify-cash" | "notify-inventory", body: Record<string, unknown>) => {
   void supabase.functions
     .invoke(fn, { body })
     .then(({ error }) => {

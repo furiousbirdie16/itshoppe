@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Upload, FileSpreadsheet, AlertCircle, Check, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { updateItem, updateItemVariation, setBranchQuantities } from "@/lib/api";
+import { updateItem, updateItemVariation, setBranchQuantities, notifyInventoryAdjustments } from "@/lib/api";
 import { useBranch } from "@/contexts/BranchContext";
 import { peso } from "@/lib/currency";
 import * as XLSX from "xlsx";
@@ -385,6 +385,8 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
     }
     setBusy(true);
     let ok = 0, fail = 0;
+    // Collected across the whole upload: one message, not one per row.
+    const adjustments: string[] = [];
     for (const r of toUpdate) {
       try {
         if (r.kind === "item") {
@@ -397,13 +399,13 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
             await updateItem(r.targetId!, patch as Partial<Item>);
           }
           if (wh !== undefined || st !== undefined) {
-            await setBranchQuantities({
+            adjustments.push(...await setBranchQuantities({
               itemId: r.targetId!,
               branchId: qtyBranchId!,
               warehouse: wh ?? null,
               store: st ?? null,
               notes: "Bulk edit upload",
-            });
+            }));
           }
         } else {
           await updateItemVariation(r.targetId!, r.patch as Partial<ItemVariation>);
@@ -415,6 +417,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
       }
     }
     setBusy(false);
+    notifyInventoryAdjustments(adjustments);
     if (ok > 0) toast.success(`Updated ${ok} row${ok === 1 ? "" : "s"}${fail ? ` (${fail} failed)` : ""}`);
     else toast.error(`All ${fail} updates failed`);
     if (ok > 0) {

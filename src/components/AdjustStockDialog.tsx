@@ -87,7 +87,7 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
       const row: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
 
       const { recordMovement } = await import("@/lib/inventoryLog");
-      await recordMovement({
+      const movementId = await recordMovement({
         itemId: item.id,
         branchId,
         type: diff < 0 ? "adjust_missing" : "adjust_surplus",
@@ -99,6 +99,10 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
         balanceAfter: location === "warehouse" ? row.warehouse_quantity : row.store_quantity,
       });
 
+      // A count that disagrees with the system is the movement worth seeing as
+      // it happens: nothing else explains stock changing.
+      const { notifyInventoryAdjustments } = await import("@/lib/api");
+      notifyInventoryAdjustments(movementId ? [movementId] : []);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
