@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPayables, createPayable, updatePayable, deletePayable, getSuppliers, getCashAccounts } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,8 @@ const STATUS_VARIANT: Record<Payable["status"], "default" | "secondary" | "destr
   cancelled: "secondary",
 };
 
+type PayableTab = "all" | "checks" | "bills" | "paid";
+
 /** Statuses that mean the payable is settled and no longer outstanding. */
 const SETTLED: Payable["status"][] = ["paid", "cleared", "cancelled"];
 
@@ -83,7 +86,7 @@ export default function PayablesPage() {
   const [editing, setEditing] = useState<Payable | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"all" | "checks" | "bills">("all");
+  const [tab, setTab] = useState<PayableTab>("all");
 
   const { data: payables = [], isLoading } = useQuery({ queryKey: ["payables"], queryFn: getPayables });
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
@@ -91,9 +94,23 @@ export default function PayablesPage() {
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   const accounts = allAccounts.filter((a) => a.is_active);
 
-  const scoped = payables.filter((p) =>
-    tab === "all" ? true : tab === "checks" ? p.is_check : !p.is_check,
-  );
+  // Settled payables leave the working list entirely — they are not money the
+  // business still owes — and collect in their own tab.
+  const openPayables = useMemo(() => payables.filter((p) => !SETTLED.includes(p.status)), [payables]);
+  const settledPayables = useMemo(() => payables.filter((p) => SETTLED.includes(p.status)), [payables]);
+
+  const tabCounts = {
+    all: openPayables.length,
+    checks: openPayables.filter((p) => p.is_check).length,
+    bills: openPayables.filter((p) => !p.is_check).length,
+    paid: settledPayables.length,
+  };
+
+  const scoped =
+    tab === "paid" ? settledPayables
+    : tab === "checks" ? openPayables.filter((p) => p.is_check)
+    : tab === "bills" ? openPayables.filter((p) => !p.is_check)
+    : openPayables;
 
   const filtered = scoped.filter((p) => {
     const q = search.trim().toLowerCase();
@@ -224,19 +241,44 @@ export default function PayablesPage() {
         <StatCard title="Overdue" value={peso(overdueTotal)} icon={AlertTriangle} description={`${overdue.length} past due`} />
       </div>
 
+      {/* Paid, cleared and cancelled sit in Paid: none of them is still owed,
+          so leaving them in the working list only buries what is. */}
+      <div className="flex items-center gap-5 overflow-x-auto border-b sm:gap-7">
+        {([
+          { v: "all", l: "All", n: tabCounts.all },
+          { v: "checks", l: "Post-Dated Checks", n: tabCounts.checks },
+          { v: "bills", l: "General", n: tabCounts.bills },
+          { v: "paid", l: "Paid", n: tabCounts.paid },
+        ] as { v: PayableTab; l: string; n: number }[]).map((t) => (
+          <button
+            key={t.v}
+            type="button"
+            onClick={() => setTab(t.v)}
+            className={cn(
+              "-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 pb-2.5 text-sm transition-colors",
+              tab === t.v
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.l}
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-px text-[11px] tabular-nums",
+                tab === t.v ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+              )}
+            >
+              {t.n}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="relative max-w-sm flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search payables..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <Select value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-          <SelectTrigger className="h-9 w-[180px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All payables</SelectItem>
-            <SelectItem value="checks">Post-dated checks</SelectItem>
-            <SelectItem value="bills">General payables</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
