@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
-  createShipment, updateShipment, deleteShipment, getCashAccounts,
+  createShipment, updateShipment, deleteShipment, getCashAccounts, getCashTransactions,
   getOverseasPoPayments, createOverseasPoPayment, deleteOverseasPoPayment,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
@@ -33,6 +33,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { usePermissions } from "@/lib/permissions";
+import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
 import { useBranch } from "@/contexts/BranchContext";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
@@ -360,6 +361,24 @@ export default function OverseasPurchaseOrdersPage() {
       ...usable.filter((a) => a.currency !== currency),
     ];
   }, [allCashAccounts, currency]);
+
+  // What the foreign currency on hand actually cost, so a rate can be set from
+  // the real figure rather than from memory. Admin-only: it reads bank
+  // transactions, which staff cannot see anyway.
+  const { data: fxTxns = [] } = useQuery({
+    queryKey: ["cash-transactions", "all"],
+    queryFn: () => getCashTransactions(),
+    enabled: isAdmin,
+  });
+  const fxHoldings = useMemo(() => {
+    return allCashAccounts
+      .filter((a) => a.is_active && isForeign(a))
+      .map((a) => ({ account: a, ...fxPosition(fxTxns.filter((t) => t.account_id === a.id)) }))
+      .filter((h) => h.quantity > 0 || h.averageRate > 0);
+  }, [allCashAccounts, fxTxns]);
+
+  /** The rate held for the currency this order is in, if any. */
+  const currentRate = fxHoldings.find((h) => h.account.currency === currency)?.averageRate || 0;
 
   // ---- Tracking tab ----
   const [trackOpen, setTrackOpen] = useState(false);
@@ -978,6 +997,25 @@ export default function OverseasPurchaseOrdersPage() {
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas PO</h1>
           <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
+          {/* What the currency on hand actually cost, not a market rate — it is
+              the figure an order should be valued at. */}
+          {isAdmin && fxHoldings.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              {fxHoldings.map((h) => (
+                <span
+                  key={h.account.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-0.5 text-xs"
+                  title={`${h.account.name}: ${foreignAmount(h.quantity, h.account.currency)} held, costing ${peso(h.phpCost)} — a weighted average of what you paid for it.`}
+                >
+                  <span className="text-muted-foreground">{h.account.currency}</span>
+                  <span className="font-semibold tabular-nums">{peso(h.averageRate)}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    · {foreignAmount(h.quantity, h.account.currency)} on hand
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="toolbar-actions">
           {isAdmin && selectedIds.size > 0 && (
@@ -1163,6 +1201,20 @@ export default function OverseasPurchaseOrdersPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Exchange Rate to PHP</Label>
                 <Input type="number" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} className="h-9" />
+                {currentRate > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Your {currency} cost {peso(currentRate)} each.{" "}
+                    {String(currentRate) !== exchangeRate && (
+                      <button
+                        type="button"
+                        onClick={() => setExchangeRate(String(currentRate))}
+                        className="font-medium text-primary underline hover:no-underline"
+                      >
+                        Use it
+                      </button>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
