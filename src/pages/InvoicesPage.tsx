@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { InvoiceMobileCard } from "@/components/InvoiceMobileCard";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -33,8 +33,16 @@ import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
+
 import { useBranch } from "@/contexts/BranchContext";
 import { moveItem } from "@/lib/reorder";
+
+// Reference images live newline-separated in the one payment_reference_url
+// text column. A URL cannot contain a newline, so the split is unambiguous and
+// a row holding a single URL — every invoice settled before this — still reads
+// back as a one-image list.
+const paymentReferenceUrls = (value?: string | null) =>
+  (value || "").split("\n").map((u) => u.trim()).filter(Boolean);
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 
@@ -515,8 +523,13 @@ export default function InvoicesPage() {
   const payInvoiceTotal = payDialog
     ? Number((invoices as any[]).find((i) => i.id === payDialog.id)?.total_amount || 0)
     : 0;
-  const [payRefFile, setPayRefFile] = useState<File | null>(null);
+  const [payRefFiles, setPayRefFiles] = useState<File[]>([]);
   const [payUploading, setPayUploading] = useState(false);
+
+  // Built once per selection rather than in the render body: an object URL made
+  // while rendering is remade on every keystroke in the dialog and never freed.
+  const payRefPreviews = useMemo(() => payRefFiles.map((f) => URL.createObjectURL(f)), [payRefFiles]);
+  useEffect(() => () => { payRefPreviews.forEach((u) => URL.revokeObjectURL(u)); }, [payRefPreviews]);
 
   // Cash payments need no reference number or slip; everything else does.
   const isCashMethod = (method: string) =>
@@ -525,18 +538,20 @@ export default function InvoicesPage() {
   const openPayDialog = (id: string) => {
     setPayMethod(cashPaymentOptions[0]?.name || "Cash");
     setPayReference("");
-    setPayRefFile(null);
+    setPayRefFiles([]);
     const total = Number((invoices as any[]).find((i) => i.id === id)?.total_amount || 0);
     setPayReceived(total ? String(total) : "");
     setPayDialog({ id });
   };
 
   const handlePayPaste = (e: React.ClipboardEvent) => {
-    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
-    if (item) {
-      const file = item.getAsFile();
-      if (file) setPayRefFile(file);
-    }
+    const pasted = Array.from(e.clipboardData.items)
+      .filter((i) => i.type.startsWith("image/"))
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => !!f);
+    // Appended, not replaced: a second paste is a second screenshot, which is
+    // the whole point of paying against several transfer slips.
+    if (pasted.length) setPayRefFiles((prev) => [...prev, ...pasted]);
   };
 
   const submitPayment = async () => {
@@ -546,19 +561,25 @@ export default function InvoicesPage() {
       toast.error("Enter a valid amount received");
       return;
     }
-    if (!isCashMethod(payMethod) && !payReference.trim() && !payRefFile) {
+    if (!isCashMethod(payMethod) && !payReference.trim() && !payRefFiles.length) {
       toast.error("Please provide a reference number or image");
       return;
     }
     let url = "";
-    if (payRefFile) {
+    if (payRefFiles.length) {
       try {
         setPayUploading(true);
-        const ext = payRefFile.name.split(".").pop() || "png";
-        const path = `${payDialog.id}/${Date.now()}.${ext}`;
-        const { error } = await supabase.storage.from("payment-references").upload(path, payRefFile, { upsert: true });
-        if (error) throw error;
-        url = supabase.storage.from("payment-references").getPublicUrl(path).data.publicUrl;
+        const uploaded: string[] = [];
+        for (const [i, file] of payRefFiles.entries()) {
+          const ext = file.name.split(".").pop() || "png";
+          // Index as well as timestamp: a loop this tight hands several files
+          // the same millisecond, and upsert would overwrite the earlier ones.
+          const path = `${payDialog.id}/${Date.now()}-${i}.${ext}`;
+          const { error } = await supabase.storage.from("payment-references").upload(path, file, { upsert: true });
+          if (error) throw error;
+          uploaded.push(supabase.storage.from("payment-references").getPublicUrl(path).data.publicUrl);
+        }
+        url = uploaded.join("\n");
       } catch (e: any) {
         toast.error("Image upload failed: " + e.message);
         setPayUploading(false);
@@ -1164,11 +1185,13 @@ export default function InvoicesPage() {
                 {inv.payment_reference && (
                   <div className="text-muted-foreground">Reference #: <span className="font-medium text-foreground">{inv.payment_reference}</span></div>
                 )}
-                {inv.payment_reference_url && (
-                  <div className="pt-2">
-                    <a href={inv.payment_reference_url} target="_blank" rel="noreferrer">
-                      <img src={inv.payment_reference_url} alt="Payment reference" className="max-h-48 rounded border" />
-                    </a>
+                {paymentReferenceUrls(inv.payment_reference_url).length > 0 && (
+                  <div className="pt-2 flex flex-wrap gap-2">
+                    {paymentReferenceUrls(inv.payment_reference_url).map((u, i) => (
+                      <a key={u} href={u} target="_blank" rel="noreferrer">
+                        <img src={u} alt={`Payment reference ${i + 1}`} className="max-h-48 rounded border" />
+                      </a>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1438,14 +1461,39 @@ export default function InvoicesPage() {
               <>
                 <Label>Reference Number</Label>
                 <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="e.g. transaction ID" />
-                <Label>Reference Image (paste or upload)</Label>
+                <Label>
+                  Reference Images (paste or upload)
+                  {payRefFiles.length > 0 && ` \u00b7 ${payRefFiles.length} attached`}
+                </Label>
                 <div onPaste={handlePayPaste} className="border border-dashed rounded-md p-3 text-xs text-muted-foreground" tabIndex={0}>
-                  <Input type="file" accept="image/*" onChange={(e) => setPayRefFile(e.target.files?.[0] || null)} />
-                  <div className="mt-2">Or click here and paste (Ctrl/Cmd+V) an image.</div>
-                  {payRefFile && (
-                    <div className="mt-2">
-                      <img src={URL.createObjectURL(payRefFile)} alt="preview" className="max-h-32 rounded border" />
-                      <Button variant="ghost" size="sm" onClick={() => setPayRefFile(null)} className="mt-1 h-6 text-xs">Remove</Button>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || []);
+                      if (picked.length) setPayRefFiles((prev) => [...prev, ...picked]);
+                      // Cleared so picking the same file again still fires a change.
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="mt-2">Or click here and paste (Ctrl/Cmd+V) an image. Add as many as you need.</div>
+                  {payRefFiles.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {payRefFiles.map((file, i) => (
+                        <div key={`${file.name}-${i}`} className="relative">
+                          <img src={payRefPreviews[i]} alt={`Reference ${i + 1}`} className="h-20 w-20 rounded border object-cover" />
+                          <Button
+                            variant="secondary"
+                            size="icon"
+                            onClick={() => setPayRefFiles((prev) => prev.filter((_, at) => at !== i))}
+                            className="absolute -right-1.5 -top-1.5 h-5 w-5 rounded-full shadow"
+                            aria-label={`Remove reference ${i + 1}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
