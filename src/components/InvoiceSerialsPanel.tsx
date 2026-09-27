@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ShieldCheck, X, Plus } from "lucide-react";
+import { ShieldCheck, X, Plus, Camera } from "lucide-react";
+import { SerialScanner } from "@/components/SerialScanner";
+import { canScan } from "@/lib/scanning";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { InvoiceItem, SoldUnit } from "@/types/database";
@@ -26,6 +28,8 @@ interface Props {
 export function InvoiceSerialsPanel({ invoiceId, lines }: Props) {
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Which line the camera is filling. The scanner stays open between units.
+  const [scanningLine, setScanningLine] = useState<InvoiceItem | null>(null);
   // The serial being added that turned out to belong to someone else.
   const [conflict, setConflict] = useState<{
     held: SoldUnit; serial: string; line: InvoiceItem;
@@ -99,8 +103,8 @@ export function InvoiceSerialsPanel({ invoiceId, lines }: Props) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const submit = async (line: InvoiceItem) => {
-    const serial = (drafts[line.id] || "").trim();
+  const submit = async (line: InvoiceItem, value?: string) => {
+    const serial = (value ?? drafts[line.id] ?? "").trim();
     if (!serial) return;
     const here = (unitsByLine[line.id] || []).some((u) => u.serial === serial);
     if (here) { toast.error("Already scanned on this line"); return; }
@@ -184,11 +188,27 @@ export function InvoiceSerialsPanel({ invoiceId, lines }: Props) {
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" /> Add
                 </Button>
+                {canScan() && (
+                  <Button
+                    size="sm"
+                    className="h-8 shrink-0"
+                    onClick={() => setScanningLine(line)}
+                  >
+                    <Camera className="h-3.5 w-3.5 mr-1" /> Scan
+                  </Button>
+                )}
               </div>
             )}
           </div>
         );
       })}
+
+      <SerialScanner
+        open={!!scanningLine}
+        onOpenChange={(o) => !o && setScanningLine(null)}
+        title={scanningLine ? `Scan — ${scanningLine.items?.name || "item"}` : "Scan a serial"}
+        onScan={(value) => { if (scanningLine) void submit(scanningLine, value); }}
+      />
 
       <Dialog open={!!conflict} onOpenChange={(o) => !o && setConflict(null)}>
         <DialogContent className="sm:max-w-md">

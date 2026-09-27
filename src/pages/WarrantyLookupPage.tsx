@@ -4,7 +4,9 @@ import { findUnitBySerial, getSerialHistory } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, Search, ShieldAlert, ShieldX } from "lucide-react";
+import { ShieldCheck, Search, ShieldAlert, ShieldX, Camera } from "lucide-react";
+import { SerialScanner } from "@/components/SerialScanner";
+import { canScan } from "@/lib/scanning";
 import { format } from "date-fns";
 import { warrantyStatus } from "@/lib/warranty";
 import { cn } from "@/lib/utils";
@@ -18,6 +20,7 @@ import type { SoldUnit, SerialEvent } from "@/types/database";
 export default function WarrantyLookupPage() {
   const [serial, setSerial] = useState("");
   const [result, setResult] = useState<{ unit: SoldUnit | null; history: SerialEvent[] } | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   const lookup = useMutation({
     mutationFn: async (value: string) => {
@@ -59,10 +62,24 @@ export default function WarrantyLookupPage() {
             className="pl-9 font-mono"
           />
         </div>
-        <Button onClick={run} disabled={lookup.isPending} className="h-10 px-5">
+        <Button onClick={run} disabled={lookup.isPending} variant="outline" className="h-10 px-5">
           {lookup.isPending ? "Looking…" : "Look up"}
         </Button>
+        {canScan() && (
+          <Button onClick={() => setScanning(true)} className="h-10 px-5 shrink-0">
+            <Camera className="h-4 w-4 mr-1.5" /> Scan
+          </Button>
+        )}
       </div>
+
+      {/* A scan is a lookup: the customer is holding the unit, so reading the
+          label should answer the question without a second tap. */}
+      <SerialScanner
+        open={scanning}
+        onOpenChange={setScanning}
+        title="Scan the unit"
+        onScan={(value) => { setSerial(value); setScanning(false); lookup.mutate(value); }}
+      />
 
       {result && !unit && (
         <div className="rounded-lg border bg-card p-6 max-w-xl">
