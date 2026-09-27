@@ -190,7 +190,10 @@ export const setBranchQuantities = async (params: {
   if (store !== null && store !== undefined && Number(store) !== cur.store_quantity) {
     targets.push({ location: "store", target: Number(store), before: cur.store_quantity });
   }
-  if (targets.length === 0) return;
+  // An empty list, not undefined: callers hand this straight to
+  // notifyInventoryAdjustments, and editing an item without touching its
+  // quantities is the ordinary case, not a signal that nothing came back.
+  if (targets.length === 0) return [];
 
   const { data: item } = await _from("items").select("base_unit").eq("id", itemId).maybeSingle();
   const baseUnit = (item as any)?.base_unit ?? "pcs";
@@ -231,8 +234,8 @@ export const setBranchQuantities = async (params: {
  * the shelf holds a different number than the system does — so they are the
  * ones worth seeing as they happen. Batched, because a bulk edit makes many.
  */
-export const notifyInventoryAdjustments = (movementIds: string[]) => {
-  const ids = movementIds.filter(Boolean);
+export const notifyInventoryAdjustments = (movementIds: string[] | undefined | null) => {
+  const ids = (movementIds || []).filter(Boolean);
   if (ids.length === 0) return;
   notify("notify-inventory", { movement_ids: ids });
 };
