@@ -17,6 +17,7 @@ import CustomersPage from "@/pages/CustomersPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import QuotationsPage from "@/pages/QuotationsPage";
 import InvoicesPage from "@/pages/InvoicesPage";
+import WarrantyLookupPage from "@/pages/WarrantyLookupPage";
 import PendingPaymentsPage from "@/pages/PendingPaymentsPage";
 import MarketplaceReceivablesPage from "@/pages/MarketplaceReceivablesPage";
 import LoansPage from "@/pages/LoansPage";
@@ -73,6 +74,7 @@ function ProtectedRoutes() {
           <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
           <Route path="/quotations" element={<QuotationsPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/warranty" element={<WarrantyLookupPage />} />
           <Route path="/pending-payments" element={<PendingPaymentsPage />} />
           <Route path="/marketplace-receivables" element={<AdminRoute><MarketplaceReceivablesPage /></AdminRoute>} />
           <Route path="/loans" element={<AdminRoute><LoansPage /></AdminRoute>} />

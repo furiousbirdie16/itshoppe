@@ -36,6 +36,7 @@ import { Lock } from "lucide-react";
 
 import { useBranch } from "@/contexts/BranchContext";
 import { moveItem } from "@/lib/reorder";
+import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
 
 // Reference images live newline-separated in the one payment_reference_url
 // text column. A URL cannot contain a newline, so the split is unambiguous and
@@ -1237,6 +1238,7 @@ export default function InvoicesPage() {
               </TableBody>
             </Table>
           </div>
+          {viewInv && <InvoiceSerialsPanel invoiceId={viewInv} lines={invItems} />}
           {isAdmin && invFinancial && (
             <div className="mt-3 rounded-lg border bg-primary/5 p-3 space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial Summary (Admin only)</p>

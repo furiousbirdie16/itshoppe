@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment , SoldUnit, SerialEvent } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
@@ -2711,4 +2711,116 @@ export const unmarkManualReceivablePaid = async (receivableId: string) => {
   if (error) throw error;
 
   await logActivity("unmarked_receivable_paid", "receivable", receivableId);
+};
+
+// ---- Serial numbers and warranty ------------------------------------------
+//
+// A transfer of ownership, not an inventory movement: these rows say which unit
+// left on which invoice, which is the only question a warranty claim ever asks.
+
+const currentUserEmail = async (): Promise<string> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.email || "";
+};
+
+export const getSoldUnitsForInvoice = async (invoiceId: string): Promise<SoldUnit[]> => {
+  const { data, error } = await from("sold_units")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .eq("status", "active")
+    .order("scanned_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * The claim lookup. Matches the serial as stored, because a POE label carries
+ * several codes and whichever one staff captured is the one they will present
+ * at the counter months later.
+ */
+export const findUnitBySerial = async (serial: string): Promise<SoldUnit | null> => {
+  const trimmed = serial.trim();
+  if (!trimmed) return null;
+  const { data, error } = await from("sold_units")
+    .select("*, items(*), invoices(*, customers(*))")
+    .eq("serial", trimmed)
+    // Newest first: a serial that was returned and resold has history, and the
+    // current owner is the one being asked about.
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+/** The active holder of a serial, if any — what makes a duplicate a duplicate. */
+export const findActiveUnitBySerial = async (serial: string): Promise<SoldUnit | null> => {
+  const trimmed = serial.trim();
+  if (!trimmed) return null;
+  const { data, error } = await from("sold_units")
+    .select("*, invoices(*, customers(*))")
+    .eq("serial", trimmed)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+export const recordSoldUnit = async (args: {
+  serial: string;
+  item_id: string | null;
+  invoice_id: string;
+  invoice_item_id: string | null;
+  warranty_months: number;
+  /** Set once the invoice ships; null while it is only paid. */
+  warranty_starts_at?: string | null;
+}): Promise<SoldUnit> => {
+  const serial = args.serial.trim();
+  const email = await currentUserEmail();
+  const { data, error } = await from("sold_units").insert({
+    serial,
+    item_id: args.item_id,
+    invoice_id: args.invoice_id,
+    invoice_item_id: args.invoice_item_id,
+    warranty_months: args.warranty_months,
+    warranty_starts_at: args.warranty_starts_at ?? null,
+    scanned_by_email: email,
+  }).select().single();
+  // The partial unique index is the real guard: two staff recording the same
+  // serial at once both pass an application-level check, and only one of them
+  // can win here.
+  if (error) throw error;
+  await from("serial_events").insert({
+    sold_unit_id: data.id, serial, event: "assigned",
+    invoice_id: args.invoice_id, actor_email: email,
+  });
+  await logActivity("recorded_serial", "sold_unit", data.id, { serial });
+  return data;
+};
+
+/**
+ * Frees a serial so it can be sold again — a returned unit going back on the
+ * shelf, or a mis-scan being undone. Any staff member may, and the event log
+ * records who.
+ */
+export const releaseSoldUnit = async (unitId: string, notes = "") => {
+  const email = await currentUserEmail();
+  const { data, error } = await from("sold_units").update({
+    status: "released", notes, updated_at: new Date().toISOString(),
+  }).eq("id", unitId).select().single();
+  if (error) throw error;
+  await from("serial_events").insert({
+    sold_unit_id: unitId, serial: data.serial, event: "released",
+    invoice_id: data.invoice_id, actor_email: email, notes,
+  });
+  await logActivity("released_serial", "sold_unit", unitId, { serial: data.serial });
+};
+
+export const getSerialHistory = async (serial: string): Promise<SerialEvent[]> => {
+  const { data, error } = await from("serial_events")
+    .select("*")
+    .eq("serial", serial.trim())
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 };

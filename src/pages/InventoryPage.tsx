@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +111,7 @@ export default function InventoryPage() {
     cost_price: "0", cost_price_rmb: "0", selling_price: "0",
     low_stock_threshold: "10", source: "local" as "local" | "import",
     category: "", brand: "", barcode: "", supplier_sku: "",
+    track_serials: false, warranty_months: "0",
     status: "active" as "active" | "inactive" | "discontinued",
   });
 
@@ -355,7 +357,7 @@ export default function InventoryPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local", category: "", brand: "", barcode: "", supplier_sku: "", status: "active" });
+    setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local", category: "", brand: "", barcode: "", supplier_sku: "", track_serials: false, warranty_months: "0", status: "active" });
     setOpen(true);
   };
   const openEdit = (item: Item) => {
@@ -373,6 +375,8 @@ export default function InventoryPage() {
       brand: item.brand || "",
       barcode: item.barcode || "",
       supplier_sku: item.supplier_sku || "",
+      track_serials: !!(item as any).track_serials,
+      warranty_months: String((item as any).warranty_months ?? 0),
       status: ((item.status as any) === "archived" ? "active" : (item.status as any) || "active"),
     });
     setOpen(true);
@@ -391,6 +395,8 @@ export default function InventoryPage() {
       brand: form.brand || null,
       barcode: form.barcode || null,
       supplier_sku: form.supplier_sku || null,
+      track_serials: form.track_serials,
+      warranty_months: parseInt(form.warranty_months) || 0,
     };
     if (isAdmin) base.status = form.status;
     if (!editing) {
@@ -939,6 +945,37 @@ export default function InventoryPage() {
                 <Label className="text-xs font-medium">Supplier SKU</Label>
                 <Input value={form.supplier_sku} onChange={e => setForm({ ...form, supplier_sku: e.target.value })} className="h-9" />
               </div>
+            </div>
+            {/* Serials are asked for per product, not globally: a box of cable
+                ties should never prompt for one. */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label className="text-xs font-medium">Track serial numbers</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Asks for one serial per unit when this item is sold.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.track_serials}
+                  onCheckedChange={(v) => setForm({ ...form, track_serials: v })}
+                />
+              </div>
+              {form.track_serials && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Warranty (months)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.warranty_months}
+                    onChange={e => setForm({ ...form, warranty_months: e.target.value })}
+                    className="h-9"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Copied onto each unit as it is sold, so changing it later leaves past sales alone.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
