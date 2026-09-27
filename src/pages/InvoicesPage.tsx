@@ -1,11 +1,11 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -36,6 +36,7 @@ import { Lock } from "lucide-react";
 
 import { useBranch } from "@/contexts/BranchContext";
 import { moveItem } from "@/lib/reorder";
+import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
 
 // Reference images live newline-separated in the one payment_reference_url
 // text column. A URL cannot contain a newline, so the split is unambiguous and
@@ -493,7 +494,7 @@ export default function InvoicesPage() {
   const markPaidMut = useMutation({
     mutationFn: ({ id, payment_method, payment_reference, payment_reference_url, amount_received }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string; amount_received?: number | null }) =>
       markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null, amount_received: amount_received ?? null }),
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -505,6 +506,7 @@ export default function InvoicesPage() {
       } else {
         toast.success("Marked as paid — stock deducted if not already");
       }
+      void checkSerials(vars.id);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -523,6 +525,9 @@ export default function InvoicesPage() {
   const payInvoiceTotal = payDialog
     ? Number((invoices as any[]).find((i) => i.id === payDialog.id)?.total_amount || 0)
     : 0;
+  // Reported after the fact, never before: the sale has already gone through by
+  // the time this appears. Warning, not a gate.
+  const [serialWarning, setSerialWarning] = useState<{ id: string; lines: SerialShortfall[] } | null>(null);
   const [payRefFiles, setPayRefFiles] = useState<File[]>([]);
   const [payUploading, setPayUploading] = useState(false);
 
@@ -601,6 +606,25 @@ export default function InvoicesPage() {
     setPayDialog(null);
   };
 
+  const { data: missingSerials = {} } = useQuery({
+    queryKey: ["invoices-missing-serials"],
+    queryFn: getInvoicesMissingSerials,
+  });
+
+  /**
+   * Fires once, after whichever of paid or shipped happened first. Staff are
+   * told what was not scanned; nothing is undone and nothing is blocked.
+   */
+  const checkSerials = async (invoiceId: string) => {
+    try {
+      const lines = await getSerialShortfall(invoiceId);
+      queryClient.invalidateQueries({ queryKey: ["invoices-missing-serials"] });
+      if (lines.length) setSerialWarning({ id: invoiceId, lines });
+    } catch {
+      // A failed check must never look like a failed sale.
+    }
+  };
+
   const revertMut = useMutation({
     mutationFn: revertInvoice,
     onSuccess: () => {
@@ -626,11 +650,12 @@ export default function InvoicesPage() {
 
   const shipMut = useMutation({
     mutationFn: shipInvoice,
-    onSuccess: () => {
+    onSuccess: (_d, invoiceId) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Marked as shipped");
+      void checkSerials(invoiceId as string);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -769,6 +794,13 @@ export default function InvoicesPage() {
         <div className="page-header mb-0">
           <h1 className="page-title">Invoices</h1>
           <p className="page-description">{filtered.length} invoice{filtered.length !== 1 ? "s" : ""}{filtered.length !== invoices.length ? ` (filtered from ${invoices.length})` : ""}</p>
+          {/* The flag has to sit where people look, or the gap is only found on
+              the day a customer is standing there with a faulty unit. */}
+          {Object.keys(missingSerials).length > 0 && (
+            <p className="text-xs text-warning mt-0.5">
+              {Object.keys(missingSerials).length} invoice{Object.keys(missingSerials).length !== 1 ? "s" : ""} missing serial numbers
+            </p>
+          )}
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -1237,6 +1269,7 @@ export default function InvoicesPage() {
               </TableBody>
             </Table>
           </div>
+          {viewInv && <InvoiceSerialsPanel invoiceId={viewInv} lines={invItems} />}
           {isAdmin && invFinancial && (
             <div className="mt-3 rounded-lg border bg-primary/5 p-3 space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial Summary (Admin only)</p>
@@ -1418,6 +1451,35 @@ export default function InvoicesPage() {
       )}
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
+
+      <Dialog open={!!serialWarning} onOpenChange={(o) => !o && setSerialWarning(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Serial numbers missing</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The sale went through. These units left without a serial recorded, so a
+              warranty claim on them cannot be traced back to this invoice.
+            </p>
+            <div className="space-y-1.5">
+              {serialWarning?.lines.map((l) => (
+                <div key={l.invoice_item_id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate">{l.item_name}</span>
+                  <span className="shrink-0 font-medium text-warning">{l.recorded} of {l.needed}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              They can be recorded any time from the invoice.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSerialWarning(null)}>Later</Button>
+            <Button onClick={() => { if (serialWarning) setViewInv(serialWarning.id); setSerialWarning(null); }}>
+              Record them now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!payDialog} onOpenChange={(o) => !o && setPayDialog(null)}>
         <DialogContent className="max-w-sm">

@@ -19,6 +19,8 @@ export interface Item {
   brand?: string | null;
   barcode?: string | null;
   supplier_sku?: string | null;
+  track_serials?: boolean;
+  warranty_months?: number;
   status?: 'active' | 'inactive' | 'discontinued' | 'archived';
   archived_at?: string | null;
   archived_by_email?: string | null;
@@ -169,6 +171,37 @@ export interface InvoiceItem {
   variation_id: string | null;
   items?: Item;
   item_variations?: ItemVariation;
+}
+
+export interface SoldUnit {
+  id: string;
+  /** Exactly as read off the label — never parsed or normalised. */
+  serial: string;
+  item_id: string | null;
+  invoice_id: string | null;
+  invoice_item_id: string | null;
+  /** Collection date, not payment date. Null until the invoice ships. */
+  warranty_starts_at: string | null;
+  warranty_months: number;
+  status: 'active' | 'released' | 'replaced';
+  scanned_by_email: string;
+  scanned_at: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  items?: Item;
+  invoices?: Invoice;
+}
+
+export interface SerialEvent {
+  id: string;
+  sold_unit_id: string | null;
+  serial: string;
+  event: 'assigned' | 'released' | 'replaced';
+  invoice_id: string | null;
+  actor_email: string;
+  notes: string;
+  created_at: string;
 }
 
 export interface OverseasSupplier {

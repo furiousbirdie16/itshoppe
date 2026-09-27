@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment } from "@/types/database";
+import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment , SoldUnit, SerialEvent } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
+import { shortfallFor, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
@@ -973,6 +974,11 @@ export const shipInvoice = async (invoiceId: string) => {
     shipped_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
+  // Shipping is collection, and collection is when the warranty clock starts —
+  // a unit paid for on the 1st and picked up on the 10th is covered from the
+  // 10th. Only unset dates are filled, so re-shipping cannot restart a cover
+  // period that already began.
+  await startWarrantyForInvoice(invoiceId);
   await logActivity(wasPaid ? "completed_invoice" : "shipped_invoice", "invoice", invoiceId);
 };
 
@@ -2711,4 +2717,189 @@ export const unmarkManualReceivablePaid = async (receivableId: string) => {
   if (error) throw error;
 
   await logActivity("unmarked_receivable_paid", "receivable", receivableId);
+};
+
+// ---- Serial numbers and warranty ------------------------------------------
+//
+// A transfer of ownership, not an inventory movement: these rows say which unit
+// left on which invoice, which is the only question a warranty claim ever asks.
+
+const currentUserEmail = async (): Promise<string> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.email || "";
+};
+
+export const getSoldUnitsForInvoice = async (invoiceId: string): Promise<SoldUnit[]> => {
+  const { data, error } = await from("sold_units")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .eq("status", "active")
+    .order("scanned_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * The claim lookup. Matches the serial as stored, because a POE label carries
+ * several codes and whichever one staff captured is the one they will present
+ * at the counter months later.
+ */
+export const findUnitBySerial = async (serial: string): Promise<SoldUnit | null> => {
+  const trimmed = serial.trim();
+  if (!trimmed) return null;
+  const { data, error } = await from("sold_units")
+    .select("*, items(*), invoices(*, customers(*))")
+    .eq("serial", trimmed)
+    // Newest first: a serial that was returned and resold has history, and the
+    // current owner is the one being asked about.
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+/** The active holder of a serial, if any — what makes a duplicate a duplicate. */
+export const findActiveUnitBySerial = async (serial: string): Promise<SoldUnit | null> => {
+  const trimmed = serial.trim();
+  if (!trimmed) return null;
+  const { data, error } = await from("sold_units")
+    .select("*, invoices(*, customers(*))")
+    .eq("serial", trimmed)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+export const recordSoldUnit = async (args: {
+  serial: string;
+  item_id: string | null;
+  invoice_id: string;
+  invoice_item_id: string | null;
+  warranty_months: number;
+  /** Set once the invoice ships; null while it is only paid. */
+  warranty_starts_at?: string | null;
+}): Promise<SoldUnit> => {
+  const serial = args.serial.trim();
+  const email = await currentUserEmail();
+  const { data, error } = await from("sold_units").insert({
+    serial,
+    item_id: args.item_id,
+    invoice_id: args.invoice_id,
+    invoice_item_id: args.invoice_item_id,
+    warranty_months: args.warranty_months,
+    warranty_starts_at: args.warranty_starts_at ?? null,
+    scanned_by_email: email,
+  }).select().single();
+  // The partial unique index is the real guard: two staff recording the same
+  // serial at once both pass an application-level check, and only one of them
+  // can win here.
+  if (error) throw error;
+  await from("serial_events").insert({
+    sold_unit_id: data.id, serial, event: "assigned",
+    invoice_id: args.invoice_id, actor_email: email,
+  });
+  await logActivity("recorded_serial", "sold_unit", data.id, { serial });
+  return data;
+};
+
+/**
+ * Frees a serial so it can be sold again — a returned unit going back on the
+ * shelf, or a mis-scan being undone. Any staff member may, and the event log
+ * records who.
+ */
+export const releaseSoldUnit = async (unitId: string, notes = "") => {
+  const email = await currentUserEmail();
+  const { data, error } = await from("sold_units").update({
+    status: "released", notes, updated_at: new Date().toISOString(),
+  }).eq("id", unitId).select().single();
+  if (error) throw error;
+  await from("serial_events").insert({
+    sold_unit_id: unitId, serial: data.serial, event: "released",
+    invoice_id: data.invoice_id, actor_email: email, notes,
+  });
+  await logActivity("released_serial", "sold_unit", unitId, { serial: data.serial });
+};
+
+export const getSerialHistory = async (serial: string): Promise<SerialEvent[]> => {
+  const { data, error } = await from("serial_events")
+    .select("*")
+    .eq("serial", serial.trim())
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * Starts the warranty clock on every unit sold on an invoice.
+ *
+ * Called when the invoice ships, because collection is what the cover period
+ * runs from. Idempotent: units that already carry a start date keep it.
+ */
+export const startWarrantyForInvoice = async (invoiceId: string, onDate?: string) => {
+  const date = onDate || new Date().toISOString().slice(0, 10);
+  const { error } = await from("sold_units")
+    .update({ warranty_starts_at: date, updated_at: new Date().toISOString() })
+    .eq("invoice_id", invoiceId)
+    .eq("status", "active")
+    .is("warranty_starts_at", null);
+  if (error) throw error;
+};
+
+export type SerialShortfall = Shortfall;
+
+/**
+ * What is still unscanned on one invoice — the check that runs at paid or
+ * shipped. Reports; it never refuses anything.
+ */
+export const getSerialShortfall = async (invoiceId: string): Promise<SerialShortfall[]> => {
+  const [lines, units] = await Promise.all([
+    getInvoiceItems(invoiceId),
+    getSoldUnitsForInvoice(invoiceId),
+  ]);
+  return shortfallFor(lines as unknown as ShortfallLine[], units);
+};
+
+/**
+ * Invoice ids that went out short of serials, with how many are missing.
+ *
+ * Drives the count on the Invoices page. Derived rather than stored, so it
+ * clears itself the moment someone records the missing units, and cannot drift
+ * out of step with a quantity that was edited after the sale.
+ */
+export const getInvoicesMissingSerials = async (): Promise<Record<string, number>> => {
+  const { data: lines, error } = await from("invoice_items")
+    .select("id, invoice_id, quantity, items!inner(track_serials)")
+    .eq("items.track_serials", true);
+  if (error) throw error;
+  const rows = (lines as { id: string; invoice_id: string; quantity: number }[]) || [];
+  if (!rows.length) return {};
+
+  const { data: units, error: unitErr } = await from("sold_units")
+    .select("invoice_item_id")
+    .eq("status", "active");
+  if (unitErr) throw unitErr;
+  const counted = new Map<string, number>();
+  for (const u of (units as { invoice_item_id: string | null }[]) || []) {
+    if (u.invoice_item_id) counted.set(u.invoice_item_id, (counted.get(u.invoice_item_id) || 0) + 1);
+  }
+
+  const out: Record<string, number> = {};
+  for (const l of rows) {
+    const short = (Number(l.quantity) || 0) - (counted.get(l.id) || 0);
+    if (short > 0) out[l.invoice_id] = (out[l.invoice_id] || 0) + short;
+  }
+  return out;
+};
+
+/** Units sold to one customer, newest first — the warranty side of their history. */
+export const getSoldUnitsForCustomer = async (customerId: string): Promise<SoldUnit[]> => {
+  const { data, error } = await from("sold_units")
+    .select("*, items(name), invoices!inner(invoice_number, customer_id)")
+    .eq("invoices.customer_id", customerId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 };

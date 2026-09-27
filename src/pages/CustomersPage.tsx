@@ -28,6 +28,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { formatLocationChip } from "@/lib/locations";
+import { CustomerWarrantyList } from "@/components/CustomerWarrantyList";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
 import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
@@ -1177,6 +1178,7 @@ export default function CustomersPage() {
               ))}
             </div>
           )}
+          {ordersDialog && <CustomerWarrantyList customerId={ordersDialog.id} />}
         </DialogContent>
       </Dialog>
 

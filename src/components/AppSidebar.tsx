@@ -63,6 +63,7 @@ const navGroups: NavGroup[] = [
       { title: "Quotations", url: "/quotations", icon: FileText },
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Online Sales", url: "/online-sales", icon: Store },
+      { title: "Warranty Lookup", url: "/warranty", icon: ShieldCheck },
     ],
   },
   {
