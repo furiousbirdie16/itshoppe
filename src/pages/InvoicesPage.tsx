@@ -205,6 +205,16 @@ export default function InvoicesPage() {
   // - awaiting_shipment: paid but not yet shipped/picked up (blue)
   // - completed: paid AND shipped
   // - cancelled: cancelled — excluded from sales reporting
+  const { data: missingSerials = {} } = useQuery({
+    queryKey: ["invoices-missing-serials"],
+    queryFn: getInvoicesMissingSerials,
+  });
+
+  // Narrows the list to invoices that went out short of serials. Without it the
+  // count under the title is a number you cannot act on: 7 of 1193 is not
+  // something anyone is going to find by scrolling.
+  const [serialsOnly, setSerialsOnly] = useState(false);
+
   const [quickFilter, setQuickFilter] = useState<
     "all" | "reserved" | "not_shipped" | "awaiting_payment" | "awaiting_shipment" | "completed" | "cancelled"
   >("all");
@@ -218,10 +228,11 @@ export default function InvoicesPage() {
     completed: "completed",
     cancelled: "cancelled",
   };
-  const quickFiltered = useMemo(
-    () => quickFilter === "all" ? filtered : filtered.filter((inv: any) => statusBuckets[inv.status] === quickFilter),
-    [filtered, quickFilter]
-  );
+  const quickFiltered = useMemo(() => {
+    let rows = quickFilter === "all" ? filtered : filtered.filter((inv: any) => statusBuckets[inv.status] === quickFilter);
+    if (serialsOnly) rows = rows.filter((inv: { id: string }) => !!missingSerials[inv.id]);
+    return rows;
+  }, [filtered, quickFilter, serialsOnly, missingSerials]);
   const bucketCounts = useMemo(() => {
     const c = { reserved: 0, not_shipped: 0, awaiting_payment: 0, awaiting_shipment: 0, completed: 0, cancelled: 0 } as Record<string, number>;
     for (const inv of filtered as any[]) {
@@ -606,11 +617,6 @@ export default function InvoicesPage() {
     setPayDialog(null);
   };
 
-  const { data: missingSerials = {} } = useQuery({
-    queryKey: ["invoices-missing-serials"],
-    queryFn: getInvoicesMissingSerials,
-  });
-
   /**
    * Fires once, after whichever of paid or shipped happened first. Staff are
    * told what was not scanned; nothing is undone and nothing is blocked.
@@ -796,10 +802,18 @@ export default function InvoicesPage() {
           <p className="page-description">{filtered.length} invoice{filtered.length !== 1 ? "s" : ""}{filtered.length !== invoices.length ? ` (filtered from ${invoices.length})` : ""}</p>
           {/* The flag has to sit where people look, or the gap is only found on
               the day a customer is standing there with a faulty unit. */}
-          {Object.keys(missingSerials).length > 0 && (
-            <p className="text-xs text-warning mt-0.5">
+          {(Object.keys(missingSerials).length > 0 || serialsOnly) && (
+            <button
+              type="button"
+              onClick={() => setSerialsOnly((v) => !v)}
+              className={cn(
+                "mt-0.5 text-xs underline underline-offset-2",
+                serialsOnly ? "font-medium text-warning" : "text-warning hover:opacity-80",
+              )}
+            >
               {Object.keys(missingSerials).length} invoice{Object.keys(missingSerials).length !== 1 ? "s" : ""} missing serial numbers
-            </p>
+              {serialsOnly ? " \u00b7 showing only these" : " \u00b7 show them"}
+            </button>
           )}
         </div>
         <div className="toolbar-actions">
@@ -1326,6 +1340,7 @@ export default function InvoicesPage() {
               selected={selectedIds.has(inv.id)}
               onToggleSelect={() => toggleOne(inv.id)}
               actions={renderInvoiceActions(inv)}
+              missingSerials={missingSerials[inv.id] || 0}
             />
           ))
         )}
@@ -1413,6 +1428,14 @@ export default function InvoicesPage() {
                   <span className="inline-flex items-center gap-1">
                     {inv.invoice_number}
                     {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
+                    {!!missingSerials[inv.id] && (
+                      <span
+                        className="rounded px-1 py-0.5 text-[9px] font-semibold bg-warning/15 text-warning"
+                        title={`${missingSerials[inv.id]} serial${missingSerials[inv.id] === 1 ? "" : "s"} not recorded`}
+                      >
+                        {missingSerials[inv.id]} SN
+                      </span>
+                    )}
                   </span>
                 </TableCell>
                 <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>

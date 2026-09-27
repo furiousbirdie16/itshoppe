@@ -11,6 +11,8 @@ interface Props {
   onToggleSelect: () => void;
   /** The same actions the desktop table renders, passed in so they cannot drift. */
   actions: React.ReactNode;
+  /** How many serials this invoice went out without, if any. */
+  missingSerials?: number;
 }
 
 /**
@@ -20,7 +22,7 @@ interface Props {
  * hides the two things that matter most — status and total. Here they sit on the
  * first line, and the actions wrap onto their own row at a comfortable tap size.
  */
-export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSelect, actions }: Props) {
+export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSelect, actions, missingSerials = 0 }: Props) {
   return (
     <div className={cn("rounded-xl border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
       <div className="flex items-start gap-2.5">
@@ -43,6 +45,11 @@ export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSele
             <StatusBadge status={inv.status} context="invoice" />
             <span>{inv.invoice_date}</span>
             {inv.sales_agent && <span className="truncate">· {inv.sales_agent}</span>}
+            {missingSerials > 0 && (
+              <span className="rounded px-1 py-0.5 text-[10px] font-semibold bg-warning/15 text-warning">
+                {missingSerials} serial{missingSerials === 1 ? "" : "s"} missing
+              </span>
+            )}
           </div>
         </div>
       </div>
