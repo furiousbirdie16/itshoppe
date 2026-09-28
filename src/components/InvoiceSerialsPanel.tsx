@@ -146,12 +146,11 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
         </p>
       </div>
 
-      {/* Said once, not per line. iOS has no barcode reader in any browser —
-          every one of them is Safari underneath — so the scan button being
-          absent looks like a fault unless it is explained. */}
+      {/* Said once, not per line. Now only a device with no camera at all —
+          browsers without a reader of their own have one loaded for them. */}
       {!canScan() && (
         <p className="text-[11px] text-muted-foreground">
-          Camera scanning is not available in this browser. Type or paste serials below.
+          No camera on this device. Type or paste serials below.
         </p>
       )}
 

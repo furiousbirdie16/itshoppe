@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Camera, CameraOff } from "lucide-react";
-import { barcodeDetectorCtor, createScanGate } from "@/lib/scanning";
+import { loadDetector, createScanGate } from "@/lib/scanning";
 
 interface Props {
   open: boolean;
@@ -16,6 +16,7 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState("");
   const [lastValue, setLastValue] = useState("");
+  const [ready, setReady] = useState(false);
 
   // Held in a ref so the effect below does not depend on it. The caller passes
   // an inline arrow, which is a new function on every render — as a dependency
@@ -26,8 +27,6 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
 
   useEffect(() => {
     if (!open) return;
-    const Ctor = barcodeDetectorCtor();
-    if (!Ctor) { setError("This browser cannot use the camera to scan. Type the serial instead."); return; }
 
     let stream: MediaStream | null = null;
     let frame = 0;
@@ -36,13 +35,12 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
     // The rules for when a reading is real live in lib/scanning, where they can
     // be exercised without a camera.
     const gate = createScanGate();
-
-    const detector = new Ctor({ formats: ["qr_code", "code_128", "code_39", "ean_13", "data_matrix"] });
+    let detector: Awaited<ReturnType<typeof loadDetector>> = null;
 
     const tick = async () => {
       if (stopped) return;
       const video = videoRef.current;
-      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (detector && video && video.readyState === video.HAVE_ENOUGH_DATA) {
         try {
           const found = await detector.detect(video);
           // detect() is awaited, so the scanner can have been closed meanwhile.
@@ -61,21 +59,34 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
       frame = requestAnimationFrame(tick);
     };
 
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "environment" } })
-      .then((s) => {
+    // The reader is fetched alongside the camera. On a browser with none of its
+    // own this downloads one, which is why it is awaited rather than assumed.
+    void (async () => {
+      try {
+        detector = await loadDetector(["qr_code", "code_128", "code_39", "ean_13", "data_matrix"]);
+        if (stopped) return;
+        if (!detector) {
+          setError("This device has no camera to scan with. Type the serial instead.");
+          return;
+        }
+
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
         stream = s;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
           void videoRef.current.play();
         }
+        setReady(true);
         frame = requestAnimationFrame(tick);
-      })
-      .catch(() => setError("Could not open the camera. Check the browser's camera permission."));
+      } catch {
+        if (!stopped) setError("Could not open the camera. Check the browser's camera permission.");
+      }
+    })();
 
     return () => {
       stopped = true;
+      setReady(false);
       cancelAnimationFrame(frame);
       // Leaving the track running keeps the phone's camera light on.
       stream?.getTracks().forEach((t) => t.stop());
@@ -101,7 +112,9 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
             </div>
             <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
               <Camera className="h-3 w-3" />
-              Point at the code. It keeps scanning, so hold up each unit in turn.
+              {ready
+                ? "Point at the code. It keeps scanning, so hold up each unit in turn."
+                : "Starting the camera…"}
             </p>
             {lastValue && (
               <p className="font-mono text-xs">Last read: {lastValue}</p>

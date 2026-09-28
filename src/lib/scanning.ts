@@ -16,8 +16,38 @@ export const barcodeDetectorCtor = (): BarcodeDetectorCtor | null => {
   return w.BarcodeDetector || null;
 };
 
-/** Whether a scan button is worth showing at all on this device. */
-export const canScan = () => !!barcodeDetectorCtor();
+/** Whether this device has a camera the page may ask for at all. */
+const hasCamera = () =>
+  typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+
+/**
+ * Whether a scan button is worth showing at all on this device.
+ *
+ * A camera is now the only requirement: browsers without a reader of their own
+ * get one loaded for them (see scanning-fallback), which is what iPhones need —
+ * every browser there is Safari underneath and none has BarcodeDetector.
+ */
+export const canScan = () => hasCamera();
+
+/**
+ * The reader to use, preferring the browser's own.
+ *
+ * The fallback is imported only when it is actually needed, so devices with a
+ * built-in reader never download it.
+ */
+export async function loadDetector(formats: string[]): Promise<BarcodeDetectorLike | null> {
+  const Ctor = barcodeDetectorCtor();
+  if (Ctor) {
+    try {
+      return new Ctor({ formats });
+    } catch {
+      // A browser that has the class but not these formats: fall through.
+    }
+  }
+  if (!hasCamera()) return null;
+  const { createFallbackDetector } = await import("@/lib/scanning-fallback");
+  return createFallbackDetector();
+}
 
 /**
  * Decides when a camera reading is real enough to act on.
