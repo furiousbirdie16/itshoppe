@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getSoldUnitsForInvoice, findActiveUnitBySerial, recordSoldUnit, releaseSoldUnit } from "@/lib/api";
+import { getSoldUnitsForInvoice, findActiveUnitBySerial, recordSoldUnit, releaseSoldUnit, getInvoiceItems } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,6 @@ import type { InvoiceItem, SoldUnit } from "@/types/database";
 
 interface Props {
   invoiceId: string;
-  lines: InvoiceItem[];
 }
 
 /**
@@ -25,8 +24,17 @@ interface Props {
  * customer waiting at the counter beats data hygiene. The check that warns on
  * a short line comes later, at paid-or-shipped.
  */
-export function InvoiceSerialsPanel({ invoiceId, lines }: Props) {
+export function InvoiceSerialsPanel({ invoiceId }: Props) {
   const queryClient = useQueryClient();
+
+  // Fetched here rather than handed down, so the panel is never at the mercy of
+  // a parent's stale copy. Same cache key as the parent's, so this costs no
+  // extra request — it just cannot be given lines that no longer exist.
+  const { data: lines = [], isPending: linesPending } = useQuery({
+    queryKey: ["invoice_items", invoiceId],
+    queryFn: () => getInvoiceItems(invoiceId),
+    enabled: !!invoiceId,
+  });
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   // Which line the camera is filling. The scanner stays open between units.
   const [scanningLine, setScanningLine] = useState<InvoiceItem | null>(null);
@@ -115,6 +123,17 @@ export function InvoiceSerialsPanel({ invoiceId, lines }: Props) {
     if (held) { setConflict({ held, serial, line }); return; }
     addMut.mutate({ serial, line });
   };
+
+  // Vanishing while the lines are still on their way is what made this look
+  // broken on a freshly created invoice: no panel, no scan button, no reason
+  // given, and only a refresh brought it back.
+  if (linesPending) {
+    return (
+      <div className="mt-3 rounded-lg border p-3">
+        <p className="text-xs text-muted-foreground">Loading serial numbers…</p>
+      </div>
+    );
+  }
 
   if (tracked.length === 0) return null;
 

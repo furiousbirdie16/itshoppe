@@ -469,7 +469,17 @@ export default function InvoicesPage() {
       await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
       return inv;
     },
-    onSuccess: (inv: any) => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); toast.success("Invoice created"); resetForm(); if (inv) openPreview(inv); },
+    onSuccess: (inv: any) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      // "invoices" does not cover "invoice_items" — a separate key, so the view
+      // dialog was reading whatever happened to be cached for this id.
+      queryClient.invalidateQueries({ queryKey: ["invoice_items"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices-missing-serials"] });
+      setCreateOpen(false);
+      toast.success("Invoice created");
+      resetForm();
+      if (inv) openPreview(inv);
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -482,7 +492,16 @@ export default function InvoicesPage() {
       await deleteInvoiceItems(editId);
       await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); setCreateOpen(false); setEditId(null); toast.success("Invoice updated"); resetForm(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      // Editing deletes and rewrites every line, so any cached copy is stale.
+      queryClient.invalidateQueries({ queryKey: ["invoice_items"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices-missing-serials"] });
+      setCreateOpen(false);
+      setEditId(null);
+      toast.success("Invoice updated");
+      resetForm();
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -1283,7 +1302,7 @@ export default function InvoicesPage() {
               </TableBody>
             </Table>
           </div>
-          {viewInv && <InvoiceSerialsPanel invoiceId={viewInv} lines={invItems} />}
+          {viewInv && <InvoiceSerialsPanel invoiceId={viewInv} />}
           {isAdmin && invFinancial && (
             <div className="mt-3 rounded-lg border bg-primary/5 p-3 space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial Summary (Admin only)</p>
