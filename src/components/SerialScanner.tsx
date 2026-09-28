@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Camera, CameraOff } from "lucide-react";
-import { barcodeDetectorCtor } from "@/lib/scanning";
+import { barcodeDetectorCtor, createScanGate } from "@/lib/scanning";
 
 interface Props {
   open: boolean;
@@ -17,6 +17,13 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
   const [error, setError] = useState("");
   const [lastValue, setLastValue] = useState("");
 
+  // Held in a ref so the effect below does not depend on it. The caller passes
+  // an inline arrow, which is a new function on every render — as a dependency
+  // it tore the scanner down and rebuilt it constantly, wiping the memory of
+  // what had just been read. That is what made one label scan twice.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+
   useEffect(() => {
     if (!open) return;
     const Ctor = barcodeDetectorCtor();
@@ -25,10 +32,11 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
     let stream: MediaStream | null = null;
     let frame = 0;
     let stopped = false;
-    // The same code sits in front of the lens for many frames; without this a
-    // single label would fire dozens of times.
-    let lastSeen = "";
-    let lastSeenAt = 0;
+
+    // The rules for when a reading is real live in lib/scanning, where they can
+    // be exercised without a camera.
+    const gate = createScanGate();
+
     const detector = new Ctor({ formats: ["qr_code", "code_128", "code_39", "ean_13", "data_matrix"] });
 
     const tick = async () => {
@@ -37,13 +45,14 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
       if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
         try {
           const found = await detector.detect(video);
-          const value = found[0]?.rawValue?.trim();
-          const now = Date.now();
-          if (value && (value !== lastSeen || now - lastSeenAt > 2500)) {
-            lastSeen = value;
-            lastSeenAt = now;
-            setLastValue(value);
-            onScan(value);
+          // detect() is awaited, so the scanner can have been closed meanwhile.
+          // Without this the closing frame still reported a read.
+          if (stopped) return;
+
+          const settled = gate(found[0]?.rawValue, Date.now());
+          if (settled) {
+            setLastValue(settled);
+            onScanRef.current(settled);
           }
         } catch {
           // A single unreadable frame is normal; the next one usually reads.
@@ -71,7 +80,7 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
       // Leaving the track running keeps the phone's camera light on.
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [open, onScan]);
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

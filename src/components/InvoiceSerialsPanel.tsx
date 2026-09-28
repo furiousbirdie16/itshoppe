@@ -146,6 +146,15 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
         </p>
       </div>
 
+      {/* Said once, not per line. iOS has no barcode reader in any browser —
+          every one of them is Safari underneath — so the scan button being
+          absent looks like a fault unless it is explained. */}
+      {!canScan() && (
+        <p className="text-[11px] text-muted-foreground">
+          Camera scanning is not available in this browser. Type or paste serials below.
+        </p>
+      )}
+
       {tracked.map((line) => {
         const mine = unitsByLine[line.id] || [];
         const need = Number(line.quantity) || 0;
