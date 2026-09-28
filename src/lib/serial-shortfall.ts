@@ -1,3 +1,23 @@
+/**
+ * Serial tracking began on this date, so nothing sold before it is short of
+ * serials — it was sold under rules that did not ask for any.
+ *
+ * Without this every invoice in the history reported missing serials, which
+ * buried the handful that genuinely need scanning.
+ */
+export const SERIAL_TRACKING_SINCE = "2026-09-27";
+
+/**
+ * Whether an invoice is old enough to be exempt.
+ *
+ * Read from when the invoice was raised rather than its invoice date: a
+ * back-dated invoice written today was still written with the scanner to hand.
+ */
+export function serialTrackingApplies(createdAt: string | null | undefined): boolean {
+  if (!createdAt) return false;
+  return createdAt.slice(0, 10) >= SERIAL_TRACKING_SINCE;
+}
+
 export interface ShortfallLine {
   id: string;
   quantity: number;

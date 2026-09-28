@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shortfallFor } from "./serial-shortfall";
+import { shortfallFor, serialTrackingApplies } from "./serial-shortfall";
 
 const poe = (id: string, quantity: number) => ({
   id, quantity, items: { name: "POE Injector", track_serials: true },
@@ -51,5 +51,27 @@ describe("shortfallFor", () => {
     );
     expect(out).toHaveLength(1);
     expect(out[0].invoice_item_id).toBe("line-2");
+  });
+});
+
+describe("serialTrackingApplies", () => {
+  // Serials were not being asked for before the feature shipped, so the whole
+  // back catalogue reported as short and buried the invoices that matter.
+  it("exempts invoices raised before tracking began", () => {
+    expect(serialTrackingApplies("2026-09-26T23:59:00Z")).toBe(false);
+    expect(serialTrackingApplies("2025-01-15T10:00:00Z")).toBe(false);
+  });
+
+  it("covers invoices raised on or after the start date", () => {
+    expect(serialTrackingApplies("2026-09-27T00:00:01Z")).toBe(true);
+    expect(serialTrackingApplies("2026-10-02T08:30:00Z")).toBe(true);
+  });
+
+  // Read from when the invoice was raised, not its invoice date: an invoice
+  // back-dated today was still written with the scanner to hand.
+  it("treats a missing date as out of scope rather than guessing", () => {
+    expect(serialTrackingApplies(null)).toBe(false);
+    expect(serialTrackingApplies(undefined)).toBe(false);
+    expect(serialTrackingApplies("")).toBe(false);
   });
 });

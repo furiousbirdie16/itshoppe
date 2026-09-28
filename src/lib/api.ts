@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment , SoldUnit, SerialEvent } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
-import { shortfallFor, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
+import { shortfallFor, serialTrackingApplies, SERIAL_TRACKING_SINCE, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
@@ -2857,6 +2857,10 @@ export type SerialShortfall = Shortfall;
  * shipped. Reports; it never refuses anything.
  */
 export const getSerialShortfall = async (invoiceId: string): Promise<SerialShortfall[]> => {
+  // Invoices raised before serial tracking existed are not short of anything.
+  const { data: inv } = await from("invoices").select("created_at").eq("id", invoiceId).maybeSingle();
+  if (!serialTrackingApplies((inv as { created_at: string } | null)?.created_at)) return [];
+
   const [lines, units] = await Promise.all([
     getInvoiceItems(invoiceId),
     getSoldUnitsForInvoice(invoiceId),
@@ -2873,8 +2877,11 @@ export const getSerialShortfall = async (invoiceId: string): Promise<SerialShort
  */
 export const getInvoicesMissingSerials = async (): Promise<Record<string, number>> => {
   const { data: lines, error } = await from("invoice_items")
-    .select("id, invoice_id, quantity, items!inner(track_serials)")
-    .eq("items.track_serials", true);
+    .select("id, invoice_id, quantity, items!inner(track_serials), invoices!inner(created_at)")
+    .eq("items.track_serials", true)
+    // Only invoices raised once serials were being asked for. Without this the
+    // whole sales history reported missing serials and buried the real ones.
+    .gte("invoices.created_at", SERIAL_TRACKING_SINCE);
   if (error) throw error;
   const rows = (lines as { id: string; invoice_id: string; quantity: number }[]) || [];
   if (!rows.length) return {};
