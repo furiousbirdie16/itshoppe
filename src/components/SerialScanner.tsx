@@ -17,6 +17,10 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
   const [error, setError] = useState("");
   const [lastValue, setLastValue] = useState("");
   const [ready, setReady] = useState(false);
+  // Shown in small print. When a scanner reads nothing there is no way to tell
+  // a dead loop from a loop that is running and finding nothing, and these two
+  // numbers separate them at a glance.
+  const [diagnostics, setDiagnostics] = useState("");
 
   // Held in a ref so the effect below does not depend on it. The caller passes
   // an inline arrow, which is a new function on every render — as a dependency
@@ -36,6 +40,7 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
     // be exercised without a camera.
     const gate = createScanGate();
     let detector: Awaited<ReturnType<typeof loadDetector>> = null;
+    let framesRead = 0;
 
     const tick = async () => {
       if (stopped) return;
@@ -46,10 +51,18 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
       // frame has arrived.
       if (detector && video && video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
         try {
-          const found = await detector.detect(video);
+          const found = await detector.detector.detect(video);
           // detect() is awaited, so the scanner can have been closed meanwhile.
           // Without this the closing frame still reported a read.
           if (stopped) return;
+
+          framesRead += 1;
+          if (framesRead % 10 === 0 && videoRef.current) {
+            setDiagnostics(
+              `${detector?.kind === "loaded" ? "Loaded reader" : "Built-in reader"} · ` +
+              `${videoRef.current.videoWidth}×${videoRef.current.videoHeight} · ${framesRead} frames`,
+            );
+          }
 
           const settled = gate(found[0]?.rawValue, Date.now());
           if (settled) {
@@ -78,7 +91,15 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
           return;
         }
 
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        // A higher resolution than the default: the bars on a Code 39 label are
+        // narrow, and a low-resolution frame cannot resolve them.
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        });
         if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
         stream = s;
         if (videoRef.current) {
@@ -95,6 +116,7 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
     return () => {
       stopped = true;
       setReady(false);
+      setDiagnostics("");
       cancelAnimationFrame(frame);
       // Leaving the track running keeps the phone's camera light on.
       stream?.getTracks().forEach((t) => t.stop());
@@ -126,6 +148,9 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
             </p>
             {lastValue && (
               <p className="font-mono text-xs">Last read: {lastValue}</p>
+            )}
+            {diagnostics && (
+              <p className="text-[10px] text-muted-foreground">{diagnostics}</p>
             )}
           </div>
         )}

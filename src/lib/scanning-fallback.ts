@@ -22,9 +22,14 @@ import type { BarcodeDetectorLike } from "@/lib/scanning";
  * have a reader never download it.
  */
 
-/** Frames are downscaled to this width before decoding; a full 1080p frame is
- *  far more pixels than a barcode needs and stalls the loop on a phone. */
-const MAX_WIDTH = 720;
+/**
+ * Frames are downscaled to this width before decoding.
+ *
+ * Not lower: a Code 39 label carrying a dozen characters has very narrow bars,
+ * and at 720px they blur into each other and nothing decodes at all. This is a
+ * trade against speed, and legibility has to win.
+ */
+const MAX_WIDTH = 1280;
 
 export function createFallbackDetector(): BarcodeDetectorLike {
   const reader = new MultiFormatReader();
@@ -36,6 +41,10 @@ export function createFallbackDetector(): BarcodeDetectorLike {
     BarcodeFormat.EAN_13,
     BarcodeFormat.DATA_MATRIX,
   ]);
+  // Without this the 1D readers sample only a handful of rows across the image
+  // and a barcode has to be almost perfectly placed to be found. It costs time
+  // per frame and buys a scanner that actually reads.
+  hints.set(DecodeHintType.TRY_HARDER, true);
   reader.setHints(hints);
 
   const canvas = document.createElement("canvas");

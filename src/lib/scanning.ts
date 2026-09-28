@@ -35,18 +35,24 @@ export const canScan = () => hasCamera();
  * The fallback is imported only when it is actually needed, so devices with a
  * built-in reader never download it.
  */
-export async function loadDetector(formats: string[]): Promise<BarcodeDetectorLike | null> {
+export interface LoadedDetector {
+  detector: BarcodeDetectorLike;
+  /** Which reader answered, so the scanner can say so when something is wrong. */
+  kind: "built-in" | "loaded";
+}
+
+export async function loadDetector(formats: string[]): Promise<LoadedDetector | null> {
   const Ctor = barcodeDetectorCtor();
   if (Ctor) {
     try {
-      return new Ctor({ formats });
+      return { detector: new Ctor({ formats }), kind: "built-in" };
     } catch {
       // A browser that has the class but not these formats: fall through.
     }
   }
   if (!hasCamera()) return null;
   const { createFallbackDetector } = await import("@/lib/scanning-fallback");
-  return createFallbackDetector();
+  return { detector: createFallbackDetector(), kind: "loaded" };
 }
 
 /**
