@@ -40,7 +40,11 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
     const tick = async () => {
       if (stopped) return;
       const video = videoRef.current;
-      if (detector && video && video.readyState === video.HAVE_ENOUGH_DATA) {
+      // HAVE_CURRENT_DATA, not HAVE_ENOUGH_DATA: a live camera stream on iOS
+      // often never reports the latter, so the frame was never looked at and
+      // the preview sat there decoding nothing. videoWidth confirms a real
+      // frame has arrived.
+      if (detector && video && video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
         try {
           const found = await detector.detect(video);
           // detect() is awaited, so the scanner can have been closed meanwhile.
@@ -52,8 +56,12 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
             setLastValue(settled);
             onScanRef.current(settled);
           }
-        } catch {
-          // A single unreadable frame is normal; the next one usually reads.
+        } catch (e) {
+          // Frames that simply hold no code never reach here. This is a real
+          // failure, and repeating it silently is how a scanner looks like it
+          // is working while reading nothing.
+          if (!stopped) setError(`The scanner could not read the camera: ${(e as Error)?.message || e}`);
+          return;
         }
       }
       frame = requestAnimationFrame(tick);
@@ -105,7 +113,7 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
         ) : (
           <div className="space-y-3">
             <div className="relative overflow-hidden rounded-lg border bg-black">
-              <video ref={videoRef} playsInline muted className="w-full aspect-[4/3] object-cover" />
+              <video ref={videoRef} playsInline muted autoPlay className="w-full aspect-[4/3] object-cover" />
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <div className="h-32 w-48 rounded-lg border-2 border-white/70" />
               </div>

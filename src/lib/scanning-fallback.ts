@@ -1,9 +1,12 @@
 import {
   BinaryBitmap,
   BarcodeFormat,
+  ChecksumException,
   DecodeHintType,
+  FormatException,
   HybridBinarizer,
   MultiFormatReader,
+  NotFoundException,
   RGBLuminanceSource,
 } from "@zxing/library";
 import type { BarcodeDetectorLike } from "@/lib/scanning";
@@ -63,15 +66,22 @@ export function createFallbackDetector(): BarcodeDetectorLike {
 
       const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(luminance, w, h)));
       try {
-        const result = reader.decode(bitmap);
-        return [{ rawValue: result.getText() }];
-      } catch {
-        // No code in this frame, which is the usual answer.
-        return [];
-      } finally {
-        // The reader keeps state between reads; without this a code once seen
-        // can be reported again from a frame that no longer holds it.
-        reader.reset();
+        // decodeWithState, not decode: decode() compares the hints passed in
+        // against the ones held, and calling it without any threw away the
+        // formats set above and rebuilt every reader, on every single frame.
+        return [{ rawValue: reader.decodeWithState(bitmap).getText() }];
+      } catch (e) {
+        // "Nothing readable in this frame" is the usual answer and means
+        // nothing. Anything else — a blocked canvas, say — is a real fault and
+        // is left to surface rather than being swallowed frame after frame.
+        if (
+          e instanceof NotFoundException ||
+          e instanceof ChecksumException ||
+          e instanceof FormatException
+        ) {
+          return [];
+        }
+        throw e;
       }
     },
   };
