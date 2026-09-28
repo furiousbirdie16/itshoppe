@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { InvoiceMobileCard } from "@/components/InvoiceMobileCard";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X, ShieldAlert } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -1443,16 +1443,22 @@ export default function InvoicesPage() {
               return (
               <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">
+                <TableCell className="font-mono text-xs font-semibold whitespace-nowrap">
                   <span className="inline-flex items-center gap-1">
                     {inv.invoice_number}
                     {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
+                    {/* An icon, like the lock beside it: the pill it replaced
+                        was wide enough to wrap the invoice number onto a second
+                        line. The count lives in the tooltip. */}
                     {!!missingSerials[inv.id] && (
                       <span
-                        className="rounded px-1 py-0.5 text-[9px] font-semibold bg-warning/15 text-warning"
+                        className="inline-flex"
                         title={`${missingSerials[inv.id]} serial${missingSerials[inv.id] === 1 ? "" : "s"} not recorded`}
                       >
-                        {missingSerials[inv.id]} SN
+                        <ShieldAlert
+                          className="h-3 w-3 shrink-0 text-warning"
+                          aria-label={`${missingSerials[inv.id]} serial${missingSerials[inv.id] === 1 ? "" : "s"} not recorded`}
+                        />
                       </span>
                     )}
                   </span>
