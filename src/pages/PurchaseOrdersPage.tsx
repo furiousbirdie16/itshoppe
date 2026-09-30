@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { SupplierSearch } from "@/components/SupplierSearch";
 import { ItemSearch } from "@/components/ItemSearch";
-import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search } from "lucide-react";
+import { moveItem } from "@/lib/reorder";
+import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search, ArrowUp, ArrowDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -450,23 +451,36 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-2">
                 {lines.map((line, idx) => (
-                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 grid grid-cols-1 sm:grid-cols-[1fr_84px_112px_32px] gap-2">
-                    <ItemSearch
-                      items={items}
-                      value={line.item_id}
-                      customName={line.item_name && !line.item_id ? line.item_name : undefined}
-                      onChange={(id, item, customName) => setItemForLine(idx, id, item, customName)}
-                      allowCustom
-                      sourceFilter={isAdmin ? undefined : 'local'}
-                      placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
-                    />
-                    <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                      <Input type="number" min={1} value={line.quantity || ""} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                      <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Cost" />
-                      <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-8">
-                        <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
-                      </Button>
+                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_112px_96px] sm:items-center gap-2">
+                      {/* A number makes it possible to say "move line 3 up". */}
+                      <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
+                      <ItemSearch
+                        items={items}
+                        value={line.item_id}
+                        customName={line.item_name && !line.item_id ? line.item_name : undefined}
+                        onChange={(id, item, customName) => setItemForLine(idx, id, item, customName)}
+                        allowCustom
+                        sourceFilter={isAdmin ? undefined : 'local'}
+                        placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
+                      />
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
+                        <Input type="number" min={1} value={line.quantity || ""} onChange={e => updateLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                        <Input type="number" value={line.unit_cost} onChange={e => updateLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Cost" />
+                        <div className="flex items-center gap-0.5">
+                          <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                        </div>
+                      </div>
                     </div>
+                    {/* What this line comes to, so the arithmetic is visible
+                        rather than only in the total at the bottom. */}
+                    {Number(line.quantity) > 0 && Number(line.unit_cost) > 0 && (
+                      <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
+                        {Number(line.quantity)} × {peso(Number(line.unit_cost))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.unit_cost))}</span>
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -732,23 +746,33 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-2">
                 {editLines.map((line, idx) => (
-                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 grid grid-cols-1 sm:grid-cols-[1fr_84px_112px_32px] gap-2">
-                    <ItemSearch
-                      items={items}
-                      value={line.item_id}
-                      customName={line.item_name && !line.item_id ? line.item_name : undefined}
-                      onChange={(id, item, customName) => setEditItemForLine(idx, id, item, customName)}
-                      allowCustom
-                      sourceFilter={isAdmin ? undefined : 'local'}
-                      placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
-                    />
-                    <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
-                      <Input type="number" min={1} value={line.quantity || ""} onChange={e => updateEditLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                      <Input type="number" value={line.unit_cost} onChange={e => updateEditLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Cost" />
-                      <Button variant="ghost" size="icon" onClick={() => removeEditLine(idx)} className="h-9 w-8">
-                        <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
-                      </Button>
+                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_112px_96px] sm:items-center gap-2">
+                      <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
+                      <ItemSearch
+                        items={items}
+                        value={line.item_id}
+                        customName={line.item_name && !line.item_id ? line.item_name : undefined}
+                        onChange={(id, item, customName) => setEditItemForLine(idx, id, item, customName)}
+                        allowCustom
+                        sourceFilter={isAdmin ? undefined : 'local'}
+                        placeholder={isAdmin ? "Search inventory or type custom item..." : "Search local items or type custom..."}
+                      />
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
+                        <Input type="number" min={1} value={line.quantity || ""} onChange={e => updateEditLine(idx, "quantity", parseInt(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                        <Input type="number" value={line.unit_cost} onChange={e => updateEditLine(idx, "unit_cost", parseFloat(e.target.value) || 0)} className="h-9 text-sm numeric-field" placeholder="Cost" />
+                        <div className="flex items-center gap-0.5">
+                          <Button variant="ghost" size="icon" onClick={() => setEditLines(moveItem(editLines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setEditLines(moveItem(editLines, idx, idx + 1))} disabled={idx === editLines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeEditLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                        </div>
+                      </div>
                     </div>
+                    {Number(line.quantity) > 0 && Number(line.unit_cost) > 0 && (
+                      <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
+                        {Number(line.quantity)} × {peso(Number(line.unit_cost))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.unit_cost))}</span>
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

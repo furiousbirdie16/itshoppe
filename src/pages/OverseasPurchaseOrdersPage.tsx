@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown } from "lucide-react";
+import { moveItem } from "@/lib/reorder";
 
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -1265,7 +1266,9 @@ export default function OverseasPurchaseOrdersPage() {
                <div className="space-y-2">
                  {lines.map((line, idx) => (
                    <div key={idx} className="space-y-1 border rounded-md p-2 sm:border-0 sm:p-0">
-                     <div className="grid grid-cols-1 sm:grid-cols-[1fr_84px_120px_32px] gap-2 sm:items-end">
+                     <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_120px_96px] gap-2 sm:items-end">
+                       {/* A number makes it possible to say "move line 3 up". */}
+                       <span className="hidden sm:block pb-2 text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
                        <div className="space-y-1">
                          {idx === 0 && <Label className="text-[10px] text-muted-foreground hidden sm:block">Item (search by SKU)</Label>}
                          <ItemSearch
@@ -1279,7 +1282,7 @@ export default function OverseasPurchaseOrdersPage() {
                            placeholder="Search SKU or name..."
                          />
                        </div>
-                       <div className="grid grid-cols-[1fr_1fr_32px] gap-2 sm:contents">
+                       <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
                          <div className="space-y-1">
                            {idx === 0 && <Label className="text-[10px] text-muted-foreground hidden sm:block">Qty</Label>}
                            <Input type="number" value={line.quantity} placeholder="Qty" onChange={e => updateLine(idx, "quantity", e.target.value === "" ? "" : (parseInt(e.target.value) || 0))} className="h-8 text-sm numeric-field" />
@@ -1288,13 +1291,27 @@ export default function OverseasPurchaseOrdersPage() {
                            {idx === 0 && <Label className="text-[10px] text-muted-foreground hidden sm:block">Unit Cost ({currencySymbol})</Label>}
                            <Input type="number" value={line.unit_cost} placeholder={`Cost (${currencySymbol})`} onChange={e => updateLine(idx, "unit_cost", e.target.value === "" ? "" : (parseFloat(e.target.value) || 0))} className="h-8 text-sm numeric-field" />
                          </div>
-                         <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-8 self-end" disabled={lines.length === 1}>
-                           <X className="h-3.5 w-3.5 text-muted-foreground" />
-                         </Button>
+                         <div className="flex items-center gap-0.5 self-end">
+                           <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-8 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
+                           <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-8 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
+                           <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-8 w-7" title="Remove line" disabled={lines.length === 1}>
+                             <X className="h-3.5 w-3.5 text-muted-foreground" />
+                           </Button>
+                         </div>
                        </div>
                      </div>
                      {!line.item_id && (
                        <Input value={line.item_name} onChange={e => updateLine(idx, "item_name", e.target.value)} className="h-7 text-xs" placeholder="Or type item name manually" />
+                     )}
+                     {/* What this line comes to, so the arithmetic is visible
+                         rather than only in the total below. */}
+                     {Number(line.quantity) > 0 && Number(line.unit_cost) > 0 && (
+                       <p className="text-[11px] text-muted-foreground text-right tabular-nums">
+                         {Number(line.quantity)} × {currencySymbol}{Number(line.unit_cost).toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ={" "}
+                         <span className="font-medium text-foreground">
+                           {currencySymbol}{(Number(line.quantity) * Number(line.unit_cost)).toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                         </span>
+                       </p>
                      )}
                    </div>
                 ))}

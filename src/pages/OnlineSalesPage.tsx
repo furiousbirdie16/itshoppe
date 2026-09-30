@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown } from "lucide-react";
+import { moveItem } from "@/lib/reorder";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -1690,9 +1691,19 @@ export default function OnlineSalesPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
                     {!editingSale && form.lines.length > 1 && (
-                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))}>
-                        <X className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move up" disabled={idx === 0}
+                          onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx - 1) }))}>
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move down" disabled={idx === form.lines.length - 1}
+                          onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx + 1) }))}>
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Remove line" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                   <div className="space-y-1.5">
@@ -1728,6 +1739,13 @@ export default function OnlineSalesPage() {
                       <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
                     </div>
                   </div>
+                  {/* What this line comes to, so the arithmetic is visible
+                      rather than only in the total at the bottom. */}
+                  {Number(line.quantity) > 0 && Number(line.posted_price) > 0 && (
+                    <p className="text-[11px] text-muted-foreground text-right tabular-nums">
+                      {Number(line.quantity)} × {peso(Number(line.posted_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.posted_price))}</span>
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
