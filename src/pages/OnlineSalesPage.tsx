@@ -1721,11 +1721,11 @@ export default function OnlineSalesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-[11px] text-muted-foreground">Quantity</Label>
-                      <Input type="number" min={1} value={line.quantity || ""} placeholder="Qty" onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9" />
+                      <Input type="number" min={1} value={line.quantity || ""} placeholder="Qty" onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-[11px] text-muted-foreground">Selling Price</Label>
-                      <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9" />
+                      <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
                     </div>
                   </div>
                 </div>

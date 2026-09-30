@@ -606,7 +606,7 @@ export default function QuotationsPage() {
                   const selectedItem = items.find(i => i.id === line.item_id);
                   return (
                     <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
-                      <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_70px_90px_96px] sm:items-center gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_112px_96px] sm:items-center gap-2">
                         {/* A number makes it possible to say "move line 3 up". */}
                         <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
                         <ItemSearch
@@ -635,8 +635,8 @@ export default function QuotationsPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
-                          <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm" placeholder="Price" />
+                          <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>

@@ -144,3 +144,24 @@
     }
   }
 }
+
+@layer utilities {
+  /*
+   * Number fields on a line-item row.
+   *
+   * The browser's own increment arrows sit inside the box and take a slice of
+   * an already narrow column, which is what clipped the last digits of a price
+   * off the end. Nobody nudges a quantity one at a time with them anyway — the
+   * number is typed — so the width is better spent on the digits.
+   */
+  .numeric-field::-webkit-outer-spin-button,
+  .numeric-field::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .numeric-field {
+    -moz-appearance: textfield;
+    appearance: textfield;
+    font-variant-numeric: tabular-nums;
+  }
+}
