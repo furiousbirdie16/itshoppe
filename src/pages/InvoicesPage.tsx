@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { InvoiceMobileCard } from "@/components/InvoiceMobileCard";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X, ShieldAlert } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X, ShieldAlert, UserCog } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -302,6 +302,46 @@ export default function InvoicesPage() {
   });
 
   type BulkAction = "reserve" | "pay" | "ship" | "complete" | "cancel";
+  // Reassigning who a sale belongs to. Not a status change and not a line-item
+  // edit, so it is allowed on locked invoices too — correcting an attribution
+  // after the fact is exactly when this is needed.
+  const [bulkAgentOpen, setBulkAgentOpen] = useState(false);
+  const [bulkAgentName, setBulkAgentName] = useState("");
+
+  const [bulkAddingAgent, setBulkAddingAgent] = useState(false);
+  const [bulkNewAgentName, setBulkNewAgentName] = useState("");
+
+  // Separate from the invoice form's adder: that one fills the form being
+  // edited, which is not what is being done here.
+  const bulkAddAgentMut = useMutation({
+    mutationFn: (name: string) => createSalesAgent(name),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["sales_agents"] });
+      setBulkAgentName(data.name);
+      setBulkNewAgentName("");
+      setBulkAddingAgent(false);
+      toast.success("Sales agent added");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const bulkAgentMut = useMutation({
+    mutationFn: async (name: string) => {
+      for (const id of selectedIds) {
+        await updateInvoice(id, { sales_agent: name } as any);
+      }
+      return selectedIds.size;
+    },
+    onSuccess: (count, name) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      setBulkAgentOpen(false);
+      setBulkAgentName("");
+      setSelectedIds(new Set());
+      toast.success(`${count} invoice${count === 1 ? "" : "s"} moved to ${name}`);
+    },
+    onError: (e: any) => toast.error(e.message || "Could not change the sales agent"),
+  });
+
   const bulkStatusMut = useMutation({
     mutationFn: async (action: BulkAction) => {
       const ids = Array.from(selectedIds);
@@ -1391,6 +1431,22 @@ export default function InvoicesPage() {
                 }
               />
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => {
+                // Start on the agent they already share, if they do.
+                const names = new Set(
+                  Array.from(selectedIds)
+                    .map((id) => (invoices as any[]).find((i: any) => i.id === id)?.sales_agent || ""),
+                );
+                setBulkAgentName(names.size === 1 ? (Array.from(names)[0] as string) : "");
+                setBulkAgentOpen(true);
+              }}
+            >
+              <UserCog className="h-3.5 w-3.5 mr-1 text-primary" /> Sales Agent
+            </Button>
             <Button size="sm" variant="outline" className="h-8" disabled={bulkStatusMut.isPending} onClick={() => bulkStatusMut.mutate("reserve")}>
               <BookmarkPlus className="h-3.5 w-3.5 mr-1 text-amber-600" /> Reserve
             </Button>
@@ -1497,6 +1553,65 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+
+      {/* Reassigning the sales agent on several invoices at once. */}
+      <Dialog open={bulkAgentOpen} onOpenChange={(o) => { if (!o) { setBulkAgentOpen(false); setBulkAddingAgent(false); setBulkNewAgentName(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Sales agent for {selectedIds.size} invoice{selectedIds.size === 1 ? "" : "s"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Assign to</Label>
+              {!bulkAddingAgent ? (
+                <div className="flex gap-1.5">
+                  <Select value={bulkAgentName} onValueChange={setBulkAgentName}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select agent" /></SelectTrigger>
+                    <SelectContent>
+                      {salesAgents.map((a: any) => <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" title="Add new agent" onClick={() => setBulkAddingAgent(true)}>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <Input
+                    autoFocus
+                    value={bulkNewAgentName}
+                    onChange={(e) => setBulkNewAgentName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && bulkNewAgentName.trim()) { e.preventDefault(); bulkAddAgentMut.mutate(bulkNewAgentName.trim()); } }}
+                    placeholder="New agent name"
+                    className="h-9"
+                  />
+                  <Button type="button" size="sm" className="h-9 shrink-0" disabled={!bulkNewAgentName.trim() || bulkAddAgentMut.isPending} onClick={() => bulkAddAgentMut.mutate(bulkNewAgentName.trim())}>
+                    Add
+                  </Button>
+                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => { setBulkAddingAgent(false); setBulkNewAgentName(""); }}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Only who the sale is credited to changes. Nothing else on the invoice is
+              touched, and this works on locked invoices as well.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAgentOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => bulkAgentMut.mutate(bulkAgentName)}
+              disabled={!bulkAgentName || bulkAgentMut.isPending}
+            >
+              {bulkAgentMut.isPending ? "Saving..." : `Assign to ${bulkAgentName || "…"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <DocumentPreview open={previewOpen} onClose={() => setPreviewOpen(false)} data={previewData} />
 
