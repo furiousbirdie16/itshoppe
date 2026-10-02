@@ -37,6 +37,7 @@ import { Lock } from "lucide-react";
 import { useBranch } from "@/contexts/BranchContext";
 import { moveItem } from "@/lib/reorder";
 import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
+import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
 
 // Reference images live newline-separated in the one payment_reference_url
 // text column. A URL cannot contain a newline, so the split is unambiguous and
@@ -562,8 +563,8 @@ export default function InvoicesPage() {
   });
 
   const markPaidMut = useMutation({
-    mutationFn: ({ id, payment_method, payment_reference, payment_reference_url, amount_received }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string; amount_received?: number | null }) =>
-      markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null, amount_received: amount_received ?? null }),
+    mutationFn: ({ id, payment_method, payment_reference, payment_reference_url, amount_received, variance_note }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string; amount_received?: number | null; variance_note?: string | null }) =>
+      markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null, amount_received: amount_received ?? null, variance_note: variance_note ?? null }),
     onSuccess: (res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -592,6 +593,8 @@ export default function InvoicesPage() {
   // carry no markup; changed only when a staff member quoted above the store
   // price and the customer paid that into the account.
   const [payReceived, setPayReceived] = useState("");
+  /** What a difference between the invoice and the money was for. */
+  const [payVarianceNote, setPayVarianceNote] = useState("");
   const payInvoiceTotal = payDialog
     ? Number((invoices as any[]).find((i) => i.id === payDialog.id)?.total_amount || 0)
     : 0;
@@ -616,6 +619,7 @@ export default function InvoicesPage() {
     setPayRefFiles([]);
     const total = Number((invoices as any[]).find((i) => i.id === id)?.total_amount || 0);
     setPayReceived(total ? String(total) : "");
+    setPayVarianceNote("");
     setPayDialog({ id });
   };
 
@@ -672,6 +676,7 @@ export default function InvoicesPage() {
       payment_reference: payReference,
       payment_reference_url: url,
       amount_received: differs ? received : null,
+      variance_note: differs ? payVarianceNote : null,
     });
     setPayDialog(null);
   };
@@ -1290,6 +1295,17 @@ export default function InvoicesPage() {
                 {inv.payment_reference && (
                   <div className="text-muted-foreground">Reference #: <span className="font-medium text-foreground">{inv.payment_reference}</span></div>
                 )}
+                {/* The money that arrived was not the money invoiced. Shown with
+                    the note it carries, which anyone can still fill in. */}
+                {inv.amount_received != null && (
+                  <PaymentVarianceNote
+                    invoiceId={inv.id}
+                    total={Number(inv.total_amount || 0)}
+                    received={Number(inv.amount_received)}
+                    note={inv.payment_variance_note || ""}
+                    onSaved={() => queryClient.invalidateQueries({ queryKey: ["invoices"] })}
+                  />
+                )}
                 {paymentReferenceUrls(inv.payment_reference_url).length > 0 && (
                   <div className="pt-2 flex flex-wrap gap-2">
                     {paymentReferenceUrls(inv.payment_reference_url).map((u, i) => (
@@ -1677,9 +1693,23 @@ export default function InvoicesPage() {
               }
               const diff = r - payInvoiceTotal;
               return (
-                <p className="text-[11px] text-amber-600 -mt-1">
-                  {peso(Math.abs(diff))} {diff > 0 ? "above" : "below"} the {peso(payInvoiceTotal)} invoice. The account gets {peso(r)}; sales stay at {peso(payInvoiceTotal)}.
-                </p>
+                <>
+                  <p className="text-[11px] text-amber-600 -mt-1">
+                    {peso(Math.abs(diff))} {diff > 0 ? "above" : "below"} the {peso(payInvoiceTotal)} invoice. The account gets {peso(r)}; sales stay at {peso(payInvoiceTotal)}.
+                  </p>
+                  {/* Asked for here because this is the one moment anyone knows
+                      the answer. Not required: a customer at the counter beats a
+                      filled-in box, and it can be written on the invoice later. */}
+                  <Label>{diff > 0 ? "What is the excess for?" : "Why is it short?"}</Label>
+                  <Input
+                    value={payVarianceNote}
+                    onChange={(e) => setPayVarianceNote(e.target.value)}
+                    placeholder={diff > 0 ? "e.g. settles an older balance, tip, rounding" : "e.g. agreed discount, partial payment"}
+                  />
+                  <p className="text-[11px] text-muted-foreground -mt-1">
+                    Optional now — it can be filled in on the invoice afterwards.
+                  </p>
+                </>
               );
             })()}
             {!isCashMethod(payMethod) && (

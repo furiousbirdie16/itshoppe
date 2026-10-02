@@ -1131,6 +1131,8 @@ export const markInvoicePaid = async (
     payment_reference_url?: string | null;
     /** Cash that arrived, when it differs from the total. Omit for "the total". */
     amount_received?: number | null;
+    /** What the difference was for. Only kept when there is a difference. */
+    variance_note?: string | null;
   },
 ) => {
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (paid)");
@@ -1148,6 +1150,9 @@ export const markInvoicePaid = async (
     payment_reference: payment.payment_reference || null,
     payment_reference_url: payment.payment_reference_url || null,
     amount_received: payment.amount_received ?? null,
+    // Tied to the figure it explains: no difference, nothing to explain, so a
+    // note left behind by an earlier correction does not linger as a lie.
+    payment_variance_note: payment.amount_received == null ? null : (payment.variance_note?.trim() || null),
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
   // Never let a ledger problem block the invoice itself from being marked paid —
@@ -2593,6 +2598,21 @@ export const deletePayable = async (id: string) => {
   const { error } = await from("payables").delete().eq("id", id);
   if (error) throw error;
   await logActivity("deleted_payable", "payable", id);
+};
+
+/**
+ * Set or change the note explaining a payment difference.
+ *
+ * Separate from marking paid: the money often arrives before anyone knows what
+ * the extra was for, and holding up a customer at the counter to find out is
+ * worse than filling it in afterwards.
+ */
+export const setPaymentVarianceNote = async (invoiceId: string, note: string) => {
+  const { error } = await from("invoices")
+    .update({ payment_variance_note: note.trim() || null, updated_at: new Date().toISOString() })
+    .eq("id", invoiceId);
+  if (error) throw error;
+  await logActivity("updated_payment_variance_note", "invoice", invoiceId);
 };
 
 export type MergeCustomersResult = {
