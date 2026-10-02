@@ -233,9 +233,13 @@ export default function QuotationsPage() {
   };
 
   const openEdit = async (q: any) => {
-    if (isQuotationLocked(q.status)) {
+    // An admin edits through the lock; the database allows it for them too.
+    if (isQuotationLocked(q.status) && !isAdmin) {
       toast.error(QUOTATION_LOCK_MESSAGE);
       return;
+    }
+    if (isQuotationLocked(q.status)) {
+      toast.warning("This quotation has been accepted. Editing it changes what the customer agreed to.");
     }
     const lineItems = await getQuotationItems(q.id);
     setForm({
@@ -352,7 +356,7 @@ export default function QuotationsPage() {
   const anySelectedLocked = useMemo(() => {
     return Array.from(selectedIds).some((id) => {
       const q: any = quotations.find((x: any) => x.id === id);
-      return q && isQuotationLocked(q.status);
+      return q && isQuotationLocked(q.status) && !isAdmin;
     });
   }, [selectedIds, quotations]);
 
@@ -717,7 +721,11 @@ export default function QuotationsPage() {
               return (
                 <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
                   <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  <span>{QUOTATION_LOCK_MESSAGE}</span>
+                  <span>
+                    {isAdmin
+                      ? "This quotation has been accepted. You can still edit it as an admin — it changes what the customer agreed to."
+                      : QUOTATION_LOCK_MESSAGE}
+                  </span>
                 </div>
               );
             }
@@ -761,6 +769,9 @@ export default function QuotationsPage() {
               <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
             ) : sortedQuotations.map((q: any) => {
               const locked = isQuotationLocked(q.status);
+              // The padlock still shows the true state; what an admin may do
+              // with it is a separate question.
+              const blocked = locked && !isAdmin;
               return (
               <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
@@ -778,8 +789,8 @@ export default function QuotationsPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    {!locked && (
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    {!blocked && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title={locked ? "Accepted — edit anyway" : "Edit"} className="h-7 w-7 rounded-md"><Pencil className={`h-3.5 w-3.5 ${locked ? "text-amber-500" : "text-muted-foreground"}`} /></Button>
                     )}
                     <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
@@ -788,7 +799,7 @@ export default function QuotationsPage() {
                     {locked && (
                       <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
-                    {!locked && (
+                    {!blocked && (
                       <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
                     )}
                   </div>

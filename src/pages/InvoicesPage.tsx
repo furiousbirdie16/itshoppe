@@ -293,7 +293,7 @@ export default function InvoicesPage() {
   const anySelectedLocked = useMemo(() => {
     return Array.from(selectedIds).some((id) => {
       const inv: any = invoices.find((i: any) => i.id === id);
-      return inv && isInvoiceLocked(inv.status);
+      return inv && isInvoiceLocked(inv.status) && !isAdmin;
     });
   }, [selectedIds, invoices]);
 
@@ -454,16 +454,15 @@ export default function InvoicesPage() {
   };
 
   const openEdit = async (inv: any) => {
-    if (isInvoiceLocked(inv.status)) {
-      // Locked invoices are read-only for line items, but admins can still edit
-      // costs from the view dialog. Route them there instead of blocking.
-      if (isAdmin) {
-        setViewInv(inv.id);
-        toast.info("Invoice is locked. Line items are read-only — you can still edit costs here.");
-      } else {
-        toast.error(INVOICE_LOCK_MESSAGE);
-      }
+    // An admin edits through the lock; the database allows it for them too.
+    // Warned rather than stopped, because a settled invoice is not a casual
+    // thing to change.
+    if (isInvoiceLocked(inv.status) && !isAdmin) {
+      toast.error(INVOICE_LOCK_MESSAGE);
       return;
+    }
+    if (isInvoiceLocked(inv.status)) {
+      toast.warning("This invoice is settled. Edits here will not restate a payment already posted to an account.");
     }
     const lineItems = await getInvoiceItems(inv.id);
     setForm({
@@ -797,7 +796,7 @@ export default function InvoicesPage() {
    * mobile card cannot drift apart as statuses and permissions change.
    */
   const renderInvoiceActions = (inv: any) => {
-    const locked = isInvoiceLocked(inv.status);
+    const locked = isInvoiceLocked(inv.status) && !isAdmin;
     return (
       <>
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
@@ -1286,7 +1285,11 @@ export default function InvoicesPage() {
                 {isInvoiceLocked(inv.status) && (
                   <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-900 dark:text-amber-200">
                     <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                    <span>{INVOICE_LOCK_MESSAGE}</span>
+                    <span>
+                      {isAdmin
+                        ? "This invoice is settled. You can still edit it as an admin — a payment already posted to an account will not be restated by the change."
+                        : INVOICE_LOCK_MESSAGE}
+                    </span>
                   </div>
                 )}
                 {inv.payment_method && (
