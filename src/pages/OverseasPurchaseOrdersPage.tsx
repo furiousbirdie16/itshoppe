@@ -910,6 +910,39 @@ export default function OverseasPurchaseOrdersPage() {
     return total;
   })();
 
+  /**
+   * The same figures for whatever the filters currently show.
+   *
+   * The headline total is deliberately "across all overseas POs" — it is the
+   * money committed to suppliers, and narrowing a tab should not change it.
+   * But a filtered view raises its own question: what are these orders worth,
+   * and how much of them is still outstanding. Both are answered below the
+   * headline, and only when a filter is actually narrowing anything.
+   */
+  const filteredTotals = useMemo(() => {
+    const ids = new Set(filteredOrders.map((o: any) => o.id));
+    const value = filteredOrders.reduce(
+      (sum: number, o: any) => sum + Number(o.total_amount || 0) * Number(o.exchange_rate || 1),
+      0,
+    );
+
+    const openRates = new Map(
+      filteredOrders.filter((o: any) => o.status !== "received").map((o: any) => [o.id, o.exchange_rate || 1]),
+    );
+    let outstanding = 0;
+    for (const li of allPOItems) {
+      if (!ids.has(li.po_id)) continue;
+      const remaining = (li.quantity || 0) - (li.received_quantity || 0);
+      if (remaining <= 0) continue;
+      const rate = openRates.get(li.po_id);
+      if (rate === undefined) continue;
+      outstanding += remaining * (li.unit_cost || 0) * rate;
+    }
+    return { value, outstanding };
+  }, [filteredOrders, allPOItems]);
+
+  const isNarrowed = filteredOrders.length !== orders.length;
+
   const handleSubmit = () => {
     if (createMut.isPending || updateMut.isPending) return;
     if (editing) updateMut.mutate();
@@ -1772,12 +1805,29 @@ export default function OverseasPurchaseOrdersPage() {
       </Dialog>
 
       {isAdmin && (
-        <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
+            </div>
+            <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
           </div>
-          <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
+
+          {isNarrowed && (
+            <div className="border-t pt-3 grid gap-2 sm:grid-cols-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  These {filteredOrders.length} order{filteredOrders.length === 1 ? "" : "s"} — order value
+                </p>
+                <p className="text-sm font-semibold font-mono tabular-nums">{peso(filteredTotals.value)}</p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">…of which not yet received</p>
+                <p className="text-sm font-semibold font-mono tabular-nums text-primary">{peso(filteredTotals.outstanding)}</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
