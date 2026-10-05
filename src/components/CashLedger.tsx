@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getCashAccounts, getCashTransactions, createCashTransaction,
@@ -215,6 +215,32 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
 
   const hasForeign = managedAccounts.some(isForeign);
+
+  /**
+   * A floating Add button, once the toolbar's own has scrolled away.
+   *
+   * These ledgers run to hundreds of rows, and the only way to record a
+   * transaction was to scroll back to the top for a button that was already
+   * there a moment ago.
+   *
+   * Driven by watching the toolbar rather than by scroll position: it is the
+   * button going out of view that matters, and a filter bar that grows or a
+   * phone keyboard that opens would make any pixel threshold wrong.
+   */
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [toolbarHidden, setToolbarHidden] = useState(false);
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setToolbarHidden(!entry.isIntersecting),
+      // Appears only once the toolbar is properly gone, so the two buttons are
+      // never on screen together.
+      { threshold: 0, rootMargin: "-8px 0px 0px 0px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
 
 
@@ -519,7 +545,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
   return (
     <div className="space-y-6">
-      <div className="page-toolbar">
+      <div className="page-toolbar" ref={toolbarRef}>
         <div className="page-header mb-0">
           <h1 className="page-title">{title}</h1>
           <p className="page-description">{description}</p>
@@ -1001,6 +1027,19 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         open={!!rateHistoryAccount}
         onOpenChange={(v) => { if (!v) setRateHistoryAccount(null); }}
       />
+
+      {/* Sits clear of the iOS home indicator, and above the sticky selection
+          bars other pages use. */}
+      {toolbarHidden && (
+        <Button
+          onClick={openCreate}
+          aria-label="Add transaction"
+          className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-5 z-40 h-14 w-14 rounded-full p-0 shadow-lg sm:h-12 sm:w-auto sm:px-4 sm:py-0"
+        >
+          <Plus className="h-6 w-6 sm:mr-1.5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline text-sm font-medium">Add Transaction</span>
+        </Button>
+      )}
     </div>
   );
 }
