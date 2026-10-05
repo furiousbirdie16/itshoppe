@@ -77,6 +77,22 @@ describe("applyVariationDelta — cut", () => {
 });
 
 describe("applyVariationDelta — pack", () => {
+  // The same clamp lived here too: a pack sold from a negative stock came back
+  // at zero, adding stock on the way out.
+  it("does not invent stock when selling from a negative balance", () => {
+    expect(applyVariationDelta(roll(-5, 0, 1), pack(3), 1)).toEqual({
+      quantity: -8,
+      open_roll_remaining: 0,
+    });
+  });
+
+  it("goes negative rather than stopping at zero", () => {
+    expect(applyVariationDelta(roll(2, 0, 1), pack(5), 1)).toEqual({
+      quantity: -3,
+      open_roll_remaining: 0,
+    });
+  });
+
   it("deducts the whole pack from stock", () => {
     expect(applyVariationDelta(roll(50, 0, 1), pack(5), 3)).toEqual({
       quantity: 35,

@@ -50,8 +50,11 @@ export function applyVariationDelta(
     // when no rolls). Most pack items have units_per_stock=1, so a 5pcs pack with qty 10
     // deducts 50 from quantity directly.
     const deducted = Math.round(variation.factor * qty);
+    // Not clamped, for the same reason the cut path is not: on a stock already
+    // below zero, Math.max(0, …) raises it rather than flooring it, and a sale
+    // that silently adds stock is worse than a negative number on a screen.
     return {
-      quantity: Math.max(0, item.quantity - deducted),
+      quantity: item.quantity - deducted,
       open_roll_remaining: item.open_roll_remaining,
     };
   }
