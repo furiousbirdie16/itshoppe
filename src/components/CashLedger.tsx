@@ -25,6 +25,7 @@ import { peso } from "@/lib/currency";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
 import { useSort } from "@/hooks/use-sort";
+import ExportButton from "@/components/ExportButton";
 import { SortableHeader } from "@/components/SortableHeader";
 
 const today = () => format(new Date(), "yyyy-MM-dd");
@@ -73,6 +74,23 @@ interface CashLedgerProps {
 
 /** Owner is a liability: never counted in a cash or bank balance. */
 const isOwnerAccount = (a: Pick<CashAccount, "account_type">) => a.account_type === "owner";
+
+/**
+ * "This account → That account" for one leg of a transfer, or null when the row
+ * is an ordinary movement.
+ *
+ * At module scope so the table and the export cannot drift apart, and so
+ * neither can read it before it exists — this file has been blanked by exactly
+ * that mistake before.
+ */
+function transferRoute(t: CashTransaction): string | null {
+  if (!t.transfer_group_id) return null;
+  const other = (t.payee || "").trim();
+  // Legs recorded before the counterparty was stored have nothing to point at.
+  if (!other) return null;
+  const own = t.cash_accounts?.name || "This account";
+  return t.direction === "out" ? `${own} \u2192 ${other}` : `${other} \u2192 ${own}`;
+}
 
 export function CashLedger({ accountType, alsoShow, title, description, showAccountFilter = false }: CashLedgerProps) {
   const queryClient = useQueryClient();
@@ -198,6 +216,8 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
   const hasForeign = managedAccounts.some(isForeign);
 
+
+
   /** Amounts render in the account's own currency. */
   const amountLabel = (t: CashTransaction) => {
     const account = allAccounts.find((a) => a.id === t.account_id);
@@ -211,6 +231,47 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   );
   const formAccount = accountById[form.account_id];
   const formIsForeign = formAccount ? isForeign(formAccount) : false;
+
+  /**
+   * Columns for the spreadsheet export.
+   *
+   * Inflow and outflow are separate columns rather than one signed amount:
+   * that is the shape a bookkeeper reconciles against a bank statement, and it
+   * sums without anyone having to reason about signs.
+   *
+   * Built here, below the helpers it leans on, because reading accountById or
+   * hasForeign any earlier is a temporal dead zone that blanks the page.
+   */
+  const exportColumns = useMemo(() => {
+    const cols: Record<string, (t: CashTransaction) => unknown> = {
+      "Date": (t) => t.txn_date,
+      "Account": (t) => t.cash_accounts?.name || accountById[t.account_id]?.name || "",
+      "Category": (t) => t.category || "",
+      "Payee / Source": (t) => transferRoute(t) || t.payee || "",
+      "Reference": (t) => t.reference || "",
+      "Inflow": (t) => (t.direction === "in" ? Number(t.amount) : ""),
+      "Outflow": (t) => (t.direction === "out" ? Number(t.amount) : ""),
+    };
+
+    if (hasForeign) {
+      cols["Currency"] = (t) => accountById[t.account_id]?.currency || BASE_CURRENCY;
+      cols["FX Rate"] = (t) => (t.fx_rate != null ? Number(t.fx_rate) : "");
+      // What the movement was worth in pesos, so a mixed-currency export still
+      // adds up in one column.
+      cols["PHP Value"] = (t) => {
+        const account = accountById[t.account_id];
+        if (account && isForeign(account)) return phpAmountById[t.id] ?? "";
+        return Number(t.amount);
+      };
+    }
+
+    cols["Notes"] = (t) => t.notes || "";
+    cols["Recorded By"] = (t) => t.created_by_email || "";
+    cols["Edited By"] = (t) =>
+      t.updated_by_email && t.updated_by_email !== t.created_by_email ? t.updated_by_email : "";
+    cols["Transfer"] = (t) => (t.transfer_group_id ? "Yes" : "");
+    return cols;
+  }, [accountById, hasForeign, phpAmountById]);
 
   /**
    * Balance after each transaction, for one account at a time.
@@ -430,15 +491,6 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
    * that is comes from the direction. Rendered as a route so either row says
    * where the money actually went, rather than only which account it touched.
    */
-  const transferRoute = (t: CashTransaction) => {
-    if (!t.transfer_group_id) return null;
-    const other = (t.payee || "").trim();
-    // Legs recorded before the counterparty was stored have nothing to point at.
-    if (!other) return null;
-    const own = t.cash_accounts?.name || "This account";
-    return t.direction === "out" ? `${own} \u2192 ${other}` : `${other} \u2192 ${own}`;
-  };
-
   const handleTransfer = () => {
     const amount = Number(transfer.amount);
     if (!transfer.from_account_id || !transfer.to_account_id) { toast.error("Pick both accounts"); return; }
@@ -473,6 +525,16 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
           <p className="page-description">{description}</p>
         </div>
         <div className="toolbar-actions flex gap-2">
+          {/* Exports what the filters currently show, so a statement for one
+              account and one month is the same thing on screen and in the file. */}
+          <ExportButton
+            data={sorted}
+            columns={exportColumns}
+            dateField={(t: CashTransaction) => t.txn_date}
+            fileName={accountFilter === "all"
+              ? `${accountType}_transactions`
+              : `${(accountById[accountFilter]?.name || "account").replace(/[^A-Za-z0-9]+/g, "_").toLowerCase()}_transactions`}
+          />
           {showAccountFilter && (
             <Button variant="outline" onClick={() => { setTransfer(emptyTransfer()); setTransferOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
               <ArrowLeftRight className="h-4 w-4 mr-1.5" /> Transfer
