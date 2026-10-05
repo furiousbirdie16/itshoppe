@@ -64,9 +64,19 @@ export function applyVariationDelta(
 
   if (metersToDeduct > 0) {
     // Sale: draw from open roll, then open new rolls as needed.
+    //
+    // Deliberately allowed to go negative. This used to stop once quantity hit
+    // zero and then clamp the result with Math.max(0, …), which on a stock
+    // already negative RAISED it: an item at -9 rolls sold 5m and came back as
+    // 0 rolls, inventing nine rolls that were never bought. A plain sale has
+    // always been allowed to go negative — overselling is a real thing that
+    // happens, and the ledger has to say so rather than quietly round it away.
+    //
+    // Opening a roll that is not there keeps the arithmetic honest: total
+    // metres are always quantity * perStock + remaining, so -9 rolls less 5m
+    // is -10 rolls with 300m open, which is the same quantity of nothing.
     while (metersToDeduct > 0) {
       if (remaining <= 0) {
-        if (quantity <= 0) break; // out of stock; clamp at 0
         quantity -= 1;
         remaining += perStock;
       }
@@ -78,10 +88,7 @@ export function applyVariationDelta(
         remaining = 0;
       }
     }
-    return {
-      quantity: Math.max(0, quantity),
-      open_roll_remaining: Math.max(0, remaining),
-    };
+    return { quantity, open_roll_remaining: remaining };
   } else {
     // Restore: add meters back to open roll, close it into whole rolls when full.
     let metersToAdd = -metersToDeduct;
