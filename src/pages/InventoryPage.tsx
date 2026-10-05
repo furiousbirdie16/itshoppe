@@ -1326,6 +1326,7 @@ export default function InventoryPage() {
         <VariationsManager
           item={variationsItem}
           open={!!variationsItem}
+          branchId={qtyBranchId}
           onOpenChange={(o) => { if (!o) setVariationsItem(null); }}
         />
       )}

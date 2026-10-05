@@ -228,6 +228,61 @@ export const setBranchQuantities = async (params: {
 };
 
 /**
+ * Set the metres left on the open roll, for one branch.
+ *
+ * `items.open_roll_remaining` is a legacy column that nothing reads: the live
+ * figure lives on `item_branch_stock`, exactly as the warehouse and store
+ * counts do. Writing the item row looked like it worked and changed nothing,
+ * which is why a corrected remainder kept springing back.
+ *
+ * Recorded as an adjustment like any other, so a roll that turns out to hold
+ * more or less than the system thought leaves a trail.
+ */
+export const setBranchOpenRoll = async (params: {
+  itemId: string;
+  branchId: string;
+  openRoll: number;
+  notes?: string;
+}): Promise<string[]> => {
+  const { itemId, branchId, openRoll, notes } = params;
+  if (!branchId) throw new Error("A branch must be selected to edit the open roll");
+
+  const cur = await getBranchStock(itemId, branchId);
+  const target = Number(openRoll) || 0;
+  const delta = target - Number(cur.open_roll_remaining || 0);
+  if (delta === 0) return [];
+
+  const { data: item } = await _from("items").select("base_unit").eq("id", itemId).maybeSingle();
+  const baseUnit = (item as any)?.base_unit ?? "m";
+
+  // The open roll belongs to the store: it is the one someone has cut into.
+  const result = await applyBranchStockRpc({
+    itemId,
+    branchId,
+    location: "store",
+    deltaStock: 0,
+    deltaOpen: delta,
+  });
+
+  const id = await recordMovement({
+    itemId,
+    branchId,
+    type: delta > 0 ? "adjust_surplus" : "adjust_missing",
+    quantity: Math.abs(delta),
+    unit: baseUnit,
+    location: "store",
+    referenceType: "open_roll_adjustment",
+    notes: notes || `Open roll: ${cur.open_roll_remaining} → ${target}`,
+    balanceBefore: cur.store_quantity,
+    balanceAfter: result.store_quantity,
+    openBefore: cur.open_roll_remaining,
+    openAfter: result.open_roll_remaining,
+  });
+
+  return id ? [id] : [];
+};
+
+/**
  * Announce stock adjustments over Telegram.
  *
  * Adjustments are the movements with no document behind them — someone saying

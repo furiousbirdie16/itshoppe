@@ -9,18 +9,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Pencil, Layers, RefreshCw } from "lucide-react";
 import { peso } from "@/lib/currency";
-import { getItemVariations, createItemVariation, updateItemVariation, deleteItemVariation, updateItem } from "@/lib/api";
+import { getItemVariations, createItemVariation, updateItemVariation, deleteItemVariation, updateItem, setBranchOpenRoll, notifyInventoryAdjustments } from "@/lib/api";
 import type { Item, ItemVariation } from "@/types/database";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
+  /** Which branch's open roll is being edited; null when viewing all. */
+  branchId?: string | null;
   item: Item;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function VariationsManager({ item, open, onOpenChange }: Props) {
+export function VariationsManager({ item, open, onOpenChange, branchId }: Props) {
   const qc = useQueryClient();
   const { data: variations = [] } = useQuery({
     queryKey: ["item_variations", item.id],
@@ -47,13 +49,34 @@ export function VariationsManager({ item, open, onOpenChange }: Props) {
   const [openRoll, setOpenRoll] = useState(String(item.open_roll_remaining ?? 0));
 
   const stockSettingsMut = useMutation({
-    mutationFn: () => updateItem(item.id, {
-      base_unit: baseUnit,
-      units_per_stock: parseFloat(unitsPerStock) || 1,
-      open_roll_remaining: parseFloat(openRoll) || 0,
-    } as any),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const target = parseFloat(openRoll) || 0;
+      const openRollChanged = target !== Number(item.open_roll_remaining ?? 0);
+      // Checked before anything is written, so a rejected save leaves the form
+      // as it was rather than half-applied.
+      if (openRollChanged && !branchId) {
+        throw new Error("Pick a branch before changing the open roll — it is counted per branch.");
+      }
+
+      // base_unit and units_per_stock describe the item itself, so they belong
+      // on the item row. The open roll is stock, and stock lives per branch.
+      await updateItem(item.id, {
+        base_unit: baseUnit,
+        units_per_stock: parseFloat(unitsPerStock) || 1,
+      } as any);
+
+      if (!openRollChanged) return [];
+      return setBranchOpenRoll({
+        itemId: item.id,
+        branchId: branchId!,
+        openRoll: target,
+        notes: "Open roll corrected from stock settings",
+      });
+    },
+    onSuccess: (movements) => {
       qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["item_branch_stock"] });
+      notifyInventoryAdjustments(movements || []);
       toast.success("Stock settings updated");
     },
     onError: (e: any) => toast.error(e.message),
