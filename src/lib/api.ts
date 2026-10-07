@@ -1100,8 +1100,18 @@ const resolvePaymentAccount = async (paymentMethod: string) => {
  * index on source_invoice_id makes a repeated mark-as-paid a no-op rather than a
  * double-post.
  */
-/** `account` is resolved by the caller, so the label is read once, at payment. */
-const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: string } | null) => {
+/**
+ * `account` is resolved by the caller, so the label is read once, at payment.
+ *
+ * `receivedOverride` is the figure the person actually typed. Passed in rather
+ * than read back off the invoice: the amount that reaches the account should
+ * depend on what was entered, not on a column write having landed first.
+ */
+const postInvoicePaymentToLedger = async (
+  invoiceId: string,
+  account: { id: string } | null,
+  receivedOverride?: number | null,
+) => {
   const actor = await currentActor();
 
   const { data: inv } = await from("invoices")
@@ -1111,7 +1121,7 @@ const postInvoicePaymentToLedger = async (invoiceId: string, account: { id: stri
   // What actually reached the account. Usually the total; more when a staff
   // member quoted above the store price and the customer paid that. The total
   // stays the store's price, so sales and profit are untouched by this.
-  const received = (inv as any)?.amount_received;
+  const received = receivedOverride ?? (inv as any)?.amount_received;
   const amount = Number(received ?? (inv as any)?.total_amount ?? 0);
 
   const { data: existing } = await from("cash_transactions")
@@ -1198,7 +1208,7 @@ export const markInvoicePaid = async (
   // afterwards cannot orphan the payment, because nothing re-reads the label.
   const account = await resolvePaymentAccount(payment.payment_method);
 
-  await from("invoices").update({
+  const { error: payErr } = await from("invoices").update({
     status: wasShipped ? "completed" : "paid",
     payment_method: payment.payment_method,
     payment_account_id: account?.id ?? null,
@@ -1210,12 +1220,17 @@ export const markInvoicePaid = async (
     payment_variance_note: payment.amount_received == null ? null : (payment.variance_note?.trim() || null),
     updated_at: new Date().toISOString(),
   }).eq("id", invoiceId);
+  // Checked, not assumed. Unchecked, a rejected update looked like success and
+  // then quietly undid the payment: amount_received never landed, so the ledger
+  // re-read the invoice, found nothing, and banked the invoice total instead of
+  // the money that actually arrived.
+  if (payErr) throw payErr;
   // Never let a ledger problem block the invoice itself from being marked paid —
   // but never hide one either. The caller surfaces this, because a payment that
   // silently failed to post is exactly how money goes missing from an account.
   let ledgerWarning: string | undefined;
   try {
-    await postInvoicePaymentToLedger(invoiceId, account);
+    await postInvoicePaymentToLedger(invoiceId, account, payment.amount_received ?? null);
   } catch (e: any) {
     ledgerWarning = e?.message || "The payment could not be posted to the cash ledger.";
     console.warn("Invoice paid, but posting to the cash ledger failed:", e);
