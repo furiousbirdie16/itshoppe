@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
@@ -34,8 +35,9 @@ export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSele
               <span className="truncate">{inv.invoice_number}</span>
               {locked && <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="Locked" />}
             </span>
-            <span className="shrink-0 text-sm font-semibold tabular-nums">
-              {peso(Number(inv.total_amount))}
+            <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
+              <span className="block">{peso(Number(inv.total_amount))}</span>
+              <PaymentVarianceChip total={inv.total_amount} received={(inv as any).amount_received} className="mt-0.5" />
             </span>
           </div>
 

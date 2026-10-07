@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { setPaymentVarianceNote } from "@/lib/api";
 import { peso } from "@/lib/currency";
+import { paymentVariance } from "@/lib/payment-variance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Check, X } from "lucide-react";
@@ -35,8 +36,10 @@ export function PaymentVarianceNote({ invoiceId, total, received, note, onSaved 
     onError: (e: any) => toast.error(e.message || "Could not save the note"),
   });
 
-  const diff = received - total;
-  if (Math.abs(diff) <= 0.005) return null;
+  // Shared with the list's chip, so the two can never disagree about what
+  // counts as a difference.
+  const diff = paymentVariance(total, received);
+  if (diff == null) return null;
   const over = diff > 0;
 
   return (

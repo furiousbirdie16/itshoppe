@@ -38,6 +38,7 @@ import { useBranch } from "@/contexts/BranchContext";
 import { moveItem } from "@/lib/reorder";
 import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
 import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
+import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
 
 // Reference images live newline-separated in the one payment_reference_url
 // text column. A URL cannot contain a newline, so the split is unambiguous and
@@ -1542,7 +1543,14 @@ export default function InvoicesPage() {
                 <TableCell className="text-sm">{inv.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                 <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
-                <TableCell className="text-right text-sm font-medium">{peso(Number(inv.total_amount))}</TableCell>
+                <TableCell className="text-right text-sm font-medium">
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="tabular-nums">{peso(Number(inv.total_amount))}</span>
+                    {/* Visible while scanning the list, so a payment that did
+                        not match its invoice needs no opening to find. */}
+                    <PaymentVarianceChip total={inv.total_amount} received={inv.amount_received} />
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     {renderInvoiceActions(inv)}
