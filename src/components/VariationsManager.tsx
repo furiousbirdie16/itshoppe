@@ -145,6 +145,17 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
 
   const isCut = (item.units_per_stock ?? 1) > 1;
 
+  /**
+   * The base unit is what the item is cut and sold in — metres off a roll —
+   * not the name of the roll itself. Setting it to the container contradicts
+   * Units/Stock, and every cut sale then reads "-50 roll" in the ledger when
+   * fifty metres were sold.
+   */
+  const CONTAINER_WORDS = ["roll", "rolls", "box", "boxes", "reel", "reels", "carton", "cartons", "bundle", "bundles", "pack", "packs"];
+  const baseUnitLooksLikeContainer =
+    (parseFloat(unitsPerStock) || 1) > 1 &&
+    CONTAINER_WORDS.includes(baseUnit.trim().toLowerCase());
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -157,6 +168,17 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
         {/* Parent stock settings */}
         <div className="rounded-lg border p-3 bg-muted/30">
           <p className="text-xs font-semibold mb-2">Stock Settings</p>
+          {baseUnitLooksLikeContainer && (
+            <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Base Unit is “{baseUnit}”, but Units / Stock says {unitsPerStock} of them make one.
+              The base unit is what you cut and sell — metres — not the roll itself. As it stands,
+              selling 50 metres is recorded as “50 {baseUnit}”. Setting it to{" "}
+              <button type="button" onClick={() => setBaseUnit("m")} className="font-semibold underline hover:no-underline">
+                m
+              </button>{" "}
+              fixes the labels. The quantities are unaffected either way.
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
               <Label className="text-[10px] uppercase">Base Unit</Label>

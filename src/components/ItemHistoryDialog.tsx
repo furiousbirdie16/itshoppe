@@ -324,6 +324,17 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     return true;
   }), [ledger, categoryFilter, from, to, search]);
 
+  /**
+   * Whether this item is cut from a roll.
+   *
+   * Only then is the open remainder worth a column — on a plain item it would
+   * be an empty column on every row.
+   */
+  const hasOpenRoll = useMemo(
+    () => ledger.some((r) => r.open_before != null || r.open_after != null),
+    [ledger],
+  );
+
   const stats = useMemo(() => {
     if (ledger.length === 0) return null;
     const totalIn = ledger.reduce((s, r) => s + r.qty_in, 0);
@@ -420,6 +431,9 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 <TableHead className="text-xs text-right">Change</TableHead>
                 <TableHead className="text-xs text-right whitespace-nowrap">Warehouse</TableHead>
                 <TableHead className="text-xs text-right whitespace-nowrap">Store</TableHead>
+                {hasOpenRoll && (
+                  <TableHead className="text-xs text-right whitespace-nowrap">Open roll</TableHead>
+                )}
                 <TableHead className="text-xs text-right whitespace-nowrap">Total</TableHead>
                 <TableHead className="text-xs">User</TableHead>
                 <TableHead className="text-xs">Remarks</TableHead>
@@ -427,9 +441,9 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={hasOpenRoll ? 11 : 10} className="h-24 text-center text-sm text-muted-foreground">Loading ledger...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={hasOpenRoll ? 11 : 10} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
               ) : filtered.map((r) => {
                 const locShort = r.category === "transfer" && r.dest_location
                   ? `${(r.location || "?")[0].toUpperCase()}→${r.dest_location[0].toUpperCase()}`
@@ -502,6 +516,12 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                   </TableCell>
                   <BalanceCell before={r.wh_before} after={r.wh_after} />
                   <BalanceCell before={r.st_before} after={r.st_after} />
+                  {hasOpenRoll && (
+                    // A cut of a few metres leaves the roll count alone and
+                    // changes only this, which is why a 50m sale looked like it
+                    // had done nothing at all.
+                    <BalanceCell before={r.open_before} after={r.open_after} />
+                  )}
                   <BalanceCell before={r.total_before} after={r.total_after} strong />
                   <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={r.user}>{r.user}</TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={`${r.notes}${transferDetail}${openDetail}`}>
