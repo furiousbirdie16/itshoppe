@@ -18,6 +18,25 @@ export default function DashboardPage() {
     queryFn: () => getDashboardStats(activeBranchId),
   });
 
+  /**
+   * The same figures for the whole business, whatever branch is selected.
+   *
+   * Net Asset Value and Cash Available are company-level: cash, bank,
+   * receivables, loans and bills are not kept per branch and cannot be. Mixing
+   * them with a branch's inventory produced a number belonging to nowhere —
+   * picking Gen San left the full bank balance standing against one branch's
+   * stock and commitments, so Cash Available looked far healthier than it was.
+   *
+   * Skipped entirely when no branch is selected: the scoped query is already
+   * the company-wide one.
+   */
+  const { data: companyStats } = useQuery({
+    queryKey: ["dashboard", null],
+    queryFn: () => getDashboardStats(null),
+    enabled: !!activeBranchId,
+  });
+  const allBranches = activeBranchId ? companyStats : stats;
+
   const finance = useFinanceSummary();
 
   // Net Asset Value = what we own minus what we owe.
@@ -26,6 +45,8 @@ export default function DashboardPage() {
   // been paid for and its goods are not yet counted as Incoming Assets, so counting
   // it as a liability alone would understate net worth. Incoming Assets only picks
   // up overseas POs already paid and shipped.
+  // The operational cards follow the branch: "what is in Gen San" is a fair
+  // question with a useful answer.
   const inventoryValue = Number(stats?.totalValue || 0);
   // Reserving an invoice deducts the stock, so it has already left
   // inventoryValue. The goods are still ours until the sale completes — carried
@@ -33,8 +54,15 @@ export default function DashboardPage() {
   const reservedStock = Number(stats?.reservedStockValue || 0);
   const incomingAssets = Number(stats?.incomingAssetsValue || 0);
   const supplierPOs = Number(stats?.accountsPayableValue || 0);
+
+  // The money cards do not: they are whole-business figures, and these are the
+  // only parts of them that could have been scoped.
+  const coInventory = Number(allBranches?.totalValue || 0);
+  const coReserved = Number(allBranches?.reservedStockValue || 0);
+  const coIncoming = Number(allBranches?.incomingAssetsValue || 0);
+  const coSupplierPOs = Number(allBranches?.accountsPayableValue || 0);
   const assetsTotal =
-    inventoryValue + reservedStock + finance.receivables + incomingAssets + finance.totalCashAvailable;
+    coInventory + coReserved + finance.receivables + coIncoming + finance.totalCashAvailable;
   const liabilitiesTotal =
     finance.billsAndChecks + Math.max(finance.dueToOwner, 0) + finance.loansOutstanding;
   const netAssetValue = assetsTotal - liabilitiesTotal;
@@ -42,7 +70,7 @@ export default function DashboardPage() {
   // What is genuinely free to spend: cash on hand less everything already
   // committed to suppliers and bills. Can go negative, which is the point —
   // that means commitments already exceed the cash to cover them.
-  const cashForPurchasing = finance.totalCashAvailable - supplierPOs - finance.billsAndChecks;
+  const cashForPurchasing = finance.totalCashAvailable - coSupplierPOs - finance.billsAndChecks;
 
   if (isLoading) {
     return (
@@ -164,6 +192,9 @@ export default function DashboardPage() {
                 <FormulaRow label="Petty cash accounts" value={peso(finance.cashTotal)} />
                 <FormulaRow label="Bank accounts" value={peso(finance.bankTotal)} />
                 <p className="text-muted-foreground pt-1">Active accounts only. Foreign currency is carried at what those units actually cost, not today\u2019s rate. The owner account is a debt, not cash, so it is left out.</p>
+                {activeBranchId && (
+                  <p className="text-muted-foreground pt-1">Whole business, not {activeBranch?.branch_code || "this branch"}: cash, bank, receivables and loans are not kept per branch, so scoping only part of this would give a figure belonging to nowhere.</p>
+                )}
               </div>
             }
           />
@@ -278,11 +309,14 @@ export default function DashboardPage() {
             formula={
               <div className="space-y-1">
                 <FormulaRow label="Total cash available" value={peso(finance.totalCashAvailable)} />
-                <FormulaRow label="Less supplier POs" value={`\u2212 ${peso(supplierPOs)}`} />
+                <FormulaRow label="Less supplier POs" value={`\u2212 ${peso(coSupplierPOs)}`} />
                 <FormulaRow label="Less bills & checks" value={`\u2212 ${peso(finance.billsAndChecks)}`} />
                 <div className="border-t my-1" />
                 <FormulaRow label="Free to spend" value={peso(cashForPurchasing)} />
                 <p className="text-muted-foreground pt-1">Goes negative when what you have committed already exceeds the cash to cover it.</p>
+                {activeBranchId && (
+                  <p className="text-muted-foreground pt-1">Whole business, not {activeBranch?.branch_code || "this branch"}: cash, bank, receivables and loans are not kept per branch, so scoping only part of this would give a figure belonging to nowhere.</p>
+                )}
               </div>
             }
           />
@@ -296,10 +330,10 @@ export default function DashboardPage() {
             description={`${peso(assetsTotal)} assets − ${peso(liabilitiesTotal)} liabilities`}
             formula={
               <div className="space-y-1">
-                <FormulaRow label="Inventory" value={peso(inventoryValue)} />
-                {reservedStock > 0 && <FormulaRow label="Reserved stock" value={peso(reservedStock)} />}
+                <FormulaRow label="Inventory" value={peso(coInventory)} />
+                {coReserved > 0 && <FormulaRow label="Reserved stock" value={peso(coReserved)} />}
                 <FormulaRow label="Receivables" value={peso(finance.receivables)} />
-                <FormulaRow label="Incoming" value={peso(incomingAssets)} />
+                <FormulaRow label="Incoming" value={peso(coIncoming)} />
                 <FormulaRow label="Cash & bank" value={peso(finance.totalCashAvailable)} />
                 <div className="border-t my-1" />
                 <FormulaRow label="Bills & checks" value={`\u2212 ${peso(finance.billsAndChecks)}`} />
@@ -308,6 +342,9 @@ export default function DashboardPage() {
                 <div className="border-t my-1" />
                 <FormulaRow label="Net Asset Value" value={peso(netAssetValue)} />
                 <p className="text-muted-foreground pt-1">Unpaid supplier POs are in neither side: the debt and the goods cancel.</p>
+                {activeBranchId && (
+                  <p className="text-muted-foreground pt-1">Whole business, not {activeBranch?.branch_code || "this branch"}: cash, bank, receivables and loans are not kept per branch, so scoping only part of this would give a figure belonging to nowhere.</p>
+                )}
               </div>
             }
           />
