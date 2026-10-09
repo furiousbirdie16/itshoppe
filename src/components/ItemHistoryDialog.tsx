@@ -64,6 +64,13 @@ interface LedgerRow {
   reference_link: string | null;
   reference_kind: "invoice" | "purchase_order" | "overseas_purchase_order" | "online_sale" | null;
   reference_id: string | null;
+  /**
+   * The date on the document itself, which is not the same as when the stock
+   * moved. An order placed on the 3rd and entered on the 5th is both, and the
+   * ledger showing only one of them reads as a disagreement with every other
+   * page.
+   */
+  reference_date: string | null;
   notes: string;
   user: string;
   branch_id: string | null;
@@ -170,28 +177,31 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
   }
 
   // Chunk id lookups so long URLs / row caps don't drop references
-  const fetchRefs = async (table: string, col: string, ids: Set<string>) => {
+  const fetchRefs = async (table: string, col: string, dateCol: string, ids: Set<string>) => {
     const out: any[] = [];
     const arr = Array.from(ids);
     for (let i = 0; i < arr.length; i += 150) {
-      const { data } = await (supabase as any).from(table).select(`id, ${col}`).in("id", arr.slice(i, i + 150));
-      out.push(...(data || []));
+      const { data } = await (supabase as any)
+        .from(table)
+        .select(`id, ${col}, ${dateCol}`)
+        .in("id", arr.slice(i, i + 150));
+      out.push(...(data || []).map((r: any) => ({ ...r, _date: r[dateCol] ?? null })));
     }
     return out;
   };
 
   const [invRows, poRows, oposRows, osRows] = await Promise.all([
-    fetchRefs("invoices", "invoice_number", invoiceIds),
-    fetchRefs("purchase_orders", "po_number", poIds),
-    fetchRefs("overseas_purchase_orders", "po_number", oposIds),
-    fetchRefs("online_sales", "order_number", onlineSaleIds),
+    fetchRefs("invoices", "invoice_number", "invoice_date", invoiceIds),
+    fetchRefs("purchase_orders", "po_number", "order_date", poIds),
+    fetchRefs("overseas_purchase_orders", "po_number", "order_date", oposIds),
+    fetchRefs("online_sales", "order_number", "order_date", onlineSaleIds),
   ]);
 
-  const refMap = new Map<string, { number: string; link: string; kind: LedgerRow["reference_kind"] }>();
-  invRows.forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice" }));
-  poRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order" }));
-  oposRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order" }));
-  osRows.forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale" }));
+  const refMap = new Map<string, { number: string; link: string; kind: LedgerRow["reference_kind"]; date: string | null }>();
+  invRows.forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice", date: r._date }));
+  poRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order", date: r._date }));
+  oposRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order", date: r._date }));
+  osRows.forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale", date: r._date }));
 
 
   // Load branch labels for rows we retrieved
@@ -263,6 +273,7 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
       reference_link: ref?.link || null,
       reference_kind: ref?.kind || null,
       reference_id: m.reference_id || null,
+      reference_date: ref?.date || null,
       notes: m.notes || "",
       user: m.user_email || "—",
       branch_id: m.branch_id || null,
@@ -424,7 +435,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableHead className="text-xs whitespace-nowrap">Date & Time</TableHead>
+                <TableHead className="text-xs whitespace-nowrap">Recorded</TableHead>
                 <TableHead className="text-xs">Branch</TableHead>
                 <TableHead className="text-xs">Transaction</TableHead>
                 <TableHead className="text-xs">Reference</TableHead>
@@ -457,7 +468,18 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                   : "";
                 return (
                 <TableRow key={r.id} className={r.discrepancy !== 0 ? "bg-amber-50/70 hover:bg-amber-50" : undefined}>
-                  <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">
+                    {new Date(r.created_at).toLocaleString()}
+                    {/* Shown only when the document is dated differently from
+                        the moment the stock moved: an order placed one day and
+                        entered the next otherwise looks like two pages of the
+                        app disagreeing with each other. */}
+                    {r.reference_date && r.reference_date.slice(0, 10) !== r.created_at.slice(0, 10) && (
+                      <span className="block text-[10px] text-muted-foreground">
+                        dated {r.reference_date}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs font-mono">{r.branch_label}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
@@ -536,7 +558,10 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Balances are what each movement recorded at the time, read oldest to newest —
+          Recorded is when the stock moved, which is not always the date on the
+          document — an order placed one day and entered the next shows both.
+          Business Insights reports by the document's date, so that is the one to
+          compare against. Balances are what each movement recorded at the time, read oldest to newest —
           not worked backwards from today, so they can disagree with the current stock
           ({item?.quantity ?? 0}) and show you where. A row marked{" "}
           <span className="text-amber-700">unexplained</span> found the stock already
