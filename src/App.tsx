@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { BranchProvider } from "@/contexts/BranchContext";
 import { AppLayout } from "@/components/AppLayout";
+import { PrivacyProvider, usePrivacy } from "@/contexts/PrivacyContext";
 import AuthPage from "@/pages/AuthPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
@@ -44,6 +45,10 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function ProtectedRoutes() {
   const { user, role, loading } = useAuth();
+  // Read so that toggling it re-renders the routes below. The pages call
+  // peso() directly rather than subscribing, so this is what makes the change
+  // reach them — without it the header would flip and nothing else would.
+  usePrivacy();
 
   if (loading) {
     return (
@@ -111,10 +116,12 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/auth" element={<AuthRoute />} />
-            <Route path="/*" element={<ProtectedRoutes />} />
-          </Routes>
+          <PrivacyProvider>
+            <Routes>
+              <Route path="/auth" element={<AuthRoute />} />
+              <Route path="/*" element={<ProtectedRoutes />} />
+            </Routes>
+          </PrivacyProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

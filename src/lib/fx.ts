@@ -1,4 +1,5 @@
 import type { CashAccount, CashTransaction } from "@/types/database";
+import { areAmountsHidden } from "@/lib/currency";
 
 export const BASE_CURRENCY = "PHP";
 
@@ -106,5 +107,7 @@ const SYMBOLS: Record<string, string> = { RMB: "¥", CNY: "¥", USD: "$", HKD: "
 
 export function foreignAmount(value: number, currency: string) {
   const symbol = SYMBOLS[currency] || `${currency} `;
+  // Hidden alongside pesos: a yuan balance gives away as much as a peso one.
+  if (areAmountsHidden()) return `${symbol}••••`;
   return `${symbol}${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
