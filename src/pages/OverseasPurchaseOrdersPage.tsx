@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
 import { OverseasPOMobileCard } from "@/components/OverseasPOMobileCard";
+import { addMonths, format } from "date-fns";
 import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
 import type { DocumentData } from "@/lib/pdf";
@@ -676,11 +677,20 @@ export default function OverseasPurchaseOrdersPage() {
   const [shipDialog, setShipDialog] = useState<OverseasPurchaseOrder | null>(null);
   const [shipEta, setShipEta] = useState("");
 
+  /**
+   * A month out, which is roughly how long a container takes — a starting
+   * point to correct, not a claim. addMonths over adding 30 days so the date
+   * lands on the same day of the month, and the 31st of a short month falls
+   * back to its last day rather than overflowing into the next.
+   */
+  const defaultEta = () => format(addMonths(new Date(), 1), "yyyy-MM-dd");
+
   const toggleFlag = (po: OverseasPurchaseOrder, flag: "paid" | "shipped") => {
     const paid = isPaidStatus(po.status);
     const shipped = isShippedStatus(po.status);
     if (flag === "shipped" && !shipped) {
-      setShipEta(po.expected_delivery || "");
+      // A date already on the order is better information than a guess.
+      setShipEta(po.expected_delivery || defaultEta());
       setShipDialog(po);
       return;
     }
@@ -1761,8 +1771,9 @@ export default function OverseasPurchaseOrdersPage() {
               <Label className="text-xs font-medium">Estimated arrival</Label>
               <Input type="date" value={shipEta} onChange={(e) => setShipEta(e.target.value)} className="h-9" />
               <p className="text-[11px] text-muted-foreground">
-                Drives the ETA column and the incoming-stock view. Leave it blank if the
-                supplier has not said yet — it can be set later from the tracking pin.
+                Starts a month out — change it to whatever the supplier says. Drives the
+                ETA column and the incoming-stock view, and can be corrected later from
+                the tracking pin.
               </p>
             </div>
           </div>
