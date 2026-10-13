@@ -39,13 +39,7 @@ import { moveItem } from "@/lib/reorder";
 import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
 import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
 import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
-
-// Reference images live newline-separated in the one payment_reference_url
-// text column. A URL cannot contain a newline, so the split is unambiguous and
-// a row holding a single URL — every invoice settled before this — still reads
-// back as a one-image list.
-const paymentReferenceUrls = (value?: string | null) =>
-  (value || "").split("\n").map((u) => u.trim()).filter(Boolean);
+import { paymentReferenceUrls } from "@/lib/payment-references";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 

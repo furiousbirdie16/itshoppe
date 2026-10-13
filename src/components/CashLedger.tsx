@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
+import { paymentReferenceUrls } from "@/lib/payment-references";
 import {
   getCashAccounts, getCashTransactions, createCashTransaction,
   updateCashTransaction, deleteCashTransaction, createCashTransfer,
@@ -18,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
-import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid, subDays, startOfDay } from "date-fns";
 import { peso } from "@/lib/currency";
@@ -215,6 +218,81 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     isForeign(a) ? (fxByAccount[a.id]?.phpCost || 0) : balanceOf(a, txns);
 
   const hasForeign = managedAccounts.some(isForeign);
+
+  /**
+   * The invoice behind a posted payment: its number, the reference the customer
+   * gave, and any screenshots.
+   *
+   * A row reading "Invoice Payment · Nextline" says nothing about which sale it
+   * settled, and finding out meant leaving the page. One query for the invoices
+   * actually on screen rather than a lookup per row.
+   */
+  const invoiceIds = useMemo(
+    () => Array.from(new Set(txns.map((t) => t.source_invoice_id).filter(Boolean))) as string[],
+    [txns],
+  );
+  const { data: paidInvoices = [] } = useQuery({
+    queryKey: ["ledger-invoices", invoiceIds],
+    queryFn: async () => {
+      if (invoiceIds.length === 0) return [];
+      const out: any[] = [];
+      // Chunked: a long ledger can reference more invoices than one URL holds.
+      for (let i = 0; i < invoiceIds.length; i += 150) {
+        const { data } = await (supabase as any)
+          .from("invoices")
+          .select("id, invoice_number, payment_reference, payment_reference_url")
+          .in("id", invoiceIds.slice(i, i + 150));
+        out.push(...(data || []));
+      }
+      return out;
+    },
+    enabled: invoiceIds.length > 0,
+  });
+  const invoiceById = useMemo(
+    () => new Map(paidInvoices.map((i: any) => [i.id, i])),
+    [paidInvoices],
+  );
+
+  /** Which invoice the details popup is showing, if any. */
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
+
+  /**
+   * The invoice behind a payment row: its number, what the customer quoted as
+   * a reference, and the screenshots they sent. Shared by the table and the
+   * phone card so the two cannot drift apart.
+   */
+  const renderInvoiceLink = (t: CashTransaction) => {
+    if (!t.source_invoice_id) return null;
+    const inv = invoiceById.get(t.source_invoice_id);
+    // Fall back to the number stored on the transaction: an invoice deleted
+    // afterwards leaves the posting behind, and the number is still useful.
+    const number = inv?.invoice_number || t.reference;
+    const shots = paymentReferenceUrls(inv?.payment_reference_url);
+
+    return (
+      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-normal">
+        {number && (
+          <button
+            type="button"
+            onClick={() => setInvoiceDetailId(t.source_invoice_id)}
+            className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
+            title="View invoice"
+          >
+            {number}
+            <ExternalLink className="h-3 w-3" />
+          </button>
+        )}
+        {inv?.payment_reference && (
+          <span className="text-muted-foreground">ref {inv.payment_reference}</span>
+        )}
+        {shots.map((u, i) => (
+          <a key={u} href={u} target="_blank" rel="noreferrer" title="Open the payment screenshot">
+            <img src={u} alt={`Payment reference ${i + 1}`} className="h-7 w-7 rounded border object-cover" />
+          </a>
+        ))}
+      </span>
+    );
+  };
 
   /**
    * A floating Add button, once the toolbar's own has scrolled away.
@@ -920,6 +998,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                   <>
                     {t.category || "—"}
                     {showAccountFilter && t.cash_accounts?.name && <span> · {t.cash_accounts.name}</span>}
+                    {renderInvoiceLink(t)}
                   </>
                 )
               }
@@ -986,6 +1065,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                   {!!t.transfer_group_id && !!(t.notes || "").trim() && (
                     <span className="block text-[11px] font-normal text-muted-foreground">{(t.notes || "").trim()}</span>
                   )}
+                  {renderInvoiceLink(t)}
                 </TableCell>
                 <TableCell className="text-sm text-right text-emerald-600">{t.direction === "in" ? amountLabel(t) : "—"}</TableCell>
                 <TableCell className="text-sm text-right text-destructive/80">{t.direction === "out" ? amountLabel(t) : "—"}</TableCell>
@@ -1030,6 +1110,12 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
       {/* Sits clear of the iOS home indicator, and above the sticky selection
           bars other pages use. */}
+      <InvoiceDetailsDialog
+        invoiceId={invoiceDetailId}
+        open={!!invoiceDetailId}
+        onOpenChange={(o) => { if (!o) setInvoiceDetailId(null); }}
+      />
+
       {toolbarHidden && (
         <Button
           onClick={openCreate}
