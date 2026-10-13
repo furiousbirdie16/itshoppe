@@ -67,18 +67,21 @@ export function replayFx(transactions: CashTransaction[]): FxStep[] {
       phpCost -= phpAmount;
     }
 
-    if (quantity <= 0) {
-      // Drained exactly: keep the rate for reference. Overdrawn: the series is
-      // broken, so reset rather than carry a nonsense average.
-      const overdrawn = quantity < 0;
-      quantity = 0;
-      phpCost = 0;
-      if (overdrawn) averageRate = 0;
-    } else {
+    if (quantity > 0) {
       // Full precision is kept internally so rounding cannot accumulate across
       // hundreds of movements; averageRate is the 2-decimal figure to display.
       averageRate = round2(phpCost / quantity);
     }
+    // Drained, or overdrawn, keeps the last rate: there is no holding to
+    // average, and the rate last paid is the only sensible figure to value the
+    // next movement at.
+    //
+    // Deliberately not reset to zero. Overdrawing used to wipe the quantity and
+    // the cost, so a later top-up started from nothing — ¥10,000 paid into an
+    // account standing at −¥758.08 read as ¥10,000 held rather than ¥9,241.92,
+    // inventing currency the shop did not have. Going negative is what happens
+    // when a deposit is entered after the spends it covered, which is ordinary;
+    // the arithmetic rights itself once the money is in.
 
     steps.push({ transaction, phpAmount, quantity, phpCost, averageRate });
   }
