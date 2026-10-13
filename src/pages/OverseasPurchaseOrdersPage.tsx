@@ -10,12 +10,12 @@ import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown, MapPin } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
 
 import ExportButton from "@/components/ExportButton";
@@ -640,8 +640,11 @@ export default function OverseasPurchaseOrdersPage() {
     paid && shipped ? "shipped" : paid ? "paid_not_shipped" : shipped ? "shipped_not_paid" : "unpaid";
 
   const statusMut = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) =>
-      updateOverseasPurchaseOrder(id, { status } as any),
+    mutationFn: async ({ id, status, expectedDelivery }: { id: string; status: string; expectedDelivery?: string | null }) =>
+      updateOverseasPurchaseOrder(id, {
+        status,
+        ...(expectedDelivery !== undefined ? { expected_delivery: expectedDelivery } : {}),
+      } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -654,11 +657,36 @@ export default function OverseasPurchaseOrdersPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  /**
+   * Marking an order shipped is the moment the supplier says when it lands, so
+   * it is the moment to ask. Unmarking asks nothing — there is no date to give
+   * for something that has not left.
+   */
+  const [shipDialog, setShipDialog] = useState<OverseasPurchaseOrder | null>(null);
+  const [shipEta, setShipEta] = useState("");
+
   const toggleFlag = (po: OverseasPurchaseOrder, flag: "paid" | "shipped") => {
     const paid = isPaidStatus(po.status);
     const shipped = isShippedStatus(po.status);
+    if (flag === "shipped" && !shipped) {
+      setShipEta(po.expected_delivery || "");
+      setShipDialog(po);
+      return;
+    }
     const next = flag === "paid" ? statusFromFlags(!paid, shipped) : statusFromFlags(paid, !shipped);
     statusMut.mutate({ id: po.id, status: next });
+  };
+
+  const confirmShip = () => {
+    if (!shipDialog) return;
+    statusMut.mutate({
+      id: shipDialog.id,
+      status: statusFromFlags(isPaidStatus(shipDialog.status), true),
+      // Left alone when the box is empty, so clearing it is not a side effect
+      // of marking something shipped.
+      expectedDelivery: shipEta || null,
+    });
+    setShipDialog(null);
   };
 
 
@@ -1011,7 +1039,10 @@ export default function OverseasPurchaseOrdersPage() {
                       className="h-7 w-7 rounded-md"
                       title={shipmentByPo.get(po.id) ? "Edit tracking" : "Add tracking"}
                     >
-                      <Truck className={`h-3.5 w-3.5 ${shipmentByPo.get(po.id) ? "text-primary" : "text-muted-foreground"}`} />
+                      {/* A pin, not another truck: the truck beside it marks
+                          the order shipped, and two of them read as one
+                          button repeated. */}
+                      <MapPin className={`h-3.5 w-3.5 ${shipmentByPo.get(po.id) ? "text-primary" : "text-muted-foreground"}`} />
                     </Button>
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
@@ -1672,6 +1703,31 @@ export default function OverseasPurchaseOrdersPage() {
             </div>
 
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Marking an order shipped, and the date it is expected to land. */}
+      <Dialog open={!!shipDialog} onOpenChange={(o) => { if (!o) setShipDialog(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Mark {shipDialog?.po_number} as shipped</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Estimated arrival</Label>
+              <Input type="date" value={shipEta} onChange={(e) => setShipEta(e.target.value)} className="h-9" />
+              <p className="text-[11px] text-muted-foreground">
+                Drives the ETA column and the incoming-stock view. Leave it blank if the
+                supplier has not said yet — it can be set later from the tracking pin.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShipDialog(null)}>Cancel</Button>
+            <Button onClick={confirmShip} disabled={statusMut.isPending}>
+              {statusMut.isPending ? "Saving..." : "Mark Shipped"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
