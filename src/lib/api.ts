@@ -7,6 +7,7 @@ import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
 import { isForeign, fxPosition } from "@/lib/fx";
 import { fetchAllRows } from "@/lib/paginate";
+import { pickLastOverseasCosts, type LastCost } from "@/lib/last-overseas-cost";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1551,6 +1552,33 @@ const generateNextNumber = async (seqId: string): Promise<string> => {
 export const generatePONumber = () => generateNextNumber("purchase_order");
 export const generateQuotationNumber = () => generateNextNumber("quotation");
 export const generateInvoiceNumber = () => generateNextNumber("invoice");
+/**
+ * What each item was last ordered at from overseas, per currency.
+ *
+ * The rules for which order counts as last live in lib/last-overseas-cost,
+ * where they can be checked without a database.
+ */
+export const getLastOverseasCosts = async (): Promise<Record<string, LastCost>> => {
+  const rows = await fetchAllRows<any>(() =>
+    from("overseas_purchase_order_items")
+      .select("item_id, unit_cost, overseas_purchase_orders!inner(order_date, currency, po_number)")
+      .not("item_id", "is", null)
+      .order("id"),
+  );
+
+  return pickLastOverseasCosts(
+    rows.map((r: any) => ({
+      item_id: r.item_id,
+      unit_cost: r.unit_cost,
+      order_date: r.overseas_purchase_orders?.order_date ?? null,
+      currency: r.overseas_purchase_orders?.currency ?? null,
+      po_number: r.overseas_purchase_orders?.po_number ?? null,
+    })),
+  );
+};
+
+export { lastOverseasCostKey } from "@/lib/last-overseas-cost";
+
 export const generateOverseasPONumber = () => generateNextNumber("overseas_purchase_order");
 export const generateShopeeOrderNumber = () => generateNextNumber("shopee_order");
 export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order");

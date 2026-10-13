@@ -4,6 +4,7 @@ import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
   createShipment, updateShipment, deleteShipment, getCashAccounts, getCashTransactions,
+  getLastOverseasCosts, lastOverseasCostKey,
   getOverseasPoPayments, createOverseasPoPayment, deleteOverseasPoPayment,
 } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
@@ -148,7 +149,8 @@ export default function OverseasPurchaseOrdersPage() {
 
   const bulkDeleteMut = useMutation({
     mutationFn: async () => { for (const id of selectedIds) await deleteOverseasPurchaseOrder(id); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} POs`); },
   });
 
   // View dialog
@@ -355,6 +357,12 @@ export default function OverseasPurchaseOrdersPage() {
   // to spend; the currency match is listed first because an RMB order is
   // normally paid in RMB.
   const { data: allCashAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
+
+  // What each item was last ordered at, so a reorder fills in its own price.
+  const { data: lastCosts = {} } = useQuery({
+    queryKey: ["last-overseas-costs"],
+    queryFn: getLastOverseasCosts,
+  });
   const payFromAccounts = useMemo(() => {
     const usable = allCashAccounts.filter((a) => a.is_active && a.account_type !== "owner");
     return [
@@ -585,6 +593,7 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] });
       setOpen(false);
       toast.success("Overseas PO created");
     },
@@ -620,6 +629,7 @@ export default function OverseasPurchaseOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", editing?.id] });
       setOpen(false);
       setEditing(null);
@@ -630,7 +640,8 @@ export default function OverseasPurchaseOrdersPage() {
 
   const deleteMut = useMutation({
     mutationFn: deleteOverseasPurchaseOrder,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] }); toast.success("Deleted"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["overseas_pos"] }); queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] }); toast.success("Deleted"); },
   });
 
   // ---- Shipped / Paid quick toggles ----
@@ -715,6 +726,7 @@ export default function OverseasPurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setReceiveOpen(null);
@@ -742,6 +754,7 @@ export default function OverseasPurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", receiveOpen] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setUndoQtys({});
@@ -1196,6 +1209,7 @@ export default function OverseasPurchaseOrdersPage() {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
           queryClient.invalidateQueries({ queryKey: ["overseas_po_items_all"] });
+      queryClient.invalidateQueries({ queryKey: ["last-overseas-costs"] });
         }}
       />
 
@@ -1339,8 +1353,16 @@ export default function OverseasPurchaseOrdersPage() {
                            items={inventoryItems}
                            value={line.item_id}
                             onChange={(itemId, item) => {
+                              // What it cost last time, in this order's own
+                              // currency, before the standing figure on the
+                              // item — the price actually paid beats the price
+                              // someone last maintained.
+                              const last = lastCosts[lastOverseasCostKey(itemId, currency)]?.unitCost;
                               const rmb = Number((item as any)?.cost_price_rmb || 0);
-                              const autoCost = currency === "RMB" && rmb > 0 ? rmb : undefined;
+                              const autoCost =
+                                last && last > 0 ? last
+                                : currency === "RMB" && rmb > 0 ? rmb
+                                : undefined;
                               setLines(lines.map((l, i) => i === idx ? { ...l, item_id: itemId, item_name: item.name, ...(autoCost !== undefined && (!l.unit_cost || Number(l.unit_cost) === 0) ? { unit_cost: autoCost } : {}) } : l));
                             }}
                            placeholder="Search SKU or name..."
@@ -1367,6 +1389,28 @@ export default function OverseasPurchaseOrdersPage() {
                      {!line.item_id && (
                        <Input value={line.item_name} onChange={e => updateLine(idx, "item_name", e.target.value)} className="h-7 text-xs" placeholder="Or type item name manually" />
                      )}
+                     {/* Where an auto-filled price came from, so it reads as a
+                         suggestion to check rather than a number that appeared. */}
+                     {(() => {
+                       const last = line.item_id ? lastCosts[lastOverseasCostKey(line.item_id, currency)] : null;
+                       if (!last) return null;
+                       const matches = Math.abs(Number(line.unit_cost || 0) - last.unitCost) < 0.005;
+                       return (
+                         <p className="text-[11px] text-muted-foreground">
+                           Last ordered at {currencySymbol}{last.unitCost.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                           {" "}on {last.poNumber} ({last.orderDate})
+                           {!matches && (
+                             <button
+                               type="button"
+                               onClick={() => updateLine(idx, "unit_cost", last.unitCost)}
+                               className="ml-1.5 font-medium text-primary underline hover:no-underline"
+                             >
+                               use it
+                             </button>
+                           )}
+                         </p>
+                       );
+                     })()}
                      {/* What this line comes to, so the arithmetic is visible
                          rather than only in the total below. */}
                      {Number(line.quantity) > 0 && Number(line.unit_cost) > 0 && (
