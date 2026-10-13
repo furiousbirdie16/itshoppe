@@ -114,5 +114,22 @@ describe("walkBalances — closing total", () => {
 
   it("knows nothing from no movements", () => {
     expect(walkBalances([]).closing).toBeNull();
+    expect(walkBalances([]).closingByBranch).toEqual([]);
+  });
+
+  // The confusion this exists to prevent: Manila's ledger closes at 31 while
+  // the stock figure spans both branches and says 35. Both are right, and
+  // seeing the split is what makes that obvious.
+  it("splits the closing figure by branch", () => {
+    const { closingByBranch, closing } = walkBalances([
+      move({ branch_id: "mnl", location: "warehouse", balance_before: 0, balance_after: 30, signed: 30 }),
+      move({ branch_id: "mnl", location: "store", balance_before: 5, balance_after: 1, signed: -4 }),
+      move({ branch_id: "ges", location: "store", balance_before: 0, balance_after: 4, signed: 4 }),
+    ]);
+    expect(closingByBranch).toEqual([
+      { branchId: "mnl", total: 31 },
+      { branchId: "ges", total: 4 },
+    ]);
+    expect(closing).toBe(35);
   });
 });

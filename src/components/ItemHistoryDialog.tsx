@@ -143,6 +143,8 @@ interface Ledger {
   rows: LedgerRow[];
   /** What the movements add up to at the end, for comparing against the stock. */
   closing: number | null;
+  /** The same, split by branch, with the branch's code for showing. */
+  closingByBranch: { branch: string; total: number }[];
 }
 
 async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<Ledger> {
@@ -289,7 +291,13 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
   });
 
   const result = forward.reverse();
-  return { rows: result, closing: walk.closing }; // newest first
+  return {
+    rows: result,
+    closing: walk.closing,
+    closingByBranch: walk.closingByBranch
+      .map((c) => ({ branch: branchMap.get(c.branchId) || "—", total: c.total }))
+      .sort((a, b) => a.branch.localeCompare(b.branch)),
+  }; // newest first
 }
 
 
@@ -328,6 +336,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   });
   const ledger = ledgerData?.rows ?? [];
   const closingBalance = ledgerData?.closing ?? null;
+  const closingByBranch = ledgerData?.closingByBranch ?? [];
 
 
   const filtered = useMemo(() => ledger.filter((r) => {
@@ -432,6 +441,26 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                 )}
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* Where the stock sits, when it sits in more than one place. The
+            ledger's rows are per branch and the stock figure spans all of
+            them, so a branch's closing total and the stock on hand disagree
+            while both are right — which reads as a fault unless the split is
+            shown. */}
+        {closingByBranch.length > 1 && (
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+            <span className="text-muted-foreground">The movements close at </span>
+            {closingByBranch.map((c, i) => (
+              <span key={c.branch}>
+                {i > 0 && <span className="text-muted-foreground"> · </span>}
+                <span className="font-medium">{c.branch} {c.total}</span>
+              </span>
+            ))}
+            <span className="text-muted-foreground">
+              {" "}— {closingBalance} across all branches, against {stats?.current ?? 0} in stock.
+            </span>
           </div>
         )}
 

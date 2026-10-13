@@ -45,6 +45,15 @@ export interface WalkResult {
   /** One entry per input row, in order. */
   rows: WalkedBalances[];
   /**
+   * What the movements add up to at the end, per branch.
+   *
+   * Reading a branch's closing figure against a total that spans all of them
+   * is the easiest mistake to make with this table — the numbers disagree and
+   * both are right. Keyed by branch so the split can be shown rather than
+   * reasoned about.
+   */
+  closingByBranch: { branchId: string; total: number }[];
+  /**
    * What the movements add up to at the end, across every branch.
    *
    * Compared against the stock on hand, this catches the one gap the per-row
@@ -111,10 +120,13 @@ export function walkBalances(movements: MovementSnapshot[]): WalkResult {
   }
 
   let closing: number | null = null;
-  for (const state of byBranch.values()) {
+  const closingByBranch: { branchId: string; total: number }[] = [];
+  for (const [branchId, state] of byBranch.entries()) {
     if (state.warehouse == null && state.store == null) continue;
-    closing = (closing ?? 0) + (state.warehouse ?? 0) + (state.store ?? 0);
+    const total = (state.warehouse ?? 0) + (state.store ?? 0);
+    closing = (closing ?? 0) + total;
+    closingByBranch.push({ branchId, total });
   }
 
-  return { rows: out, closing };
+  return { rows: out, closing, closingByBranch };
 }
