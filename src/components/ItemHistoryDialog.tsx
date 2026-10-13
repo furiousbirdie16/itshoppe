@@ -369,8 +369,15 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
       unexplainedNet: unexplained.reduce((s, r) => s + r.discrepancy, 0),
       // The movements end here; the stock says something else. Nothing follows
       // the last movement, so the per-row check could never see this one.
+      //
+      // Only claimed for one branch at a time. Across all of them the closing
+      // figure covers only branches that have movements, while the stock on
+      // hand counts every branch — so a branch holding stock it never moved
+      // would be reported as a discrepancy it is not.
       closingGap:
-        closingBalance == null ? 0 : Number(item?.quantity ?? 0) - closingBalance,
+        closingBalance == null || !activeBranchId
+          ? 0
+          : Number(item?.quantity ?? 0) - closingBalance,
       closingBalance,
     };
   }, [ledger, item]);
