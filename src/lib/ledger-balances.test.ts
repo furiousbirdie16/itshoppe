@@ -25,7 +25,7 @@ describe("walkBalances", () => {
         dest_balance_before: 1, dest_balance_after: 21,
         signed: -20,
       }),
-    ]);
+    ]).rows;
 
     expect(receipt.wh_after).toBe(56);
     expect(transfer.wh_before).toBe(56);
@@ -40,7 +40,7 @@ describe("walkBalances", () => {
       move({ location: "store", balance_before: 20, balance_after: 10, signed: -10 }),
       // The next sale found 7 on the shelf, not the 10 the last one left.
       move({ location: "store", balance_before: 7, balance_after: 2, signed: -5 }),
-    ]);
+    ]).rows;
     expect(second.discrepancy).toBe(-3);
   });
 
@@ -48,7 +48,7 @@ describe("walkBalances", () => {
     const [, second] = walkBalances([
       move({ location: "store", balance_before: 5, balance_after: 5, signed: 0 }),
       move({ location: "store", balance_before: 9, balance_after: 8, signed: -1 }),
-    ]);
+    ]).rows;
     expect(second.discrepancy).toBe(4);
   });
 
@@ -57,7 +57,7 @@ describe("walkBalances", () => {
   it("claims no gap at a location it has not seen before", () => {
     const [first] = walkBalances([
       move({ location: "store", balance_before: 40, balance_after: 39, signed: -1 }),
-    ]);
+    ]).rows;
     expect(first.discrepancy).toBe(0);
     expect(first.st_before).toBe(40);
     expect(first.st_after).toBe(39);
@@ -70,7 +70,7 @@ describe("walkBalances", () => {
       move({ branch_id: "mnl", location: "store", balance_before: 10, balance_after: 8, signed: -2 }),
       move({ branch_id: "ceb", location: "store", balance_before: 50, balance_after: 49, signed: -1 }),
       move({ branch_id: "mnl", location: "store", balance_before: 8, balance_after: 7, signed: -1 }),
-    ]);
+    ]).rows;
     expect(rows[1].discrepancy).toBe(0);
     expect(rows[2].discrepancy).toBe(0);
     expect(rows[2].st_after).toBe(7);
@@ -80,8 +80,39 @@ describe("walkBalances", () => {
     const [, second] = walkBalances([
       move({ location: "store", balance_before: 10, balance_after: 10, signed: 0 }),
       move({ location: "store", signed: -4 }),
-    ]);
+    ]).rows;
     expect(second.st_after).toBe(6);
     expect(second.discrepancy).toBe(0);
+  });
+});
+
+describe("walkBalances — closing total", () => {
+  // The gap the per-row check cannot see: nothing follows the last movement,
+  // so a change made after it has nothing to disagree with. Comparing the
+  // closing figure against the stock on hand is what catches it.
+  it("reports what the movements add up to at the end", () => {
+    const { closing } = walkBalances([
+      move({ location: "warehouse", balance_before: 0, balance_after: 30, signed: 30 }),
+      move({
+        location: "warehouse", dest_location: "store",
+        balance_before: 30, balance_after: 30,
+        dest_balance_before: 0, dest_balance_after: 5,
+        signed: 0,
+      }),
+      move({ location: "store", balance_before: 5, balance_after: 1, signed: -4 }),
+    ]);
+    expect(closing).toBe(31);
+  });
+
+  it("adds the branches up", () => {
+    const { closing } = walkBalances([
+      move({ branch_id: "mnl", location: "store", balance_before: 10, balance_after: 8, signed: -2 }),
+      move({ branch_id: "ceb", location: "store", balance_before: 4, balance_after: 3, signed: -1 }),
+    ]);
+    expect(closing).toBe(11);
+  });
+
+  it("knows nothing from no movements", () => {
+    expect(walkBalances([]).closing).toBeNull();
   });
 });

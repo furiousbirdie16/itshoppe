@@ -41,8 +41,23 @@ export interface WalkedBalances {
 const asLocation = (v: string | null): StockLocation | null =>
   v === "warehouse" || v === "store" ? v : null;
 
-/** Walks movements oldest-first. Returns one entry per input row, in order. */
-export function walkBalances(movements: MovementSnapshot[]): WalkedBalances[] {
+export interface WalkResult {
+  /** One entry per input row, in order. */
+  rows: WalkedBalances[];
+  /**
+   * What the movements add up to at the end, across every branch.
+   *
+   * Compared against the stock on hand, this catches the one gap the per-row
+   * check cannot: a change made after the last recorded movement has nothing
+   * following it to disagree with, so it was invisible.
+   *
+   * Null when nothing is known — no movements, or none that stated a balance.
+   */
+  closing: number | null;
+}
+
+/** Walks movements oldest-first. */
+export function walkBalances(movements: MovementSnapshot[]): WalkResult {
   type LocState = { warehouse: number | null; store: number | null };
   const byBranch = new Map<string, LocState>();
   const out: WalkedBalances[] = [];
@@ -95,5 +110,11 @@ export function walkBalances(movements: MovementSnapshot[]): WalkedBalances[] {
     });
   }
 
-  return out;
+  let closing: number | null = null;
+  for (const state of byBranch.values()) {
+    if (state.warehouse == null && state.store == null) continue;
+    closing = (closing ?? 0) + (state.warehouse ?? 0) + (state.store ?? 0);
+  }
+
+  return { rows: out, closing };
 }

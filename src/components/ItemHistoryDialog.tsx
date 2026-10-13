@@ -139,7 +139,13 @@ function classify(type: string, reference_type: string | null): { category: Move
   return { category: "correction", label: type, direction: "neutral" };
 }
 
-async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<LedgerRow[]> {
+interface Ledger {
+  rows: LedgerRow[];
+  /** What the movements add up to at the end, for comparing against the stock. */
+  closing: number | null;
+}
+
+async function fetchLedger(itemId: string, currentQty: number, branchId: string | null): Promise<Ledger> {
   // Paginate: Supabase caps rows per request (1000), which previously truncated
   // the ledger to the oldest 1000 movements.
   const PAGE = 1000;
@@ -234,7 +240,7 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
   // Each row states what the balance was before it. Where that disagrees with
   // what the previous movement left, stock changed with nothing recording it —
   // which is exactly what a count that does not match is made of.
-  const walked = walkBalances(enriched.map((e) => {
+  const walk = walkBalances(enriched.map((e) => {
     const m: any = e.m;
     return {
       branch_id: m.branch_id || null,
@@ -247,6 +253,7 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
       signed: e.signed,
     };
   }));
+  const walked = walk.rows;
 
   const forward: LedgerRow[] = enriched.map((e, i) => {
     const m: any = e.m;
@@ -282,7 +289,7 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
   });
 
   const result = forward.reverse();
-  return result; // newest first
+  return { rows: result, closing: walk.closing }; // newest first
 }
 
 
@@ -314,11 +321,13 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
   const [onlineSaleDetailId, setOnlineSaleDetailId] = useState<string | null>(null);
   const { activeBranchId, activeBranch, canPickAll } = useBranch();
 
-  const { data: ledger = [], isLoading } = useQuery({
+  const { data: ledgerData, isLoading } = useQuery({
     queryKey: ["item-ledger", item?.id, item?.quantity, activeBranchId],
     queryFn: () => fetchLedger(item!.id, Number(item!.quantity || 0), activeBranchId),
     enabled: !!item && open,
   });
+  const ledger = ledgerData?.rows ?? [];
+  const closingBalance = ledgerData?.closing ?? null;
 
 
   const filtered = useMemo(() => ledger.filter((r) => {
@@ -358,6 +367,11 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
       count: ledger.length,
       unexplainedCount: unexplained.length,
       unexplainedNet: unexplained.reduce((s, r) => s + r.discrepancy, 0),
+      // The movements end here; the stock says something else. Nothing follows
+      // the last movement, so the per-row check could never see this one.
+      closingGap:
+        closingBalance == null ? 0 : Number(item?.quantity ?? 0) - closingBalance,
+      closingBalance,
     };
   }, [ledger, item]);
 
@@ -381,11 +395,20 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Current Stock</div><div className="text-lg font-semibold">{stats.current}</div></CardContent></Card>
             {/* Stock that changed with nothing recording it. This is what a
                 physical count disagreeing with the system is made of. */}
-            <Card className={stats.unexplainedCount > 0 ? "border-amber-300 bg-amber-50/60" : undefined}>
+            <Card className={stats.unexplainedCount > 0 || stats.closingGap !== 0 ? "border-amber-300 bg-amber-50/60" : undefined}>
               <CardContent className="p-3">
                 <div className="text-[10px] uppercase text-muted-foreground">Unexplained</div>
-                {stats.unexplainedCount === 0 ? (
+                {stats.unexplainedCount === 0 && stats.closingGap === 0 ? (
                   <div className="text-lg font-semibold text-emerald-600">None</div>
+                ) : stats.unexplainedCount === 0 ? (
+                  <div>
+                    <div className="text-lg font-semibold text-amber-700">
+                      {stats.closingGap > 0 ? "+" : ""}{stats.closingGap}
+                    </div>
+                    <div className="text-[10px] text-amber-700/80">
+                      after the last movement — it ends at {stats.closingBalance}
+                    </div>
+                  </div>
                 ) : (
                   <button
                     type="button"
