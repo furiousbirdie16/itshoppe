@@ -111,6 +111,19 @@ function TrackingStatusBadge({ status }: { status: ShipmentTracking["status"] })
   );
 }
 
+/**
+ * Whether a PO's status says it has been paid in full.
+ *
+ * At module scope because the money helpers above the component body need it,
+ * and reading a const declared further down is a temporal dead zone that
+ * blanks this page — a trap this file has fallen into twice.
+ */
+const isPaidStatus = (s: string) =>
+  ["paid_not_shipped", "shipped", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
+
+const isShippedStatus = (s: string) =>
+  ["shipped", "shipped_not_paid", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
+
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
@@ -187,9 +200,17 @@ export default function OverseasPurchaseOrdersPage() {
    * subtracts — so the list and the card agree.
    */
   const phpBalance = (po: OverseasPurchaseOrder) => {
+    // Settled is settled, however the last of it was paid. Marking a PO paid
+    // outright records no deposit, so a balance worked out from deposits alone
+    // went on claiming the difference was still owed.
+    if (isPaidStatus(po.status)) return 0;
     const paidPhp = (paymentsByPo.get(po.id) || []).reduce((sum, pmt) => sum + Number(pmt.php_amount || 0), 0);
     return Math.max(Number(po.total_amount) * Number(po.exchange_rate || 1) - paidPhp, 0);
   };
+
+  /** The same, in the order's own currency, for the detail panel. */
+  const foreignBalance = (po: OverseasPurchaseOrder) =>
+    isPaidStatus(po.status) ? 0 : Math.max(Number(po.total_amount) - paidSoFar(po.id), 0);
   const invalidatePayments = () => {
     queryClient.invalidateQueries({ queryKey: ["overseas_po_payments"] });
     queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
@@ -646,8 +667,6 @@ export default function OverseasPurchaseOrdersPage() {
   });
 
   // ---- Shipped / Paid quick toggles ----
-  const isPaidStatus = (s: string) => ["paid_not_shipped", "shipped", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
-  const isShippedStatus = (s: string) => ["shipped", "shipped_not_paid", "partially_received", "pending_cargo_adjustment", "cargo_adjusted", "received"].includes(s);
   const statusFromFlags = (paid: boolean, shipped: boolean) =>
     paid && shipped ? "shipped" : paid ? "paid_not_shipped" : shipped ? "shipped_not_paid" : "unpaid";
 
@@ -1681,7 +1700,11 @@ export default function OverseasPurchaseOrdersPage() {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span>Balance</span>
-                        <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{Math.max(viewPO.total_amount - paidSoFar(viewPO.id), 0).toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                        {isPaidStatus(viewPO.status) ? (
+                          <span className="font-medium text-success">Paid in full</span>
+                        ) : (
+                          <span className="font-medium">{viewPO.currency === "USD" ? "$" : "¥"}{foreignBalance(viewPO).toLocaleString("en", { minimumFractionDigits: 2 })}</span>
+                        )}
                       </div>
                     </>
                   )}
@@ -1970,7 +1993,7 @@ export default function OverseasPurchaseOrdersPage() {
                   selected={selectedIds.has(po.id)}
                   onToggleSelect={() => toggleOne(po.id)}
                   actions={renderOverseasPOActions(po)}
-                  balanceLeft={paidSoFar(po.id) > 0 ? phpBalance(po) : null}
+                  balanceLeft={paidSoFar(po.id) > 0 && !isPaidStatus(po.status) ? phpBalance(po) : null}
                   itemsSummary={
                     totalItems === 0 ? "—" : (
                       <>
@@ -2067,7 +2090,7 @@ export default function OverseasPurchaseOrdersPage() {
                 {isAdmin && (
                   <TableCell className="text-sm text-right font-mono text-primary">
                     {peso(po.total_amount * po.exchange_rate)}
-                    {paidSoFar(po.id) > 0 && (
+                    {paidSoFar(po.id) > 0 && !isPaidStatus(po.status) && (
                       <div className="text-[11px] text-muted-foreground font-sans">{peso(phpBalance(po))} left</div>
                     )}
                   </TableCell>
