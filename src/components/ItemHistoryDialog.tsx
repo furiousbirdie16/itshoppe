@@ -334,6 +334,24 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     queryFn: () => fetchLedger(item!.id, Number(item!.quantity || 0), activeBranchId),
     enabled: !!item && open,
   });
+  /**
+   * Does this item get cut at all? Only a cut variation ("per metre off a
+   * roll") can leave an open remainder.
+   */
+  const { data: cutVariations } = useQuery({
+    queryKey: ["item-cut-variations", item?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("item_variations")
+        .select("id")
+        .eq("item_id", item!.id)
+        .eq("type", "cut")
+        .limit(1);
+      return (data || []).length > 0;
+    },
+    enabled: !!item && open,
+  });
+
   const ledger = ledgerData?.rows ?? [];
   const closingBalance = ledgerData?.closing ?? null;
   const closingByBranch = ledgerData?.closingByBranch ?? [];
@@ -360,14 +378,14 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
    * be an empty column on every row.
    *
    * Movements record open_before/open_after as 0 rather than null for items
-   * that are not cut at all, so the presence of the field says nothing. What
-   * says it is the item itself carrying more than one base unit per stock unit
-   * (305 m to a roll), or a movement that actually moved a remainder.
+   * that are not cut at all, so the presence of the field says nothing, and
+   * neither does units_per_stock — a box of 10 pcs carries that too. What says
+   * it is the item having a cut variation, or a movement that actually moved a
+   * remainder.
    */
-  const isCutItem = Number(item?.units_per_stock ?? 1) > 1;
   const hasOpenRoll = useMemo(
-    () => isCutItem || ledger.some((r) => (r.open_before ?? 0) !== 0 || (r.open_after ?? 0) !== 0),
-    [isCutItem, ledger],
+    () => cutVariations === true || ledger.some((r) => (r.open_before ?? 0) !== 0 || (r.open_after ?? 0) !== 0),
+    [cutVariations, ledger],
   );
 
   const stats = useMemo(() => {
