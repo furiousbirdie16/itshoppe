@@ -358,10 +358,16 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
    *
    * Only then is the open remainder worth a column — on a plain item it would
    * be an empty column on every row.
+   *
+   * Movements record open_before/open_after as 0 rather than null for items
+   * that are not cut at all, so the presence of the field says nothing. What
+   * says it is the item itself carrying more than one base unit per stock unit
+   * (305 m to a roll), or a movement that actually moved a remainder.
    */
+  const isCutItem = Number(item?.units_per_stock ?? 1) > 1;
   const hasOpenRoll = useMemo(
-    () => ledger.some((r) => r.open_before != null || r.open_after != null),
-    [ledger],
+    () => isCutItem || ledger.some((r) => (r.open_before ?? 0) !== 0 || (r.open_after ?? 0) !== 0),
+    [isCutItem, ledger],
   );
 
   const stats = useMemo(() => {
