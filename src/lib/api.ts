@@ -1949,6 +1949,106 @@ export const deleteOverseasPOItems = async (poId: string) => {
   if (error) throw error;
 };
 
+/**
+ * Re-point a PO's status at what its lines actually say about receipt.
+ *
+ * Only `receiveOverseasPO` used to do this, so editing a PO — dropping the one
+ * line the supplier forgot to pack, say — left it stuck on "partially
+ * received" with nothing left to receive, and the Receive button offered to
+ * take the whole order into stock a second time.
+ *
+ * Deliberately narrow: it moves a PO that is already in a receiving state and
+ * leaves anything earlier (unpaid, shipped, …) alone.
+ */
+export const syncOverseasPOReceiptStatus = async (poId: string) => {
+  const { data: poRow } = await from("overseas_purchase_orders").select("status").eq("id", poId).single();
+  const prevStatus = (poRow as any)?.status;
+  if (prevStatus !== "partially_received" && prevStatus !== "received") return;
+
+  const { data: lines } = await from("overseas_purchase_order_items")
+    .select("quantity, received_quantity")
+    .eq("po_id", poId);
+  const list = (lines as any[]) || [];
+  if (list.length === 0) return;
+
+  const allReceived = list.every((l) => Number(l.received_quantity || 0) >= Number(l.quantity || 0));
+  const someReceived = list.some((l) => Number(l.received_quantity || 0) > 0);
+  const newStatus = allReceived ? "received" : someReceived ? "partially_received" : "shipped";
+  if (newStatus === prevStatus) return;
+
+  await from("overseas_purchase_orders")
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq("id", poId);
+
+  if (allReceived) {
+    await from("shipment_tracking")
+      .update({ status: "delivered", updated_at: new Date().toISOString() })
+      .eq("po_id", poId);
+  }
+
+  await logActivity("synced_overseas_po_receipt_status", "overseas_purchase_order", poId, { from: prevStatus, to: newStatus });
+};
+
+export interface OverseasPOLineInput {
+  /** The existing row, when this line is one the PO already had. */
+  id?: string;
+  item_name: string;
+  description: string;
+  quantity: number;
+  unit_cost: number;
+  item_id: string | null;
+}
+
+/**
+ * Save an edited PO's lines without losing what has already been received.
+ *
+ * This used to delete every line and insert the lot again, which threw away
+ * received_quantity and received_date: a fully received order came back as
+ * 0 of 11 items received and could be received all over again, doubling the
+ * stock. Existing lines are now updated in place and only the ones the user
+ * actually removed are deleted.
+ */
+export const saveOverseasPOLines = async (poId: string, lines: OverseasPOLineInput[]) => {
+  const { data: existingRows } = await from("overseas_purchase_order_items")
+    .select("id, received_quantity")
+    .eq("po_id", poId);
+  const existing = new Map<string, number>(
+    ((existingRows as any[]) || []).map((r) => [String(r.id), Number(r.received_quantity || 0)]),
+  );
+
+  const keptIds = new Set(lines.map((l) => l.id).filter(Boolean) as string[]);
+  const removed = [...existing.keys()].filter((id) => !keptIds.has(id));
+  if (removed.length > 0) {
+    const { error } = await from("overseas_purchase_order_items").delete().in("id", removed);
+    if (error) throw error;
+  }
+
+  for (const line of lines) {
+    const payload = {
+      po_id: poId,
+      item_name: line.item_name,
+      description: line.description,
+      quantity: line.quantity,
+      unit_cost: line.unit_cost,
+      item_id: line.item_id || null,
+    };
+    if (line.id && existing.has(line.id)) {
+      // Cutting the ordered quantity below what arrived would otherwise leave
+      // the line looking over-received for ever.
+      const received = Math.min(existing.get(line.id) || 0, line.quantity);
+      const { error } = await from("overseas_purchase_order_items")
+        .update({ ...payload, received_quantity: received })
+        .eq("id", line.id);
+      if (error) throw error;
+    } else {
+      const { error } = await from("overseas_purchase_order_items").insert(payload);
+      if (error) throw error;
+    }
+  }
+
+  await syncOverseasPOReceiptStatus(poId);
+};
+
 // Receive an Overseas PO partially: only the line items + quantities specified are added to stock.
 // itemsToReceive: list of { poItemId, itemId (nullable for custom), quantity }
 // Custom (non-inventory) lines can also be marked received but won't touch stock.

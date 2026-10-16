@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
-  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, deleteOverseasPOItems, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
+  getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, saveOverseasPOLines, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
   createShipment, updateShipment, deleteShipment, getCashAccounts, getCashTransactions,
   getLastOverseasCosts, lastOverseasCostKey,
   getOverseasPoPayments, createOverseasPoPayment, deleteOverseasPoPayment,
@@ -42,6 +42,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 
 interface LineItem {
+  /** The existing row, when this line is one the PO already had. Carried so an
+   *  edit can update it in place and keep what was already received. */
+  id?: string;
   item_name: string;
   description: string;
   quantity: number | "";
@@ -641,11 +644,15 @@ export default function OverseasPurchaseOrdersPage() {
         paid_from_account_id: paidFromAccountId || null,
         ...(branchId ? { branch_id: branchId } : {}),
       } as any);
-      await deleteOverseasPOItems(editing.id);
       const valid = normalized.filter(l => l.item_name);
-      if (valid.length > 0) {
-        await createOverseasPOItems(valid.map(l => ({ po_id: editing.id, item_name: l.item_name, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost, item_id: l.item_id || null })));
-      }
+      await saveOverseasPOLines(editing.id, valid.map(l => ({
+        id: l.id,
+        item_name: l.item_name,
+        description: l.description,
+        quantity: l.quantity,
+        unit_cost: l.unit_cost,
+        item_id: l.item_id || null,
+      })));
       return updated;
     },
     onSuccess: () => {
@@ -821,7 +828,7 @@ export default function OverseasPurchaseOrdersPage() {
     setPaidFromAccountId((po as any).paid_from_account_id || "");
     setBranchId((po as any).branch_id || "");
     const poItems = await getOverseasPOItems(po.id);
-    setLines(poItems.length > 0 ? poItems.map(i => ({ item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
+    setLines(poItems.length > 0 ? poItems.map(i => ({ id: i.id, item_name: i.item_name, description: i.description, quantity: i.quantity, unit_cost: i.unit_cost, item_id: i.item_id || "" })) : [emptyLine()]);
     setOpen(true);
   };
 
