@@ -444,9 +444,24 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     queryClient.invalidateQueries({ queryKey: ["cash-accounts"] });
   };
 
+  /**
+   * Put a just-saved row on screen straight away. The refetch that follows
+   * re-reads every transaction in pages of 1000, and on a long ledger the new
+   * row sat invisible until that finished, which looked like a slow save.
+   */
+  const showSavedRow = (created: CashTransaction) => {
+    const name = accountById[created.account_id]?.name;
+    for (const [key, rows] of queryClient.getQueriesData<CashTransaction[]>({ queryKey: ["cash-transactions"] })) {
+      const ids = (key as unknown[])[2];
+      if (!rows || (Array.isArray(ids) && !ids.includes(created.account_id))) continue;
+      if (rows.some((r) => r.id === created.id)) continue;
+      queryClient.setQueryData(key, [{ ...created, cash_accounts: name ? { name } : (created as any).cash_accounts }, ...rows]);
+    }
+  };
+
   const createMut = useMutation({
     mutationFn: (data: Partial<CashTransaction>) => createCashTransaction(data),
-    onSuccess: () => { invalidate(); setOpen(false); toast.success("Transaction recorded"); },
+    onSuccess: (created) => { showSavedRow(created); invalidate(); setOpen(false); toast.success("Transaction recorded"); },
     onError: (e: any) => toast.error(e.message),
   });
 

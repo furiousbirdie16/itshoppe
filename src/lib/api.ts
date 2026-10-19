@@ -101,17 +101,34 @@ export const applyStockChange = async (params: {
   referenceType: string;
   movementType: "in_po" | "out_invoice" | "out_online_sale";
   notes?: string;
+  /**
+   * The item and variation rows, when the caller already fetched them for a
+   * whole invoice at once. Saves two round trips per line.
+   */
+  preloaded?: {
+    item?: { base_unit: string | null; units_per_stock: number | null } | null;
+    variation?: { type: string; factor: number } | null;
+  };
 }) => {
-  const { itemId, variationId, branchId, qty, referenceId, referenceType, movementType, notes } = params;
+  const { itemId, variationId, branchId, qty, referenceId, referenceType, movementType, notes, preloaded } = params;
   if (qty === 0) return;
   if (!branchId) throw new Error("applyStockChange: branchId is required");
 
-  const { data: item } = await _from("items").select("base_unit, units_per_stock").eq("id", itemId).maybeSingle();
+  // Independent reads, so they go together rather than one after another.
+  const [item, cur, v] = await Promise.all([
+    preloaded && "item" in preloaded
+      ? Promise.resolve(preloaded.item)
+      : _from("items").select("base_unit, units_per_stock").eq("id", itemId).maybeSingle().then((r: any) => r.data),
+    // Current branch stock (before mutation) for ledger + variation math.
+    getBranchStock(itemId, branchId),
+    !variationId
+      ? Promise.resolve(null)
+      : preloaded && "variation" in preloaded
+        ? Promise.resolve(preloaded.variation)
+        : _from("item_variations").select("type, factor").eq("id", variationId).single().then((r: any) => r.data),
+  ]);
   const baseUnit = (item as any)?.base_unit ?? "pcs";
   const itemUps = Number((item as any)?.units_per_stock || 1);
-
-  // Read current branch stock (before mutation) for ledger + variation math.
-  const cur = await getBranchStock(itemId, branchId);
   const effectiveUps = Math.max(cur.units_per_stock || 0, itemUps || 0, 1);
 
   let baseUnitsMoved = qty;
@@ -119,7 +136,6 @@ export const applyStockChange = async (params: {
   let deltaOpen = 0;
 
   if (variationId) {
-    const { data: v } = await _from("item_variations").select("type, factor").eq("id", variationId).single();
     const variation = v as any;
     if (!variation) return;
     baseUnitsMoved = Number(variation.factor) * qty;
@@ -1000,20 +1016,50 @@ const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
   try {
     const { data: invItems, error: itemsErr } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
     if (itemsErr) throw itemsErr;
-    for (const invItem of (invItems || []) as any[]) {
-      if (!invItem.item_id) continue;
-      await applyStockChange({
-        itemId: invItem.item_id,
-        variationId: invItem.variation_id || null,
-        branchId,
-        qty: invItem.quantity,
-        referenceId: invoiceId,
-        referenceType: "invoice",
-        movementType: "out_invoice",
-        notes,
-      });
-      applied++;
-    }
+    const lines = ((invItems || []) as any[]).filter((l) => l.item_id);
+
+    // Every item and variation row in two queries, instead of two per line.
+    const itemIds = [...new Set(lines.map((l) => l.item_id as string))];
+    const variationIds = [...new Set(lines.map((l) => l.variation_id).filter(Boolean) as string[])];
+    const [itemRows, variationRows] = await Promise.all([
+      itemIds.length
+        ? _from("items").select("id, base_unit, units_per_stock").in("id", itemIds).then((r: any) => (r.data || []) as any[])
+        : Promise.resolve([] as any[]),
+      variationIds.length
+        ? _from("item_variations").select("id, type, factor").in("id", variationIds).then((r: any) => (r.data || []) as any[])
+        : Promise.resolve([] as any[]),
+    ]);
+    const itemById = new Map<string, any>(itemRows.map((r) => [r.id, r]));
+    const variationById = new Map<string, any>(variationRows.map((r) => [r.id, r]));
+
+    // Different items run side by side; lines of the SAME item stay in order,
+    // because each reads the balance the one before it left behind.
+    const byItem = new Map<string, any[]>();
+    for (const l of lines) byItem.set(l.item_id, [...(byItem.get(l.item_id) || []), l]);
+
+    const results = await Promise.allSettled(
+      [...byItem.values()].map(async (group) => {
+        for (const invItem of group) {
+          await applyStockChange({
+            itemId: invItem.item_id,
+            variationId: invItem.variation_id || null,
+            branchId,
+            qty: invItem.quantity,
+            referenceId: invoiceId,
+            referenceType: "invoice",
+            movementType: "out_invoice",
+            notes,
+            preloaded: {
+              item: itemById.get(invItem.item_id) ?? null,
+              variation: invItem.variation_id ? variationById.get(invItem.variation_id) ?? null : null,
+            },
+          });
+          applied++;
+        }
+      }),
+    );
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed) throw failed.reason;
   } catch (e) {
     // Nothing moved yet: hand the claim back so a retry can deduct. Once some
     // lines have moved, keep it — releasing it would let a retry take those
@@ -1168,20 +1214,19 @@ const postInvoicePaymentToLedger = async (
   account: { id: string } | null,
   receivedOverride?: number | null,
 ) => {
-  const actor = await currentActor();
-
-  const { data: inv } = await from("invoices")
-    .select("total_amount, amount_received, invoice_date, invoice_number, customers(name)")
-    .eq("id", invoiceId)
-    .maybeSingle();
+  const [actor, { data: inv }, { data: existing }] = await Promise.all([
+    currentActor(),
+    from("invoices")
+      .select("total_amount, amount_received, invoice_date, invoice_number, customers(name)")
+      .eq("id", invoiceId)
+      .maybeSingle(),
+    from("cash_transactions").select("id").eq("source_invoice_id", invoiceId).maybeSingle(),
+  ]);
   // What actually reached the account. Usually the total; more when a staff
   // member quoted above the store price and the customer paid that. The total
   // stays the store's price, so sales and profit are untouched by this.
   const received = receivedOverride ?? (inv as any)?.amount_received;
   const amount = Number(received ?? (inv as any)?.total_amount ?? 0);
-
-  const { data: existing } = await from("cash_transactions")
-    .select("id").eq("source_invoice_id", invoiceId).maybeSingle();
 
   // Nothing belongs in the ledger for this invoice — Credit Card, Others, a
   // payment method matching no account, or a zero total. Clear anything a

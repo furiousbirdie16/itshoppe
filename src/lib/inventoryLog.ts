@@ -48,9 +48,13 @@ export async function recordMovement(m: MovementInput): Promise<string | null> {
   let user_id: string | null = null;
   let user_email: string | null = null;
   try {
-    const { data } = await supabase.auth.getUser();
-    user_id = data.user?.id ?? null;
-    user_email = data.user?.email ?? null;
+    // The cached session, not getUser(): getUser asks the auth server every
+    // time (~200 ms), once per movement, so a ten-line invoice spent two
+    // seconds just re-confirming who was logged in. This is an audit stamp;
+    // RLS on the server trusts the JWT, not this.
+    const { data } = await supabase.auth.getSession();
+    user_id = data.session?.user?.id ?? null;
+    user_email = data.session?.user?.email ?? null;
   } catch {
     /* anon */
   }
