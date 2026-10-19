@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { DocumentData, getPDFDataURL, downloadPDF } from "@/lib/pdf";
+import { getDocumentLogo } from "@/lib/document-logo";
 
 interface DocumentPreviewProps {
   open: boolean;
@@ -12,11 +14,19 @@ interface DocumentPreviewProps {
 
 export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  // Wait for it before drawing, or the preview shows the built-in logo and
+  // then swaps.
+  const { data: logo, isFetched: logoReady } = useQuery({
+    queryKey: ["document-logo"],
+    queryFn: getDocumentLogo,
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
-    if (open && data) {
+    if (open && data && logoReady) {
       try {
-        const url = getPDFDataURL(data);
+        const url = getPDFDataURL(data, logo);
         setPdfUrl(url);
       } catch {
         setPdfUrl(null);
@@ -24,7 +34,7 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
     } else {
       setPdfUrl(null);
     }
-  }, [open, data]);
+  }, [open, data, logo, logoReady]);
 
   if (!data) return null;
 
@@ -36,7 +46,7 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
           <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
-              onClick={() => downloadPDF(data)}
+              onClick={() => downloadPDF(data, logo)}
               className="rounded-lg h-8 px-2 sm:px-3 text-xs font-medium"
             >
               <Download className="h-3.5 w-3.5 sm:mr-1.5" />

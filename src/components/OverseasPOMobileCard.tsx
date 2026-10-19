@@ -2,6 +2,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { docNo } from "@/lib/doc-number";
 
 interface Props {
   po: any;
@@ -38,7 +39,7 @@ export function OverseasPOMobileCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <span className="truncate font-mono text-xs font-semibold">{po.po_number}</span>
+            <span className="truncate tabular-nums text-xs font-semibold">{docNo(po.po_number)}</span>
             {isAdmin && (
               <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
                 {peso(Number(po.total_amount) * Number(po.exchange_rate || 1))}

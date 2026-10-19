@@ -1,3 +1,4 @@
+import { docNo } from "./doc-number";
 /**
  * The price each item was last ordered at from overseas.
  *
@@ -36,7 +37,7 @@ export function pickLastOverseasCosts(rows: OverseasCostRow[]): Record<string, L
     const held = out[key];
     // Ties go to the row seen later, which is the later-created order.
     if (!held || r.order_date >= held.orderDate) {
-      out[key] = { unitCost: cost, orderDate: r.order_date, poNumber: r.po_number || "" };
+      out[key] = { unitCost: cost, orderDate: r.order_date, poNumber: docNo(r.po_number) || "" };
     }
   }
   return out;

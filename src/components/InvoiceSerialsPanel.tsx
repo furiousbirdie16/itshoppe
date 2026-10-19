@@ -11,6 +11,7 @@ import { canScan } from "@/lib/scanning";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { InvoiceItem, SoldUnit } from "@/types/database";
+import { docNo } from "@/lib/doc-number";
 
 interface Props {
   invoiceId: string;
@@ -246,7 +247,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
               <p className="text-muted-foreground">
                 This serial is already on invoice{" "}
                 <span className="font-medium text-foreground">
-                  {conflict.held.invoices?.invoice_number || "another sale"}
+                  {docNo(conflict.held.invoices?.invoice_number) || "another sale"}
                 </span>
                 {conflict.held.invoices?.customers?.name
                   ? <> for <span className="font-medium text-foreground">{conflict.held.invoices.customers.name}</span></>

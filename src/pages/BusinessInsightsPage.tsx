@@ -27,6 +27,7 @@ import { InsightsProductCard } from "@/components/InsightsProductCard";
 import type { ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { docNo } from "@/lib/doc-number";
 
 type RangePreset = "today" | "7d" | "30d" | "60d" | "90d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
@@ -632,7 +633,7 @@ export default function BusinessInsightsPage() {
           customer: inv.customers?.name || "Walk-in",
           agent: inv.sales_agent || "—",
           source: "invoice",
-          reference: inv.invoice_number || "—",
+          reference: docNo(inv.invoice_number) || "—",
           quantity: qty,
           unitPrice: unit,
           amount: rev,
@@ -1370,7 +1371,7 @@ export default function BusinessInsightsPage() {
                     <tr key={p.key} className="border-t">
                       <td className="px-3 py-1.5">
                         <div className="font-medium">{p.name}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                        <div className="tabular-nums text-[10px] text-muted-foreground">{p.sku}</div>
                       </td>
                       <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
                       {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(p.revenue)}</td>}
@@ -1508,7 +1509,7 @@ export default function BusinessInsightsPage() {
                                 </span>
                               )}
                             </div>
-                            <div className="font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+                            <div className="tabular-nums text-[10px] text-muted-foreground">{p.sku}</div>
                           </TableCell>
                           <TableCell>
                             <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium capitalize", p.source === "import" ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-secondary-foreground")}>
@@ -1573,7 +1574,7 @@ export default function BusinessInsightsPage() {
                                           </td>
                                           <td className="px-3 py-1.5">{t.customer}</td>
                                           <td className="px-3 py-1.5 text-muted-foreground">{t.agent}</td>
-                                          <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.reference}</td>
+                                          <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{t.reference}</td>
                                           <td className="px-3 py-1.5 text-muted-foreground">{t.variationName || <span className="text-muted-foreground/60">—</span>}</td>
                                           <td className="px-3 py-1.5 text-right font-semibold">{t.quantity}</td>
                                           {isAdmin && <td className="px-3 py-1.5 text-right">{money(t.unitPrice)}</td>}

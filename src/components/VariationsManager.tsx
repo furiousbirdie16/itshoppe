@@ -302,7 +302,7 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
                         {v.name}
                         {!hasCost && <Badge variant="outline" className="text-[9px] border-amber-500 text-amber-700 dark:text-amber-300">No cost</Badge>}
                       </div>
-                      {v.sku && <div className="text-[10px] font-mono text-muted-foreground">{v.sku}</div>}
+                      {v.sku && <div className="text-[10px] tabular-nums text-muted-foreground">{v.sku}</div>}
                     </TableCell>
                     <TableCell><Badge variant={v.type === 'pack' ? 'outline' : 'secondary'} className="text-[10px] uppercase">{v.type}</Badge></TableCell>
                     <TableCell className="text-right text-sm tabular-nums">

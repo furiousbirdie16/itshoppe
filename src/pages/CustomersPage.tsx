@@ -35,6 +35,7 @@ import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsIn
 import { SuggestInput } from "@/components/SuggestInput";
 import { DuplicateCustomerWarning } from "@/components/DuplicateCustomerWarning";
 import { Tag as TagIcon } from "lucide-react";
+import { docNo } from "@/lib/doc-number";
 
 const CUSTOMER_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Customer Name", required: true },
@@ -1143,7 +1144,7 @@ export default function CustomersPage() {
                 <div key={o.id} className="rounded-lg border bg-card">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-3 py-2">
                     <div className="flex items-baseline gap-2 min-w-0">
-                      <span className="font-mono text-sm font-medium">{o.invoice_number}</span>
+                      <span className="tabular-nums text-sm font-medium">{docNo(o.invoice_number)}</span>
                       <Badge variant="outline" className="text-[10px] font-medium capitalize whitespace-nowrap">
                         {o.status.replace(/_/g, " ")}
                       </Badge>

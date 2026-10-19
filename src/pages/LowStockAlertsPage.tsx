@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/types/database";
+import { docNo } from "@/lib/doc-number";
 
 type Severity = "critical" | "low" | "healthy";
 type StatusFilter = "all" | "critical" | "ordered" | "not_ordered" | "po_created" | "fast" | "slow";
@@ -221,7 +222,7 @@ export default function LowStockAlertsPage() {
         rows.push({
           item_id: r.item_id,
           pending,
-          po_number: r.purchase_orders?.po_number || "",
+          po_number: docNo(r.purchase_orders?.po_number) || "",
           supplier: r.purchase_orders?.suppliers?.name || "—",
           supplier_id: r.purchase_orders?.suppliers?.id,
         });
@@ -233,7 +234,7 @@ export default function LowStockAlertsPage() {
         rows.push({
           item_id: r.item_id,
           pending,
-          po_number: r.overseas_purchase_orders?.po_number || "",
+          po_number: docNo(r.overseas_purchase_orders?.po_number) || "",
           supplier: r.overseas_purchase_orders?.overseas_suppliers?.name || "—",
         });
       }

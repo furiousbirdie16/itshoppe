@@ -90,7 +90,7 @@ export function InventoryMobileCard({
         />
         <div className="min-w-0 flex-1">
           <div className="text-base font-semibold leading-snug break-words">{item.name}</div>
-          <div className="mt-0.5 font-mono text-xs text-muted-foreground break-all">{item.sku}</div>
+          <div className="mt-0.5 tabular-nums text-xs text-muted-foreground break-all">{item.sku}</div>
         </div>
         <Badge variant="outline" className={`shrink-0 text-[10px] ${status.className}`}>{status.label}</Badge>
       </div>

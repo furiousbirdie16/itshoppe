@@ -40,6 +40,7 @@ import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
 import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
 import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
 import { paymentReferenceUrls } from "@/lib/payment-references";
+import { docNo } from "@/lib/doc-number";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 
@@ -147,7 +148,7 @@ export default function InvoicesPage() {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
       if (q) {
-        const hay = [inv.invoice_number, inv.customers?.name, inv.sales_agent, inv.notes]
+        const hay = [inv.invoice_number, docNo(inv.invoice_number), inv.customers?.name, inv.sales_agent, inv.notes]
           .map((x: any) => String(x || "").toLowerCase()).join(" ");
         if (!hay.includes(q)) return false;
       }
@@ -358,7 +359,7 @@ export default function InvoicesPage() {
             // transfer landed in petty cash and was stamped "Cash" on every
             // invoice, with nothing on screen to say so.
             const res = await markInvoicePaid(id, { payment_method: bulkPayMethod, payment_reference: null, payment_reference_url: null });
-            if (res?.ledgerWarning) errors.push(`${inv.invoice_number}: ${res.ledgerWarning}`);
+            if (res?.ledgerWarning) errors.push(`${docNo(inv.invoice_number)}: ${res.ledgerWarning}`);
             ok++;
           } else if (action === "ship") {
             if (s === "cancelled" || s === "completed" || s === "shipped" || s === "confirmed") { skip++; continue; }
@@ -368,14 +369,14 @@ export default function InvoicesPage() {
             // 'completed' -> skip; 'paid' -> ship (auto-completes); 'shipped'/'confirmed' -> needs payment.
             if (s === "completed") { skip++; continue; }
             if (s === "paid") { await shipInvoice(id); ok++; }
-            else { fail++; errors.push(`${inv.invoice_number}: needs both Paid and Shipped`); }
+            else { fail++; errors.push(`${docNo(inv.invoice_number)}: needs both Paid and Shipped`); }
           } else if (action === "cancel") {
             if (s === "cancelled") { skip++; continue; }
             await cancelInvoice(id); ok++;
           }
         } catch (e: any) {
           fail++;
-          errors.push(`${inv.invoice_number}: ${e?.message || "failed"}`);
+          errors.push(`${docNo(inv.invoice_number)}: ${e?.message || "failed"}`);
           console.error("Bulk action failed", action, id, e);
         }
       }
@@ -418,7 +419,7 @@ export default function InvoicesPage() {
     const customer = inv.customers || customers.find((c: any) => c.id === inv.customer_id);
     setPreviewData({
       type: "invoice",
-      number: inv.invoice_number,
+      number: docNo(inv.invoice_number),
       date: inv.invoice_date,
       status: inv.status,
       notes: inv.notes,
@@ -936,7 +937,7 @@ export default function InvoicesPage() {
           <ExportButton
             data={filtered}
             columns={{
-              "Invoice #": (r: any) => r.invoice_number,
+              "Invoice #": (r: any) => docNo(r.invoice_number),
               "Date": (r: any) => r.invoice_date,
               "Customer": (r: any) => r.customers?.name || "",
               "Sales Agent": (r: any) => r.sales_agent || "",
@@ -1334,7 +1335,7 @@ export default function InvoicesPage() {
                     : undefined;
                   return (
                     <TableRow key={ii.id}>
-                       <TableCell className="font-mono text-xs text-primary font-medium">{(ii as any).item_variations?.sku || ii.items?.sku || "—"}</TableCell>
+                       <TableCell className="tabular-nums text-xs text-primary font-medium">{(ii as any).item_variations?.sku || ii.items?.sku || "—"}</TableCell>
                        <TableCell className="text-sm font-medium">{(ii as any).item_variations?.name || (ii as any).item_name || ii.items?.name || "—"}</TableCell>
                       <TableCell className="text-sm">{ii.quantity}</TableCell>
                       <TableCell className="text-sm text-right">{peso(Number(ii.unit_price))}</TableCell>
@@ -1390,7 +1391,7 @@ export default function InvoicesPage() {
             <InvoiceCostTools
               invoiceId={viewInv}
               fins={invItems.map((ii: any) => finByItem.get(`${ii.item_id}::${ii.variation_id || ""}`)).filter(Boolean)}
-              invoiceNumber={(invoices.find((i: any) => i.id === viewInv) as any)?.invoice_number}
+              invoiceNumber={docNo((invoices.find((i: any) => i.id === viewInv) as any)?.invoice_number)}
             />
           )}
 
@@ -1427,7 +1428,7 @@ export default function InvoicesPage() {
               {Object.entries(selectionStatusCounts).map(([s, n]) => (
                 <span key={s} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px]">
                   <StatusBadge status={s} context="invoice" />
-                  <span className="font-mono text-muted-foreground">×{n}</span>
+                  <span className="tabular-nums text-muted-foreground">×{n}</span>
                 </span>
               ))}
             </div>
@@ -1513,9 +1514,9 @@ export default function InvoicesPage() {
               return (
               <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold whitespace-nowrap">
+                <TableCell className="tabular-nums text-xs font-semibold whitespace-nowrap">
                   <span className="inline-flex items-center gap-1">
-                    {inv.invoice_number}
+                    {docNo(inv.invoice_number)}
                     {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
                     {/* An icon, like the lock beside it: the pill it replaced
                         was wide enough to wrap the invoice number onto a second
@@ -1980,7 +1981,7 @@ function SelectedInvoiceCostBulkEdit({
                 return (
                   <div key={f.id} className="p-2 flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">{inv?.invoice_number || "Invoice"} · {itemName}</div>
+                      <div className="text-xs font-medium truncate">{docNo(inv?.invoice_number) || "Invoice"} · {itemName}</div>
                       <div className="text-[10px] text-muted-foreground truncate">
                         {sku ? `${sku} · ` : ""}Qty {Number(f.quantity || 0)} · Prev {f.cost_snapshot != null ? peso(Number(f.cost_snapshot)) : "—"}
                       </div>

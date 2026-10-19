@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { docNo } from "@/lib/doc-number";
 
 interface Props {
   invoice: any;
@@ -31,8 +32,8 @@ export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSele
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <span className="inline-flex min-w-0 items-center gap-1 font-mono text-xs font-semibold">
-              <span className="truncate">{inv.invoice_number}</span>
+            <span className="inline-flex min-w-0 items-center gap-1 tabular-nums text-xs font-semibold">
+              <span className="truncate">{docNo(inv.invoice_number)}</span>
               {locked && <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="Locked" />}
             </span>
             <span className="shrink-0 text-right text-sm font-semibold tabular-nums">

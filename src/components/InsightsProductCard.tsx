@@ -51,7 +51,7 @@ export function InsightsProductCard({ product: p, txns, isAdmin, money, isOpen, 
               {p.kind === "variation" && <span className="shrink-0 text-muted-foreground/60">↳</span>}
               <span className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</span>
             </div>
-            <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{p.sku}</div>
+            <div className="mt-0.5 truncate tabular-nums text-[10px] text-muted-foreground">{p.sku}</div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span
@@ -107,7 +107,7 @@ export function InsightsProductCard({ product: p, txns, isAdmin, money, isOpen, 
                     {t.customer}
                     {t.agent && t.agent !== "—" ? ` · ${t.agent}` : ""}
                   </span>
-                  <span className="shrink-0 font-mono">{t.reference}</span>
+                  <span className="shrink-0 tabular-nums">{t.reference}</span>
                 </div>
 
                 {t.variationName && (

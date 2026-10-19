@@ -25,6 +25,7 @@ import { useBranch } from "@/contexts/BranchContext";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { docNo } from "@/lib/doc-number";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
 
@@ -80,7 +81,7 @@ export default function PurchaseOrdersPage() {
   const filtered = pos.filter((po: any) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [po.po_number, po.suppliers?.name, po.order_date, po.payment_due_date, po.status, po.notes]
+    return [po.po_number, docNo(po.po_number), po.suppliers?.name, po.order_date, po.payment_due_date, po.status, po.notes]
       .some((value) => (value || "").toString().toLowerCase().includes(q));
   });
 
@@ -100,7 +101,7 @@ export default function PurchaseOrdersPage() {
     if (po.payment_due_date) extra.push({ label: "Payment Due", value: po.payment_due_date });
     setPreviewData({
       type: "purchase_order",
-      number: po.po_number,
+      number: docNo(po.po_number),
       date: po.order_date,
       status: po.status,
       notes: po.notes,
@@ -355,7 +356,7 @@ export default function PurchaseOrdersPage() {
           <ExportButton
             data={pos}
             columns={{
-              "PO #": (r: any) => r.po_number,
+              "PO #": (r: any) => docNo(r.po_number),
               "Order Date": (r: any) => r.order_date,
               "Supplier": (r: any) => r.suppliers?.name || "",
               "Status": (r: any) => r.status,
@@ -665,7 +666,7 @@ export default function PurchaseOrdersPage() {
             ) : sortedPOs.map((po: any) => (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">{po.po_number}</TableCell>
+                <TableCell className="tabular-nums text-xs font-semibold">{docNo(po.po_number)}</TableCell>
                 <TableCell className="text-sm">{po.suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{po.order_date}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{po.payment_due_date || "—"}</TableCell>
@@ -689,7 +690,7 @@ export default function PurchaseOrdersPage() {
       {/* Edit Dialog */}
       <Dialog open={!!editPO} onOpenChange={(o) => { if (!o) setEditPO(null); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">Edit Purchase Order {editPO?.po_number}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">Edit Purchase Order {docNo(editPO?.po_number)}</DialogTitle></DialogHeader>
           <div className="grid gap-4 pt-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Branch</Label>

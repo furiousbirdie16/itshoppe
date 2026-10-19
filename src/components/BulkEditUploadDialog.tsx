@@ -528,7 +528,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
                     }>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="text-xs">{row.kind === "item" ? "Item" : "Variation"}</TableCell>
-                      <TableCell className="text-xs font-mono">{row.matchKey || "—"}</TableCell>
+                      <TableCell className="text-xs tabular-nums">{row.matchKey || "—"}</TableCell>
                       <TableCell className="text-sm">
                         {row.kind === "variation" && row.parentName ? (
                           <span className="text-muted-foreground">{row.parentName} › </span>

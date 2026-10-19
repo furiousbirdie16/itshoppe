@@ -25,6 +25,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBranch } from "@/contexts/BranchContext";
+import { docNo } from "@/lib/doc-number";
 
 interface ManualForm {
   customer_id: string;
@@ -141,7 +142,7 @@ export default function PendingPaymentsPage() {
     const lineItems = await getInvoiceItems(inv.id);
     setPreviewData({
       type: "invoice",
-      number: inv.invoice_number,
+      number: docNo(inv.invoice_number),
       date: inv.invoice_date,
       status: inv.status,
       notes: inv.notes,
@@ -273,7 +274,7 @@ export default function PendingPaymentsPage() {
     const rows = tab === "invoices"
       ? filteredInvoices.map((inv: any) => ({
         kind: "invoice" as const, raw: inv,
-        source: "Invoice", reference: inv.invoice_number,
+        source: "Invoice", reference: docNo(inv.invoice_number),
         customer: inv.customers?.name || "",
         date: inv.invoice_date || "",
         due_date: inv.due_date || "",
@@ -325,7 +326,7 @@ export default function PendingPaymentsPage() {
           </Button>
           <ExportButton
             data={[
-              ...filteredInvoices.map((r: any) => ({ source: "Invoice", number: r.invoice_number, customer: r.customers?.name || "", description: "", status: r.status, date: r.invoice_date, due_date: r.due_date || "Due now", amount: r.total_amount })),
+              ...filteredInvoices.map((r: any) => ({ source: "Invoice", number: docNo(r.invoice_number), customer: r.customers?.name || "", description: "", status: r.status, date: r.invoice_date, due_date: r.due_date || "Due now", amount: r.total_amount })),
               ...filteredManual.map((r: any) => ({ source: "Manual", number: "—", customer: r.customers?.name || "", description: r.description, status: r.status, date: (r.created_at || "").split("T")[0], due_date: r.due_date || "Due now", amount: r.amount })),
             ]}
             columns={{
@@ -515,7 +516,7 @@ export default function PendingPaymentsPage() {
                 className={overdue ? "border-destructive/40 bg-destructive/5" : undefined}
                 title={
                   isInvoice
-                    ? <span className="font-mono text-xs font-semibold">{r.invoice_number}</span>
+                    ? <span className="tabular-nums text-xs font-semibold">{docNo(r.invoice_number)}</span>
                     : r.description || "—"
                 }
                 subtitle={r.customers?.name || "—"}
@@ -585,7 +586,7 @@ export default function PendingPaymentsPage() {
                 const overdue = isOverdue(inv);
                 return (
                   <TableRow key={`inv-${inv.id}`} className={overdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/30"}>
-                    <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                    <TableCell className="tabular-nums text-xs font-semibold">{docNo(inv.invoice_number)}</TableCell>
                     <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                     <TableCell className="text-sm">

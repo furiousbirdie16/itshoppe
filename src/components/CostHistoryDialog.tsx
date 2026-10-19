@@ -16,6 +16,7 @@ import { ArrowDown, ArrowRight, ArrowUp, History, Search, ShieldCheck } from "lu
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Item } from "@/types/database";
+import { docNo } from "@/lib/doc-number";
 
 interface Props {
   item: Item | null;
@@ -90,7 +91,7 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
     }
     if (search.trim()) {
       const q = search.toLowerCase();
-      const hay = [r.po_number, r.supplier_name, r.changed_by_email, r.reason].map(x => String(x || "").toLowerCase()).join(" ");
+      const hay = [r.po_number, docNo(r.po_number), r.supplier_name, r.changed_by_email, r.reason].map(x => String(x || "").toLowerCase()).join(" ");
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -222,7 +223,7 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
                     <TableRow key={r.id}>
                       <TableCell className="text-sm">{r.created_at.slice(0, 16).replace("T", " ")}</TableCell>
                       <TableCell><Badge variant="outline" className="text-[10px] uppercase">{sourceLabel(r.source)}</Badge></TableCell>
-                      <TableCell className="text-sm font-mono">{r.po_number || "—"}</TableCell>
+                      <TableCell className="text-sm tabular-nums">{docNo(r.po_number) || "—"}</TableCell>
                       <TableCell className="text-sm">{r.supplier_name || "—"}</TableCell>
                       <TableCell className="text-sm text-right">{peso(r.previous_cost)}</TableCell>
                       <TableCell className="text-sm text-right font-medium">{peso(r.new_cost)}</TableCell>

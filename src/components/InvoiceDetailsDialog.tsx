@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/permissions";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
+import { docNo } from "@/lib/doc-number";
 
 interface Props {
   invoiceId: string | null;
@@ -94,7 +95,7 @@ export default function InvoiceDetailsDialog({
   const previewData: DocumentData | null = inv
     ? {
         type: "invoice",
-        number: inv.invoice_number,
+        number: docNo(inv.invoice_number),
         date: inv.invoice_date,
         status: inv.status,
         notes: inv.notes,
@@ -133,7 +134,7 @@ export default function InvoiceDetailsDialog({
           <DialogHeader>
             <DialogTitle className="text-lg flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              {inv?.invoice_number ? `Invoice ${inv.invoice_number}` : "Invoice"}
+              {docNo(inv?.invoice_number) ? `Invoice ${docNo(inv.invoice_number)}` : "Invoice"}
             </DialogTitle>
           </DialogHeader>
 
@@ -155,7 +156,7 @@ export default function InvoiceDetailsDialog({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm rounded-lg border bg-muted/30 p-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Invoice #</div>
-                  <div className="font-mono font-semibold">{inv.invoice_number}</div>
+                  <div className="tabular-nums font-semibold">{docNo(inv.invoice_number)}</div>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customer</div>
@@ -206,7 +207,7 @@ export default function InvoiceDetailsDialog({
                           key={li.id}
                           className={cn(hl && "bg-amber-50 dark:bg-amber-950/40 border-l-4 border-l-amber-500")}
                         >
-                          <TableCell className="font-mono text-xs text-primary">
+                          <TableCell className="tabular-nums text-xs text-primary">
                             {li.item_variations?.sku || li.items?.sku || "—"}
                             {hl && <span className="ml-2 text-[10px] font-semibold text-amber-700 dark:text-amber-300 uppercase">Ledger item</span>}
                           </TableCell>

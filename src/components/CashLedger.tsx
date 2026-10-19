@@ -25,6 +25,7 @@ import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown,
 import { toast } from "sonner";
 import { format, parse, isValid, subDays, startOfDay } from "date-fns";
 import { peso } from "@/lib/currency";
+import { docNo } from "@/lib/doc-number";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
 import { useSort } from "@/hooks/use-sort";
@@ -266,7 +267,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     const inv = invoiceById.get(t.source_invoice_id);
     // Fall back to the number stored on the transaction: an invoice deleted
     // afterwards leaves the posting behind, and the number is still useful.
-    const number = inv?.invoice_number || t.reference;
+    const number = docNo(inv?.invoice_number || t.reference);
     const shots = paymentReferenceUrls(inv?.payment_reference_url);
 
     return (
@@ -275,7 +276,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
           <button
             type="button"
             onClick={() => setInvoiceDetailId(t.source_invoice_id)}
-            className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
+            className="inline-flex items-center gap-1 tabular-nums text-primary hover:underline"
             title="View invoice"
           >
             {number}

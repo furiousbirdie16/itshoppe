@@ -178,7 +178,7 @@ export default function MarketplaceReceivablesPage() {
             <FinanceMobileCard
               key={r.id}
               title={r.product_name}
-              subtitle={<span className="font-mono">{r.order_number}</span>}
+              subtitle={<span className="tabular-nums">{r.order_number}</span>}
               amount={peso(r.estimatedPayout)}
               amountSub={`of ${peso(r.totalSales)} · ${r.feePct}%${r.hasFeeOverride ? "" : " est"} fee`}
               badge={
@@ -227,7 +227,7 @@ export default function MarketplaceReceivablesPage() {
                       {channelLabel(r.sales_channel)}
                     </span>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{r.order_number}</TableCell>
+                  <TableCell className="tabular-nums text-xs">{r.order_number}</TableCell>
                   <TableCell className="text-sm">{r.product_name}</TableCell>
                   <TableCell className="text-right text-sm tabular-nums">{peso(r.totalSales)}</TableCell>
                   <TableCell className="text-right text-sm tabular-nums">

@@ -138,7 +138,7 @@ export default function ItemSuppliersDialog({
                       </div>
                     </TableCell>
                     <TableCell><Badge variant="outline" className="text-[10px] uppercase">{r.is_overseas ? "Overseas" : "Local"}</Badge></TableCell>
-                    <TableCell className="text-xs font-mono">{r.supplier_sku || "—"}</TableCell>
+                    <TableCell className="text-xs tabular-nums">{r.supplier_sku || "—"}</TableCell>
                     <TableCell className="text-right text-sm">
                       <span className="font-medium">{currencySymbol(r.currency)}{Number(r.latest_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       <div className="text-[10px] text-muted-foreground">{r.currency}</div>

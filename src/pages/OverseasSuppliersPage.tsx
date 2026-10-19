@@ -272,7 +272,7 @@ export default function OverseasSuppliersPage() {
                     {s.currency === "USD" ? "$ USD" : "¥ RMB"}
                   </span>
                 </TableCell>
-                <TableCell className="text-sm font-mono">{s.exchange_rate}</TableCell>
+                <TableCell className="text-sm tabular-nums">{s.exchange_rate}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.email}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">

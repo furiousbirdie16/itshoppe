@@ -1295,7 +1295,7 @@ export default function OnlineSalesPage() {
                           <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
                         </TableCell>
                         <TableCell className="text-sm">{s.order_date}</TableCell>
-                        <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                        <TableCell className="tabular-nums text-xs">{s.order_number}</TableCell>
                         <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
@@ -1377,7 +1377,7 @@ export default function OnlineSalesPage() {
                           />
                         </TableCell>
                         <TableCell className="text-sm">{group.items[0].order_date}</TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className="tabular-nums text-xs">
                           <div className="flex items-center gap-1">
                             {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             {group.orderNumber}
@@ -1539,7 +1539,7 @@ export default function OnlineSalesPage() {
                           <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
                         </TableCell>
                         <TableCell className="text-sm">{s.order_date}</TableCell>
-                        <TableCell className="font-mono text-xs">{s.order_number}</TableCell>
+                        <TableCell className="tabular-nums text-xs">{s.order_number}</TableCell>
                         <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
@@ -1575,7 +1575,7 @@ export default function OnlineSalesPage() {
                           />
                         </TableCell>
                         <TableCell className="text-sm">{group.items[0].order_date}</TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className="tabular-nums text-xs">
                           <div className="flex items-center gap-1">
                             {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             {group.orderNumber}
@@ -1842,7 +1842,7 @@ export default function OnlineSalesPage() {
                     {bulkRows.map((row, i) => (
                       <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
+                        <TableCell className="tabular-nums text-xs">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.order_date}</TableCell>
                         <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
                         <TableCell className="text-sm text-center">{row.quantity}</TableCell>
@@ -1873,7 +1873,7 @@ export default function OnlineSalesPage() {
             <div className="space-y-4">
               <div className="text-sm">
                 <p className="text-muted-foreground">Order ID</p>
-                <p className="font-mono">{payTarget.orderNumber || "—"}</p>
+                <p className="tabular-nums">{payTarget.orderNumber || "—"}</p>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -1958,7 +1958,7 @@ export default function OnlineSalesPage() {
                       return (
                         <TableRow key={i} className={row.valid ? "" : row.duplicate ? "bg-muted/40 text-muted-foreground" : "bg-destructive/5"}>
                           <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                          <TableCell className="font-mono text-xs">{row.order_id || "—"}</TableCell>
+                          <TableCell className="tabular-nums text-xs">{row.order_id || "—"}</TableCell>
                           <TableCell className="text-sm text-right tabular-nums">{row.matched_ids.length ? peso(row.expected) : "—"}</TableCell>
                           <TableCell className={cn("text-sm text-right tabular-nums", row.amount_paid < 0 && "text-destructive font-medium")}>{peso(row.amount_paid)}</TableCell>
                           <TableCell className="text-sm text-right tabular-nums"><span className={!row.valid ? "text-muted-foreground" : fees > 0 ? "text-amber-600" : fees < 0 ? "text-emerald-600" : "text-muted-foreground"}>{row.valid ? peso(fees) : "—"}</span></TableCell>

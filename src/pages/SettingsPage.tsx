@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Settings, Save } from "lucide-react";
 import { toast } from "sonner";
+import { DocumentLogoCard } from "@/components/DocumentLogoCard";
+import { docNo } from "@/lib/doc-number";
 
 const LABELS: Record<string, string> = {
   purchase_order: "Purchase Order",
@@ -49,14 +51,14 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">Configure document numbering sequences</p>
+        <p className="text-sm text-muted-foreground mt-1">Document numbering and the logo printed on documents</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
         {Object.keys(LABELS).map((id) => {
           const e = edits[id];
           if (!e) return null;
-          const preview = `${e.prefix}-${String(parseInt(e.next_number) || 1).padStart(5, "0")}`;
+          const preview = docNo(`${e.prefix}-${String(parseInt(e.next_number) || 1).padStart(5, "0")}`);
           return (
             <div key={id} className="rounded-xl border bg-card p-5 space-y-4">
               <div className="flex items-center gap-2">
@@ -87,7 +89,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Preview: <span className="font-mono font-medium text-foreground">{preview}</span>
+                Preview: <span className="tabular-nums font-medium text-foreground">{preview}</span>
               </div>
 
               <Button size="sm" className="w-full h-8 text-xs" onClick={() => handleSave(id)}>
@@ -97,6 +99,10 @@ export default function SettingsPage() {
             </div>
           );
         })}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
+        <DocumentLogoCard />
       </div>
     </div>
   );

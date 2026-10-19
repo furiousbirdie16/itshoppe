@@ -1196,7 +1196,7 @@ export default function InventoryPage() {
                                 <Badge variant="outline" className="text-[9px] uppercase h-4 px-1">{item.status}</Badge>
                               )}
                             </span>
-                            <span className="text-[10px] text-muted-foreground font-mono">
+                            <span className="text-[10px] text-muted-foreground tabular-nums">
                               {item.sku}
                               {item.category && <> · <span className="text-muted-foreground/80">{item.category}</span></>}
                             </span>

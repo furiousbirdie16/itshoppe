@@ -40,6 +40,7 @@ import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
 import { useBranch } from "@/contexts/BranchContext";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
+import { docNo } from "@/lib/doc-number";
 
 interface LineItem {
   /** The existing row, when this line is one the PO already had. Carried so an
@@ -354,7 +355,7 @@ export default function OverseasPurchaseOrdersPage() {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return [
-      order.po_number,
+      order.po_number, docNo(order.po_number),
       order.overseas_suppliers?.name,
       order.status,
       order.currency,
@@ -498,7 +499,7 @@ export default function OverseasPurchaseOrdersPage() {
       const po: any = s.po_id ? byId.get(s.po_id) : null;
       return {
         shipment: s,
-        po_number: po?.po_number || "—",
+        po_number: docNo(po?.po_number) || "—",
         supplier: po?.overseas_suppliers?.name || "—",
       };
     });
@@ -509,7 +510,7 @@ export default function OverseasPurchaseOrdersPage() {
     const q = trackSearch.trim().toLowerCase();
     if (!q) return byStatus;
     return byStatus.filter((r) =>
-      [r.shipment.tracking_number, r.po_number, r.supplier, r.shipment.shipping_method]
+      [r.shipment.tracking_number, r.po_number, docNo(r.po_number), r.supplier, r.shipment.shipping_method]
         .some((v) => (v || "").toLowerCase().includes(q)),
     );
   }, [shipments, orders, trackSearch, trackStatusFilter]);
@@ -849,7 +850,7 @@ export default function OverseasPurchaseOrdersPage() {
     const poItems = await getOverseasPOItems(po.id);
     setPreviewData({
       type: "purchase_order",
-      number: po.po_number,
+      number: docNo(po.po_number),
       date: po.order_date || "",
       status: po.status,
       currencyCode: po.currency,
@@ -910,7 +911,7 @@ export default function OverseasPurchaseOrdersPage() {
       return {
         id: item.id,
         po_id: item.po_id,
-        po_number: po?.po_number || "—",
+        po_number: docNo(po?.po_number) || "—",
         supplier_name: po?.overseas_suppliers?.name || "—",
         status: po?.status || "unpaid",
         currency: (po?.currency || "USD") as "USD" | "RMB",
@@ -933,7 +934,7 @@ export default function OverseasPurchaseOrdersPage() {
   const filteredIncomingRows = incomingRows.filter((row) => {
     const q = incomingSearch.trim().toLowerCase();
     const matchesSearch = !q || [
-      row.po_number,
+      row.po_number, docNo(row.po_number),
       row.supplier_name,
       row.item_name,
       row.description,
@@ -1164,7 +1165,7 @@ export default function OverseasPurchaseOrdersPage() {
             <ExportButton
               data={orders}
               columns={{
-                "PO #": (r: any) => r.po_number,
+                "PO #": (r: any) => docNo(r.po_number),
                 "Order Date": (r: any) => r.order_date,
                 "Supplier": (r: any) => r.overseas_suppliers?.name || "",
                 "Status": (r: any) => r.status,
@@ -1486,7 +1487,7 @@ export default function OverseasPurchaseOrdersPage() {
       {/* View Dialog */}
       <Dialog open={!!payPO} onOpenChange={(o) => { if (!o) setPayPO(null); }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">Down payments · {payPO?.po_number}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">Down payments · {docNo(payPO?.po_number)}</DialogTitle></DialogHeader>
           {payPO && (() => {
             const sym = payPO.currency === "USD" ? "$" : "¥";
             const fmt = (n: number) => `${sym}${n.toLocaleString("en", { minimumFractionDigits: 2 })}`;
@@ -1588,7 +1589,7 @@ export default function OverseasPurchaseOrdersPage() {
 
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">PO {viewPO?.po_number}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">PO {docNo(viewPO?.po_number)}</DialogTitle></DialogHeader>
           {viewPO && (
             <div className="space-y-5 pt-2">
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1668,7 +1669,7 @@ export default function OverseasPurchaseOrdersPage() {
 
                       return (
                         <TableRow key={item.id}>
-                          <TableCell className="font-mono text-xs font-medium text-primary">{item.items?.sku || "—"}</TableCell>
+                          <TableCell className="tabular-nums text-xs font-medium text-primary">{item.items?.sku || "—"}</TableCell>
                           <TableCell className="text-sm font-medium">{item.item_name}</TableCell>
                           <TableCell className="max-w-[220px] text-sm text-muted-foreground">{item.description || "—"}</TableCell>
                           <TableCell className="text-sm text-right">{orderedQty}</TableCell>
@@ -1794,7 +1795,7 @@ export default function OverseasPurchaseOrdersPage() {
       <Dialog open={!!shipDialog} onOpenChange={(o) => { if (!o) setShipDialog(null); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">Mark {shipDialog?.po_number} as shipped</DialogTitle>
+            <DialogTitle className="text-base">Mark {docNo(shipDialog?.po_number)} as shipped</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -1952,7 +1953,7 @@ export default function OverseasPurchaseOrdersPage() {
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
               <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
             </div>
-            <p className="text-2xl font-semibold text-primary font-mono">{peso(notReceivedPhpTotal)}</p>
+            <p className="text-2xl font-semibold text-primary tabular-nums">{peso(notReceivedPhpTotal)}</p>
           </div>
 
           {isNarrowed && (
@@ -1961,11 +1962,11 @@ export default function OverseasPurchaseOrdersPage() {
                 <p className="text-xs text-muted-foreground">
                   These {filteredOrders.length} order{filteredOrders.length === 1 ? "" : "s"} — order value
                 </p>
-                <p className="text-sm font-semibold font-mono tabular-nums">{peso(filteredTotals.value)}</p>
+                <p className="text-sm font-semibold tabular-nums">{peso(filteredTotals.value)}</p>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground">…of which not yet received</p>
-                <p className="text-sm font-semibold font-mono tabular-nums text-primary">{peso(filteredTotals.outstanding)}</p>
+                <p className="text-sm font-semibold tabular-nums text-primary">{peso(filteredTotals.outstanding)}</p>
               </div>
             </div>
           )}
@@ -2006,7 +2007,7 @@ export default function OverseasPurchaseOrdersPage() {
                       <>
                         {fullyReceived}/{totalItems} items
                         {partialItems > 0 && <span className="text-warning"> · {partialItems} partial</span>}
-                        <span className="font-mono"> · {totalReceivedQty}/{totalOrderedQty} qty</span>
+                        <span className="tabular-nums"> · {totalReceivedQty}/{totalOrderedQty} qty</span>
                       </>
                     )
                   }
@@ -2048,7 +2049,7 @@ export default function OverseasPurchaseOrdersPage() {
               return (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 {isAdmin && <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>}
-                <TableCell className="font-medium text-sm font-mono">{po.po_number}</TableCell>
+                <TableCell className="font-medium text-sm tabular-nums">{docNo(po.po_number)}</TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm whitespace-nowrap">{branchNameById.get((po as any).branch_id) || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
@@ -2076,7 +2077,7 @@ export default function OverseasPurchaseOrdersPage() {
                         {fullyReceived}/{totalItems} items
                         {partialItems > 0 && <span className="text-warning"> · {partialItems} partial</span>}
                       </span>
-                      <span className="text-[11px] text-muted-foreground font-mono">
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
                         {totalReceivedQty}/{totalOrderedQty} qty
                       </span>
                     </div>
@@ -2090,12 +2091,12 @@ export default function OverseasPurchaseOrdersPage() {
                   </TableCell>
                 )}
                 {isAdmin && (
-                  <TableCell className="text-sm text-right font-mono">
+                  <TableCell className="text-sm text-right tabular-nums">
                     {po.currency === "USD" ? "$" : "¥"}{po.total_amount.toLocaleString("en", { minimumFractionDigits: 2 })}
                   </TableCell>
                 )}
                 {isAdmin && (
-                  <TableCell className="text-sm text-right font-mono text-primary">
+                  <TableCell className="text-sm text-right tabular-nums text-primary">
                     {peso(po.total_amount * po.exchange_rate)}
                     {paidSoFar(po.id) > 0 && !isPaidStatus(po.status) && (
                       <div className="text-[11px] text-muted-foreground font-sans">{peso(phpBalance(po))} left</div>
@@ -2225,7 +2226,7 @@ export default function OverseasPurchaseOrdersPage() {
                 </TableRow>
               ) : sortedIncomingRows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className="text-sm font-mono font-medium">{row.po_number}</TableCell>
+                  <TableCell className="text-sm tabular-nums font-medium">{docNo(row.po_number)}</TableCell>
                   <TableCell className="text-sm">{row.supplier_name}</TableCell>
                   <TableCell>
                     <div className="min-w-[180px]">
@@ -2233,16 +2234,16 @@ export default function OverseasPurchaseOrdersPage() {
                       <p className="text-xs text-muted-foreground">{row.description || "—"}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm font-mono">{row.sku || "—"}</TableCell>
+                  <TableCell className="text-sm tabular-nums">{row.sku || "—"}</TableCell>
                   <TableCell className="text-sm text-right">{row.ordered_quantity}</TableCell>
                   <TableCell className="text-sm text-right">{row.received_quantity}</TableCell>
                   <TableCell className="text-sm text-right font-medium">{row.remaining_quantity}</TableCell>
                   {isAdmin && (
-                    <TableCell className="text-sm text-right font-mono">
+                    <TableCell className="text-sm text-right tabular-nums">
                       {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
                     </TableCell>
                   )}
-                  {isAdmin && <TableCell className="text-sm text-right font-mono text-primary">{peso(row.php_value)}</TableCell>}
+                  {isAdmin && <TableCell className="text-sm text-right tabular-nums text-primary">{peso(row.php_value)}</TableCell>}
                   <TableCell className="text-sm">{row.expected_delivery ? new Date(row.expected_delivery).toLocaleDateString("en-US") : "—"}</TableCell>
                 </TableRow>
               ))}
@@ -2298,7 +2299,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <div key={s.id} className="rounded-xl border bg-card p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-mono text-xs font-semibold">{s.tracking_number || "—"}</div>
+                        <div className="truncate tabular-nums text-xs font-semibold">{s.tracking_number || "—"}</div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
                           {po_number} · {supplier}
                         </div>
@@ -2357,7 +2358,7 @@ export default function OverseasPurchaseOrdersPage() {
                     </TableRow>
                   ) : trackingRows.map(({ shipment: s, po_number, supplier }) => (
                     <TableRow key={s.id} className="hover:bg-muted/30">
-                      <TableCell className="font-mono text-xs font-medium">{s.tracking_number || "—"}</TableCell>
+                      <TableCell className="tabular-nums text-xs font-medium">{s.tracking_number || "—"}</TableCell>
                       <TableCell className="text-sm">{po_number}</TableCell>
                       <TableCell className="text-sm">{supplier}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{s.shipping_method || "—"}</TableCell>
@@ -2395,7 +2396,7 @@ export default function OverseasPurchaseOrdersPage() {
                   <SelectItem value={NO_PO}>Not linked to a PO</SelectItem>
                   {orders.map((o: any) => (
                     <SelectItem key={o.id} value={o.id}>
-                      {o.po_number}{o.overseas_suppliers?.name ? ` · ${o.overseas_suppliers.name}` : ""}
+                      {docNo(o.po_number)}{o.overseas_suppliers?.name ? ` · ${o.overseas_suppliers.name}` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

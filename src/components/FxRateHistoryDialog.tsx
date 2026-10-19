@@ -23,16 +23,16 @@ function RateTooltip({ active, payload }: any) {
       {p.rate != null && (
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Rate paid</span>
-          <span className="font-mono">{p.rate.toFixed(2)}</span>
+          <span className="tabular-nums">{p.rate.toFixed(2)}</span>
         </div>
       )}
       <div className="flex justify-between gap-4">
         <span className="text-muted-foreground">Average after</span>
-        <span className="font-mono">{p.average.toFixed(2)}</span>
+        <span className="tabular-nums">{p.average.toFixed(2)}</span>
       </div>
       <div className="flex justify-between gap-4">
         <span className="text-muted-foreground">Held</span>
-        <span className="font-mono">{p.held}</span>
+        <span className="tabular-nums">{p.held}</span>
       </div>
     </div>
   );

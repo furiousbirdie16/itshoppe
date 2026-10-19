@@ -188,7 +188,7 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
                   onClick={() => { onChange(row.item.id, row.item, undefined, null); setQuery(""); setOpen(false); }}
                 >
                   <span>
-                    <span className="font-mono text-xs text-primary font-medium">{row.item.sku}</span>
+                    <span className="tabular-nums text-xs text-primary font-medium">{row.item.sku}</span>
                     <span className="text-muted-foreground mx-1">—</span>
                     <span>{row.item.name}</span>
                   </span>

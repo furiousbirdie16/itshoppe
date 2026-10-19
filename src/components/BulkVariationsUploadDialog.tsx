@@ -214,7 +214,7 @@ export default function BulkVariationsUploadDialog({ open, onOpenChange, onSucce
                       </TableCell>
                       <TableCell className="text-sm">
                         {row.name || "—"}
-                        {row.sku && <div className="text-[10px] font-mono text-muted-foreground">{row.sku}</div>}
+                        {row.sku && <div className="text-[10px] tabular-nums text-muted-foreground">{row.sku}</div>}
                       </TableCell>
                       <TableCell className="text-xs uppercase">{row.type}</TableCell>
                       <TableCell className="text-sm text-right">{row.factor}</TableCell>

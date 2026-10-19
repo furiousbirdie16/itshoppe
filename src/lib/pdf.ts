@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { fitLogo, type DocumentLogo } from "./document-logo";
 
 export interface DocumentData {
   type: "purchase_order" | "quotation" | "invoice";
@@ -51,7 +52,7 @@ function getDocTitle(type: DocumentData["type"]): string {
   }
 }
 
-export function generateDocumentPDF(data: DocumentData): jsPDF {
+export function generateDocumentPDF(data: DocumentData, logo?: DocumentLogo | null): jsPDF {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
@@ -62,24 +63,34 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
   let y = 18;
 
   // ── Logo ──
+  // The uploaded one keeps its own shape inside a 30 × 14 mm box; the
+  // company name moves along to sit beside however wide it came out.
+  let logoW = 12;
   try {
-    doc.addImage(LOGO_DATA, "JPEG", ml, y - 6, 12, 12);
+    if (logo) {
+      const { w, h } = fitLogo(logo.width, logo.height, 30, 14);
+      doc.addImage(logo.dataUrl, logo.format, ml, y - 7 + (14 - h) / 2, w, h);
+      logoW = w;
+    } else {
+      doc.addImage(LOGO_DATA, "JPEG", ml, y - 6, 12, 12);
+    }
   } catch {
     // fallback if image fails
   }
+  const textX = ml + logoW + 3;
 
   // ── Company Info (next to logo) ──
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(...BLK);
-  doc.text(COMPANY_NAME, ml + 15, y);
+  doc.text(COMPANY_NAME, textX, y);
   y += 5;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...GRY);
-  doc.text(COMPANY_ADDRESS_1, ml + 15, y);
+  doc.text(COMPANY_ADDRESS_1, textX, y);
   y += 4;
-  doc.text(COMPANY_ADDRESS_2, ml + 15, y);
+  doc.text(COMPANY_ADDRESS_2, textX, y);
 
   // ── Document Title (top-right) ──
   const title = getDocTitle(data.type);
@@ -266,12 +277,12 @@ export function generateDocumentPDF(data: DocumentData): jsPDF {
   return doc;
 }
 
-export function downloadPDF(data: DocumentData) {
-  const doc = generateDocumentPDF(data);
+export function downloadPDF(data: DocumentData, logo?: DocumentLogo | null) {
+  const doc = generateDocumentPDF(data, logo);
   doc.save(`${data.number}.pdf`);
 }
 
-export function getPDFDataURL(data: DocumentData): string {
-  const doc = generateDocumentPDF(data);
+export function getPDFDataURL(data: DocumentData, logo?: DocumentLogo | null): string {
+  const doc = generateDocumentPDF(data, logo);
   return doc.output("dataurlstring");
 }

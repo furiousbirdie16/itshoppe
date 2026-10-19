@@ -15,6 +15,7 @@ import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
 import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
 import { useBranch } from "@/contexts/BranchContext";
 import { walkBalances } from "@/lib/ledger-balances";
+import { docNo } from "@/lib/doc-number";
 
 interface Props {
   item: Item | null;
@@ -206,9 +207,9 @@ async function fetchLedger(itemId: string, currentQty: number, branchId: string 
   ]);
 
   const refMap = new Map<string, { number: string; link: string; kind: LedgerRow["reference_kind"]; date: string | null }>();
-  invRows.forEach((r: any) => refMap.set(r.id, { number: r.invoice_number, link: `/invoices?focus=${r.id}`, kind: "invoice", date: r._date }));
-  poRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order", date: r._date }));
-  oposRows.forEach((r: any) => refMap.set(r.id, { number: r.po_number, link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order", date: r._date }));
+  invRows.forEach((r: any) => refMap.set(r.id, { number: docNo(r.invoice_number), link: `/invoices?focus=${r.id}`, kind: "invoice", date: r._date }));
+  poRows.forEach((r: any) => refMap.set(r.id, { number: docNo(r.po_number), link: `/purchase-orders?focus=${r.id}`, kind: "purchase_order", date: r._date }));
+  oposRows.forEach((r: any) => refMap.set(r.id, { number: docNo(r.po_number), link: `/overseas-purchase-orders?focus=${r.id}`, kind: "overseas_purchase_order", date: r._date }));
   osRows.forEach((r: any) => refMap.set(r.id, { number: r.order_number, link: `/online-sales?focus=${r.id}`, kind: "online_sale", date: r._date }));
 
 
@@ -563,7 +564,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs font-mono">{r.branch_label}</TableCell>
+                  <TableCell className="text-xs tabular-nums">{r.branch_label}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
                     {r.discrepancy !== 0 && (
@@ -576,7 +577,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs font-mono">
+                  <TableCell className="text-xs tabular-nums">
                     {r.reference_kind === "invoice" && r.reference_id ? (
                       <button
                         type="button"

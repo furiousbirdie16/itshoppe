@@ -33,6 +33,7 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { useBranch } from "@/contexts/BranchContext";
+import { docNo } from "@/lib/doc-number";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
 
@@ -200,7 +201,7 @@ export default function QuotationsPage() {
     const dueDate = getDueDate(q);
     setPreviewData({
       type: "quotation",
-      number: q.quotation_number,
+      number: docNo(q.quotation_number),
       date: q.quotation_date,
       status: q.status,
       notes: q.notes,
@@ -426,7 +427,7 @@ export default function QuotationsPage() {
           <ExportButton
             data={filtered}
             columns={{
-              "Quotation #": (r: any) => r.quotation_number,
+              "Quotation #": (r: any) => docNo(r.quotation_number),
               "Date": (r: any) => r.quotation_date,
               "Customer": (r: any) => r.customers?.name || "",
               "Sales Agent": (r: any) => r.sales_agent || "",
@@ -737,7 +738,7 @@ export default function QuotationsPage() {
               <TableBody>
                 {qItems.map(qi => (
                   <TableRow key={qi.id}>
-                     <TableCell className="font-mono text-xs text-primary font-medium">{(qi as any).item_variations?.sku || qi.items?.sku || "—"}</TableCell>
+                     <TableCell className="tabular-nums text-xs text-primary font-medium">{(qi as any).item_variations?.sku || qi.items?.sku || "—"}</TableCell>
                      <TableCell className="text-sm font-medium">{(qi as any).item_variations?.name || (qi as any).item_name || qi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>
@@ -775,9 +776,9 @@ export default function QuotationsPage() {
               return (
               <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
-                <TableCell className="font-mono text-xs font-semibold">
+                <TableCell className="tabular-nums text-xs font-semibold">
                   <span className="inline-flex items-center gap-1">
-                    {q.quotation_number}
+                    {docNo(q.quotation_number)}
                     {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
                   </span>
                 </TableCell>

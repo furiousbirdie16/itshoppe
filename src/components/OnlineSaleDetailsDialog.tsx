@@ -136,7 +136,7 @@ export default function OnlineSaleDetailsDialog({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm rounded-lg border bg-muted/30 p-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order #</div>
-                  <div className="font-mono font-semibold">{s.order_number}</div>
+                  <div className="tabular-nums font-semibold">{s.order_number}</div>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channel</div>
@@ -174,7 +174,7 @@ export default function OnlineSaleDetailsDialog({
                   </TableHeader>
                   <TableBody>
                     <TableRow className={cn(isHl && "bg-amber-50 dark:bg-amber-950/40 border-l-4 border-l-amber-500")}>
-                      <TableCell className="font-mono text-xs text-primary">
+                      <TableCell className="tabular-nums text-xs text-primary">
                         {skuText}
                         {isHl && <span className="ml-2 text-[10px] font-semibold text-amber-700 dark:text-amber-300 uppercase">Ledger item</span>}
                       </TableCell>

@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { warrantyStatus } from "@/lib/warranty";
 import { cn } from "@/lib/utils";
 import type { SoldUnit, SerialEvent } from "@/types/database";
+import { docNo } from "@/lib/doc-number";
 
 /**
  * The counter screen: a customer is standing there with a unit, and the only
@@ -125,7 +126,7 @@ export default function WarrantyLookupPage() {
             <div className="text-muted-foreground">Customer</div>
             <div className="font-medium">{unit.invoices?.customers?.name || "—"}</div>
             <div className="text-muted-foreground">Invoice</div>
-            <div className="font-medium">{unit.invoices?.invoice_number || "—"}</div>
+            <div className="font-medium">{docNo(unit.invoices?.invoice_number) || "—"}</div>
             <div className="text-muted-foreground">Collected</div>
             <div className="font-medium">
               {startsAt ? format(startsAt, "MMMM d, yyyy") : "not yet marked shipped"}
