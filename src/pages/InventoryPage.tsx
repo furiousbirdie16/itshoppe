@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities, notifyInventoryAdjustments } from "@/lib/api";
+import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities, notifyInventoryAdjustments, getBranchStock } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -136,6 +136,17 @@ export default function InventoryPage() {
   // cannot be reached without throwing the form away.
   const [formBranchId, setFormBranchId] = useState("");
   const qtyBranchId = activeBranchId || formBranchId;
+  /**
+   * The chosen branch's own stock for the item being edited, as loaded.
+   *
+   * Under "All branches" the item row carries every branch added together, and
+   * the form used to start from those totals: pick Manila, save — even after
+   * changing only the price — and Manila was set to Manila + Gen San. The
+   * fields now hold the picked branch's figures, and quantities are written
+   * only when they differ from these.
+   */
+  const [branchQty, setBranchQty] = useState<{ wh: number; st: number } | null>(null);
+  const [branchQtyLoading, setBranchQtyLoading] = useState(false);
   const { data: activeItems = [], isLoading: loadingActive } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: archivedItemsData = [], isLoading: loadingArchived } = useQuery({
     queryKey: ["items", "archived"],
@@ -382,6 +393,26 @@ export default function InventoryPage() {
     setOpen(true);
   };
 
+  const editingId = editing?.id;
+  useEffect(() => {
+    setBranchQty(null);
+    if (!open || !editingId || !qtyBranchId) return;
+    let cancelled = false;
+    setBranchQtyLoading(true);
+    getBranchStock(editingId, qtyBranchId)
+      .then((cur) => {
+        if (cancelled) return;
+        setBranchQty({ wh: cur.warehouse_quantity, st: cur.store_quantity });
+        setForm((f) => ({ ...f, warehouse_quantity: String(cur.warehouse_quantity), store_quantity: String(cur.store_quantity) }));
+      })
+      .catch(() => { if (!cancelled) toast.error("Could not load this branch's stock"); })
+      .finally(() => { if (!cancelled) setBranchQtyLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, editingId, qtyBranchId]);
+
+  /** Editing, but no branch's own figures to edit against yet. */
+  const qtyLocked = !!editing && (!branchQty || branchQtyLoading);
+
   const canEditCost = isAdmin || form.source === "local";
 
   const handleSubmit = () => {
@@ -412,6 +443,10 @@ export default function InventoryPage() {
         base.low_stock_threshold = parseInt(form.low_stock_threshold);
         base.cost_price_rmb = parseFloat(form.cost_price_rmb) || 0;
       }
+      // Quantities only when they were loaded for a branch and then changed.
+      // Anything else would write totals, or stale figures, over the branch.
+      if (!branchQty || wh === branchQty.wh) delete base.warehouse_quantity;
+      if (!branchQty || st === branchQty.st) delete base.store_quantity;
       updateMut.mutate({ id: editing.id, data: base });
     }
   };
@@ -1027,12 +1062,20 @@ export default function InventoryPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">{editing ? "Warehouse Qty (Manual Adjust)" : "Initial Warehouse Qty"}</Label>
-                <Input type="number" min={0} value={form.warehouse_quantity} onChange={e => setForm({ ...form, warehouse_quantity: e.target.value })} className="h-9" />
+                <Input type="number" min={0} value={form.warehouse_quantity} onChange={e => setForm({ ...form, warehouse_quantity: e.target.value })} className="h-9" disabled={qtyLocked} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">{editing ? "Store Qty (Manual Adjust)" : "Initial Store Qty"}</Label>
-                <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" />
+                <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" disabled={qtyLocked} />
               </div>
+              {editing && !qtyBranchId && (
+                <p className="col-span-2 text-[11px] text-muted-foreground">
+                  These are all branches added together. Pick a branch above to see and change that branch's stock.
+                </p>
+              )}
+              {editing && qtyBranchId && branchQtyLoading && (
+                <p className="col-span-2 text-[11px] text-muted-foreground">Loading this branch's stock…</p>
+              )}
             </div>
             <div className={`grid ${isAdmin ? 'grid-cols-4' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
               {canEditCost && (

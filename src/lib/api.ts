@@ -15,7 +15,7 @@ const _sb: any = supabase as any;
 const _from = (table: string) => _sb.from(table);
 
 /** Read the branch-scoped stock row (returns zeros if missing). */
-async function getBranchStock(itemId: string, branchId: string) {
+export async function getBranchStock(itemId: string, branchId: string) {
   const { data } = await _from("item_branch_stock")
     .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
     .eq("item_id", itemId)
