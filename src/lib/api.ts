@@ -974,16 +974,33 @@ export const deleteInvoiceItems = async (invId: string) => {
   if (error) throw error;
 };
 
-// Internal: deduct stock for an invoice exactly once (idempotent via inventory_deducted flag)
+// Internal: deduct stock for an invoice exactly once.
+//
+// The flag is claimed BEFORE the stock moves, in one conditional update. This
+// used to read the flag, deduct, then set it — so marking an invoice paid and,
+// while that was still saving, marking it shipped had both read "not yet
+// deducted" and both deducted: the stock went out twice. Postgres lets only one
+// `update … where inventory_deducted = false` match the row; the other finds
+// nothing to claim and leaves the stock alone.
 const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
   const { data: invRow } = await from("invoices").select("inventory_deducted, branch_id").eq("id", invoiceId).maybeSingle();
   if ((invRow as any)?.inventory_deducted) return false;
   const branchId: string | null = (invRow as any)?.branch_id ?? null;
   if (!branchId) throw new Error("This invoice has no branch assigned. Set the invoice branch before deducting stock.");
 
-  const { data: invItems } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
-  if (invItems) {
-    for (const invItem of invItems as any[]) {
+  const { data: claimed, error: claimErr } = await from("invoices")
+    .update({ inventory_deducted: true, updated_at: new Date().toISOString() })
+    .eq("id", invoiceId)
+    .eq("inventory_deducted", false)
+    .select("id");
+  if (claimErr) throw claimErr;
+  if (!claimed || claimed.length === 0) return false; // the other action got there first
+
+  let applied = 0;
+  try {
+    const { data: invItems, error: itemsErr } = await from("invoice_items").select("*").eq("invoice_id", invoiceId);
+    if (itemsErr) throw itemsErr;
+    for (const invItem of (invItems || []) as any[]) {
       if (!invItem.item_id) continue;
       await applyStockChange({
         itemId: invItem.item_id,
@@ -995,10 +1012,53 @@ const deductInvoiceStockIfNeeded = async (invoiceId: string, notes: string) => {
         movementType: "out_invoice",
         notes,
       });
+      applied++;
     }
+  } catch (e) {
+    // Nothing moved yet: hand the claim back so a retry can deduct. Once some
+    // lines have moved, keep it — releasing it would let a retry take those
+    // lines out a second time, which is the bug this guards against.
+    if (applied === 0) {
+      await from("invoices").update({ inventory_deducted: false }).eq("id", invoiceId);
+    }
+    throw e;
   }
-  await from("invoices").update({ inventory_deducted: true, updated_at: new Date().toISOString() }).eq("id", invoiceId);
   return true;
+};
+
+/**
+ * Set an invoice's status from paid/shipped, atomically.
+ *
+ * Paid-then-shipped is "completed"; either alone is itself. Reading the status
+ * and then writing it let a payment and a shipment saved at the same moment
+ * overwrite each other, leaving an invoice that was both marked only one. Each
+ * write here is conditional on the status it expects, so the second one to
+ * land sees the first and completes the invoice.
+ */
+const settleInvoiceStatus = async (
+  invoiceId: string,
+  fields: Record<string, unknown>,
+  other: "paid" | "shipped",
+  alone: "paid" | "shipped",
+): Promise<"completed" | "paid" | "shipped"> => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const both = await from("invoices")
+      .update({ ...fields, status: "completed" })
+      .eq("id", invoiceId)
+      .eq("status", other)
+      .select("id");
+    if (both.error) throw both.error;
+    if (both.data?.length) return "completed";
+
+    const one = await from("invoices")
+      .update({ ...fields, status: alone })
+      .eq("id", invoiceId)
+      .neq("status", other)
+      .select("id");
+    if (one.error) throw one.error;
+    if (one.data?.length) return alone;
+  }
+  throw new Error("This invoice was changed while saving. Refresh and check its status.");
 };
 
 // Confirm Invoice (mark shipped - legacy "shipped not paid") - deduct stock once
@@ -1026,13 +1086,8 @@ export const convertReservedToSale = async (invoiceId: string) => {
 // Mark invoice shipped/picked-up. If already paid -> auto-complete.
 export const shipInvoice = async (invoiceId: string) => {
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (shipped)");
-  const { data: invRow } = await from("invoices").select("status").eq("id", invoiceId).maybeSingle();
-  const wasPaid = (invRow as any)?.status === "paid";
-  await from("invoices").update({
-    status: wasPaid ? "completed" : "shipped",
-    shipped_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq("id", invoiceId);
+  const now = new Date().toISOString();
+  const wasPaid = (await settleInvoiceStatus(invoiceId, { shipped_at: now, updated_at: now }, "paid", "shipped")) === "completed";
   // Shipping is collection, and collection is when the warranty clock starts —
   // a unit paid for on the 1st and picked up on the 10th is covered from the
   // 10th. Only unset dates are filled, so re-shipping cannot restart a cover
@@ -1202,15 +1257,16 @@ export const markInvoicePaid = async (
   },
 ) => {
   await deductInvoiceStockIfNeeded(invoiceId, "Deducted from invoice (paid)");
-  const { data: invRow } = await from("invoices").select("status").eq("id", invoiceId).maybeSingle();
-  const wasShipped = (invRow as any)?.status === "shipped";
 
   // Resolved once, here, and recorded on the invoice. Renaming the account
   // afterwards cannot orphan the payment, because nothing re-reads the label.
   const account = await resolvePaymentAccount(payment.payment_method);
 
-  const { error: payErr } = await from("invoices").update({
-    status: wasShipped ? "completed" : "paid",
+  // Checked, not assumed (settleInvoiceStatus throws). Unchecked, a rejected
+  // update looked like success and then quietly undid the payment:
+  // amount_received never landed, so the ledger re-read the invoice, found
+  // nothing, and banked the invoice total instead of the money that arrived.
+  const wasShipped = (await settleInvoiceStatus(invoiceId, {
     payment_method: payment.payment_method,
     payment_account_id: account?.id ?? null,
     payment_reference: payment.payment_reference || null,
@@ -1220,12 +1276,7 @@ export const markInvoicePaid = async (
     // note left behind by an earlier correction does not linger as a lie.
     payment_variance_note: payment.amount_received == null ? null : (payment.variance_note?.trim() || null),
     updated_at: new Date().toISOString(),
-  }).eq("id", invoiceId);
-  // Checked, not assumed. Unchecked, a rejected update looked like success and
-  // then quietly undid the payment: amount_received never landed, so the ledger
-  // re-read the invoice, found nothing, and banked the invoice total instead of
-  // the money that actually arrived.
-  if (payErr) throw payErr;
+  }, "shipped", "paid")) === "completed";
   // Never let a ledger problem block the invoice itself from being marked paid —
   // but never hide one either. The caller surfaces this, because a payment that
   // silently failed to post is exactly how money goes missing from an account.

@@ -546,7 +546,26 @@ export default function InvoicesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["invoices"] }); toast.success("Deleted"); },
   });
 
+  /**
+   * Invoices with a status change still saving. Their other status buttons
+   * are disabled until it lands: marking paid and then, while that was still
+   * loading, marking shipped used to deduct the stock twice.
+   */
+  const [busyInvoices, setBusyInvoices] = useState<Set<string>>(() => new Set());
+  const markBusy = (id: string) => setBusyInvoices((prev) => new Set(prev).add(id));
+  const clearBusy = (id: string) => setBusyInvoices((prev) => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
+  /** onMutate/onSettled for a mutation whose variables are the invoice id. */
+  const busyById = {
+    onMutate: (id: string) => markBusy(id),
+    onSettled: (_d: unknown, _e: unknown, id: string) => clearBusy(id),
+  };
+
   const confirmMut = useMutation({
+    ...busyById,
     mutationFn: confirmInvoice,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -560,6 +579,8 @@ export default function InvoicesPage() {
   const markPaidMut = useMutation({
     mutationFn: ({ id, payment_method, payment_reference, payment_reference_url, amount_received, variance_note }: { id: string; payment_method: string; payment_reference?: string; payment_reference_url?: string; amount_received?: number | null; variance_note?: string | null }) =>
       markInvoicePaid(id, { payment_method, payment_reference: payment_reference || null, payment_reference_url: payment_reference_url || null, amount_received: amount_received ?? null, variance_note: variance_note ?? null }),
+    onMutate: (vars) => markBusy(vars.id),
+    onSettled: (_d, _e, vars) => clearBusy(vars.id),
     onSuccess: (res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -691,6 +712,7 @@ export default function InvoicesPage() {
   };
 
   const revertMut = useMutation({
+    ...busyById,
     mutationFn: revertInvoice,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -703,6 +725,7 @@ export default function InvoicesPage() {
   });
 
   const reserveMut = useMutation({
+    ...busyById,
     mutationFn: reserveInvoice,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -714,6 +737,7 @@ export default function InvoicesPage() {
   });
 
   const shipMut = useMutation({
+    ...busyById,
     mutationFn: shipInvoice,
     onSuccess: (_d, invoiceId) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -726,6 +750,7 @@ export default function InvoicesPage() {
   });
 
   const cancelMut = useMutation({
+    ...busyById,
     mutationFn: cancelInvoice,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -738,6 +763,7 @@ export default function InvoicesPage() {
   });
 
   const convertMut = useMutation({
+    ...busyById,
     mutationFn: convertReservedToSale,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -793,6 +819,7 @@ export default function InvoicesPage() {
    */
   const renderInvoiceActions = (inv: any) => {
     const locked = isInvoiceLocked(inv.status) && !isAdmin;
+    const busy = busyInvoices.has(inv.id);
     return (
       <>
                     <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
@@ -810,40 +837,40 @@ export default function InvoicesPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay", inv.branch_id)) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay", inv.branch_id)) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
                       </>
                     )}
                     {inv.status === "reserved" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Recall this reserved order? It will return to Draft and allocated stock will be restored to inventory.")) revertMut.mutate(inv.id); }} title="Recall reservation (return to draft, restore stock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory and the order will be marked Cancelled.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => { if (window.confirm("Recall this reserved order? It will return to Draft and allocated stock will be restored to inventory.")) revertMut.mutate(inv.id); }} title="Recall reservation (return to draft, restore stock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory and the order will be marked Cancelled.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
                     {inv.status === "shipped" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv.id)} title="Mark as Paid (auto-completes order)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid (auto-completes order)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
                     {inv.status === "paid" && (
                       <>
-                        <Button variant="ghost" size="icon" onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up (auto-completes order)" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up (auto-completes order)" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                       </>
                     )}
                     {(inv.status === "unpaid" || inv.status === "completed" || inv.status === "cancelled") && (
-                      <Button variant="ghost" size="icon" onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
 
                     {isAdmin && !locked && (
