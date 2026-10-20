@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getCustomers, getItems } from "@/lib/api";
@@ -8,7 +8,7 @@ import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Pencil, Search, Star } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, Star, ChevronRight } from "lucide-react";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { SetCustomerPriceDialog } from "@/components/SetCustomerPriceDialog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -147,6 +147,40 @@ export default function CustomerPricingPage() {
     return Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [rows]);
 
+  /**
+   * The rows folded under their customer. One line per customer until it is
+   * opened: a regular buyer had a row for every product they ever bought, and
+   * the page was mostly the same name repeated.
+   *
+   * Groups keep the order the sort gave their rows, so sorting by price or by
+   * date orders customers by their highest or latest row.
+   */
+  const groups = useMemo(() => {
+    const byCustomer = new Map<string, { customer_id: string; customer_name: string; rows: any[]; lastSold: string | null; pinned: number }>();
+    for (const r of sorted as any[]) {
+      let g = byCustomer.get(r.customer_id);
+      if (!g) {
+        g = { customer_id: r.customer_id, customer_name: r.customer_name, rows: [], lastSold: null, pinned: 0 };
+        byCustomer.set(r.customer_id, g);
+      }
+      g.rows.push(r);
+      if (r.sold_at && (!g.lastSold || r.sold_at > g.lastSold)) g.lastSold = r.sold_at;
+      if (r.pinned) g.pinned++;
+    }
+    return Array.from(byCustomer.values());
+  }, [sorted]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleCustomer = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  // Searching or filtering is looking for rows, not customers: open them all.
+  const openAll = !!search.trim() || filterCustomer !== "all" || filterItem !== "all";
+  const isOpen = (id: string) => openAll || expanded.has(id);
+
   const unpinMut = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await (supabase as any).from("customer_prices").delete().eq("id", id);
@@ -186,52 +220,74 @@ export default function CustomerPricingPage() {
         <FilterCombobox value={filterCustomer} onChange={setFilterCustomer} options={customerOptions} placeholder="All Customers" allLabel="All Customers" className="h-9 sm:w-52" />
         <FilterCombobox value={filterItem} onChange={setFilterItem} options={itemOptions} placeholder="All Products" allLabel="All Products" className="h-9 sm:w-56" />
         <span className="text-xs text-muted-foreground ml-auto">
-          {sorted.length} price{sorted.length === 1 ? "" : "s"}
+          {groups.length} customer{groups.length === 1 ? "" : "s"} · {sorted.length} price{sorted.length === 1 ? "" : "s"}
         </span>
       </div>
 
       {/* Phones get stacked cards; the table needs a horizontal scroll that
           would hide the price, which is the only reason to open this page. */}
       <div className="md:hidden space-y-2">
-        {sorted.length === 0 ? (
+        {groups.length === 0 ? (
           <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">
             {isLoading ? "Loading…" : "No customer prices yet."}
           </div>
         ) : (
-          sorted.map((r: any) => (
-            <div key={r.key} className="rounded-xl border bg-card p-3">
-              <div className="flex items-start justify-between gap-2">
+          groups.map((g) => (
+            <div key={g.customer_id} className="rounded-xl border bg-card">
+              <button
+                type="button"
+                onClick={() => toggleCustomer(g.customer_id)}
+                className="flex w-full items-center gap-2 p-3 text-left"
+                aria-expanded={isOpen(g.customer_id)}
+              >
+                <ChevronRight className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isOpen(g.customer_id) ? "rotate-90" : ""}`} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{r.customer_name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {r.item_name}{r.item_sku ? ` · ${r.item_sku}` : ""}
+                  <div className="truncate text-sm font-medium">{g.customer_name}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {g.rows.length} product{g.rows.length === 1 ? "" : "s"}
+                    {g.pinned > 0 && <> · {g.pinned} pinned</>}
+                    {g.lastSold && <> · last {format(new Date(g.lastSold), "MMM d, yyyy")}</>}
                   </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-base font-semibold tabular-nums inline-flex items-center gap-1">
-                    {r.pinnedPrice != null && <Star className="h-3 w-3 fill-primary text-primary" />}
-                    {peso(r.price)}
+              </button>
+              {isOpen(g.customer_id) && (
+                <div className="space-y-2 border-t p-2">
+                  {g.rows.map((r: any) => (
+                  <div key={r.key} className="rounded-lg border bg-muted/20 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{r.item_name}</div>
+                        {r.item_sku && <div className="truncate text-xs text-muted-foreground">{r.item_sku}</div>}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-base font-semibold tabular-nums inline-flex items-center gap-1">
+                          {r.pinnedPrice != null && <Star className="h-3 w-3 fill-primary text-primary" />}
+                          {peso(r.price)}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">std {peso(r.standard)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2 text-[11px] text-muted-foreground">
+                      <span>
+                        {r.sold_at
+                          ? `Last bought ${format(new Date(r.sold_at), "MMM d, yyyy")}${r.times_bought > 1 ? ` · ${r.times_bought}×` : ""}`
+                          : "Never bought — pinned price"}
+                      </span>
+                      <div className="flex shrink-0 gap-0.5">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditing({ ...r, fixed_price: r.price, id: r.pinned?.id ?? null }); setDialogOpen(true); }} aria-label="Pin a price">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {isAdmin && r.pinned && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { if (confirm("Remove the pinned price? The last sold price will apply instead.")) unpinMut.mutate(r.pinned.id); }} aria-label="Remove pinned price">
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[11px] text-muted-foreground">std {peso(r.standard)}</div>
+                  ))}
                 </div>
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2 text-[11px] text-muted-foreground">
-                <span>
-                  {r.sold_at
-                    ? `Last bought ${format(new Date(r.sold_at), "MMM d, yyyy")}${r.times_bought > 1 ? ` · ${r.times_bought}×` : ""}`
-                    : "Never bought — pinned price"}
-                </span>
-                <div className="flex shrink-0 gap-0.5">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditing({ ...r, fixed_price: r.price, id: r.pinned?.id ?? null }); setDialogOpen(true); }} aria-label="Pin a price">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  {isAdmin && r.pinned && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { if (confirm("Remove the pinned price? The last sold price will apply instead.")) unpinMut.mutate(r.pinned.id); }} aria-label="Remove pinned price">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              </div>
+              )}
             </div>
           ))
         )}
@@ -251,16 +307,42 @@ export default function CustomerPricingPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.length === 0 ? (
+            {groups.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-8">
                   {isLoading ? "Loading…" : "No customer prices yet — they appear as customers buy."}
                 </TableCell>
               </TableRow>
             ) : (
-              sorted.map((r: any) => (
+              groups.map((g) => (
+                <Fragment key={g.customer_id}>
+                  <TableRow
+                    className="cursor-pointer bg-muted/20 hover:bg-muted/40"
+                    onClick={() => toggleCustomer(g.customer_id)}
+                    aria-expanded={isOpen(g.customer_id)}
+                  >
+                    <TableCell className="text-sm font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen(g.customer_id) ? "rotate-90" : ""}`} />
+                        {g.customer_name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground" colSpan={4}>
+                      {g.rows.length} product{g.rows.length === 1 ? "" : "s"}
+                      {g.pinned > 0 && (
+                        <span className="ml-2 inline-flex items-center gap-1">
+                          <Star className="h-3 w-3 fill-primary text-primary" />{g.pinned} pinned
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {g.lastSold ? format(new Date(g.lastSold), "MMM d, yyyy") : "never bought"}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                  {isOpen(g.customer_id) && g.rows.map((r: any) => (
                 <TableRow key={r.key}>
-                  <TableCell className="text-sm font-medium">{r.customer_name}</TableCell>
+                  <TableCell />
                   <TableCell className="text-sm">
                     <div>{r.item_name}</div>
                     {r.item_sku && <div className="text-[11px] text-muted-foreground">{r.item_sku}</div>}
@@ -310,6 +392,8 @@ export default function CustomerPricingPage() {
                     )}
                   </TableCell>
                 </TableRow>
+                  ))}
+                </Fragment>
               ))
             )}
           </TableBody>
