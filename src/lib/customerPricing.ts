@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/paginate";
 
 export interface CustomerLastPrice {
   customer_id: string;
@@ -18,9 +19,11 @@ export interface CustomerLastPrice {
  * answer must not depend on how much history happened to be fetched.
  */
 export async function getCustomerLastPrices(): Promise<CustomerLastPrice[]> {
-  const { data, error } = await (supabase as any).rpc("customer_last_prices");
-  if (error) throw error;
-  return (data as CustomerLastPrice[]) || [];
+  // Paged: the database returns at most 1000 rows per request, and the
+  // function sorts by customer id, so past 1000 customer–product pairs every
+  // customer whose id sorted late simply vanished from the pricing page.
+  // The function's ORDER BY is unique per row, so the pages cannot overlap.
+  return fetchAllRows<CustomerLastPrice>(() => (supabase as any).rpc("customer_last_prices"));
 }
 
 export interface CustomerPriceInfo {
