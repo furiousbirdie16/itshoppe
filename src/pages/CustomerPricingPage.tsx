@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { format } from "date-fns";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 /**
@@ -51,7 +52,9 @@ export default function CustomerPricingPage() {
   });
 
   const [search, setSearch] = useState("");
-  const [filterCustomer, setFilterCustomer] = useState("all");
+  // Arriving from a customer's row opens on that customer.
+  const [searchParams] = useSearchParams();
+  const [filterCustomer, setFilterCustomer] = useState(() => searchParams.get("customer") || "all");
   const [filterItem, setFilterItem] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);

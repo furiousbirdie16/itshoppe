@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal, Receipt, Merge } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, CalendarIcon, X, MapPin, Download, BellRing, History, SlidersHorizontal, MoreHorizontal, Receipt, Merge, Tag } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -29,6 +29,8 @@ import { FilterCombobox } from "@/components/FilterCombobox";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { formatLocationChip } from "@/lib/locations";
 import { CustomerWarrantyList } from "@/components/CustomerWarrantyList";
+import { CustomerPricesList } from "@/components/CustomerPricesList";
+import { Link } from "react-router-dom";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
 import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
@@ -974,6 +976,9 @@ export default function CustomersPage() {
                         <Button variant="ghost" size="icon" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-7 w-7 rounded-md" title="Mark as followed up">
                           <BellRing className="h-3.5 w-3.5 text-primary" />
                         </Button>
+                        <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-md" title="Their prices">
+                          <Link to={`/customer-pricing?customer=${c.id}`}><Tag className="h-3.5 w-3.5 text-muted-foreground" /></Link>
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => setHistoryDialog(c)} className="h-7 w-7 rounded-md" title="Follow-up history">
                           <History className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
@@ -1065,6 +1070,11 @@ export default function CustomersPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link to={`/customer-pricing?customer=${c.id}`}>
+                          <Tag className="h-4 w-4 mr-2 text-muted-foreground" /> Prices
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setHistoryDialog(c)}>
                         <History className="h-4 w-4 mr-2 text-muted-foreground" /> History
                       </DropdownMenuItem>
@@ -1179,6 +1189,7 @@ export default function CustomersPage() {
               ))}
             </div>
           )}
+          {ordersDialog && <CustomerPricesList customerId={ordersDialog.id} />}
           {ordersDialog && <CustomerWarrantyList customerId={ordersDialog.id} />}
         </DialogContent>
       </Dialog>
