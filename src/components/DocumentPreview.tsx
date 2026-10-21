@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, X } from "lucide-react";
+import { Download, ExternalLink } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { DocumentData, getPDFDataURL, downloadPDF } from "@/lib/pdf";
+import { DocumentData, getPDFBlobURL, downloadPDF } from "@/lib/pdf";
 import { getDocumentLogo } from "@/lib/document-logo";
 
 interface DocumentPreviewProps {
@@ -26,8 +26,11 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
   useEffect(() => {
     if (open && data && logoReady) {
       try {
-        const url = getPDFDataURL(data, logo);
+        const url = getPDFBlobURL(data, logo);
         setPdfUrl(url);
+        // Freed a minute later rather than at once: a tab opened from it may
+        // still be loading when the preview closes.
+        return () => { setTimeout(() => URL.revokeObjectURL(url), 60_000); };
       } catch {
         setPdfUrl(null);
       }
@@ -44,6 +47,18 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
         <DialogHeader className="px-5 py-3 pr-14 border-b flex flex-row items-center justify-between gap-2 shrink-0 space-y-0 text-left">
           <DialogTitle className="text-base font-semibold truncate min-w-0 flex-1">{data.number} — Preview</DialogTitle>
           <div className="flex items-center gap-2 shrink-0">
+            {/* Phones cannot show a PDF inside the page, so this is how the
+                document is read there. A real link, so the tab opens from the
+                tap itself and no pop-up blocker steps in. */}
+            {pdfUrl && (
+              <Button asChild size="sm" variant="outline" className="rounded-lg h-8 px-2 sm:px-3 text-xs font-medium">
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-3.5 w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Open in new tab</span>
+                  <span className="sm:hidden ml-1">Open</span>
+                </a>
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={() => downloadPDF(data, logo)}

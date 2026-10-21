@@ -286,3 +286,12 @@ export function getPDFDataURL(data: DocumentData, logo?: DocumentLogo | null): s
   const doc = generateDocumentPDF(data, logo);
   return doc.output("dataurlstring");
 }
+
+/**
+ * A blob: URL for the PDF. Unlike a data: URL, phones will open it in a new
+ * tab (browsers block opening data: URLs as a page), and it is not a
+ * multi-megabyte string held in the DOM.
+ */
+export function getPDFBlobURL(data: DocumentData, logo?: DocumentLogo | null): string {
+  return generateDocumentPDF(data, logo).output("bloburl") as unknown as string;
+}
