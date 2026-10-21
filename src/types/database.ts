@@ -84,7 +84,9 @@ export interface Customer {
   postal_code?: string | null;
   latitude?: number | null;
   longitude?: number | null;
-  classification?: "retail" | "wholesale" | "recurring" | null;
+  classification?: "retail" | "wholesale" | "recurring" | "reseller" | null;
+  /** The reseller this customer came through; null for a direct customer. */
+  reseller_id?: string | null;
   /** Where the conversation happens: Viber, Messenger, walk-in, Shopee... */
   channel?: string | null;
   last_follow_up_at?: string | null;
@@ -149,6 +151,8 @@ export interface Invoice {
   id: string;
   invoice_number: string;
   customer_id: string | null;
+  /** The reseller this sale went through; null for a direct sale. */
+  reseller_id?: string | null;
   quotation_id: string | null;
   status: 'draft' | 'confirmed' | 'paid' | 'unpaid' | 'reserved' | 'shipped' | 'completed' | 'cancelled';
   invoice_date: string;

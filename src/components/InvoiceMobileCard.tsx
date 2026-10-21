@@ -15,6 +15,8 @@ interface Props {
   actions: React.ReactNode;
   /** How many serials this invoice went out without, if any. */
   missingSerials?: number;
+  /** The reseller the sale went through, when there was one. */
+  resellerName?: string | null;
 }
 
 /**
@@ -24,7 +26,7 @@ interface Props {
  * hides the two things that matter most — status and total. Here they sit on the
  * first line, and the actions wrap onto their own row at a comfortable tap size.
  */
-export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSelect, actions, missingSerials = 0 }: Props) {
+export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSelect, actions, missingSerials = 0, resellerName }: Props) {
   return (
     <div className={cn("rounded-xl border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
       <div className="flex items-start gap-2.5">
@@ -42,7 +44,10 @@ export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSele
             </span>
           </div>
 
-          <div className="mt-1 truncate text-sm">{inv.customers?.name || "—"}</div>
+          <div className="mt-1 truncate text-sm">
+            {inv.customers?.name || "—"}
+            {resellerName && <span className="text-[11px] text-amber-700 dark:text-amber-400"> · via {resellerName}</span>}
+          </div>
 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
             <StatusBadge status={inv.status} context="invoice" />

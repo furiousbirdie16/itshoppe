@@ -93,6 +93,9 @@ export const CLASSIFICATIONS = [
   { value: "retail", label: "Retail", className: "bg-primary/15 text-primary border-primary/30" },
   { value: "wholesale", label: "Wholesale", className: "bg-accent/30 text-accent-foreground border-accent/50" },
   { value: "recurring", label: "Recurring", className: "bg-success/15 text-success border-success/30" },
+  // Buys through one of the sales agents and sells on at a mark-up. Their own
+  // customers point back at them with reseller_id.
+  { value: "reseller", label: "Reseller", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400" },
 ] as const;
 
 export type ClassificationValue = (typeof CLASSIFICATIONS)[number]["value"];

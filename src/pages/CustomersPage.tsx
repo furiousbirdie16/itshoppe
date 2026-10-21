@@ -30,6 +30,7 @@ import { AddressSelector, emptyAddress, type AddressValue } from "@/components/A
 import { formatLocationChip } from "@/lib/locations";
 import { CustomerWarrantyList } from "@/components/CustomerWarrantyList";
 import { CustomerPricesList } from "@/components/CustomerPricesList";
+import { ResellerSelect } from "@/components/ResellerSelect";
 import { Link } from "react-router-dom";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
@@ -97,7 +98,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; channel: string; classification: ClassificationValue; tags: string[] }>({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [] });
+  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; channel: string; classification: ClassificationValue; tags: string[]; reseller_id: string | null }>({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [], reseller_id: null });
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -105,6 +106,8 @@ export default function CustomersPage() {
   const [tab, setTab] = useState<CustomerTab>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [classFilter, setClassFilter] = useState<"all" | ClassificationValue>("all");
+  /** "all", "direct", "via" (any reseller), or one reseller's id. */
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [followUpFilter, setFollowUpFilter] = useState<"all" | "active" | "needs" | "never">("all");
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [provinceFilter, setProvinceFilter] = useState<string>("all");
@@ -225,6 +228,19 @@ export default function CustomersPage() {
 
   // Channels people have already been recorded under, offered back so the
   // vocabulary settles without needing a fixed list in the schema.
+  /** Customers marked Reseller, for the pickers and the "via" labels. */
+  const resellers = useMemo(
+    () => (customers as Customer[])
+      .filter((c) => c.classification === "reseller")
+      .map((c) => ({ id: c.id, name: c.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [customers],
+  );
+  const customerNameById = useMemo(
+    () => new Map((customers as Customer[]).map((c) => [c.id, c.name])),
+    [customers],
+  );
+
   const channelOptions = useMemo(
     () => (customers as Customer[]).map((c) => c.channel || ""),
     [customers],
@@ -273,6 +289,9 @@ export default function CustomersPage() {
     }
     if (agentFilter !== "all" && customer._lastAgent !== agentFilter) return false;
     if (classFilter !== "all" && (customer.classification || "retail") !== classFilter) return false;
+    if (sourceFilter === "direct" && customer.reseller_id) return false;
+    if (sourceFilter === "via" && !customer.reseller_id) return false;
+    if (sourceFilter !== "all" && sourceFilter !== "direct" && sourceFilter !== "via" && customer.reseller_id !== sourceFilter) return false;
     if (followUpFilter !== "all") {
       const s = getFollowUpInfo(customer.last_follow_up_at).status;
       if (followUpFilter === "active" && s !== "active") return false;
@@ -405,13 +424,13 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [] });
+    setForm({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [], reseller_id: null });
     setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, channel: c.channel || "", classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [] });
+    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, channel: c.channel || "", classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [], reseller_id: c.reseller_id ?? null });
     setAddress({
       country: c.country || "Philippines",
       province_state: c.province_state || "",
@@ -443,6 +462,8 @@ export default function CustomersPage() {
     const payload: Partial<Customer> = {
       ...form,
       name,
+      // A reseller is the source, never the one sourced.
+      reseller_id: form.classification === "reseller" ? null : form.reseller_id,
       tags: cleanTags,
       country: address.country || null,
       province_state: address.province_state || null,
@@ -453,6 +474,9 @@ export default function CustomersPage() {
       postal_code: address.postal_code || null,
       address: composedLegacy,
     };
+    // Left out when there is nothing to say, so saving a customer keeps
+    // working on a database that has not had the reseller column added yet.
+    if (!payload.reseller_id && !editing?.reseller_id) delete payload.reseller_id;
     if (editing) updateMut.mutate({ id: editing.id, data: payload });
     else createMut.mutate(payload);
   };
@@ -466,6 +490,7 @@ export default function CustomersPage() {
     activityFilter !== "all",
     agentFilter !== "all",
     classFilter !== "all",
+    sourceFilter !== "all",
     followUpFilter !== "all",
     countryFilter !== "all",
     provinceFilter !== "all",
@@ -478,6 +503,7 @@ export default function CustomersPage() {
     setActivityFilter("all");
     setAgentFilter("all");
     setClassFilter("all");
+    setSourceFilter("all");
     setFollowUpFilter("all");
     setCountryFilter("all");
     setProvinceFilter("all");
@@ -646,6 +672,21 @@ export default function CustomersPage() {
               </div>
 
               <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Source</Label>
+                <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All sources</SelectItem>
+                    <SelectItem value="direct">Direct (sales agent)</SelectItem>
+                    <SelectItem value="via">Via any reseller</SelectItem>
+                    {resellers.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>Via {r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Follow-ups</Label>
                 <Select value={followUpFilter} onValueChange={(v) => setFollowUpFilter(v as typeof followUpFilter)}>
                   <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
@@ -778,6 +819,21 @@ export default function CustomersPage() {
               </div>
             </div>
 
+            {form.classification !== "reseller" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Came through reseller</Label>
+                <ResellerSelect
+                  value={form.reseller_id}
+                  onChange={(reseller_id) => setForm({ ...form, reseller_id })}
+                  resellers={resellers}
+                  excludeId={editing?.id}
+                />
+                {resellers.length === 0 && (
+                  <p className="text-[10px] text-muted-foreground">Set a customer's Classification to Reseller to list them here.</p>
+                )}
+              </div>
+            )}
+
             <AddressSelector value={address} onChange={setAddress} />
 
             <div className="space-y-1.5">
@@ -870,6 +926,11 @@ export default function CustomersPage() {
                           </button>
                           {!showCol("contact") && c.contact_person && (
                             <div className="text-[11px] text-muted-foreground truncate">{c.contact_person}</div>
+                          )}
+                          {c.reseller_id && (
+                            <div className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
+                              via {customerNameById.get(c.reseller_id) ?? "reseller"}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1037,6 +1098,11 @@ export default function CustomersPage() {
                         className="min-w-0 break-words text-left text-sm font-medium leading-snug hover:text-primary hover:underline"
                       >
                         {c.name}
+                        {c.reseller_id && (
+                          <span className="block text-[11px] font-normal text-amber-700 dark:text-amber-400">
+                            via {customerNameById.get(c.reseller_id) ?? "reseller"}
+                          </span>
+                        )}
                       </button>
                       <Badge variant="outline" className={cn("text-[10px] font-medium shrink-0 whitespace-nowrap", status.className)}>
                         {status.label}

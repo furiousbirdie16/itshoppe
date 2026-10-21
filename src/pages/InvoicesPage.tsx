@@ -19,6 +19,7 @@ import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
+import { ResellerSelect } from "@/components/ResellerSelect";
 import { toast } from "sonner";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
@@ -55,10 +56,15 @@ export default function InvoicesPage() {
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "" });
+  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "", reseller_id: null as string | null });
+  /** The reseller the invoice had when opened for editing, to know whether to write the field. */
+  const originalResellerId = useRef<string | null>(null);
   const [agentAutoFilled, setAgentAutoFilled] = useState(false);
   const handleCustomerChange = async (v: string) => {
-    setForm((f) => ({ ...f, customer_id: v }));
+    // The sale goes through whoever the customer came through, unless staff
+    // clear it — a reseller's customer can still walk in and buy direct.
+    const reseller = (customers as any[]).find((c) => c.id === v)?.reseller_id ?? null;
+    setForm((f) => ({ ...f, customer_id: v, reseller_id: reseller }));
     setAgentAutoFilled(false);
     if (!v || editId) return;
     try {
@@ -77,12 +83,25 @@ export default function InvoicesPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [filterAgent, setFilterAgent] = useState("all");
+  /** "all", "direct", "via" (any reseller), or one reseller's id. */
+  const [filterSource, setFilterSource] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const resellers = useMemo(
+    () => (customers as any[])
+      .filter((c) => c.classification === "reseller")
+      .map((c) => ({ id: c.id as string, name: c.name as string }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [customers],
+  );
+  const customerNameById = useMemo(
+    () => new Map((customers as any[]).map((c) => [c.id as string, c.name as string])),
+    [customers],
+  );
   // Stock shown in the picker must come from item_branch_stock, not items.quantity.
   // The branch this invoice belongs to. Normally the page's active branch; when
   // that is "All branches" the form asks, so a half-typed invoice is never lost
@@ -148,19 +167,22 @@ export default function InvoicesPage() {
       if (filterDateFrom && (inv.invoice_date || "") < filterDateFrom) return false;
       if (filterDateTo && (inv.invoice_date || "") > filterDateTo) return false;
       if (q) {
-        const hay = [inv.invoice_number, docNo(inv.invoice_number), inv.customers?.name, inv.sales_agent, inv.notes]
+        const hay = [inv.invoice_number, docNo(inv.invoice_number), inv.customers?.name, inv.sales_agent, inv.notes, inv.reseller_id ? customerNameById.get(inv.reseller_id) : ""]
           .map((x: any) => String(x || "").toLowerCase()).join(" ");
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [invoices, filterDateFrom, filterDateTo, searchQuery]);
+  }, [invoices, filterDateFrom, filterDateTo, searchQuery, customerNameById]);
 
   const filteredWithoutCustomer = useMemo(() => dateSearchFiltered.filter((inv: any) => {
     if (filterAgent !== "all" && (inv.sales_agent || "") !== filterAgent) return false;
     if (filterStatus !== "all" && inv.status !== filterStatus) return false;
+    if (filterSource === "direct" && inv.reseller_id) return false;
+    if (filterSource === "via" && !inv.reseller_id) return false;
+    if (!["all", "direct", "via"].includes(filterSource) && inv.reseller_id !== filterSource) return false;
     return true;
-  }), [dateSearchFiltered, filterAgent, filterStatus]);
+  }), [dateSearchFiltered, filterAgent, filterStatus, filterSource]);
 
   const availableCustomers = useMemo(() => {
     const ids = new Set<string>();
@@ -260,7 +282,7 @@ export default function InvoicesPage() {
   // on page four of a search you just replaced would be disorienting.
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [searchQuery, filterCustomer, filterAgent, filterStatus, filterDateFrom, filterDateTo, quickFilter, activeBranchId]);
+  }, [searchQuery, filterCustomer, filterAgent, filterStatus, filterSource, filterDateFrom, filterDateTo, quickFilter, activeBranchId]);
   const sortedInvoices = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
   const hiddenCount = sortedAll.length - sortedInvoices.length;
 
@@ -468,7 +490,9 @@ export default function InvoicesPage() {
       sales_agent: inv.sales_agent || "",
       payment_terms: "",
       branch_id: (inv as any).branch_id || "",
+      reseller_id: (inv as any).reseller_id ?? null,
     });
+    originalResellerId.current = (inv as any).reseller_id ?? null;
     setLines(
       lineItems.length > 0
         ? lineItems.map((li: any) => ({
@@ -501,7 +525,7 @@ export default function InvoicesPage() {
       const saved = validateLines();
       const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       if (!invoiceBranchId) throw new Error("Pick which branch this invoice is for.");
-      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: invoiceBranchId } as any);
+      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: invoiceBranchId, ...(form.reseller_id ? { reseller_id: form.reseller_id } : {}) } as any);
       await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
       return inv;
     },
@@ -524,7 +548,12 @@ export default function InvoicesPage() {
       if (!editId) return;
       const saved = validateLines();
       const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
-      await updateInvoice(editId, { customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent });
+      await updateInvoice(editId, {
+        customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent,
+        // Only written when there is or was one, so invoices still save on a
+        // database without the column.
+        ...(form.reseller_id || originalResellerId.current ? { reseller_id: form.reseller_id } : {}),
+      } as any);
       await deleteInvoiceItems(editId);
       await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
     },
@@ -773,7 +802,7 @@ export default function InvoicesPage() {
   });
 
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { originalResellerId.current = null; setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "", reseller_id: null }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
@@ -1088,6 +1117,20 @@ export default function InvoicesPage() {
               </SelectContent>
             </Select>
           </div>
+          {resellers.length > 0 && (
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Source</Label>
+              <Select value={filterSource} onValueChange={setFilterSource}>
+                <SelectTrigger className="h-9 sm:h-8 sm:w-44 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sources</SelectItem>
+                  <SelectItem value="direct">Direct (sales agent)</SelectItem>
+                  <SelectItem value="via">Via any reseller</SelectItem>
+                  {resellers.map((r) => <SelectItem key={r.id} value={r.id}>Via {r.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label className="text-xs font-medium">Status</Label>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -1153,6 +1196,15 @@ export default function InvoicesPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
                 <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={handleCustomerChange} />
+                {resellers.length > 0 && (
+                  <ResellerSelect
+                    value={form.reseller_id}
+                    onChange={(reseller_id) => setForm((f) => ({ ...f, reseller_id }))}
+                    resellers={resellers}
+                    excludeId={form.customer_id}
+                    className="h-8 text-xs"
+                  />
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
@@ -1442,6 +1494,7 @@ export default function InvoicesPage() {
               onToggleSelect={() => toggleOne(inv.id)}
               actions={renderInvoiceActions(inv)}
               missingSerials={missingSerials[inv.id] || 0}
+              resellerName={inv.reseller_id ? customerNameById.get(inv.reseller_id) ?? "reseller" : null}
             />
           ))
         )}
@@ -1561,7 +1614,14 @@ export default function InvoicesPage() {
                     )}
                   </span>
                 </TableCell>
-                <TableCell className="text-sm">{inv.customers?.name || "—"}</TableCell>
+                <TableCell className="text-sm">
+                  {inv.customers?.name || "—"}
+                  {inv.reseller_id && (
+                    <span className="block text-[11px] text-amber-700 dark:text-amber-400">
+                      via {customerNameById.get(inv.reseller_id) ?? "reseller"}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm">{inv.sales_agent || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
                 <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
