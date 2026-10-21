@@ -56,7 +56,11 @@ export default function InvoicesPage() {
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "", reseller_id: null as string | null });
+  // The invoice date starts as today — read when the form opens, not when the
+  // page loaded, so a tab left open overnight does not date tomorrow's sales
+  // yesterday.
+  const today = () => format(new Date(), "yyyy-MM-dd");
+  const [form, setForm] = useState({ customer_id: "", invoice_date: today(), notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "", reseller_id: null as string | null });
   /** The reseller the invoice had when opened for editing, to know whether to write the field. */
   const originalResellerId = useRef<string | null>(null);
   const [agentAutoFilled, setAgentAutoFilled] = useState(false);
@@ -485,6 +489,7 @@ export default function InvoicesPage() {
     const lineItems = await getInvoiceItems(inv.id);
     setForm({
       customer_id: inv.customer_id || "",
+      invoice_date: inv.invoice_date || today(),
       notes: inv.notes || "",
       due_date: inv.due_date || "",
       sales_agent: inv.sales_agent || "",
@@ -525,7 +530,7 @@ export default function InvoicesPage() {
       const saved = validateLines();
       const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       if (!invoiceBranchId) throw new Error("Pick which branch this invoice is for.");
-      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: invoiceBranchId, ...(form.reseller_id ? { reseller_id: form.reseller_id } : {}) } as any);
+      const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, invoice_date: form.invoice_date || today(), notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: invoiceBranchId, ...(form.reseller_id ? { reseller_id: form.reseller_id } : {}) } as any);
       await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
       return inv;
     },
@@ -549,7 +554,7 @@ export default function InvoicesPage() {
       const saved = validateLines();
       const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
       await updateInvoice(editId, {
-        customer_id: form.customer_id || null, notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent,
+        customer_id: form.customer_id || null, invoice_date: form.invoice_date || today(), notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent,
         // Only written when there is or was one, so invoices still save on a
         // database without the column.
         ...(form.reseller_id || originalResellerId.current ? { reseller_id: form.reseller_id } : {}),
@@ -802,7 +807,7 @@ export default function InvoicesPage() {
   });
 
 
-  const resetForm = () => { originalResellerId.current = null; setForm({ customer_id: "", notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "", reseller_id: null }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { originalResellerId.current = null; setForm({ customer_id: "", invoice_date: today(), notes: "", due_date: "", sales_agent: "", payment_terms: "", branch_id: "", reseller_id: null }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
@@ -1230,7 +1235,19 @@ export default function InvoicesPage() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Invoice Date</Label>
+                <DateField
+                  value={form.invoice_date}
+                  onChange={v => {
+                    // Terms count from the invoice date, so moving it moves the due date.
+                    const days = parseInt(form.payment_terms);
+                    const due = v && !isNaN(days) && days >= 0 ? format(addDays(parseISO(v), days), "yyyy-MM-dd") : form.due_date;
+                    setForm({ ...form, invoice_date: v, due_date: due });
+                  }}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Terms (days)</Label>
                 <Input type="number" min={0} value={form.payment_terms} onChange={e => {
@@ -1238,8 +1255,7 @@ export default function InvoicesPage() {
                   const days = parseInt(v);
                   let due = form.due_date;
                   if (!isNaN(days) && days >= 0) {
-                    const baseStr = editId ? (invoices.find((i: any) => i.id === editId)?.invoice_date) : null;
-                    const base = baseStr ? parseISO(baseStr) : new Date();
+                    const base = form.invoice_date ? parseISO(form.invoice_date) : new Date();
                     due = format(addDays(base, days), "yyyy-MM-dd");
                   }
                   setForm({ ...form, payment_terms: v, due_date: due });
