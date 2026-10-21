@@ -26,17 +26,15 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
-import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
+import { emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { formatLocationChip } from "@/lib/locations";
 import { CustomerWarrantyList } from "@/components/CustomerWarrantyList";
 import { CustomerPricesList } from "@/components/CustomerPricesList";
-import { ResellerSelect } from "@/components/ResellerSelect";
+import { CustomerFormFields, buildCustomerPayload, customerToForm, emptyCustomerForm, type CustomerFormValue } from "@/components/CustomerFormFields";
 import { Link } from "react-router-dom";
 import { CLASSIFICATIONS, classificationMeta, getFollowUpInfo, markFollowedUp, getFollowUpHistory, type ClassificationValue } from "@/lib/followUps";
 import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/components/ColumnVisibility";
-import { TagsInput, TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
-import { SuggestInput } from "@/components/SuggestInput";
-import { DuplicateCustomerWarning } from "@/components/DuplicateCustomerWarning";
+import { TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
 import { Tag as TagIcon } from "lucide-react";
 import { docNo } from "@/lib/doc-number";
 
@@ -98,7 +96,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState<{ name: string; contact_person: string; email: string; phone: string; channel: string; classification: ClassificationValue; tags: string[]; reseller_id: string | null }>({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [], reseller_id: null });
+  const [form, setForm] = useState<CustomerFormValue>(emptyCustomerForm());
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -238,11 +236,6 @@ export default function CustomersPage() {
   );
   const customerNameById = useMemo(
     () => new Map((customers as Customer[]).map((c) => [c.id, c.name])),
-    [customers],
-  );
-
-  const channelOptions = useMemo(
-    () => (customers as Customer[]).map((c) => c.channel || ""),
     [customers],
   );
 
@@ -424,13 +417,13 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", contact_person: "", email: "", phone: "", channel: "", classification: "retail", tags: [], reseller_id: null });
+    setForm(emptyCustomerForm());
     setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, contact_person: c.contact_person, email: c.email, phone: c.phone, channel: c.channel || "", classification: (c.classification as ClassificationValue) || "retail", tags: Array.isArray(c.tags) ? c.tags : [], reseller_id: c.reseller_id ?? null });
+    setForm(customerToForm(c));
     setAddress({
       country: c.country || "Philippines",
       province_state: c.province_state || "",
@@ -444,39 +437,7 @@ export default function CustomersPage() {
   };
 
   const handleSubmit = () => {
-    const composedLegacy = [address.full_address, address.barangay_village, address.district_area, address.city_municipality, address.province_state, address.country, address.postal_code]
-      .filter(Boolean).join(", ");
-    // Dedupe tags by key while preserving user-entered casing
-    const seen = new Set<string>();
-    const cleanTags: string[] = [];
-    for (const t of form.tags) {
-      const c = normalizeTag(t);
-      const k = tagKey(c);
-      if (!c || seen.has(k)) continue;
-      seen.add(k);
-      cleanTags.push(c);
-    }
-    // An individual customer has no company name, so the contact person becomes
-    // the name every other screen already prints — invoices included.
-    const name = form.name.trim() || form.contact_person.trim();
-    const payload: Partial<Customer> = {
-      ...form,
-      name,
-      // A reseller is the source, never the one sourced.
-      reseller_id: form.classification === "reseller" ? null : form.reseller_id,
-      tags: cleanTags,
-      country: address.country || null,
-      province_state: address.province_state || null,
-      city_municipality: address.city_municipality || null,
-      district_area: address.district_area || null,
-      barangay_village: address.barangay_village || null,
-      full_address: address.full_address || null,
-      postal_code: address.postal_code || null,
-      address: composedLegacy,
-    };
-    // Left out when there is nothing to say, so saving a customer keeps
-    // working on a database that has not had the reseller column added yet.
-    if (!payload.reseller_id && !editing?.reseller_id) delete payload.reseller_id;
+    const payload = buildCustomerPayload(form, address, editing?.reseller_id);
     if (editing) updateMut.mutate({ id: editing.id, data: payload });
     else createMut.mutate(payload);
   };
@@ -769,83 +730,14 @@ export default function CustomersPage() {
             <DialogTitle className="text-lg">{editing ? "Edit Customer" : "New Customer"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 pt-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Company Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-9" placeholder="Leave blank for an individual" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Contact Person</Label>
-              <Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} className="h-9" />
-              <p className="text-[10px] text-muted-foreground">Used as the customer's name when there is no company name.</p>
-            </div>
-            {/* Whichever of the two becomes the customer's name is the one to
-                check, the same way the save does it. */}
-            <DuplicateCustomerWarning
-              name={form.name.trim() || form.contact_person.trim()}
-              customers={customers}
-              excludeId={editing?.id}
+            <CustomerFormFields
+              form={form}
+              setForm={setForm}
+              address={address}
+              setAddress={setAddress}
+              customers={customers as Customer[]}
+              editingId={editing?.id}
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Contact Number</Label>
-                <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Email</Label>
-                <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Channel</Label>
-                <SuggestInput
-                  value={form.channel}
-                  onChange={(channel) => setForm({ ...form, channel })}
-                  options={channelOptions}
-                  placeholder="e.g. Viber, Messenger, Walk-in"
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Classification</Label>
-                <Select value={form.classification} onValueChange={(v) => setForm({ ...form, classification: v as ClassificationValue })}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CLASSIFICATIONS.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {form.classification !== "reseller" && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Came through reseller</Label>
-                <ResellerSelect
-                  value={form.reseller_id}
-                  onChange={(reseller_id) => setForm({ ...form, reseller_id })}
-                  resellers={resellers}
-                  excludeId={editing?.id}
-                />
-                {resellers.length === 0 && (
-                  <p className="text-[10px] text-muted-foreground">Set a customer's Classification to Reseller to list them here.</p>
-                )}
-              </div>
-            )}
-
-            <AddressSelector value={address} onChange={setAddress} />
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Tags</Label>
-              <TagsInput
-                value={form.tags}
-                onChange={(tags) => setForm({ ...form, tags })}
-                suggestions={tagOptions}
-                placeholder="Add tag (e.g. VIP, Cat6, Reseller)"
-              />
-              <p className="text-[10px] text-muted-foreground">Tags are reusable across customers. Case and extra spaces are normalized automatically.</p>
-            </div>
 
             <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">
               {editing ? "Update" : "Create Customer"}

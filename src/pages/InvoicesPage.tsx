@@ -1201,15 +1201,16 @@ export default function InvoicesPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Customer</Label>
                 <CustomerSearchWithCreate customers={customers} value={form.customer_id} onChange={handleCustomerChange} />
-                {resellers.length > 0 && (
-                  <ResellerSelect
-                    value={form.reseller_id}
-                    onChange={(reseller_id) => setForm((f) => ({ ...f, reseller_id }))}
-                    resellers={resellers}
-                    excludeId={form.customer_id}
-                    className="h-8 text-xs"
-                  />
-                )}
+                {/* Always shown, even before any reseller exists — hidden, nobody
+                    could tell the option was there. Reads "None — direct" by default. */}
+                <ResellerSelect
+                  value={form.reseller_id}
+                  onChange={(reseller_id) => setForm((f) => ({ ...f, reseller_id }))}
+                  resellers={resellers}
+                  excludeId={form.customer_id}
+                  className="h-8 text-xs"
+                  labelled
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Sales Agent</Label>
