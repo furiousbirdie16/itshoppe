@@ -94,19 +94,32 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     setInitFor(poId);
   }, [open, poId, cargoLoaded, saved, lines, initFor]);
 
+  /**
+   * Lines that are stock, and lines that are not (a delivery fee, packing).
+   * The second kind is what it cost to get the first here, so its value joins
+   * the charges and is spread over the items — left as a line of its own it
+   * was simply dropped, and never reached any item's cost.
+   */
+  const itemLines = useMemo(() => (lines as any[]).filter((l) => l.item_id), [lines]);
+  const feeLines = useMemo(() => (lines as any[]).filter((l) => !l.item_id), [lines]);
+  const poFees = useMemo(
+    () => feeLines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unit_cost || 0), 0) * Number(po?.exchange_rate || 1),
+    [feeLines, po?.exchange_rate],
+  );
+
   const cargoLines = useMemo(
-    () => (lines as any[]).map((l) => ({ id: l.id as string, qty: Number(l.quantity || 0), unitCost: Number(l.unit_cost || 0) })),
-    [lines],
+    () => itemLines.map((l) => ({ id: l.id as string, qty: Number(l.quantity || 0), unitCost: Number(l.unit_cost || 0) })),
+    [itemLines],
   );
   const allocation = useMemo(
     () => allocateCargo(cargoLines, {
       cargoAmount: n(cargoAmount),
-      otherCharges: n(otherCharges),
+      otherCharges: n(otherCharges) + poFees,
       lineCbm: Object.fromEntries(Object.entries(lineCbm).map(([k, v]) => [k, n(v)])),
       boxes,
       exchangeRate: Number(po?.exchange_rate || 1),
     }),
-    [cargoLines, cargoAmount, otherCharges, lineCbm, boxes, po?.exchange_rate],
+    [cargoLines, cargoAmount, otherCharges, poFees, lineCbm, boxes, po?.exchange_rate],
   );
 
   const review = useMemo(() => {
@@ -190,7 +203,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     return l?.items?.name || l?.item_name || "—";
   };
 
-  const totalCharges = n(cargoAmount) + n(otherCharges);
+  const totalCharges = n(cargoAmount) + n(otherCharges) + poFees;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -230,6 +243,14 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
               </div>
             </div>
 
+            {poFees > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Also spread over the items: {feeLines.map((l) => l.item_name || "fee").join(", ")} on this PO,{" "}
+                <span className="font-medium text-foreground tabular-nums">{peso(poFees)}</span>
+                {" "}({po?.currency} × {Number(po?.exchange_rate || 1)}). Don't add it to Other charges as well.
+              </p>
+            )}
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -242,7 +263,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(lines as any[]).map((l) => {
+                {itemLines.map((l) => {
                   const a = allocation.lines[l.id];
                   const inBoxes = boxes.filter((b) => b.lineIds.includes(l.id));
                   return (
@@ -330,7 +351,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {(lines as any[]).map((l) => {
+                    {itemLines.map((l) => {
                       const on = b.lineIds.includes(l.id);
                       return (
                         <button
