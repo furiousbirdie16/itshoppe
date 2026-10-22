@@ -536,6 +536,8 @@ export default function InvoicesPage() {
     },
     onSuccess: (inv: any) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      // A reseller picked here is copied onto the customer by the database.
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       // "invoices" does not cover "invoice_items" — a separate key, so the view
       // dialog was reading whatever happened to be cached for this id.
       queryClient.invalidateQueries({ queryKey: ["invoice_items"] });
@@ -564,6 +566,7 @@ export default function InvoicesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       // Editing deletes and rewrites every line, so any cached copy is stale.
       queryClient.invalidateQueries({ queryKey: ["invoice_items"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-missing-serials"] });
