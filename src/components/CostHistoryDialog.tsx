@@ -41,7 +41,7 @@ interface CostRow {
 }
 
 const sourceLabel = (s: string) =>
-  s === "po_received" ? "Local PO" : s === "overseas_po_received" ? "Import PO" : s === "manual" ? "Manual" : s;
+  s === "po_received" ? "Local PO" : s === "overseas_po_received" ? "Import PO" : s === "manual" ? "Manual" : s === "cargo_landed" ? "Landed (cargo)" : s;
 
 export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
   const qc = useQueryClient();

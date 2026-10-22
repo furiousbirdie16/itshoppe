@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown, MapPin, Container } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
 
 import ExportButton from "@/components/ExportButton";
@@ -40,6 +40,7 @@ import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
 import { useBranch } from "@/contexts/BranchContext";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
+import { CargoCostDialog } from "@/components/CargoCostDialog";
 import { docNo } from "@/lib/doc-number";
 
 interface LineItem {
@@ -131,6 +132,8 @@ const isShippedStatus = (s: string) =>
 export default function OverseasPurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
+  /** The PO whose cargo bill is being entered (admin only). */
+  const [cargoPO, setCargoPO] = useState<OverseasPurchaseOrder | null>(null);
   const { branches, activeBranchId } = useBranch();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OverseasPurchaseOrder | null>(null);
@@ -1094,6 +1097,11 @@ export default function OverseasPurchaseOrdersPage() {
                           button repeated. */}
                       <MapPin className={`h-3.5 w-3.5 ${shipmentByPo.get(po.id) ? "text-primary" : "text-muted-foreground"}`} />
                     </Button>
+                    {isAdmin && isShippedStatus(po.status) && (
+                      <Button variant="ghost" size="icon" onClick={() => setCargoPO(po)} className="h-7 w-7 rounded-md" title="Cargo cost & landed costs">
+                        <Container className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
                     {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
     </>
@@ -1587,6 +1595,8 @@ export default function OverseasPurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
+      <CargoCostDialog po={cargoPO} open={!!cargoPO} onOpenChange={(o) => { if (!o) setCargoPO(null); }} />
+
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-lg">PO {docNo(viewPO?.po_number)}</DialogTitle></DialogHeader>
@@ -1597,6 +1607,13 @@ export default function OverseasPurchaseOrdersPage() {
                 <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
                 {isAdmin && <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>}
                 {isAdmin && <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>}
+                {isAdmin && isShippedStatus(viewPO.status) && (
+                  <div className="col-span-2">
+                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setCargoPO(viewPO)}>
+                      <Container className="mr-1.5 h-3.5 w-3.5" /> Cargo cost & landed costs
+                    </Button>
+                  </div>
+                )}
                 {(viewPO as any).payment_due_date && (() => {
                   const due = (viewPO as any).payment_due_date as string;
                   // Only unpaid orders can be late; once paid the date is history.

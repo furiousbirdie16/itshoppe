@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities, notifyInventoryAdjustments, getBranchStock } from "@/lib/api";
 import { peso } from "@/lib/currency";
+import { getMarginTarget } from "@/lib/landed-cost-api";
+import { marginOf } from "@/lib/landed-cost";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle } from "lucide-react";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
@@ -146,6 +148,17 @@ export default function InventoryPage() {
    * only when they differ from these.
    */
   const [branchQty, setBranchQty] = useState<{ wh: number; st: number } | null>(null);
+  /**
+   * The margin below which an item is flagged. Admin only: the flag says
+   * something about cost, which staff are not to see.
+   */
+  const { data: marginTarget = 20 } = useQuery({ queryKey: ["margin-target"], queryFn: getMarginTarget, enabled: isAdmin });
+  const [lowMarginOnly, setLowMarginOnly] = useState(false);
+  const isLowMargin = (item: Item) => {
+    if (!isAdmin) return false;
+    const m = marginOf(Number(item.selling_price), Number(item.cost_price));
+    return m !== null && m * 100 < marginTarget;
+  };
   const [branchQtyLoading, setBranchQtyLoading] = useState(false);
   const { data: activeItems = [], isLoading: loadingActive } = useQuery({ queryKey: ["items"], queryFn: getItems });
   const { data: archivedItemsData = [], isLoading: loadingArchived } = useQuery({
@@ -469,6 +482,8 @@ export default function InventoryPage() {
         if (!hay.some(h => h.includes(q))) return false;
       }
 
+      if (lowMarginOnly && !isLowMargin(i)) return false;
+
       // Stock status
       if (filters.stockStatus === "in_stock" && qty <= 0) return false;
       if (filters.stockStatus === "out_of_stock" && qty !== 0) return false;
@@ -510,7 +525,7 @@ export default function InventoryPage() {
 
       return true;
     });
-  }, [items, filters, viewArchived, supplierFilterActive, itemSupplierMap]);
+  }, [items, filters, viewArchived, supplierFilterActive, itemSupplierMap, lowMarginOnly, marginTarget, isAdmin]);
 
   // Category options from active items
   const categoryOptions = useMemo(() => {
@@ -562,6 +577,7 @@ export default function InventoryPage() {
   // Active filter chips
   const chips: { key: string; label: string; clear: () => void }[] = [];
   if (filters.search) chips.push({ key: "search", label: `Search: "${filters.search}"`, clear: () => setF("search", "") });
+  if (lowMarginOnly) chips.push({ key: "margin", label: `Margin below ${marginTarget}%`, clear: () => setLowMarginOnly(false) });
   if (filters.stockStatus !== "all") chips.push({ key: "stock", label: `Stock: ${filters.stockStatus.replace("_", " ")}`, clear: () => setF("stockStatus", "all") });
   if (filters.qtyOp !== "any") {
     let lbl = "Qty: ";
@@ -809,6 +825,13 @@ export default function InventoryPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {isAdmin && (
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox checked={lowMarginOnly} onCheckedChange={(v) => setLowMarginOnly(!!v)} />
+                  Margin below {marginTarget}% only
+                </label>
+              )}
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Quantity</Label>
@@ -1082,6 +1105,9 @@ export default function InventoryPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Cost Price</Label>
                   <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
+                  {isAdmin && editing && (editing as any).landed_cost_latest != null && (
+                    <p className="text-[10px] text-muted-foreground">latest landed {peso(Number((editing as any).landed_cost_latest))}</p>
+                  )}
                 </div>
               )}
               <div className="space-y-1.5">
@@ -1293,12 +1319,33 @@ export default function InventoryPage() {
                       return <TableCell key="c-st" className="text-right text-sm">{(item as any).store_quantity ?? 0}</TableCell>;
                     case "cost_price":
                       return (
-                        <TableCell key="c-cost" className="text-right text-sm text-muted-foreground">
+                        <TableCell
+                          key="c-cost"
+                          className="text-right text-sm text-muted-foreground"
+                          // Hover only: the averaged cost is the one that counts.
+                          title={isAdmin && (item as any).landed_cost_latest ? `Latest landed ${peso(Number((item as any).landed_cost_latest))}` : undefined}
+                        >
                           {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
                         </TableCell>
                       );
-                    case "selling_price":
-                      return <TableCell key="c-sell" className="text-right text-sm">{peso(Number(item.selling_price))}</TableCell>;
+                    case "selling_price": {
+                      const low = isLowMargin(item);
+                      return (
+                        <TableCell key="c-sell" className="text-right text-sm">
+                          <span className={low ? "inline-flex items-center gap-1 text-destructive" : undefined}>
+                            {low && (
+                              <AlertTriangle
+                                className="h-3 w-3"
+                                aria-label="Margin below target"
+                              >
+                                <title>{`Margin ${((marginOf(Number(item.selling_price), Number(item.cost_price)) ?? 0) * 100).toFixed(1)}% — below ${marginTarget}%`}</title>
+                              </AlertTriangle>
+                            )}
+                            {peso(Number(item.selling_price))}
+                          </span>
+                        </TableCell>
+                      );
+                    }
                     case "low_stock_threshold":
                       return (
                         <TableCell key="c-th" className="text-right text-sm">

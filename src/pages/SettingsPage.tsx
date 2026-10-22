@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Settings, Save } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentLogoCard } from "@/components/DocumentLogoCard";
+import { MarginTargetCard } from "@/components/MarginTargetCard";
 import { docNo } from "@/lib/doc-number";
 
 const LABELS: Record<string, string> = {
@@ -103,6 +104,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
         <DocumentLogoCard />
+        <MarginTargetCard />
       </div>
     </div>
   );
