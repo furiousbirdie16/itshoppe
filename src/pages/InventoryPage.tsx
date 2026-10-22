@@ -88,6 +88,27 @@ const DEFAULT_FILTERS: FilterState = {
 
 const FILTER_STORAGE_KEY = "inventory:filters:v1";
 
+/** A titled group of fields in the item form. */
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** One labelled field, with optional help text under it. */
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <Label className="text-xs font-medium">{label}</Label>
+      {children}
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 export default function InventoryPage() {
   const { role, user } = useAuth();
   const isAdmin = role === "admin";
@@ -966,83 +987,38 @@ export default function InventoryPage() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto pb-0">
           <DialogHeader>
             <DialogTitle className="text-lg">{editing ? "Edit Item" : "New Item"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Name</Label>
+          {/* Grouped into what the item is, how many there are, what it costs
+              and sells for, and how it behaves — it used to be one long list
+              with prices, stock and settings mixed together. */}
+          <div className="space-y-6 pt-2">
+            <FormSection title="Product">
+              <Field label="Name">
                 <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">SKU</Label>
-                <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Category</Label>
-                <Input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="h-9" list="inv-cat-list" placeholder="e.g. CCTV, Networking" />
-                <datalist id="inv-cat-list">
-                  {categoryOptions.map(c => <option key={c} value={c} />)}
-                </datalist>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Brand</Label>
-                <Input value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Barcode</Label>
-                <Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Supplier SKU</Label>
-                <Input value={form.supplier_sku} onChange={e => setForm({ ...form, supplier_sku: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            {/* Serials are asked for per product, not globally: a box of cable
-                ties should never prompt for one. */}
-            <div className="rounded-lg border p-3 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <Label className="text-xs font-medium">Track serial numbers</Label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Asks for one serial per unit when this item is sold.
-                  </p>
-                </div>
-                <Switch
-                  checked={form.track_serials}
-                  onCheckedChange={(v) => setForm({ ...form, track_serials: v })}
-                />
-              </div>
-              {form.track_serials && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Warranty (months)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={form.warranty_months}
-                    onChange={e => setForm({ ...form, warranty_months: e.target.value })}
-                    className="h-9"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Copied onto each unit as it is sold, so changing it later leaves past sales alone.
-                  </p>
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Description</Label>
-                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
-              </div>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Source</Label>
+              </Field>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="SKU">
+                  <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9" />
+                </Field>
+                <Field label="Barcode">
+                  <Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="h-9" />
+                </Field>
+                <Field label="Category">
+                  <Input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="h-9" list="inv-cat-list" placeholder="e.g. CCTV, Networking" />
+                  <datalist id="inv-cat-list">
+                    {categoryOptions.map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </Field>
+                <Field label="Brand">
+                  <Input value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} className="h-9" />
+                </Field>
+                <Field label="Supplier SKU">
+                  <Input value={form.supplier_sku} onChange={e => setForm({ ...form, supplier_sku: e.target.value })} className="h-9" />
+                </Field>
+                <Field label="Source">
                   <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as "local" | "import" })} disabled={!isAdmin}>
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1050,86 +1026,125 @@ export default function InventoryPage() {
                       <SelectItem value="import">Import</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                </Field>
+              </div>
+              <Field label="Description">
+                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="resize-none" rows={2} />
+              </Field>
+            </FormSection>
+
+            <FormSection title="Stock">
+              {!activeBranchId && (
+                <Field label="Branch" hint="Stock is kept per branch. Only needed if you change the quantities below.">
+                  <Select value={formBranchId} onValueChange={setFormBranchId}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Which branch do these quantities belong to?" /></SelectTrigger>
+                    <SelectContent>
+                      {branches.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+              <div className={`grid gap-3 ${isAdmin ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
+                <Field label={editing ? "Warehouse" : "Initial warehouse"}>
+                  <Input type="number" min={0} value={form.warehouse_quantity} onChange={e => setForm({ ...form, warehouse_quantity: e.target.value })} className="h-9" disabled={qtyLocked} />
+                </Field>
+                <Field label={editing ? "Store" : "Initial store"}>
+                  <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" disabled={qtyLocked} />
+                </Field>
                 {isAdmin && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Product Status</Label>
-                    <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as any })}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="discontinued">Discontinued</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Field label="Low stock alert">
+                    <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
+                  </Field>
                 )}
               </div>
-            </div>
-            {!activeBranchId && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Branch (for quantities)</Label>
-                <Select value={formBranchId} onValueChange={setFormBranchId}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Which branch do these quantities belong to?" /></SelectTrigger>
-                  <SelectContent>
-                    {branches.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {editing && !qtyBranchId ? (
                 <p className="text-[11px] text-muted-foreground">
-                  Stock is kept per branch. Only needed if you change the quantities below.
-                </p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">{editing ? "Warehouse Qty (Manual Adjust)" : "Initial Warehouse Qty"}</Label>
-                <Input type="number" min={0} value={form.warehouse_quantity} onChange={e => setForm({ ...form, warehouse_quantity: e.target.value })} className="h-9" disabled={qtyLocked} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">{editing ? "Store Qty (Manual Adjust)" : "Initial Store Qty"}</Label>
-                <Input type="number" min={0} value={form.store_quantity} onChange={e => setForm({ ...form, store_quantity: e.target.value })} className="h-9" disabled={qtyLocked} />
-              </div>
-              {editing && !qtyBranchId && (
-                <p className="col-span-2 text-[11px] text-muted-foreground">
                   These are all branches added together. Pick a branch above to see and change that branch's stock.
                 </p>
-              )}
-              {editing && qtyBranchId && branchQtyLoading && (
-                <p className="col-span-2 text-[11px] text-muted-foreground">Loading this branch's stock…</p>
-              )}
-            </div>
-            <div className={`grid ${isAdmin ? 'grid-cols-4' : (canEditCost ? 'grid-cols-2' : 'grid-cols-1')} gap-3`}>
-              {canEditCost && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Cost Price</Label>
-                  <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
-                  {isAdmin && editing && (editing as any).landed_cost_latest != null && (
-                    <p className="text-[10px] text-muted-foreground">latest landed {peso(Number((editing as any).landed_cost_latest))}</p>
-                  )}
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Selling Price</Label>
-                <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
+              ) : editing && qtyBranchId && branchQtyLoading ? (
+                <p className="text-[11px] text-muted-foreground">Loading this branch's stock…</p>
+              ) : editing ? (
+                <p className="text-[11px] text-muted-foreground">Changing a quantity records an adjustment in the item's ledger.</p>
+              ) : null}
+            </FormSection>
+
+            <FormSection title="Pricing">
+              <div className={`grid gap-3 ${isAdmin ? "grid-cols-1 sm:grid-cols-3" : canEditCost ? "grid-cols-2" : "grid-cols-1"}`}>
+                <Field label="Selling price (₱)">
+                  <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
+                </Field>
+                {canEditCost && (
+                  <Field label="Cost (₱)">
+                    <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
+                    {isAdmin && editing && (editing as any).landed_cost_latest != null && (
+                      <p className="text-[10px] text-muted-foreground">latest landed {peso(Number((editing as any).landed_cost_latest))}</p>
+                    )}
+                  </Field>
+                )}
+                {isAdmin && (
+                  <Field label="Cost (¥ RMB)">
+                    <Input type="number" value={form.cost_price_rmb} onChange={e => setForm({ ...form, cost_price_rmb: e.target.value })} className="h-9" placeholder="0.00" />
+                  </Field>
+                )}
               </div>
+              {isAdmin && (() => {
+                const m = marginOf(Number(form.selling_price), Number(form.cost_price));
+                if (m === null) return <p className="text-[11px] text-muted-foreground">No selling price set.</p>;
+                const low = m * 100 < marginTarget;
+                return (
+                  <p className={`text-[11px] ${low ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                    Margin {(m * 100).toFixed(1)}%{low ? ` — below your ${marginTarget}% target` : ""}
+                  </p>
+                );
+              })()}
+            </FormSection>
+
+            <FormSection title="Options">
               {isAdmin && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Cost Price (RMB ¥)</Label>
-                  <Input type="number" value={form.cost_price_rmb} onChange={e => setForm({ ...form, cost_price_rmb: e.target.value })} className="h-9" placeholder="0.00" />
-                </div>
+                <Field label="Product status">
+                  <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as any })}>
+                    <SelectTrigger className="h-9 sm:w-1/2"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="discontinued">Discontinued</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
-              {isAdmin && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Low Stock Alert</Label>
-                  <Input type="number" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} className="h-9" />
+              {/* Serials are asked for per product, not globally: a box of cable
+                  ties should never prompt for one. */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label className="text-xs font-medium">Track serial numbers</Label>
+                  <p className="text-[11px] text-muted-foreground">Asks for one serial per unit when this item is sold.</p>
                 </div>
+                <Switch
+                  checked={form.track_serials}
+                  onCheckedChange={(v) => setForm({ ...form, track_serials: v })}
+                />
+              </div>
+              {form.track_serials && (
+                <Field label="Warranty (months)" hint="Copied onto each unit as it is sold, so changing it later leaves past sales alone.">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.warranty_months}
+                    onChange={e => setForm({ ...form, warranty_months: e.target.value })}
+                    className="h-9 sm:w-1/2"
+                  />
+                </Field>
               )}
+            </FormSection>
+
+            {/* Kept in view on a long form, so saving never needs a scroll. */}
+            <div className="sticky bottom-0 -mx-6 border-t bg-background px-6 py-3">
+              <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="h-9 w-full rounded-lg">
+                {editing ? "Update Item" : "Create Item"}
+              </Button>
             </div>
-            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="mt-2 rounded-lg h-9">
-              {editing ? "Update Item" : "Create Item"}
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
