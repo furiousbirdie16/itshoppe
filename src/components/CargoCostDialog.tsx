@@ -66,6 +66,8 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
    * like .081 could not be typed.
    */
   const [boxCbmText, setBoxCbmText] = useState<Record<string, string>>({});
+  /** Non-item lines the admin has said are not a cost of these goods. */
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [initFor, setInitFor] = useState<string | null>(null);
 
@@ -79,6 +81,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       setOtherCharges(saved.other_charges ? String(saved.other_charges) : "");
       setLineCbm(Object.fromEntries(Object.entries(saved.line_cbm).map(([k, v]) => [k, String(v)])));
       setBoxes(saved.boxes);
+      setExcluded(new Set(saved.excluded_lines));
     } else {
       const prefill: Record<string, string> = {};
       for (const l of lines as any[]) {
@@ -89,6 +92,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       setOtherCharges("");
       setLineCbm(prefill);
       setBoxes([]);
+      setExcluded(new Set());
     }
     setBoxCbmText({});
     setInitFor(poId);
@@ -102,9 +106,11 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
    */
   const itemLines = useMemo(() => (lines as any[]).filter((l) => l.item_id), [lines]);
   const feeLines = useMemo(() => (lines as any[]).filter((l) => !l.item_id), [lines]);
+  const feeValue = (l: any) => Number(l.quantity || 0) * Number(l.unit_cost || 0) * Number(po?.exchange_rate || 1);
   const poFees = useMemo(
-    () => feeLines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unit_cost || 0), 0) * Number(po?.exchange_rate || 1),
-    [feeLines, po?.exchange_rate],
+    () => feeLines.filter((l) => !excluded.has(l.id)).reduce((s, l) => s + feeValue(l), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feeLines, excluded, po?.exchange_rate],
   );
 
   const cargoLines = useMemo(
@@ -154,8 +160,9 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     other_charges: n(otherCharges),
     line_cbm: Object.fromEntries(Object.entries(lineCbm).filter(([, v]) => n(v) > 0).map(([k, v]) => [k, n(v)])),
     boxes: boxes.filter((b) => n(b.cbm) > 0 && b.lineIds.length > 0),
+    excluded_lines: [...excluded].filter((id) => feeLines.some((l) => l.id === id)),
     notes: "",
-  });
+  }, (saved?.excluded_lines.length ?? 0) > 0);
 
   const saveMut = useMutation({
     mutationFn: persist,
@@ -243,12 +250,33 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
               </div>
             </div>
 
-            {poFees > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Also spread over the items: {feeLines.map((l) => l.item_name || "fee").join(", ")} on this PO,{" "}
-                <span className="font-medium text-foreground tabular-nums">{peso(poFees)}</span>
-                {" "}({po?.currency} × {Number(po?.exchange_rate || 1)}). Don't add it to Other charges as well.
-              </p>
+            {feeLines.length > 0 && (
+              <div className="space-y-1.5 rounded-lg border p-3">
+                <p className="text-sm font-medium">Other lines on this PO</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Ticked lines are a cost of getting these goods here (a delivery fee) and are spread over the items
+                  with the cargo bill. Untick anything that is not — office supplies, a sample. Don't also add a ticked
+                  line to Other charges.
+                </p>
+                {feeLines.map((l) => (
+                  <label key={l.id} className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Checkbox
+                        checked={!excluded.has(l.id)}
+                        onCheckedChange={(v) => setExcluded((s) => {
+                          const next = new Set(s);
+                          if (v) next.delete(l.id); else next.add(l.id);
+                          return next;
+                        })}
+                      />
+                      {l.item_name || "Line"} <span className="text-xs text-muted-foreground">· spread over items</span>
+                    </span>
+                    <span className={cn("tabular-nums", excluded.has(l.id) && "text-muted-foreground line-through")}>
+                      {peso(feeValue(l))}
+                    </span>
+                  </label>
+                ))}
+              </div>
             )}
 
             <Table>

@@ -10,6 +10,8 @@ export interface PoCargo {
   other_charges: number;
   line_cbm: Record<string, number>;
   boxes: CargoBox[];
+  /** Non-item PO lines not to spread over the items. */
+  excluded_lines: string[];
   notes: string;
   applied_at: string | null;
   applied_by_email: string | null;
@@ -25,10 +27,16 @@ export async function getPoCargo(poId: string): Promise<PoCargo | null> {
     other_charges: Number(data.other_charges || 0),
     line_cbm: data.line_cbm || {},
     boxes: Array.isArray(data.boxes) ? data.boxes : [],
+    excluded_lines: Array.isArray(data.excluded_lines) ? data.excluded_lines : [],
   };
 }
 
-export async function savePoCargo(poId: string, cargo: Omit<PoCargo, "po_id" | "applied_at" | "applied_by_email">) {
+export async function savePoCargo(
+  poId: string,
+  cargo: Omit<PoCargo, "po_id" | "applied_at" | "applied_by_email">,
+  /** True when the saved row had exclusions, so an empty list must be written to clear them. */
+  hadExclusions = false,
+) {
   const { data: { session } } = await supabase.auth.getSession();
   const { error } = await db.from("overseas_po_cargo").upsert({
     po_id: poId,
@@ -36,6 +44,9 @@ export async function savePoCargo(poId: string, cargo: Omit<PoCargo, "po_id" | "
     other_charges: cargo.other_charges,
     line_cbm: cargo.line_cbm,
     boxes: cargo.boxes,
+    // Only sent when there is something to say, so saving still works on a
+    // database without the column.
+    ...(cargo.excluded_lines.length || hadExclusions ? { excluded_lines: cargo.excluded_lines } : {}),
     notes: cargo.notes,
     updated_at: new Date().toISOString(),
     updated_by_email: session?.user?.email ?? null,
