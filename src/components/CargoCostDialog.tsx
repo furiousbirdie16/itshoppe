@@ -60,6 +60,12 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
   const [otherCharges, setOtherCharges] = useState("");
   const [lineCbm, setLineCbm] = useState<Record<string, string>>({});
   const [boxes, setBoxes] = useState<CargoBox[]>([]);
+  /**
+   * What is typed in each box's CBM field. Kept as text: storing the number
+   * straight away turned "0." into 0 and then into an empty field, so a value
+   * like .081 could not be typed.
+   */
+  const [boxCbmText, setBoxCbmText] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [initFor, setInitFor] = useState<string | null>(null);
 
@@ -84,6 +90,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       setLineCbm(prefill);
       setBoxes([]);
     }
+    setBoxCbmText({});
     setInitFor(poId);
   }, [open, poId, cargoLoaded, saved, lines, initFor]);
 
@@ -253,7 +260,8 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                         <Input
                           type="number"
                           min={0}
-                          step="0.01"
+                          step="any"
+                          inputMode="decimal"
                           value={lineCbm[l.id] ?? ""}
                           onChange={(e) => setLineCbm((m) => ({ ...m, [l.id]: e.target.value }))}
                           className="h-8 text-right tabular-nums"
@@ -298,9 +306,14 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                     <Input
                       type="number"
                       min={0}
-                      step="0.01"
-                      value={b.cbm || ""}
-                      onChange={(e) => setBoxes((bs) => bs.map((x) => (x.id === b.id ? { ...x, cbm: n(e.target.value) } : x)))}
+                      step="any"
+                      inputMode="decimal"
+                      value={boxCbmText[b.id] ?? (b.cbm ? String(b.cbm) : "")}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        setBoxCbmText((m) => ({ ...m, [b.id]: text }));
+                        setBoxes((bs) => bs.map((x) => (x.id === b.id ? { ...x, cbm: n(text) } : x)));
+                      }}
                       className="h-8 w-28 text-right tabular-nums"
                       placeholder="CBM"
                     />
