@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getItems, getItemsWithStock, getItemVariations } from "@/lib/api";
+import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getExistingOnlineSaleKeys, getItems, getItemsWithStock, getItemVariations } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -15,6 +15,7 @@ import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
+import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
@@ -246,6 +247,8 @@ export default function OnlineSalesPage() {
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }[]>([]);
+  /** What a Shopee export import left out, for the summary above the preview. */
+  const [bulkNote, setBulkNote] = useState("");
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -585,7 +588,7 @@ export default function OnlineSalesPage() {
     if (!file) return;
     setBulkFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         // IMPORTANT: do NOT use cellDates — it converts Excel serials into JS Date
         // objects in local time, which causes -1 day shifts depending on timezone.
@@ -596,6 +599,66 @@ export default function OnlineSalesPage() {
         const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
           .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
         if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        // Order lines already in the ERP are marked, not uploaded again: an
+        // export for "this week" overlaps the one from last week.
+        const markDuplicates = async <R extends { order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }>(rows: R[]) => {
+          const existing = await getExistingOnlineSaleKeys(rows.map((r) => r.order_id));
+          return rows.map((r) =>
+            r.valid && r.order_id && existing.has(`${r.order_id}|${r.item_id ?? ""}|${r.variation_id ?? ""}`)
+              ? { ...r, valid: false, error: "Already in the ERP" }
+              : r,
+          );
+        };
+
+        // Shopee's own export, as downloaded from Seller Centre. Only ship
+        // time, order ID, SKU Reference No., deal price and quantity are taken.
+        if (isShopeeExport(sheetRows[0])) {
+          const missing = missingShopeeColumns(sheetRows[0]);
+          if (missing.length) {
+            toast.error(`This Shopee export is missing: ${missing.join(", ")}`);
+            return;
+          }
+          const { rows: shopeeRows, skipped } = parseShopeeExport(sheetRows);
+          const mapped = shopeeRows.map((r) => {
+            const m = matchShopeeSku(r.sku, items as any[], variations as any[]);
+            const error = !r.sku
+              ? "No SKU Reference No."
+              : !m.itemId
+                ? `No item with SKU "${r.sku}"`
+                : !r.date
+                  ? "No ship time"
+                  : r.quantity <= 0
+                    ? "No quantity"
+                    : undefined;
+            return {
+              product_name: r.sku,
+              quantity: r.quantity,
+              sales_channel: "shopee" as SalesChannel,
+              posted_price: r.dealPrice,
+              order_date: r.date,
+              order_id: r.orderId,
+              item_id: m.itemId,
+              variation_id: m.variationId,
+              valid: !error,
+              error,
+            };
+          });
+          const checked = await markDuplicates(mapped);
+          const dupes = checked.filter((r) => r.error === "Already in the ERP").length;
+          const count = (reason: string) => skipped.filter((x) => x.reason === reason).length;
+          const notes = [
+            "Shopee export recognised",
+            count("Cancelled") ? `${count("Cancelled")} cancelled left out` : "",
+            count("Unpaid") ? `${count("Unpaid")} unpaid left out` : "",
+            count("No tracking number") ? `${count("No tracking number")} without tracking left out` : "",
+            dupes ? `${dupes} already in the ERP` : "",
+          ].filter(Boolean);
+          setBulkNote(notes.join(" · "));
+          setBulkRows(checked);
+          return;
+        }
+        setBulkNote("");
 
         const resolvedColumns = resolveBulkColumns(sheetRows);
         if (!resolvedColumns || resolvedColumns.indexes.product < 0) {
@@ -673,7 +736,7 @@ export default function OnlineSalesPage() {
 
           return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: resolvedItemId, variation_id: resolvedVariationId, valid: !error, error };
         });
-        setBulkRows(parsed);
+        setBulkRows(await markDuplicates(parsed));
       } catch (err) {
         console.error("Bulk parse error", err);
         toast.error("Failed to parse file");
@@ -1807,7 +1870,8 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Columns: <strong>Order ID</strong> (optional), <strong>Date</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
+                <p className="text-xs text-muted-foreground"><strong>Shopee:</strong> upload the order export from Seller Centre as it is — no editing.</p>
+                <p className="text-xs text-muted-foreground">Or our template: <strong>Order ID</strong> (optional), <strong>Date</strong>, <strong>Product/Name</strong>, <strong>Quantity</strong>, <strong>Channel</strong>, <strong>Selling Price</strong></p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={downloadTemplate}><FileSpreadsheet className="h-4 w-4 mr-1" /> Download Template</Button>
@@ -1818,7 +1882,10 @@ export default function OnlineSalesPage() {
           ) : (
             <div className="flex flex-col gap-3 overflow-hidden">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">{bulkFileName} — {bulkRows.length} rows</span>
+                <span className="text-muted-foreground">
+                  {bulkFileName} — {bulkRows.length} rows
+                  {bulkNote && <span className="block text-[11px]">{bulkNote}</span>}
+                </span>
                 <div className="flex gap-3">
                   {bulkValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkValidCount} valid</span>}
                   {bulkInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkInvalidCount} invalid</span>}
@@ -1848,14 +1915,16 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-center">{row.quantity}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
-                        <TableCell className="text-xs">{row.valid ? <span className="text-green-600">✓</span> : <span className="text-destructive">{row.error}</span>}</TableCell>
+                        <TableCell className="text-xs">
+                          {row.valid ? <span className="text-green-600">✓</span> : <span className={row.error === "Already in the ERP" ? "text-muted-foreground" : "text-destructive"}>{row.error}</span>}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => { setBulkRows([]); setBulkFileName(""); }}>Clear</Button>
+                <Button variant="outline" onClick={() => { setBulkRows([]); setBulkFileName(""); setBulkNote(""); }}>Clear</Button>
                 <Button onClick={handleBulkUpload} disabled={bulkUploading || bulkValidCount === 0}>{bulkUploading ? "Uploading..." : `Upload ${bulkValidCount} Records`}</Button>
               </div>
             </div>

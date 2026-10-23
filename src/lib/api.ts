@@ -1680,6 +1680,24 @@ export const generateShopeeOrderNumber = () => generateNextNumber("shopee_order"
 export const generateLazadaOrderNumber = () => generateNextNumber("lazada_order");
 
 // Online Sales
+/**
+ * Order lines already recorded, keyed "order|item|variation", for the orders
+ * named. A re-exported date range overlaps the last one; this is how the
+ * upload knows which lines it has seen.
+ */
+export const getExistingOnlineSaleKeys = async (orderNumbers: string[]): Promise<Set<string>> => {
+  const keys = new Set<string>();
+  const unique = [...new Set(orderNumbers.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += 150) {
+    const { data, error } = await from("online_sales")
+      .select("order_number, item_id, variation_id")
+      .in("order_number", unique.slice(i, i + 150));
+    if (error) throw error;
+    for (const r of (data as any[]) || []) keys.add(`${r.order_number}|${r.item_id ?? ""}|${r.variation_id ?? ""}`);
+  }
+  return keys;
+};
+
 export const getOnlineSales = async (branchId?: string | null): Promise<OnlineSale[]> =>
   fetchAllRows<OnlineSale>(() => {
     let q = from("online_sales")
