@@ -9,13 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
 import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
+import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
@@ -274,7 +275,11 @@ export default function OnlineSalesPage() {
     adjustment?: boolean;
     /** 'returned' / 'cancelled', shown so a fee on a returned order is obvious. */
     orderStatus?: string;
+    /** Paid out by the platform, but the order itself was never uploaded. */
+    missing?: boolean;
   }[]>([]);
+  /** What a Shopee balance report import is doing, shown above the preview. */
+  const [bulkPayNote, setBulkPayNote] = useState("");
   const [bulkPayUploading, setBulkPayUploading] = useState(false);
   const [bulkPayFileName, setBulkPayFileName] = useState("");
   // Asked for inside the bulk dialog, so a parsed file is not thrown away for
@@ -890,6 +895,40 @@ export default function OnlineSalesPage() {
           .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
         if (sheetRows.length === 0) { toast.error("File is empty"); return; }
 
+        // Shopee's balance transaction report, as downloaded. Only rows with
+        // an Order ID are used; an order already paid here is left alone; one
+        // Shopee paid out but the ERP has never seen is flagged to upload.
+        if (isShopeeBalanceReport(sheetRows)) {
+          const { orders, notCompleted } = parseShopeeBalanceReport(sheetRows);
+          type PayRow = (typeof bulkPayRows)[number];
+          const parsedShopee: PayRow[] = orders.map((o): PayRow => {
+            const matches = payMatchPool.filter((s: any) => s.order_number === o.orderId);
+            const base = { order_id: o.orderId, amount_paid: o.amount, matched_ids: [] as string[], expected: 0, valid: false, duplicate: false };
+            if (matches.length === 0) {
+              return { ...base, missing: true, error: "Not in the ERP — upload this order first" };
+            }
+            const matched = { ...base, matched_ids: matches.map((s: any) => s.id), expected: expectedForGroup(matches) };
+            if (matches.some((s: any) => s.payment_status === "paid")) {
+              return {
+                ...matched,
+                duplicate: true,
+                error: `Already paid — not updated${o.adjustments ? ` (report has a ${peso(o.adjustments)} adjustment)` : ""}`,
+              };
+            }
+            const returned = matches.find((s: any) => s.status === "returned" || s.status === "cancelled");
+            return { ...matched, valid: true, loss: o.amount < 0, orderStatus: returned?.status };
+          });
+          // Missing ones first: they are the ones that need doing.
+          parsedShopee.sort((a, b) => Number(!!b.missing) - Number(!!a.missing));
+          setBulkPayNote([
+            "Shopee balance report recognised — only rows with an Order ID are used",
+            notCompleted ? `${notCompleted} not yet completed left out` : "",
+          ].filter(Boolean).join(" · "));
+          setBulkPayRows(parsedShopee);
+          return;
+        }
+        setBulkPayNote("");
+
         const header = sheetRows[0] ?? [];
         const orderIdx = matchBulkColumnIndex(header, bulkColumnKeywords.orderId);
         const amountIdx = matchBulkColumnIndex(header, ["amount paid", "paid", "payout", "amount", "net"]);
@@ -972,7 +1011,9 @@ export default function OnlineSalesPage() {
         if (row.matched_ids.length === 1) {
           await updateOnlineSale(row.matched_ids[0], { amount_paid: row.amount_paid, payment_status: 'paid', paid_at: new Date().toISOString() } as any);
         } else {
-          const lineSales = sales.filter((s: any) => row.matched_ids.includes(s.id));
+          // From every branch, as the matching was: an order belonging to
+          // another branch found no lines here and was counted as paid anyway.
+          const lineSales = payMatchPool.filter((s: any) => row.matched_ids.includes(s.id));
           const totalExpected = lineSales.reduce((sum: number, s: any) => sum + expectedForItem(s), 0) || 1;
           let allocated = 0;
           for (let i = 0; i < lineSales.length; i++) {
@@ -1017,7 +1058,16 @@ export default function OnlineSalesPage() {
 
   const bulkPayValidCount = bulkPayRows.filter(r => r.valid).length;
   const bulkPayDuplicateCount = bulkPayRows.filter(r => r.duplicate).length;
-  const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid && !r.duplicate).length;
+  const bulkPayMissing = bulkPayRows.filter(r => r.missing);
+  const bulkPayInvalidCount = bulkPayRows.filter(r => !r.valid && !r.duplicate && !r.missing).length;
+  /** The orders Shopee paid out that the ERP lacks, as a sheet to work from. */
+  const downloadMissingOrders = () => {
+    const ws = XLSX.utils.json_to_sheet(bulkPayMissing.map((r) => ({ "Order ID": r.order_id, "Amount Paid": r.amount_paid })));
+    ws["!cols"] = [{ wch: 22 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Not in ERP");
+    XLSX.writeFile(wb, "orders_not_in_erp.xlsx");
+  };
   const bulkPayLossCount = bulkPayRows.filter(r => r.valid && r.loss).length;
   const bulkPayAdjustCount = bulkPayRows.filter(r => r.valid && r.adjustment).length;
   const bulkPayLossTotal = bulkPayRows
@@ -1983,7 +2033,8 @@ export default function OnlineSalesPage() {
               <div className="rounded-full bg-muted p-4"><Upload className="h-8 w-8 text-muted-foreground" /></div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Upload an Excel file (.xlsx, .xls, .csv)</p>
-                <p className="text-xs text-muted-foreground">Required columns: <strong>Order ID</strong> and <strong>Amount Paid</strong></p>
+                <p className="text-xs text-muted-foreground"><strong>Shopee:</strong> upload the balance transaction report as it is — no editing.</p>
+                <p className="text-xs text-muted-foreground">Or our template: <strong>Order ID</strong> and <strong>Amount Paid</strong></p>
                 <p className="text-[11px] text-muted-foreground">Rows without an Order ID will be rejected.</p>
                 <p className="text-[11px] text-muted-foreground">
                   Negative nets are accepted — a returned order still charged shipping is
@@ -2000,12 +2051,16 @@ export default function OnlineSalesPage() {
           ) : (
             <div className="flex flex-col gap-3 overflow-hidden">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">{bulkPayFileName} — {bulkPayRows.length} rows</span>
+                <span className="text-muted-foreground">
+                  {bulkPayFileName} — {bulkPayRows.length} rows
+                  {bulkPayNote && <span className="block text-[11px]">{bulkPayNote}</span>}
+                </span>
                 <div className="flex gap-3">
                   {bulkPayValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkPayValidCount} valid</span>}
                   {bulkPayAdjustCount > 0 && <span className="flex items-center gap-1 text-sky-600">{bulkPayAdjustCount} adjusted</span>}
                   {bulkPayLossCount > 0 && <span className="flex items-center gap-1 text-destructive">{bulkPayLossCount} at a loss ({peso(bulkPayLossTotal)})</span>}
                   {bulkPayDuplicateCount > 0 && <span className="flex items-center gap-1 text-muted-foreground">{bulkPayDuplicateCount} already paid</span>}
+                  {bulkPayMissing.length > 0 && <span className="flex items-center gap-1 text-destructive font-medium"><AlertCircle className="h-3 w-3" />{bulkPayMissing.length} not in the ERP</span>}
                   {bulkPayInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkPayInvalidCount} invalid</span>}
                 </div>
               </div>
@@ -2054,7 +2109,12 @@ export default function OnlineSalesPage() {
                 </Table>
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => { setBulkPayRows([]); setBulkPayFileName(""); }}>Clear</Button>
+                {bulkPayMissing.length > 0 && (
+                  <Button variant="outline" className="mr-auto" onClick={downloadMissingOrders}>
+                    <Download className="h-4 w-4 mr-1" /> Download {bulkPayMissing.length} missing order ID{bulkPayMissing.length === 1 ? "" : "s"}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => { setBulkPayRows([]); setBulkPayFileName(""); setBulkPayNote(""); }}>Clear</Button>
                 <Button onClick={handleBulkPayUpload} disabled={bulkPayUploading || bulkPayValidCount === 0}>{bulkPayUploading ? "Uploading..." : `Apply Payments to ${bulkPayValidCount} Orders`}</Button>
               </div>
             </div>
