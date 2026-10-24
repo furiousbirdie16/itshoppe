@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ProductMetric, SaleTxn } from "@/types/insights";
-import { ACTION_CLASS, fmtDays } from "@/lib/insights";
+import { ACTION_CLASS, fmtDays, fmtUnits } from "@/lib/insights";
 
 function Metric({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
   return (
@@ -64,7 +64,7 @@ export function InsightsProductCard({ product: p, txns, isAdmin, money, isOpen, 
         <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 border-t pt-2.5">
           {/* Variations hold no stock of their own — it is counted on the parent. */}
           <Metric label="Stock" value={p.kind === "variation" ? "—" : p.stock} className={p.threshold > 0 && p.stock <= p.threshold ? "text-destructive" : ""} />
-          <Metric label="Sold" value={p.variationQtySold > 0 ? `${p.qtySold} (+${p.variationQtySold} var.)` : p.qtySold} />
+          <Metric label="Sold" value={p.variationQtySold > 0 ? `${p.qtySold} (+${fmtUnits(p.variationQtySold)} var.)` : p.qtySold} />
           <Metric label="Days left" value={p.kind === "variation" ? "—" : fmtDays(p.daysRemaining)} />
           {isAdmin && <Metric label="Revenue" value={money(p.revenue)} />}
           {isAdmin && <Metric label="Gross profit" value={money(p.grossProfit)} className="text-green-600" />}

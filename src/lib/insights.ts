@@ -10,6 +10,9 @@ export const ACTION_CLASS: Record<ProductAction, string> = {
   Dead: "bg-muted text-muted-foreground border-border",
 };
 
+/** Whole numbers as-is; fractions (a cut off a roll) to two places. */
+export const fmtUnits = (n: number) => (Math.abs(n - Math.round(n)) < 0.005 ? String(Math.round(n)) : n.toFixed(2));
+
 export const fmtDays = (d: number) => (d === Infinity ? "∞" : d > 999 ? ">999" : Math.round(d).toString());
 
 export type Bucket = "day" | "week" | "month";

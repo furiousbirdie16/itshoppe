@@ -41,7 +41,7 @@ const navGroups: NavGroup[] = [
     icon: Package,
     items: [
       { title: "Inventory", url: "/inventory", icon: Package },
-      { title: "Low Stock Alerts", url: "/low-stock-alerts", icon: AlertTriangle },
+      { title: "Reorder List", url: "/low-stock-alerts", icon: AlertTriangle },
       { title: "Stock Transfers", url: "/stock-transfers", icon: ArrowLeftRight },
     ],
   },

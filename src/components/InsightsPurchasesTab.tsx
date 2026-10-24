@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useSort } from "@/hooks/use-sort";
 import { useInsightsPurchases, PO_STATUS_LABEL, type PoRow } from "@/hooks/use-insights-purchases";
 import { makeBuckets } from "@/lib/insights";
+import type { SupplierLeadStats } from "@/lib/restock";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -80,11 +81,11 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
   }, [inRange, dateFrom, effectiveTo, allTime]);
 
   const supplierRows = useMemo(() => {
-    const m = new Map<string, { key: string; name: string; orders: number; spend: number; units: number; lead: number | null; onTime: number | null }>();
+    const m = new Map<string, { key: string; name: string; orders: number; spend: number; units: number; lead: SupplierLeadStats | null; onTime: number | null }>();
     for (const o of inRange) {
       const key = o.supplierId || "none";
       const lt = o.supplierId ? leadTimeBySupplier.get(o.supplierId) : undefined;
-      const e = m.get(key) || { key, name: o.supplier, orders: 0, spend: 0, units: 0, lead: lt?.avgDays ?? null, onTime: lt?.onTimePct ?? null };
+      const e = m.get(key) || { key, name: o.supplier, orders: 0, spend: 0, units: 0, lead: lt ?? null, onTime: lt?.onTimePct ?? null };
       e.orders += 1;
       e.spend += o.goodsPhp + o.chargesPhp;
       for (const l of o.lines) e.units += l.qty;
@@ -97,7 +98,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
     orders: (r) => r.orders,
     spend: (r) => r.spend,
     units: (r) => r.units,
-    lead: (r) => r.lead ?? Infinity,
+    lead: (r) => r.lead?.days ?? Infinity,
     onTime: (r) => r.onTime ?? -1,
   }, { key: isAdmin ? "spend" : "units", dir: "desc" });
 
@@ -212,7 +213,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
       <div className="rounded-xl border bg-card overflow-hidden">
         <div className="p-4 pb-3">
           <h2 className="text-sm font-semibold">Suppliers</h2>
-          <p className="text-xs text-muted-foreground">Orders placed in this range. Lead time and on-time rate are over every delivery received.</p>
+          <p className="text-xs text-muted-foreground">Orders placed in this range. Lead time is the typical (median) time from order to goods received, over every delivery; overseas orders with a ship date are split into production and transit.</p>
         </div>
         <div className="overflow-x-auto">
           <Table>
@@ -222,7 +223,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
                 <SortableHeader sortKey="orders" label="Orders" sort={supplierSort.sort} onToggle={supplierSort.toggle} align="right" />
                 <SortableHeader sortKey="units" label="Units" sort={supplierSort.sort} onToggle={supplierSort.toggle} align="right" />
                 {isAdmin && <SortableHeader sortKey="spend" label="Spend" sort={supplierSort.sort} onToggle={supplierSort.toggle} align="right" />}
-                <SortableHeader sortKey="lead" label="Avg lead time" sort={supplierSort.sort} onToggle={supplierSort.toggle} align="right" />
+                <SortableHeader sortKey="lead" label="Lead time" sort={supplierSort.sort} onToggle={supplierSort.toggle} align="right" />
                 <SortableHeader sortKey="onTime" label="On time" sort={supplierSort.sort} onToggle={supplierSort.toggle} align="right" className="hidden sm:table-cell" />
               </TableRow>
             </TableHeader>
@@ -240,7 +241,18 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
                       <div className="text-[10px] text-muted-foreground">{r.share.toFixed(0)}% of spend</div>
                     </TableCell>
                   )}
-                  <TableCell className="text-right tabular-nums">{r.lead == null ? <span className="text-muted-foreground">—</span> : `${Math.round(r.lead)} days`}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {r.lead == null ? <span className="text-muted-foreground">—</span> : (
+                      <>
+                        <div>{Math.round(r.lead.days)} days</div>
+                        <div className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {r.lead.productionDays != null && r.lead.transitDays != null
+                            ? `${Math.round(r.lead.productionDays)} production + ${Math.round(r.lead.transitDays)} transit`
+                            : `${r.lead.deliveries} deliver${r.lead.deliveries === 1 ? "y" : "ies"}`}
+                        </div>
+                      </>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums hidden sm:table-cell">
                     {r.onTime == null ? <span className="text-muted-foreground">—</span> : (
                       <span className={cn(r.onTime >= 90 ? "text-green-600" : r.onTime >= 70 ? "text-amber-600" : "text-red-600")}>{r.onTime.toFixed(0)}%</span>

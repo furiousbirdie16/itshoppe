@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
-import { format, subDays, parseISO, differenceInDays } from "date-fns";
+import { addDays, differenceInCalendarDays, format, parseISO, startOfDay, subDays } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +12,23 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { StatCard } from "@/components/StatCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
+import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { peso } from "@/lib/currency";
+import { fmtUnits } from "@/lib/insights";
+import {
+  DEFAULT_LEAD_DAYS,
+  HISTORY_DAYS,
+  SAFETY_DAYS,
+  itemDailyRate,
+  planReorder,
+  resolveLeadTime,
+  stockUnitsSold,
+  type LeadTime,
+  type ReorderGroup,
+  type SupplierLeadStats,
+} from "@/lib/restock";
 import { useAuth } from "@/contexts/AuthContext";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
@@ -23,60 +36,43 @@ import { createPurchaseOrder, createPOItems, generatePONumber, createOverseasPur
 import { listItemSuppliersForItems, upsertItemSupplier, type ItemSupplierRow } from "@/lib/itemSuppliers";
 import type { Supplier, OverseasSupplier } from "@/types/database";
 import { toast } from "sonner";
-import {
-  AlertTriangle,
-  Package,
-  ShoppingCart,
-  TrendingUp,
-  Search,
-  ChevronRight,
-  ChevronDown,
-  History,
-  DollarSign,
-  BarChart3,
-  CheckCircle2,
-  Circle,
-  Flame,
-  Snowflake,
-  Clock,
-  ArrowRight,
-} from "lucide-react";
+import { ShoppingCart, Search, ChevronRight, ChevronDown, History, DollarSign, BarChart3, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
 
-type Severity = "critical" | "low" | "healthy";
-type StatusFilter = "all" | "critical" | "ordered" | "not_ordered" | "po_created" | "fast" | "slow";
-type SortKey = "lowest" | "highest_sales" | "fastest" | "most_profit" | "soonest_out";
+type Group = Exclude<ReorderGroup, "ok">;
 
-const LEAD_TIME_DAYS = 14;
-const TARGET_DAYS_OF_STOCK = 30;
+// After delivery, an order should last this long before the next one.
+const COVER_DAYS = 30;
 
-function getSeverity(qty: number, threshold: number): Severity {
-  if (qty <= 0) return "critical";
-  if (threshold > 0 && qty <= Math.max(1, Math.floor(threshold / 2))) return "critical";
-  if (qty <= threshold) return "low";
-  return "healthy";
-}
-
-function severityColor(s: Severity) {
-  if (s === "critical") return "bg-destructive/10 text-destructive border-destructive/30";
-  if (s === "low") return "bg-warning/10 text-warning border-warning/30";
-  return "bg-success/10 text-success border-success/30";
-}
+const GROUPS: { v: Group; label: string; hint: string }[] = [
+  { v: "now", label: "Order now", hint: "Will run short before a new order could arrive, or below its minimum with nothing on order." },
+  { v: "ordered", label: "On order", hint: "Low or due soon, but what is already on order covers it." },
+  { v: "watch", label: "Watch", hint: "Below its minimum but not selling, or due to be ordered within two weeks." },
+];
 
 interface SaleRow {
   item_id: string;
-  qty: number;          // raw qty as sold (in selling units when variation present)
-  baseQty: number;      // converted to base inventory units (e.g. rolls)
+  /** Stock units used — a cut off a roll is a fraction of one. */
+  baseQty: number;
   amount: number;
   date: string;
 }
 
-function fmtBase(n: number) {
-  if (!isFinite(n)) return "—";
-  // Show 2 decimals only when fractional
-  return Math.abs(n - Math.round(n)) < 0.01 ? String(Math.round(n)) : n.toFixed(2);
+interface OpenPo {
+  number: string;
+  supplier: string;
+  expected: string | null;
+  remaining: number;
+}
+
+const fmtDate = (d: string | Date) => format(typeof d === "string" ? parseISO(d) : d, "MMM d");
+
+function leadLabel(lead: LeadTime) {
+  if (lead.source === "set") return `${lead.days}d lead`;
+  if (lead.source === "history") return `${lead.days}d lead (past deliveries)`;
+  return `${lead.days}d lead (default)`;
 }
 
 export default function LowStockAlertsPage() {
@@ -85,19 +81,19 @@ export default function LowStockAlertsPage() {
   const isAdmin = role === "admin";
   const money = (n: number) => (isAdmin ? peso(n) : "—");
 
+  const [group, setGroup] = useState<Group>("now");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("soonest_out");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
   const [costHistoryItem, setCostHistoryItem] = useState<Item | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkOpen, setBulkOpen] = useState(false);
+  // Rows the PO dialog is open for — the selection, or a single row's Order button.
+  const [poRows, setPoRows] = useState<ReturnType<typeof buildRow>[] | null>(null);
   const [recentlyCreatedPoItems, setRecentlyCreatedPoItems] = useState<Set<string>>(new Set());
+  const today = useMemo(() => startOfDay(new Date()), []);
 
-  // 1. Items
   // items.quantity is frozen at the per-branch migration; item_branch_stock is
   // the live figure. Reading the old column made every alert here wrong.
   const { data: items = [], isLoading } = useQuery<Item[]>({
@@ -105,7 +101,6 @@ export default function LowStockAlertsPage() {
     queryFn: () => getItemsWithStock(),
   });
 
-  // 2. Variations (for unit conversion)
   const { data: variations = [] } = useQuery({
     queryKey: ["lowstock-variations"],
     queryFn: async () => {
@@ -114,40 +109,13 @@ export default function LowStockAlertsPage() {
       return data as { id: string; item_id: string; type: string; factor: number }[];
     },
   });
-  const variationMap = useMemo(() => {
-    const m = new Map<string, { factor: number; type: string; item_id: string }>();
-    for (const v of variations) m.set(v.id, { factor: Number(v.factor || 1), type: v.type, item_id: v.item_id });
-    return m;
-  }, [variations]);
-  const itemsById = useMemo(() => {
-    const m = new Map<string, Item>();
-    for (const it of items) m.set(it.id, it);
-    return m;
-  }, [items]);
-
-  // Convert a sale qty to base inventory units (rolls / boxes / etc.)
-  const toBaseUnits = (item_id: string, qty: number, variation_id: string | null): number => {
-    const item = itemsById.get(item_id);
-    if (!item) return qty;
-    const ups = Number(item.units_per_stock || 1) || 1;
-    if (!variation_id) {
-      // No variation = sold in base stock unit (1:1)
-      return qty;
-    }
-    const v = variationMap.get(variation_id);
-    if (!v) return qty;
-    // For both pack & cut: base_units = (factor * qty) / units_per_stock
-    return (v.factor * qty) / ups;
-  };
 
   // Ninety days of sales is well past PostgREST's 1000-row cap, so these reads
   // page through it — an unpaginated read silently dropped most of it and every
   // days-left figure on this page came out far too optimistic.
-
-  // 3. Last 90 days sales
-  const since90 = useMemo(() => subDays(new Date(), 90).toISOString(), []);
+  const since = useMemo(() => format(subDays(today, HISTORY_DAYS), "yyyy-MM-dd"), [today]);
   const { data: salesRows = [] } = useQuery<SaleRow[]>({
-    queryKey: ["lowstock-sales", since90, items.length, variations.length],
+    queryKey: ["lowstock-sales", since, items.length, variations.length],
     enabled: items.length > 0,
     queryFn: async () => {
       const [invRows, onlRows] = await Promise.all([
@@ -155,7 +123,7 @@ export default function LowStockAlertsPage() {
           supabase
             .from("invoice_items")
             .select("item_id, variation_id, quantity, unit_price, invoices!inner(invoice_date, status)")
-            .gte("invoices.invoice_date", since90.slice(0, 10))
+            .gte("invoices.invoice_date", since)
             // Cancelled orders never sold, and reserved ones have not sold yet —
             // counting either as demand shortens days-left and triggers early
             // reorders. A reserved order is counted once it becomes a real sale.
@@ -166,83 +134,31 @@ export default function LowStockAlertsPage() {
           supabase
             .from("online_sales")
             .select("item_id, variation_id, quantity, deal_price, order_date, status")
-            .gte("order_date", since90.slice(0, 10))
+            .gte("order_date", since)
             .eq("status", "completed")
             .order("id"),
         ),
       ]);
-      const invRes = { data: invRows };
-      const onlRes = { data: onlRows };
+      const itemsById = new Map(items.map((i) => [i.id, i]));
+      const variationById = new Map(variations.map((v) => [v.id, v]));
+      const toRow = (itemId: string, variationId: string | null, qty: number, price: number, date: string): SaleRow => ({
+        item_id: itemId,
+        baseQty: stockUnitsSold(qty, variationId ? variationById.get(variationId) : null, itemsById.get(itemId)?.units_per_stock),
+        amount: qty * price,
+        date,
+      });
       const out: SaleRow[] = [];
-      for (const r of (invRes.data as any[]) || []) {
-        if (!r.item_id) continue;
-        const qty = Number(r.quantity || 0);
-        out.push({
-          item_id: r.item_id,
-          qty,
-          baseQty: toBaseUnits(r.item_id, qty, r.variation_id),
-          amount: qty * Number(r.unit_price || 0),
-          date: r.invoices?.invoice_date,
-        });
-      }
-      for (const r of (onlRes.data as any[]) || []) {
-        if (!r.item_id) continue;
-        const qty = Number(r.quantity || 0);
-        out.push({
-          item_id: r.item_id,
-          qty,
-          baseQty: toBaseUnits(r.item_id, qty, r.variation_id),
-          amount: qty * Number(r.deal_price || 0),
-          date: r.order_date,
-        });
-      }
+      for (const r of invRows) if (r.item_id) out.push(toRow(r.item_id, r.variation_id, Number(r.quantity || 0), Number(r.unit_price || 0), r.invoices?.invoice_date));
+      for (const r of onlRows) if (r.item_id) out.push(toRow(r.item_id, r.variation_id, Number(r.quantity || 0), Number(r.deal_price || 0), r.order_date));
       return out;
     },
   });
 
-  // 4. Open POs
-  const { data: openPoLines = [] } = useQuery({
-    queryKey: ["lowstock-open-pos"],
-    queryFn: async () => {
-      const [localRes, overRes] = await Promise.all([
-        supabase
-          .from("purchase_order_items")
-          .select("item_id, quantity, received_quantity, purchase_orders!inner(po_number, status, suppliers(id,name))")
-          .neq("purchase_orders.status", "received"),
-        supabase
-          .from("overseas_purchase_order_items")
-          .select("item_id, quantity, received_quantity, overseas_purchase_orders!inner(po_number, status, overseas_suppliers(name))")
-          .neq("overseas_purchase_orders.status", "received"),
-      ]);
-      const rows: { item_id: string; pending: number; po_number: string; supplier: string; supplier_id?: string }[] = [];
-      for (const r of (localRes.data as any[]) || []) {
-        if (!r.item_id) continue;
-        const pending = Number(r.quantity || 0) - Number(r.received_quantity || 0);
-        if (pending <= 0) continue;
-        rows.push({
-          item_id: r.item_id,
-          pending,
-          po_number: docNo(r.purchase_orders?.po_number) || "",
-          supplier: r.purchase_orders?.suppliers?.name || "—",
-          supplier_id: r.purchase_orders?.suppliers?.id,
-        });
-      }
-      for (const r of (overRes.data as any[]) || []) {
-        if (!r.item_id) continue;
-        const pending = Number(r.quantity || 0) - Number(r.received_quantity || 0);
-        if (pending <= 0) continue;
-        rows.push({
-          item_id: r.item_id,
-          pending,
-          po_number: docNo(r.overseas_purchase_orders?.po_number) || "",
-          supplier: r.overseas_purchase_orders?.overseas_suppliers?.name || "—",
-        });
-      }
-      return rows;
-    },
-  });
+  // Open orders and what past deliveries say about each supplier — shared with
+  // Business Insights, so both pages agree.
+  const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(null);
 
-  // 5. Latest cost change per item
+  // Latest cost change per item
   const { data: lastCostMap = {} } = useQuery<Record<string, { date: string; cost: number; supplier: string | null; po: string | null }>>({
     queryKey: ["lowstock-last-cost"],
     queryFn: async () => {
@@ -254,37 +170,13 @@ export default function LowStockAlertsPage() {
       const map: Record<string, any> = {};
       for (const r of (data as any[]) || []) {
         if (!r.item_id || map[r.item_id]) continue;
-        map[r.item_id] = {
-          date: r.created_at,
-          cost: Number(r.new_cost || 0),
-          supplier: r.supplier_name,
-          po: r.po_number,
-        };
+        map[r.item_id] = { date: r.created_at, cost: Number(r.new_cost || 0), supplier: r.supplier_name, po: r.po_number };
       }
       return map;
     },
   });
 
-  // 6. Latest supplier (with id) per item — for bulk PO grouping
-  const { data: latestSupplierMap = {} } = useQuery<Record<string, { id: string; name: string }>>({
-    queryKey: ["lowstock-latest-supplier"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("purchase_order_items")
-        .select("item_id, purchase_orders!inner(order_date, suppliers(id,name))")
-        .order("order_date", { foreignTable: "purchase_orders", ascending: false })
-        .limit(2000);
-      const map: Record<string, { id: string; name: string }> = {};
-      for (const r of (data as any[]) || []) {
-        if (!r.item_id || map[r.item_id]) continue;
-        const s = r.purchase_orders?.suppliers;
-        if (s?.id) map[r.item_id] = { id: s.id, name: s.name };
-      }
-      return map;
-    },
-  });
-
-  // 6b. Preferred item-supplier per item (from new item_suppliers table)
+  // Preferred supplier link per item (cost, MOQ, typed lead time)
   const itemIds = useMemo(() => items.map((i) => i.id), [items]);
   const { data: itemSupplierMap = new Map() } = useQuery<Map<string, ItemSupplierRow>>({
     queryKey: ["lowstock-item-suppliers", itemIds.length],
@@ -292,173 +184,90 @@ export default function LowStockAlertsPage() {
     enabled: itemIds.length > 0,
   });
 
-
-  // Build per-item enriched rows
-  const enriched = useMemo(() => {
+  const rows = useMemo(() => {
     const salesByItem = new Map<string, SaleRow[]>();
     for (const s of salesRows) {
-      if (!salesByItem.has(s.item_id)) salesByItem.set(s.item_id, []);
-      salesByItem.get(s.item_id)!.push(s);
+      const arr = salesByItem.get(s.item_id) || [];
+      arr.push(s);
+      salesByItem.set(s.item_id, arr);
     }
-    const orderedByItem = new Map<string, { pending: number; pos: string[]; supplier: string }>();
-    for (const r of openPoLines) {
-      const cur = orderedByItem.get(r.item_id) || { pending: 0, pos: [], supplier: r.supplier };
-      cur.pending += r.pending;
-      if (r.po_number && !cur.pos.includes(r.po_number)) cur.pos.push(r.po_number);
-      orderedByItem.set(r.item_id, cur);
+    // Open POs and the most recent local supplier per item, from PO history.
+    const openByItem = new Map<string, OpenPo[]>();
+    const latestLocal = new Map<string, { id: string; name: string; date: string }>();
+    for (const po of orders) {
+      for (const l of po.lines) {
+        if (!l.itemId) continue;
+        const rem = l.qty - l.received;
+        if (po.status !== "received" && rem > 0) {
+          const arr = openByItem.get(l.itemId) || [];
+          arr.push({ number: docNo(po.number) || po.number, supplier: po.supplier, expected: po.expected, remaining: rem });
+          openByItem.set(l.itemId, arr);
+        }
+        if (po.kind === "local" && po.supplierId && po.orderDate) {
+          const cur = latestLocal.get(l.itemId);
+          if (!cur || po.orderDate > cur.date) latestLocal.set(l.itemId, { id: po.supplierId, name: po.supplier, date: po.orderDate });
+        }
+      }
     }
+    return items.map((it) =>
+      buildRow(it, {
+        sales: salesByItem.get(it.id) || [],
+        openPos: (openByItem.get(it.id) || []).sort((a, b) => (a.expected || "9999").localeCompare(b.expected || "9999")),
+        onOrder: onOrderByItem.get(it.id) || 0,
+        itemSupplier: itemSupplierMap.get(it.id),
+        latestLocal: latestLocal.get(it.id),
+        lastCost: lastCostMap[it.id],
+        leadTimeBySupplier,
+        today,
+      }),
+    );
+  }, [items, salesRows, orders, onOrderByItem, itemSupplierMap, lastCostMap, leadTimeBySupplier, today]);
 
-    const today = new Date();
-    return items.map((it) => {
-      const threshold = it.low_stock_threshold ?? 0;
-      const sev = getSeverity(it.quantity, threshold);
-      const sales = salesByItem.get(it.id) || [];
-      // base-unit aggregations
-      let q7 = 0, q30 = 0, q90 = 0, a7 = 0, a30 = 0, a90 = 0;
-      let raw30 = 0; // raw selling-unit qty for display
-      for (const s of sales) {
-        if (!s.date) continue;
-        const d = parseISO(s.date);
-        const diff = differenceInDays(today, d);
-        if (diff <= 7) { q7 += s.baseQty; a7 += s.amount; }
-        if (diff <= 30) { q30 += s.baseQty; a30 += s.amount; raw30 += s.qty; }
-        if (diff <= 90) { q90 += s.baseQty; a90 += s.amount; }
-      }
-      const avgDaily = q90 / 90; // base units / day
-      const daysToOut = avgDaily > 0 ? it.quantity / avgDaily : Infinity;
-      const moving: "fast" | "slow" | "normal" = avgDaily >= 1 ? "fast" : avgDaily >= 0.2 ? "normal" : "slow";
+  const listed = useMemo(() => rows.filter((r) => r.plan.group !== "ok"), [rows]);
 
-      const orderInfo = orderedByItem.get(it.id);
-      const pendingOrdered = orderInfo?.pending || 0;
-      const suggestedQty = Math.max(
-        Math.ceil(avgDaily * (TARGET_DAYS_OF_STOCK + LEAD_TIME_DAYS)) - it.quantity - pendingOrdered,
-        threshold > 0 ? threshold - it.quantity - pendingOrdered : 0,
-        0,
-      );
-
-      const lastCost = lastCostMap[it.id];
-      const reorderCost = suggestedQty * (lastCost?.cost ?? it.cost_price ?? 0);
-
-      let recommendation: "urgent" | "soon" | "monitor" | "ok";
-      let recommendationText: string;
-      if (sev === "critical" && (orderInfo?.pending ?? 0) === 0) {
-        recommendation = "urgent";
-        recommendationText = "Urgent reorder needed";
-      } else if (avgDaily > 0 && daysToOut <= LEAD_TIME_DAYS) {
-        recommendation = "soon";
-        recommendationText = `Reorder soon — ~${Math.floor(daysToOut)} day(s) of stock`;
-      } else if (avgDaily === 0) {
-        recommendation = "monitor";
-        recommendationText = "No recent sales — monitor only";
-      } else {
-        recommendation = "ok";
-        recommendationText = `Enough stock for ~${Math.floor(daysToOut)} day(s)`;
-      }
-
-      const itemSupplier = itemSupplierMap.get(it.id);
-      // Preferred supplier priority: item_suppliers (primary/recent) > PO history latest
-      // For import products, prefer overseas item_supplier; for local, prefer local item_supplier.
-      const preferredSupplier =
-        itemSupplier && itemSupplier.is_overseas && itemSupplier.overseas_supplier_id
-          ? { id: itemSupplier.overseas_supplier_id, name: itemSupplier.supplier_name || "Supplier", overseas: true as const }
-          : itemSupplier && !itemSupplier.is_overseas && itemSupplier.supplier_id
-          ? { id: itemSupplier.supplier_id, name: itemSupplier.supplier_name || "Supplier", overseas: false as const }
-          : latestSupplierMap[it.id]
-          ? { ...latestSupplierMap[it.id], overseas: false as const }
-          : undefined;
-
-      return {
-        item: it,
-        threshold,
-        severity: sev,
-        ordered: !!orderInfo,
-        pendingOrdered,
-        openPos: orderInfo?.pos || [],
-        orderSupplier: orderInfo?.supplier,
-        q7, q30, q90, a7, a30, a90, raw30,
-        avgDaily,
-        daysToOut,
-        moving,
-        suggestedQty,
-        reorderCost,
-        lastCost,
-        recommendation,
-        recommendationText,
-        profit: (it.selling_price - it.cost_price) * q90,
-        latestSupplier: preferredSupplier,
-        itemSupplier, // full row incl. currency, MOQ, lead time
-      };
-    });
-  }, [items, salesRows, openPoLines, lastCostMap, latestSupplierMap, itemSupplierMap]);
-
-
-  // Hide items with threshold <= 0 OR healthy stock
-  const lowStock = useMemo(
-    () => enriched.filter((e) => (e.threshold ?? 0) > 0 && e.severity !== "healthy"),
-    [enriched],
+  const supplierOptions = useMemo(
+    () => Array.from(new Set(listed.map((r) => r.supplier?.name).filter(Boolean) as string[])).sort(),
+    [listed],
   );
 
-  const availableSuppliers = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of lowStock) {
-      const s = r.lastCost?.supplier || r.orderSupplier || r.latestSupplier?.name;
-      if (s) set.add(s);
-    }
-    return Array.from(set).sort();
-  }, [lowStock]);
-
-  const preFiltered = useMemo(() => {
-    let rows = lowStock;
+  const matching = useMemo(() => {
+    let out = listed;
     if (search) {
       const q = search.toLowerCase();
-      rows = rows.filter((r) => r.item.name.toLowerCase().includes(q) || r.item.sku.toLowerCase().includes(q));
+      out = out.filter((r) => r.item.name.toLowerCase().includes(q) || (r.item.sku || "").toLowerCase().includes(q));
     }
-    if (sourceFilter !== "all") rows = rows.filter((r) => r.item.source === sourceFilter);
-    if (statusFilter === "critical") rows = rows.filter((r) => r.severity === "critical");
-    else if (statusFilter === "ordered") rows = rows.filter((r) => r.ordered);
-    else if (statusFilter === "not_ordered") rows = rows.filter((r) => !r.ordered);
-    else if (statusFilter === "po_created") rows = rows.filter((r) => recentlyCreatedPoItems.has(r.item.id));
-    else if (statusFilter === "fast") rows = rows.filter((r) => r.moving === "fast");
-    else if (statusFilter === "slow") rows = rows.filter((r) => r.moving === "slow");
+    if (sourceFilter !== "all") out = out.filter((r) => (r.item.source || "local") === sourceFilter);
+    if (supplierFilter !== "all") out = out.filter((r) => r.supplier?.name === supplierFilter);
+    return out;
+  }, [listed, search, sourceFilter, supplierFilter]);
 
-    if (supplierFilter !== "all") {
-      rows = rows.filter((r) => (r.lastCost?.supplier || r.orderSupplier || r.latestSupplier?.name) === supplierFilter);
-    }
-    return rows;
-  }, [lowStock, search, statusFilter, sourceFilter, supplierFilter, recentlyCreatedPoItems]);
+  const counts = useMemo(() => {
+    const c: Record<Group, number> = { now: 0, ordered: 0, watch: 0 };
+    for (const r of matching) c[r.plan.group as Group] += 1;
+    return c;
+  }, [matching]);
 
-  const sortAccessors = useMemo(
-    () => ({
-      product: (r: typeof preFiltered[number]) => r.item.name,
-      sku: (r: typeof preFiltered[number]) => r.item.sku,
-      stock: (r: typeof preFiltered[number]) => r.item.quantity,
-      min: (r: typeof preFiltered[number]) => r.threshold,
-      supplier: (r: typeof preFiltered[number]) => r.lastCost?.supplier || r.orderSupplier || r.latestSupplier?.name || "",
-      sold30: (r: typeof preFiltered[number]) => r.q30,
-      lastCost: (r: typeof preFiltered[number]) => r.lastCost?.cost ?? r.item.cost_price ?? 0,
-      daysLeft: (r: typeof preFiltered[number]) => (isFinite(r.daysToOut) ? r.daysToOut : Number.MAX_SAFE_INTEGER),
-      status: (r: typeof preFiltered[number]) => (recentlyCreatedPoItems.has(r.item.id) ? "1_po" : r.ordered ? "2_ordered" : "3_not"),
-      recommendation: (r: typeof preFiltered[number]) => r.recommendation,
-    }),
-    [recentlyCreatedPoItems],
-  );
+  const inGroup = useMemo(() => matching.filter((r) => r.plan.group === group), [matching, group]);
+  const { sort, toggle: toggleSort, sorted } = useSort(inGroup, {
+    product: (r) => r.item.name,
+    stock: (r) => r.item.quantity,
+    daysLeft: (r) => (Number.isFinite(r.plan.daysLeft) ? r.plan.daysLeft : Number.MAX_SAFE_INTEGER),
+    onOrder: (r) => r.onOrder,
+    // On order: soonest arrival first. Otherwise: soonest order-by date.
+    when: (r) =>
+      group === "ordered"
+        ? r.openPos[0]?.expected || "9999"
+        : Number.isFinite(r.plan.orderByDays) ? r.plan.orderByDays : Number.MAX_SAFE_INTEGER,
+    qty: (r) => r.plan.suggested,
+  }, { key: "when", dir: "asc" });
 
-  const { sort, toggle: toggleSort, sorted: columnSorted } = useSort(preFiltered, sortAccessors);
-
-  const filtered = useMemo(() => {
-    if (sort.key) return columnSorted;
-    const rows = [...preFiltered];
-    rows.sort((a, b) => {
-      if (sortKey === "lowest") return a.item.quantity - b.item.quantity;
-      if (sortKey === "highest_sales") return b.a90 - a.a90;
-      if (sortKey === "fastest") return b.avgDaily - a.avgDaily;
-      if (sortKey === "most_profit") return b.profit - a.profit;
-      const da = isFinite(a.daysToOut) ? a.daysToOut : 1e9;
-      const db = isFinite(b.daysToOut) ? b.daysToOut : 1e9;
-      return da - db;
-    });
-    return rows;
-  }, [preFiltered, columnSorted, sort.key, sortKey]);
+  const colCount = group === "ordered" ? 7 : 8;
+  const groupCost = inGroup.reduce((s, r) => s + r.reorderCost, 0);
+  const leadSources = useMemo(() => {
+    const c = { set: 0, history: 0, default: 0 };
+    for (const r of inGroup) c[r.lead.source] += 1;
+    return c;
+  }, [inGroup]);
 
   const updateThreshold = useMutation({
     mutationFn: async ({ id, value }: { id: string; value: number }) => {
@@ -466,279 +275,262 @@ export default function LowStockAlertsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lowstock-items"] });
-      toast.success("Threshold updated");
+      queryClient.invalidateQueries({ queryKey: ["lowstock-items-with-stock"] });
+      toast.success("Minimum stock updated");
     },
-    onError: (e: any) => toast.error(e?.message || "Failed to update threshold"),
+    onError: (e: any) => toast.error(e?.message || "Failed to update minimum stock"),
   });
-
-  const summary = useMemo(() => {
-    const total = lowStock.length;
-    const critical = lowStock.filter((r) => r.severity === "critical").length;
-    const ordered = lowStock.filter((r) => r.ordered).length;
-    const pending = total - ordered;
-    const reorderCost = lowStock.reduce((s, r) => s + r.reorderCost, 0);
-    return { total, critical, ordered, pending, reorderCost };
-  }, [lowStock]);
 
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-
-  const toggleSelectAll = () => {
-    if (filtered.every((r) => selectedIds.has(r.item.id)) && filtered.length > 0) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map((r) => r.item.id)));
-    }
-  };
-
-  const selectedRows = useMemo(
-    () => filtered.filter((r) => selectedIds.has(r.item.id)),
-    [filtered, selectedIds],
-  );
+  const allSelected = sorted.length > 0 && sorted.every((r) => selectedIds.has(r.item.id));
+  const toggleSelectAll = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const r of sorted) {
+        if (allSelected) next.delete(r.item.id); else next.add(r.item.id);
+      }
+      return next;
+    });
+  const selectedRows = useMemo(() => rows.filter((r) => selectedIds.has(r.item.id)), [rows, selectedIds]);
+  // Stable between renders: the dialog re-seeds its form whenever this changes.
+  const dialogRows = useMemo(() => (poRows || []).map((r) => ({ ...r, suggestedQty: r.plan.suggested })), [poRows]);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Low Stock Alerts</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Smart purchasing dashboard combining inventory, sales velocity, and supplier insights.
-        </p>
+    <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Reorder List</h1>
+          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times.</p>
+        </div>
+        <Button disabled={selectedRows.length === 0} onClick={() => setPoRows(selectedRows)} className="shrink-0">
+          <ShoppingCart className="h-4 w-4 mr-1.5" />
+          Create PO{selectedRows.length ? ` (${selectedRows.length})` : ""}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard title="Low Stock Items" value={summary.total} icon={AlertTriangle} variant="warning" />
-        <StatCard title="Critical" value={summary.critical} icon={Flame} variant="warning" />
-        <StatCard title="Already Ordered" value={summary.ordered} icon={CheckCircle2} variant="success" />
-        <StatCard title="Pending Reorder" value={summary.pending} icon={Circle} />
-        <StatCard
-          title="Est. Reorder Cost"
-          value={isAdmin ? peso(summary.reorderCost) : "—"}
-          icon={DollarSign}
-        />
-      </div>
-
-      <Card>
-        <CardContent className="p-3 sm:p-4 space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {([
-              { k: "all", label: "All Low Stock" },
-              { k: "critical", label: "Critical" },
-              { k: "not_ordered", label: "Not Ordered" },
-              { k: "fast", label: "Fast Moving" },
-              { k: "slow", label: "Slow Moving" },
-            ] as { k: StatusFilter; label: string }[]).map((f) => (
-              <Button
-                key={f.k}
-                size="sm"
-                variant={statusFilter === f.k ? "default" : "outline"}
-                onClick={() => setStatusFilter(f.k)}
-              >
-                {f.label}
-              </Button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {([
-              { k: "all", label: "All Sources", count: lowStock.length },
-              { k: "local", label: "Local", count: lowStock.filter((r) => r.item.source === "local").length },
-              { k: "import", label: "Import", count: lowStock.filter((r) => r.item.source === "import").length },
-            ] as { k: "all" | "local" | "import"; label: string; count: number }[]).map((f) => (
-              <Button
-                key={f.k}
-                size="sm"
-                variant={sourceFilter === f.k ? "default" : "outline"}
-                onClick={() => setSourceFilter(f.k)}
-              >
-                {f.label} ({f.count})
-              </Button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search name or SKU..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-9"
-              />
-            </div>
-            <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-              <SelectTrigger className="w-[180px] h-9">
-                <SelectValue placeholder="Supplier" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All suppliers ({availableSuppliers.length})</SelectItem>
-                {availableSuppliers.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-              <SelectTrigger className="w-[200px] h-9">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="soonest_out">Soonest to run out</SelectItem>
-                <SelectItem value="lowest">Lowest stock first</SelectItem>
-                <SelectItem value="highest_sales">Highest sales (90d)</SelectItem>
-                <SelectItem value="fastest">Fastest moving</SelectItem>
-                <SelectItem value="most_profit">Most profitable</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              size="sm"
-              disabled={selectedIds.size === 0}
-              onClick={() => setBulkOpen(true)}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div role="tablist" aria-label="Reorder groups" className="inline-flex w-full rounded-lg bg-muted p-1 lg:w-auto">
+          {GROUPS.map((g) => (
+            <button
+              key={g.v}
+              role="tab"
+              aria-selected={group === g.v}
+              title={g.hint}
+              onClick={() => setGroup(g.v)}
+              className={cn(
+                "flex-1 lg:flex-none rounded-md px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap",
+                group === g.v ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-              Create Bulk PO ({selectedIds.size})
-            </Button>
+              {g.label}
+              <span className={cn("ml-1.5 tabular-nums", g.v === "now" && counts.now > 0 ? "text-destructive" : "text-muted-foreground")}>{counts[g.v]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative basis-full sm:basis-auto sm:w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Search name or SKU..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9" />
           </div>
-        </CardContent>
-      </Card>
+          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+            <SelectTrigger className="h-9 flex-1 sm:w-[170px] sm:flex-none text-xs" aria-label="Supplier">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All suppliers</SelectItem>
+              {supplierOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as typeof sourceFilter)}>
+            <SelectTrigger className="h-9 flex-1 sm:w-[120px] sm:flex-none text-xs" aria-label="Type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="local">Local</SelectItem>
+              <SelectItem value="import">Import</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
+      <div className="text-xs text-muted-foreground px-1">
+        {GROUPS.find((g) => g.v === group)!.hint}
+        {group === "now" && inGroup.length > 0 && isAdmin && <> · about <span className="font-medium text-foreground">{money(groupCost)}</span> at last cost</>}
+        {leadSources.default > 0 && (
+          <span className="text-amber-600"> · {leadSources.default} item{leadSources.default === 1 ? " uses" : "s use"} the {DEFAULT_LEAD_DAYS}-day default lead time — set it on the supplier link for a better plan</span>
+        )}
+      </div>
+
+      {/* Phones: one card per item — the table needs sideways scrolling to reach the quantity. */}
+      <div className="md:hidden space-y-2.5">
+        {isLoading ? (
+          <div className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">Loading…</div>
+        ) : sorted.length === 0 ? (
+          <div className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">
+            {group === "now" ? "Nothing needs ordering right now." : group === "ordered" ? "Nothing low is on order." : "Nothing to watch."}
+          </div>
+        ) : sorted.map((r) => {
+          const isOpen = expanded.has(r.item.id);
+          return (
+            <div key={r.item.id} className="rounded-xl border bg-card">
+              <div className="flex items-start gap-3 p-3">
+                <Checkbox className="mt-0.5" checked={selectedIds.has(r.item.id)} onCheckedChange={() => toggleSelect(r.item.id)} aria-label={`Select ${r.item.name}`} />
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleExpand(r.item.id)} aria-expanded={isOpen}>
+                  <div className="text-sm font-semibold leading-snug">{r.item.name}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {r.supplier?.name || <span className="text-amber-600">no supplier</span>}
+                    <span className={cn((r.lead.source === "default" || r.lead.mismatch) && "text-amber-600")}> · {leadLabel(r.lead)}</span>
+                  </div>
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-t px-3 py-2.5 text-sm">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Stock / Min</div>
+                  <span className={cn("font-semibold tabular-nums", r.plan.belowMin && "text-destructive")}>{fmtUnits(r.item.quantity)}</span>
+                  <span className="text-muted-foreground"> / </span>
+                  <MinStockEditor value={r.threshold} onSave={(v) => updateThreshold.mutate({ id: r.item.id, value: v })} />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{group === "ordered" ? "Arrives" : "Order by"}</div>
+                  <WhenCell row={r} group={group} today={today} />
+                </div>
+                <div className="text-right">
+                  {group === "ordered" ? (
+                    <>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">On order</div>
+                      <div className="font-semibold tabular-nums">{fmtUnits(r.onOrder)}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order qty</div>
+                      <div className="font-semibold tabular-nums">{r.plan.suggested > 0 ? r.plan.suggested.toLocaleString() : "—"}</div>
+                      {isAdmin && r.plan.suggested > 0 && <div className="text-[10px] text-muted-foreground tabular-nums">{money(r.reorderCost)}</div>}
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+                <button type="button" onClick={() => toggleExpand(r.item.id)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  Details
+                </button>
+                {group !== "ordered" && (
+                  <Button size="sm" variant={group === "now" ? "default" : "outline"} className="h-8 text-xs" onClick={() => setPoRows([r])}>
+                    <ShoppingCart className="h-3.5 w-3.5 mr-1" />Order
+                  </Button>
+                )}
+              </div>
+              {isOpen && (
+                <div className="border-t bg-muted/20 p-3">
+                  <ItemDetails row={r} money={money} isAdmin={isAdmin} onHistory={() => setHistoryItem(r.item)} onCostHistory={isAdmin ? () => setCostHistoryItem(r.item) : undefined} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Card className="hidden md:block">
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-8">
-                  <Checkbox
-                    checked={filtered.length > 0 && filtered.every((r) => selectedIds.has(r.item.id))}
-                    onCheckedChange={toggleSelectAll}
-                  />
+                <TableHead className="w-10">
+                  <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
                 </TableHead>
-                <TableHead className="w-8" />
-                <SortableHeader sortKey="product" label="Product" sort={sort} onToggle={toggleSort} />
-                <SortableHeader sortKey="sku" label="SKU" sort={sort} onToggle={toggleSort} />
-                <SortableHeader sortKey="stock" label="Stock" sort={sort} onToggle={toggleSort} align="right" />
-                <SortableHeader sortKey="min" label="Min" sort={sort} onToggle={toggleSort} align="right" />
-                <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggleSort} />
-                <SortableHeader sortKey="sold30" label="Sold (30d)" sort={sort} onToggle={toggleSort} align="right" />
-                <SortableHeader sortKey="lastCost" label="Last Cost" sort={sort} onToggle={toggleSort} align="right" />
-                <SortableHeader sortKey="daysLeft" label="Days Left" sort={sort} onToggle={toggleSort} align="right" />
-                <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggleSort} />
-                <SortableHeader sortKey="recommendation" label="Recommendation" sort={sort} onToggle={toggleSort} />
-                <TableHead className="text-right">Actions</TableHead>
+                <SortableHeader sortKey="product" label="Item" sort={sort} onToggle={toggleSort} />
+                <SortableHeader sortKey="stock" label="Stock / Min" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="daysLeft" label="Days left" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="onOrder" label="On order" sort={sort} onToggle={toggleSort} align="right" />
+                <SortableHeader sortKey="when" label={group === "ordered" ? "Arrives" : "Order by"} sort={sort} onToggle={toggleSort} />
+                {group !== "ordered" && <SortableHeader sortKey="qty" label="Order qty" sort={sort} onToggle={toggleSort} align="right" />}
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading && (
-                <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-              )}
-              {!isLoading && filtered.length === 0 && (
+              {isLoading ? (
+                <TableRow><TableCell colSpan={colCount} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+              ) : sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={colCount} className="text-center py-12 text-muted-foreground">
                     <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
-                    No items match — stock looks healthy.
+                    {group === "now" ? "Nothing needs ordering right now." : group === "ordered" ? "Nothing low is on order." : "Nothing to watch."}
                   </TableCell>
                 </TableRow>
-              )}
-              {filtered.map((r) => {
+              ) : sorted.map((r) => {
                 const isOpen = expanded.has(r.item.id);
-                const supplier = r.lastCost?.supplier || r.orderSupplier || r.latestSupplier?.name || "—";
-                const baseUnit = r.item.base_unit || "pcs";
-                const ups = Number(r.item.units_per_stock || 1) || 1;
-                const sellingUnit = ups > 1 ? "varies" : baseUnit;
+                const unit = r.item.base_unit || "pcs";
+                const daysLeft = r.plan.daysLeft;
                 return (
                   <Fragment key={r.item.id}>
-                    <TableRow className={cn("cursor-pointer", recentlyCreatedPoItems.has(r.item.id) && "bg-primary/5")}>
+                    <TableRow className={cn("cursor-pointer", isOpen && "bg-muted/30")} onClick={() => toggleExpand(r.item.id)}>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={selectedIds.has(r.item.id)}
-                          onCheckedChange={() => toggleSelect(r.item.id)}
-                        />
+                        <Checkbox checked={selectedIds.has(r.item.id)} onCheckedChange={() => toggleSelect(r.item.id)} aria-label={`Select ${r.item.name}`} />
                       </TableCell>
-                      <TableCell onClick={() => toggleExpand(r.item.id)}>
-                        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </TableCell>
-                      <TableCell className="font-medium" onClick={() => toggleExpand(r.item.id)}>
-                        <div className="flex items-center gap-2">
-                          <span className={cn("h-2 w-2 rounded-full",
-                            r.severity === "critical" ? "bg-destructive" :
-                            r.severity === "low" ? "bg-warning" : "bg-success")} />
-                          {r.item.name}
+                      <TableCell>
+                        <div className="flex items-start gap-1.5">
+                          {isOpen ? <ChevronDown className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm">{r.item.name}</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {r.item.sku || "—"} · {r.supplier?.name || <span className="text-amber-600">no supplier</span>}
+                              <span className={cn(" ", (r.lead.source === "default" || r.lead.mismatch) && "text-amber-600")}> · {leadLabel(r.lead)}</span>
+                            </div>
+                            {recentlyCreatedPoItems.has(r.item.id) && (
+                              <Badge variant="outline" className="mt-1 bg-primary/10 text-primary border-primary/30 text-[10px]">PO created</Badge>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{r.item.sku}</TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {r.item.quantity} <span className="text-[10px] text-muted-foreground font-normal">{baseUnit}</span>
+                      <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <span className={cn("font-semibold tabular-nums", r.plan.belowMin && "text-destructive")}>{fmtUnits(r.item.quantity)}</span>
+                        <span className="text-muted-foreground"> / </span>
+                        <MinStockEditor value={r.threshold} onSave={(v) => updateThreshold.mutate({ id: r.item.id, value: v })} />
+                        <div className="text-[10px] text-muted-foreground">{unit}</div>
                       </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Input
-                          type="number"
-                          min={0}
-                          defaultValue={r.threshold}
-                          key={`${r.item.id}-${r.threshold}`}
-                          className="h-7 w-16 text-right text-xs ml-auto"
-                          onBlur={(e) => {
-                            const v = parseInt(e.target.value);
-                            if (!isNaN(v) && v !== r.threshold) {
-                              updateThreshold.mutate({ id: r.item.id, value: v });
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        />
+                      <TableCell className="text-right text-sm tabular-nums">
+                        {r.item.quantity <= 0 ? <span className="text-destructive">Out</span> : Number.isFinite(daysLeft) ? `${Math.floor(daysLeft)}d` : <span className="text-muted-foreground">No sales</span>}
                       </TableCell>
-                      <TableCell className="text-xs">{supplier}</TableCell>
-                      <TableCell className="text-right text-xs">
-                        {fmtBase(r.q30)} <span className="text-[10px] text-muted-foreground">{baseUnit}</span>
+                      <TableCell className="text-right text-sm tabular-nums">
+                        {r.onOrder > 0 ? fmtUnits(r.onOrder) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="text-right text-xs">{r.lastCost ? money(r.lastCost.cost) : money(r.item.cost_price)}</TableCell>
-                      <TableCell className="text-right text-xs">
-                        {isFinite(r.daysToOut) ? `${Math.floor(r.daysToOut)}d` : "—"}
+                      <TableCell className="text-sm whitespace-nowrap">
+                        <WhenCell row={r} group={group} today={today} />
                       </TableCell>
-                      <TableCell>
-                        {recentlyCreatedPoItems.has(r.item.id) ? (
-                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                            <CheckCircle2 className="h-3 w-3 mr-1" /> PO Created
-                          </Badge>
-                        ) : r.ordered ? (
-                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                            <CheckCircle2 className="h-3 w-3 mr-1" /> Ordered
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-muted">
-                            <Circle className="h-3 w-3 mr-1" /> Not Ordered
-                          </Badge>
-                        )}
+                      {group !== "ordered" && (
+                      <TableCell className="text-right whitespace-nowrap">
+                        {r.plan.suggested > 0 ? (
+                          <>
+                            <div className="font-semibold tabular-nums">{r.plan.suggested.toLocaleString()}</div>
+                            {isAdmin && <div className="text-[10px] text-muted-foreground tabular-nums">{money(r.reorderCost)}</div>}
+                          </>
+                        ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn(
-                          "text-xs",
-                          r.recommendation === "urgent" && "bg-destructive/10 text-destructive border-destructive/30",
-                          r.recommendation === "soon" && "bg-warning/10 text-warning border-warning/30",
-                          r.recommendation === "monitor" && "bg-muted",
-                          r.recommendation === "ok" && "bg-success/10 text-success border-success/30",
-                        )}>
-                          {r.recommendationText}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Link to="/purchase-orders">
-                          <Button size="sm" variant="outline" className="h-7 text-xs">
-                            <ShoppingCart className="h-3 w-3 mr-1" /> Create PO
+                      )}
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {group !== "ordered" && (
+                          <Button size="sm" variant={group === "now" ? "default" : "outline"} className="h-8 px-2.5 text-xs" onClick={() => setPoRows([r])} aria-label={`Order ${r.item.name}`}>
+                            <ShoppingCart className="h-3.5 w-3.5 sm:mr-1" /><span className="hidden sm:inline">Order</span>
                           </Button>
-                        </Link>
+                        )}
                       </TableCell>
                     </TableRow>
                     {isOpen && (
-                      <TableRow>
-                        <TableCell colSpan={13} className="bg-muted/30 p-4">
-                          <ExpandedDetails
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={colCount} className="bg-muted/20 p-4">
+                          <ItemDetails
                             row={r}
                             money={money}
                             isAdmin={isAdmin}
@@ -760,19 +552,16 @@ export default function LowStockAlertsPage() {
       {isAdmin && <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => !o && setCostHistoryItem(null)} />}
 
       <BulkPODialog
-        open={bulkOpen}
-        onOpenChange={setBulkOpen}
-        rows={selectedRows}
+        open={!!poRows}
+        onOpenChange={(o) => !o && setPoRows(null)}
+        rows={dialogRows}
         money={money}
-        onCreated={(itemIds) => {
-          setRecentlyCreatedPoItems((prev) => {
-            const next = new Set(prev);
-            itemIds.forEach((id) => next.add(id));
-            return next;
-          });
+        onCreated={(ids) => {
+          setRecentlyCreatedPoItems((prev) => new Set([...prev, ...ids]));
           setSelectedIds(new Set());
-          setBulkOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["lowstock-open-pos"] });
+          setPoRows(null);
+          // The new draft PO puts these items on order.
+          queryClient.invalidateQueries({ queryKey: ["bi_purchases"] });
           queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
         }}
       />
@@ -780,7 +569,150 @@ export default function LowStockAlertsPage() {
   );
 }
 
+/** Everything one row needs, worked out once per item. */
+function buildRow(
+  it: Item,
+  ctx: {
+    sales: SaleRow[];
+    openPos: OpenPo[];
+    onOrder: number;
+    itemSupplier: ItemSupplierRow | undefined;
+    latestLocal: { id: string; name: string } | undefined;
+    lastCost: { date: string; cost: number; supplier: string | null; po: string | null } | undefined;
+    leadTimeBySupplier: Map<string, SupplierLeadStats>;
+    today: Date;
+  },
+) {
+  const byAgo = new Map<number, number>();
+  let q7 = 0, q30 = 0, q90 = 0, a90 = 0;
+  for (const s of ctx.sales) {
+    if (!s.date) continue;
+    const ago = differenceInCalendarDays(ctx.today, parseISO(s.date));
+    if (ago < 0 || ago > HISTORY_DAYS) continue;
+    byAgo.set(ago, (byAgo.get(ago) || 0) + s.baseQty);
+    if (ago <= 7) q7 += s.baseQty;
+    if (ago <= 30) q30 += s.baseQty;
+    q90 += s.baseQty;
+    a90 += s.amount;
+  }
+  const rate = itemDailyRate(byAgo, it.created_at, ctx.today);
+
+  // Preferred supplier: the item's supplier link, else the last local supplier it was bought from.
+  const link = ctx.itemSupplier;
+  const supplier =
+    link && link.is_overseas && link.overseas_supplier_id
+      ? { id: link.overseas_supplier_id, name: link.supplier_name || "Supplier", overseas: true as const }
+      : link && !link.is_overseas && link.supplier_id
+        ? { id: link.supplier_id, name: link.supplier_name || "Supplier", overseas: false as const }
+        : ctx.latestLocal
+          ? { ...ctx.latestLocal, overseas: false as const }
+          : undefined;
+  const lead = resolveLeadTime(link?.lead_time_days, supplier ? ctx.leadTimeBySupplier.get(supplier.id) : null);
+  const threshold = it.low_stock_threshold ?? 0;
+  const plan = planReorder({
+    stock: it.quantity,
+    onOrder: ctx.onOrder,
+    rate,
+    leadDays: lead.days,
+    coverDays: COVER_DAYS,
+    minStock: threshold,
+    moq: link?.moq,
+  });
+  return {
+    item: it,
+    threshold,
+    rate,
+    q7, q30, q90, a90,
+    plan,
+    lead,
+    supplier,
+    onOrder: ctx.onOrder,
+    openPos: ctx.openPos,
+    lastCost: ctx.lastCost,
+    itemSupplier: link,
+    // Fields the PO dialog reads.
+    latestSupplier: supplier,
+    reorderCost: plan.suggested * (ctx.lastCost?.cost ?? it.cost_price ?? 0),
+  };
+}
+
+type Row = ReturnType<typeof buildRow>;
+
+/** "Order by" for the Order now / Watch groups, "Arrives" for On order. */
+function WhenCell({ row: r, group, today }: { row: Row; group: Group; today: Date }) {
+  if (group === "ordered") {
+    const next = r.openPos[0];
+    if (!next) return <span className="text-muted-foreground">—</span>;
+    const late = !!next.expected && parseISO(next.expected) < today;
+    return (
+      <>
+        <div className={cn(late && "text-destructive font-medium")}>{next.expected ? fmtDate(next.expected) : "No date"}{late && " · late"}</div>
+        <div className="text-[10px] text-muted-foreground">{next.number}</div>
+      </>
+    );
+  }
+  if (!Number.isFinite(r.plan.orderByDays)) {
+    return <span className="text-muted-foreground text-xs">No sales in {HISTORY_DAYS}d</span>;
+  }
+  const d = r.plan.orderByDays;
+  if (d <= 0) {
+    return (
+      <>
+        <div className="text-destructive font-medium">Now</div>
+        {d < 0 && <div className="text-[10px] text-destructive">{-d} day{d === -1 ? "" : "s"} late</div>}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className={cn(d <= 7 && "text-amber-600")}>{fmtDate(addDays(today, d))}</div>
+      <div className="text-[10px] text-muted-foreground">in {d} day{d === 1 ? "" : "s"}</div>
+    </>
+  );
+}
+
+/** The minimum stock level, shown as a number until clicked. */
+function MinStockEditor({ value, onSave }: { value: number; onSave: (v: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+        title="Minimum stock — click to change"
+      >
+        {value || "—"}
+      </button>
+    );
+  }
+  const commit = (raw: string) => {
+    const v = parseInt(raw);
+    setEditing(false);
+    if (!isNaN(v) && v >= 0 && v !== value) onSave(v);
+  };
+  return (
+    <Input
+      type="number"
+      min={0}
+      autoFocus
+      defaultValue={value}
+      aria-label="Minimum stock"
+      className="inline-block h-7 w-16 text-right text-xs"
+      onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") setEditing(false);
+      }}
+    />
+  );
+}
+
 // ===== Bulk PO Dialog =====
+// Module-level so the "still loading" default is the same array every render —
+// a fresh [] would re-run the form-seeding effect in a loop.
+const NO_SUPPLIERS: Supplier[] = [];
+const NO_OVERSEAS: OverseasSupplier[] = [];
 interface BulkPORow {
   item: Item;
   suggestedQty: number;
@@ -823,7 +755,7 @@ function BulkPODialog({
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const { data: allSuppliers = [] } = useQuery<Supplier[]>({
+  const { data: allSuppliers = NO_SUPPLIERS } = useQuery<Supplier[]>({
     queryKey: ["bulkpo-suppliers"],
     queryFn: async () => {
       const { data } = await supabase.from("suppliers").select("*").order("name");
@@ -832,7 +764,7 @@ function BulkPODialog({
     enabled: open,
   });
 
-  const { data: allOverseas = [] } = useQuery<OverseasSupplier[]>({
+  const { data: allOverseas = NO_OVERSEAS } = useQuery<OverseasSupplier[]>({
     queryKey: ["bulkpo-overseas-suppliers"],
     queryFn: async () => {
       const { data } = await supabase.from("overseas_suppliers").select("*").order("name");
@@ -938,7 +870,7 @@ function BulkPODialog({
             supplier_id: g.supplier_id,
             status: "draft",
             order_date: new Date().toISOString().split("T")[0],
-            notes: "Auto-created from Low Stock Alerts",
+            notes: "Auto-created from the Reorder List",
             total_amount: total,
             currency: g.currency as any,
             exchange_rate,
@@ -964,7 +896,7 @@ function BulkPODialog({
             supplier_id: g.supplier_id,
             status: "draft",
             order_date: new Date().toISOString().split("T")[0],
-            notes: "Auto-created from Low Stock Alerts",
+            notes: "Auto-created from the Reorder List",
             total_amount: total,
           } as any);
           const lineItems = g.rows.map((r) => {
@@ -1030,7 +962,7 @@ function BulkPODialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Bulk Create Purchase Orders</DialogTitle>
+          <DialogTitle>Create Purchase Orders</DialogTitle>
         </DialogHeader>
 
         {rows.length === 0 ? (
@@ -1188,121 +1120,108 @@ function BulkPODialog({
   );
 }
 
-function ExpandedDetails({
-  row,
+function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right">{children}</span>
+    </div>
+  );
+}
+
+function ItemDetails({
+  row: r,
   money,
   isAdmin,
   onHistory,
   onCostHistory,
 }: {
-  row: any;
+  row: Row;
   money: (n: number) => string;
   isAdmin: boolean;
   onHistory: () => void;
   /** Omitted for non-admins — cost history is admin-only. */
   onCostHistory?: () => void;
 }) {
-  const baseUnit = row.item.base_unit || "pcs";
-  const ups = Number(row.item.units_per_stock || 1) || 1;
+  const unit = r.item.base_unit || "pcs";
+  const lead = r.lead;
+  const learned = lead.learned;
+  const link = r.itemSupplier;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        <MetricCard label={`Sold 7d (${baseUnit})`} value={fmtBase(row.q7)} sub={money(row.a7)} />
-        <MetricCard label={`Sold 30d (${baseUnit})`} value={fmtBase(row.q30)} sub={`raw ${fmtBase(row.raw30)} sold`} />
-        <MetricCard label={`Sold 90d (${baseUnit})`} value={fmtBase(row.q90)} sub={money(row.a90)} />
-        <MetricCard
-          label={`Avg / day (${baseUnit})`}
-          value={row.avgDaily.toFixed(2)}
-          sub={row.moving === "fast" ? "Fast moving" : row.moving === "slow" ? "Slow moving" : "Normal"}
-          icon={row.moving === "fast" ? Flame : row.moving === "slow" ? Snowflake : TrendingUp}
-        />
-        <MetricCard label={`Suggested (${baseUnit})`} value={row.suggestedQty} sub={`Cost ${money(row.reorderCost)}`} />
-        <MetricCard
-          label="Reorder Timing"
-          value={
-            row.recommendation === "urgent" ? "Now" :
-            row.recommendation === "soon" ? `Within ${LEAD_TIME_DAYS}d` :
-            row.recommendation === "ok" ? `In ~${Math.max(0, Math.floor(row.daysToOut - LEAD_TIME_DAYS))}d` :
-            "—"
-          }
-          sub={`Lead time ${LEAD_TIME_DAYS}d`}
-          icon={Clock}
-        />
-      </div>
+      <div className="grid gap-3 md:grid-cols-3 text-sm">
+        <div className="rounded-lg border bg-background p-3 space-y-1">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Sales ({unit})</div>
+          <Detail label="Last 7 days">{fmtUnits(r.q7)}</Detail>
+          <Detail label="Last 30 days">{fmtUnits(r.q30)}</Detail>
+          <Detail label={`Last ${HISTORY_DAYS} days`}>{fmtUnits(r.q90)}{isAdmin && <span className="text-muted-foreground"> · {money(r.a90)}</span>}</Detail>
+          <Detail label="Rate used">{r.rate > 0 ? `${r.rate < 1 ? r.rate.toFixed(2) : r.rate.toFixed(1)} / day` : "No sales"}</Detail>
+          <p className="pt-1 text-[11px] text-muted-foreground">Recent weeks count most. Cuts count as their share of a {unit}.</p>
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Unit Conversion</div>
-          <div className="text-sm space-y-1">
-            <div className="flex justify-between"><span className="text-muted-foreground">Base unit</span><span className="font-medium">{baseUnit}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Selling unit</span><span>{ups > 1 ? `varies (cuts/packs)` : baseUnit}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Conversion</span><span>{ups > 1 ? `${ups} per ${baseUnit}` : "1 : 1"}</span></div>
-            {row.item.open_roll_remaining > 0 && (
-              <div className="flex justify-between"><span className="text-muted-foreground">Open roll</span><span>{row.item.open_roll_remaining}</span></div>
-            )}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Open Purchase Orders</div>
-          {row.openPos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No open POs for this item.</p>
-          ) : (
-            <ul className="text-sm space-y-1">
-              {row.openPos.map((po: string) => (
-                <li key={po} className="flex items-center gap-2">
-                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-medium">{po}</span>
-                  <span className="text-muted-foreground">— {row.orderSupplier}</span>
-                </li>
-              ))}
-              <li className="text-xs text-muted-foreground">{row.pendingOrdered} unit(s) pending arrival</li>
-            </ul>
-          )}
-        </div>
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Default Supplier</div>
-          {row.itemSupplier ? (
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span className="font-medium">{row.itemSupplier.supplier_name || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span>{row.itemSupplier.is_overseas ? "Overseas" : "Local"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Latest cost</span><span className="font-medium">{currencySymbolForDisplay(row.itemSupplier.currency)}{Number(row.itemSupplier.latest_cost).toFixed(2)} <span className="text-[10px] text-muted-foreground">{row.itemSupplier.currency}</span></span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">MOQ</span><span>{row.itemSupplier.moq || 1}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Lead time</span><span>{row.itemSupplier.lead_time_days != null ? `${row.itemSupplier.lead_time_days}d` : "—"}</span></div>
-              {row.itemSupplier.last_purchased_at && (
-                <div className="flex justify-between"><span className="text-muted-foreground">Last ordered</span><span>{format(parseISO(row.itemSupplier.last_purchased_at), "MMM d, yyyy")}</span></div>
+        <div className="rounded-lg border bg-background p-3 space-y-1">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Lead time</div>
+          <Detail label="Using">
+            <span className="font-medium">{lead.days} days</span>{" "}
+            <span className="text-muted-foreground">
+              {lead.source === "set" ? "(set on supplier link)" : lead.source === "history" ? "(past deliveries)" : "(default)"}
+            </span>
+          </Detail>
+          {learned ? (
+            <>
+              <Detail label="Past deliveries">
+                {Math.round(learned.days)} days <span className="text-muted-foreground">· typical of {learned.deliveries}</span>
+              </Detail>
+              {learned.productionDays != null && learned.transitDays != null && (
+                <Detail label="Split">{Math.round(learned.productionDays)} production + {Math.round(learned.transitDays)} transit</Detail>
               )}
-            </div>
+              {learned.onTimePct != null && <Detail label="On time">{learned.onTimePct.toFixed(0)}%</Detail>}
+            </>
           ) : (
-            <p className="text-sm text-muted-foreground">No supplier assigned to this product. Add one from Inventory → Suppliers.</p>
+            <Detail label="Past deliveries"><span className="text-muted-foreground">None recorded</span></Detail>
           )}
+          {lead.mismatch && (
+            <p className="pt-1 text-[11px] text-amber-600">
+              Deliveries usually take {Math.round(learned!.days)} days, not the {lead.setDays} set — consider updating the supplier link.
+            </p>
+          )}
+          {lead.source === "default" && (
+            <p className="pt-1 text-[11px] text-amber-600">
+              No lead time set and no deliveries recorded. Set it in Inventory → item → Suppliers.
+            </p>
+          )}
+          <p className="pt-1 text-[11px] text-muted-foreground">
+            Order qty covers the lead time, {SAFETY_DAYS} days of safety stock and {COVER_DAYS} days after delivery{link?.moq ? `, at least the MOQ of ${link.moq}` : ""}.
+          </p>
         </div>
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Last Supplier Cost</div>
-          {row.lastCost ? (
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span>{row.lastCost.supplier || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">PO</span><span>{row.lastCost.po || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Cost</span><span className="font-medium">{money(row.lastCost.cost)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span>{format(parseISO(row.lastCost.date), "MMM d, yyyy")}</span></div>
-            </div>
+
+        <div className="rounded-lg border bg-background p-3 space-y-1">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Supplier & orders</div>
+          <Detail label="Supplier">{r.supplier ? `${r.supplier.name}${r.supplier.overseas ? " (overseas)" : ""}` : <span className="text-amber-600">None — add one in Inventory → Suppliers</span>}</Detail>
+          {isAdmin && link && (
+            <Detail label="Latest cost">{currencySymbolForDisplay(link.currency)}{Number(link.latest_cost).toFixed(2)} <span className="text-[10px] text-muted-foreground">{link.currency}</span></Detail>
+          )}
+          {isAdmin && r.lastCost && (
+            <Detail label="Last cost change">{money(r.lastCost.cost)} <span className="text-muted-foreground">· {format(parseISO(r.lastCost.date), "MMM d, yyyy")}</span></Detail>
+          )}
+          {link?.last_purchased_at && <Detail label="Last ordered">{format(parseISO(link.last_purchased_at), "MMM d, yyyy")}</Detail>}
+          {r.openPos.length === 0 ? (
+            <Detail label="On order"><span className="text-muted-foreground">Nothing</span></Detail>
           ) : (
-            <p className="text-sm text-muted-foreground">No purchase history yet.</p>
+            r.openPos.map((po) => (
+              <Detail key={po.number} label={po.number}>
+                {fmtUnits(po.remaining)} {unit} <span className="text-muted-foreground">· {po.expected ? `due ${format(parseISO(po.expected), "MMM d")}` : "no date"}</span>
+              </Detail>
+            ))
           )}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Link to="/purchase-orders">
-          <Button size="sm"><ShoppingCart className="h-3.5 w-3.5 mr-1.5" /> Create Purchase Order</Button>
-        </Link>
-        {/* A new tab, so the low-stock list you were working through is still
-            there when you have finished reading the history. Falls back to the
-            name: an item without a SKU would otherwise search for nothing. */}
-        <Link
-          to={`/business-insights?item=${encodeURIComponent(row.item.sku || row.item.name)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        {/* A new tab, so the list you were working through is still there when
+            you have finished reading the history. Falls back to the name: an
+            item without a SKU would otherwise search for nothing. */}
+        <Link to={`/business-insights?item=${encodeURIComponent(r.item.sku || r.item.name)}`} target="_blank" rel="noopener noreferrer">
           <Button size="sm" variant="outline"><BarChart3 className="h-3.5 w-3.5 mr-1.5" /> Sales History</Button>
         </Link>
         <Button size="sm" variant="outline" onClick={onHistory}>
@@ -1314,19 +1233,6 @@ function ExpandedDetails({
           </Button>
         )}
       </div>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, sub, icon: Icon }: { label: string; value: any; sub?: string; icon?: any }) {
-  return (
-    <div className="rounded-lg border bg-background p-3">
-      <div className="flex items-center justify-between gap-1 mb-1">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{label}</span>
-        {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
-      </div>
-      <div className="text-lg font-semibold tracking-tight">{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{sub}</div>}
     </div>
   );
 }
