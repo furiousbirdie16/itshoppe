@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Chainable + thenable stand-in for the PostgREST builder. Every method returns
 // itself, and awaiting anywhere in the chain yields an empty result set.
@@ -56,7 +57,10 @@ function renderPage(route = "/business-insights") {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <QueryClientProvider client={client}>
-        <BusinessInsightsPage />
+        {/* The app root provides this; cards with explanations need it. */}
+        <TooltipProvider>
+          <BusinessInsightsPage />
+        </TooltipProvider>
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -71,62 +75,53 @@ describe("BusinessInsightsPage", () => {
     expect(screen.getByRole("tab", { name: /Customers/ })).toBeInTheDocument();
   });
 
-  it("keeps the secondary filters behind a drawer instead of inline on mobile", () => {
-    const { container } = renderPage();
+  it("keeps the sales filters behind one drawer instead of an inline bar", () => {
+    renderPage();
+    // The toolbar shows only the range picker, the drawer trigger and export.
+    expect(screen.getByRole("combobox", { name: "Date range" })).toHaveTextContent("Last 30 days");
+    expect(screen.queryByText("All payments")).toBeNull();
 
-    // The mobile toolbar exposes only date presets, search and the drawer trigger.
-    const mobileBar = container.querySelector(".md\\:hidden");
-    expect(mobileBar).not.toBeNull();
-    expect(within(mobileBar as HTMLElement).getByText("Today")).toBeInTheDocument();
-
-    // Source / payment / category controls are not in the mobile toolbar.
-    expect(within(mobileBar as HTMLElement).queryByText("All payments")).toBeNull();
-
-    // They live in the drawer, which opens on demand.
     fireEvent.click(screen.getByRole("button", { name: /filter/i }));
     const drawer = screen.getByRole("dialog");
     expect(within(drawer).getByText("Sales source")).toBeInTheDocument();
     expect(within(drawer).getByText("Payment status")).toBeInTheDocument();
-    expect(within(drawer).getByText("Product type")).toBeInTheDocument();
+    expect(within(drawer).getByText("Category")).toBeInTheDocument();
+    // Product type only affects the Products tab, so it lives there instead.
+    expect(within(drawer).queryByText("Product type")).toBeNull();
   });
 
   it("badges the drawer trigger once a hidden filter is applied", () => {
     renderPage();
-    // Captured before opening: the trigger goes aria-hidden while the drawer is up.
-    const trigger = screen.getByRole("button", { name: /filter/i });
-    expect(trigger.textContent).toBe("");
+    expect(screen.queryByTestId("filter-count")).toBeNull();
 
-    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
     const drawer = screen.getByRole("dialog");
     fireEvent.click(within(drawer).getByRole("button", { name: "Paid only" }));
 
     // Count is visible on the trigger so a filter can't stay applied unseen.
-    expect(trigger.textContent).toBe("1");
+    expect(screen.getByTestId("filter-count").textContent).toBe("1");
   });
 
   it("clears every drawer filter from one control", () => {
     renderPage();
-    const trigger = screen.getByRole("button", { name: /filter/i });
-    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
     const drawer = screen.getByRole("dialog");
 
     fireEvent.click(within(drawer).getByRole("button", { name: "Paid only" }));
     fireEvent.click(within(drawer).getByRole("button", { name: "Online only" }));
-    expect(trigger.textContent).toBe("2");
+    expect(screen.getByTestId("filter-count").textContent).toBe("2");
 
     fireEvent.click(within(drawer).getByRole("button", { name: "Clear all" }));
-    expect(trigger.textContent).toBe("");
+    expect(screen.queryByTestId("filter-count")).toBeNull();
   });
 
-  it("opens only the date picker that was tapped", () => {
+  it("shows one pair of date pickers for a custom range", () => {
     renderPage();
-    // Custom range renders in both the desktop and the mobile toolbar, and both
-    // stay mounted — only CSS hides one. Sharing open state made the hidden copy
-    // dismiss the visible one the moment it took focus.
-    fireEvent.click(screen.getAllByRole("button", { name: "Custom" })[0]);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Date range" }), { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "Custom range" }));
 
     const fromButtons = screen.getAllByRole("button", { name: "From" });
-    expect(fromButtons).toHaveLength(2);
+    expect(fromButtons).toHaveLength(1);
 
     fireEvent.click(fromButtons[0]);
     expect(screen.getAllByRole("grid")).toHaveLength(1);
@@ -140,15 +135,26 @@ describe("BusinessInsightsPage", () => {
     expect(screen.getAllByDisplayValue("SKU-42").length).toBeGreaterThan(0);
   });
 
-  it("opens on Overview for today when no item is linked", () => {
+  it("opens on Overview for the last 30 days when no item is linked", () => {
     renderPage();
     expect(screen.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("combobox", { name: "Date range" })).toHaveTextContent("Last 30 days");
+  });
+
+  it("says so when nothing needs attention", () => {
+    renderPage();
+    expect(screen.getByText("Needs Attention")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs attention right now.")).toBeInTheDocument();
   });
 
   it("offers a sort control on the Products tab so cards stay sortable without table headers", () => {
     renderPage();
     // Radix tabs activate on pointer-down, not click.
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Products/ }));
+
+    // Product-only filters sit in the tab's own toolbar.
+    expect(screen.getByRole("combobox", { name: "Product type" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Suggested action" })).toBeInTheDocument();
 
     // Direction toggle starts on the descending default and flips on tap.
     const dir = screen.getByRole("button", { name: /Desc/ });

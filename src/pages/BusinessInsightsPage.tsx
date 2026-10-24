@@ -1,9 +1,9 @@
 import { Fragment, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
-import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, subDays } from "date-fns";
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, subDays, addDays, addWeeks, addMonths, differenceInCalendarDays, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
@@ -14,17 +14,21 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, FormulaRow } from "@/components/StatCard";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Warehouse, Users, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Users, ArrowUp, ArrowDown, ArrowUpDown, Columns3, PackagePlus, PackageX, Boxes, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
-import type { ProductMetric, SaleTxn } from "@/types/insights";
+import { ACTION_CLASS, fmtDays } from "@/lib/insights";
+import { InsightsTrendChart, type TrendPoint } from "@/components/InsightsTrendChart";
+import type { ProductAction, ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { docNo } from "@/lib/doc-number";
@@ -36,13 +40,13 @@ type ProductSourceFilter = "all" | "local" | "import";
 
 const RANGE_OPTIONS: { v: RangePreset; l: string }[] = [
   { v: "today", l: "Today" },
-  { v: "7d", l: "7d" },
-  { v: "30d", l: "30d" },
-  { v: "60d", l: "60d" },
-  { v: "90d", l: "90d" },
+  { v: "7d", l: "Last 7 days" },
+  { v: "30d", l: "Last 30 days" },
+  { v: "60d", l: "Last 60 days" },
+  { v: "90d", l: "Last 90 days" },
   { v: "month", l: "This month" },
-  { v: "all", l: "All" },
-  { v: "custom", l: "Custom" },
+  { v: "all", l: "All time" },
+  { v: "custom", l: "Custom range" },
 ];
 const SOURCE_OPTIONS: { v: SourceFilter; l: string }[] = [
   { v: "all", l: "All sources" },
@@ -59,6 +63,34 @@ const PRODUCT_SOURCE_OPTIONS: { v: ProductSourceFilter; l: string }[] = [
   { v: "local", l: "Local" },
   { v: "import", l: "Import" },
 ];
+type ActionFilter = "all" | ProductAction;
+const ACTION_OPTIONS: { v: ActionFilter; l: string }[] = [
+  { v: "all", l: "All actions" },
+  { v: "Buy", l: "Buy — running low" },
+  { v: "Maintain", l: "Maintain" },
+  { v: "Reduce", l: "Reduce" },
+  { v: "Overstock", l: "Overstock" },
+  { v: "Dead", l: "Dead — not selling" },
+];
+
+// Product columns that are off by default so the table fits without sideways
+// scrolling; the "Columns" menu turns them on.
+type OptionalCol = "type" | "cost" | "gmroi";
+const OPTIONAL_COLS: { v: OptionalCol; l: string; adminOnly: boolean }[] = [
+  { v: "type", l: "Type (local / import)", adminOnly: false },
+  { v: "cost", l: "Cost (COGS)", adminOnly: true },
+  { v: "gmroi", l: "GMROI", adminOnly: true },
+];
+const COLS_STORAGE_KEY = "bi_product_columns";
+function loadCols(): Set<OptionalCol> {
+  try {
+    const raw = localStorage.getItem(COLS_STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw) as OptionalCol[]);
+  } catch {
+    // Storage blocked or corrupt — fall back to the default columns.
+  }
+  return new Set();
+}
 
 /** Segmented chip row shared by the desktop filter bar and the mobile filter drawer. */
 function ChipGroup<T extends string>({
@@ -204,13 +236,34 @@ export default function BusinessInsightsPage() {
   const [searchParams] = useSearchParams();
   const itemParam = searchParams.get("item") || "";
   const [tab, setTab] = useState(itemParam ? "products" : "overview");
-  const [preset, setPreset] = useState<RangePreset>(itemParam ? "all" : "today");
+  // Defaults to 30 days: a single day says little, and stock-cover figures are
+  // derived from the range's sales speed.
+  const [preset, setPreset] = useState<RangePreset>(itemParam ? "all" : "30d");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [source, setSource] = useState<SourceFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [search, setSearch] = useState(itemParam);
   const [productSource, setProductSource] = useState<ProductSourceFilter>("all");
+  const [actionFilter, setActionFilter] = useState<ActionFilter>("all");
+  const [visibleCols, setVisibleCols] = useState<Set<OptionalCol>>(loadCols);
+  const toggleCol = (c: OptionalCol) => {
+    setVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c); else next.add(c);
+      try { localStorage.setItem(COLS_STORAGE_KEY, JSON.stringify(Array.from(next))); } catch { /* per-viewer nicety only */ }
+      return next;
+    });
+  };
+  // Parents whose variations are unfolded beneath them in the Products tab.
+  const [openVariations, setOpenVariations] = useState<Set<string>>(new Set());
+  const toggleVariations = (itemId: string) => {
+    setOpenVariations((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  };
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
@@ -251,6 +304,22 @@ export default function BusinessInsightsPage() {
 
   const fromStr = format(dateFrom, "yyyy-MM-dd");
   const toStr = format(dateTo, "yyyy-MM-dd");
+  const effectiveTo = useMemo(() => {
+    const today = endOfDay(new Date());
+    return dateTo > today ? today : dateTo;
+  }, [dateTo]);
+
+  // The comparison period: the same number of days immediately before this
+  // range. "All time" has nothing before it.
+  const prevRange = useMemo(() => {
+    if (preset === "all") return null;
+    const span = Math.max(1, differenceInCalendarDays(effectiveTo, dateFrom) + 1);
+    return {
+      from: format(subDays(dateFrom, span), "yyyy-MM-dd"),
+      to: format(subDays(dateFrom, 1), "yyyy-MM-dd"),
+      days: span,
+    };
+  }, [preset, dateFrom, effectiveTo]);
 
   // Helper: fetch all rows in pages to bypass PostgREST's default 1000-row cap
 
@@ -656,11 +725,11 @@ export default function BusinessInsightsPage() {
       txns: [...r.txns].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
     }));
 
-    const q = search.trim().toLowerCase();
-    return q
-      ? arr.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q))
-      : arr;
-  }, [onlineRows, invoiceRows, source, search, financialsMap, onlineFinMap]);
+    // Search is a Products-tab control, so it is applied there (filteredProducts)
+    // and in the export — not here, where it would silently shrink the
+    // Overview's revenue and chart.
+    return arr;
+  }, [onlineRows, invoiceRows, source, financialsMap, onlineFinMap]);
 
   const { sort, toggle, sorted } = useSort<ItemAgg>(
     aggregated,
@@ -804,8 +873,8 @@ export default function BusinessInsightsPage() {
         "Selling Price": p.sellingPrice,
         "Qty Sold": p.qtySold,
         "Daily Sales": Number(p.dailySales.toFixed(4)),
-        "Days Remaining": Number.isFinite(p.daysRemaining) ? Number(p.daysRemaining.toFixed(1)) : "∞",
-        Action: p.action,
+        "Days Remaining": p.kind === "variation" ? "" : Number.isFinite(p.daysRemaining) ? Number(p.daysRemaining.toFixed(1)) : "∞",
+        Action: p.action ?? "",
       };
       if (isAdmin) {
         row["Cost"] = p.cost;
@@ -821,7 +890,9 @@ export default function BusinessInsightsPage() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(perfRows), "Product Performance");
 
     // === Sheet 2: Sales Summary (per-unit sold in range) ===
-    const summaryRows = sorted.map((r) => {
+    const q = search.trim().toLowerCase();
+    const salesRows = q ? sorted.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q)) : sorted;
+    const summaryRows = salesRows.map((r) => {
       const base: Record<string, unknown> = {
         Item: r.name,
         SKU: r.sku,
@@ -840,7 +911,7 @@ export default function BusinessInsightsPage() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Sales Summary");
 
     // === Sheet 3: Transactions (per-order line detail) ===
-    const txnRows = sorted.flatMap((r) =>
+    const txnRows = salesRows.flatMap((r) =>
       r.txns.map((t) => {
         const base: Record<string, unknown> = {
           Item: r.name,
@@ -891,8 +962,10 @@ export default function BusinessInsightsPage() {
   };
 
 
-  // Days in range (for daily-sales calc)
-  const daysInRange = Math.max(1, Math.round((dateTo.getTime() - dateFrom.getTime()) / 86400000) + 1);
+  // Days in range (for daily-sales calc). Counted up to today: "This month"
+  // ends on the last of the month, and dividing by days that have not happened
+  // yet understated the sales speed.
+  const daysInRange = Math.max(1, differenceInCalendarDays(effectiveTo, dateFrom) + 1);
 
   // Per-unit (parent OR variation) aggregated sales. Key = `${itemId}|${variationId||""}`.
   // Variations are NEVER rolled into their parent — each row is independent.
@@ -954,6 +1027,15 @@ export default function BusinessInsightsPage() {
     const itemsById = new Map<string, any>((itemsAll as any[]).map((it) => [it.id, it]));
     const out: ProductMetric[] = [];
 
+    // Variations draw on their parent's stock, so the parent's stock cover has
+    // to count their sales too — otherwise a parent sold only through its
+    // variations reads as "Dead" while it is selling.
+    const variationQtyByItem = new Map<string, number>();
+    for (const v of variationsAll as any[]) {
+      const q = perUnitSales.get(unitKey(v.item_id, v.id))?.qty || 0;
+      if (q) variationQtyByItem.set(v.item_id, (variationQtyByItem.get(v.item_id) || 0) + q);
+    }
+
     const buildRow = (
       base: {
         key: string; itemId: string; variationId: string | null; kind: "parent" | "variation";
@@ -963,7 +1045,8 @@ export default function BusinessInsightsPage() {
       },
     ): ProductMetric => {
       const sale = perUnitSales.get(base.key) || { qty: 0, revenue: 0, orders: 0, cost: 0, profit: 0, hasCost: false };
-      const dailySales = sale.qty / daysInRange;
+      const variationQtySold = base.kind === "parent" ? variationQtyByItem.get(base.itemId) || 0 : 0;
+      const dailySales = (sale.qty + variationQtySold) / daysInRange;
       const daysRemaining = dailySales > 0 ? base.stock / dailySales : (base.stock > 0 ? Infinity : 0);
       const margin = sale.revenue > 0 ? (sale.profit / sale.revenue) * 100 : 0;
 
@@ -1006,11 +1089,16 @@ export default function BusinessInsightsPage() {
         }
       }
 
-      let action: ProductMetric["action"] = "Maintain";
-      if (sale.qty === 0 && base.stock > 0) action = "Dead";
-      else if (daysRemaining < 14) action = "Buy";
-      else if (daysRemaining > 180) action = "Overstock";
-      else if (daysRemaining > 90) action = "Reduce";
+      // No recommendation for variations (their stock is the parent's) or for
+      // items with neither stock nor sales — "Buy" there was a false alarm.
+      let action: ProductMetric["action"] = null;
+      if (base.kind === "parent") {
+        if (dailySales === 0) action = base.stock > 0 ? "Dead" : null;
+        else if (daysRemaining < 14) action = "Buy";
+        else if (daysRemaining > 180) action = "Overstock";
+        else if (daysRemaining > 90) action = "Reduce";
+        else action = "Maintain";
+      }
 
       return {
         key: base.key,
@@ -1034,6 +1122,7 @@ export default function BusinessInsightsPage() {
         daysRemaining,
         gmroi,
         avgInventoryValue,
+        variationQtySold,
         action,
       };
     };
@@ -1101,8 +1190,10 @@ export default function BusinessInsightsPage() {
     let list = productMetrics;
     if (productSource !== "all") list = list.filter((p) => (p.source || "local") === productSource);
     if (productSearch) list = list.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch));
+    if (actionFilter !== "all") list = list.filter((p) => p.action === actionFilter);
     return list;
-  }, [productMetrics, productSource, productSearch]);
+  }, [productMetrics, productSource, productSearch, actionFilter]);
+
 
   const productSort = useSort(filteredProducts, {
     name: (r) => r.name,
@@ -1117,6 +1208,34 @@ export default function BusinessInsightsPage() {
     gmroi: (r) => r.gmroi ?? -Infinity,
   }, { key: "revenue", dir: "desc" });
 
+  // Variations fold under their parent. A variation is listed on its own only
+  // when its parent is filtered out (e.g. a search that matches the variation).
+  const variationsByParent = useMemo(() => {
+    const m = new Map<string, ProductMetric[]>();
+    for (const p of productSort.sorted) {
+      if (p.kind !== "variation") continue;
+      const arr = m.get(p.itemId) || [];
+      arr.push(p);
+      m.set(p.itemId, arr);
+    }
+    return m;
+  }, [productSort.sorted]);
+  const productRows = useMemo(() => {
+    const parentIds = new Set(productSort.sorted.filter((p) => p.kind === "parent").map((p) => p.itemId));
+    const out: { p: ProductMetric; nested: boolean }[] = [];
+    for (const p of productSort.sorted) {
+      if (p.kind === "parent") {
+        out.push({ p, nested: false });
+        if (openVariations.has(p.itemId)) {
+          for (const v of variationsByParent.get(p.itemId) || []) out.push({ p: v, nested: true });
+        }
+      } else if (!parentIds.has(p.itemId)) {
+        out.push({ p, nested: false });
+      }
+    }
+    return out;
+  }, [productSort.sorted, variationsByParent, openVariations]);
+
   // Top 5 (Overview): sort against full productMetrics
   const top5Sort = useSort(productMetrics, {
     name: (r) => r.name,
@@ -1125,6 +1244,154 @@ export default function BusinessInsightsPage() {
     grossProfit: (r) => r.grossProfit,
   }, { key: "revenue", dir: "desc" });
   const top5 = useMemo(() => top5Sort.sorted.slice(0, 5), [top5Sort.sorted]);
+
+  // Previous-period totals for the Overview's change chips. Same rules as the
+  // current period: revenue and AOV count paid orders only, units count all.
+  const { data: prevRows } = useQuery({
+    queryKey: ["bi_prev", prevRange?.from, prevRange?.to, payment, activeBranchId],
+    enabled: !!prevRange,
+    queryFn: async () => {
+      const { from, to } = prevRange!;
+      const online = await fetchAllRows<any>(() => {
+        let q = supabase
+          .from("online_sales")
+          .select("id, order_number, quantity, posted_price, item_id, payment_status")
+          .eq("status", "completed")
+          .gte("order_date", from)
+          .lte("order_date", to);
+        if (payment === "paid") q = q.eq("payment_status", "paid");
+        else if (payment === "unpaid") q = q.eq("payment_status", "unpaid");
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+        return q;
+      });
+      const statuses =
+        payment === "paid" ? ["paid", "completed"] : payment === "unpaid" ? ["confirmed", "unpaid", "shipped"] : ["confirmed", "paid", "unpaid", "shipped", "completed"];
+      const invs = await fetchAllRows<any>(() => {
+        let q = supabase
+          .from("invoices")
+          .select("id, status")
+          .in("status", statuses as any)
+          .gte("invoice_date", from)
+          .lte("invoice_date", to);
+        if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+        return q;
+      });
+      const invStatus = new Map<string, string>(invs.map((i: any) => [i.id, i.status]));
+      const ids = invs.map((i: any) => i.id);
+      const items: any[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const rows = await fetchAllRows<any>(() =>
+          supabase.from("invoice_items").select("invoice_id, quantity, unit_price, item_id").in("invoice_id", chunk)
+        );
+        items.push(...rows.map((r: any) => ({ ...r, _status: invStatus.get(r.invoice_id) })));
+      }
+      return { online, items };
+    },
+  });
+
+  const prevTotals = useMemo(() => {
+    if (!prevRange || !prevRows) return null;
+    const allowed = (itemId: string | null) => !allowedItemIds || (!!itemId && allowedItemIds.has(itemId));
+    let revenue = 0;
+    let units = 0;
+    const paidOrders = new Set<string>();
+    if (source !== "invoice") {
+      for (const r of prevRows.online) {
+        if (!allowed(r.item_id)) continue;
+        const qty = Number(r.quantity || 0);
+        units += qty;
+        if (r.payment_status === "paid") {
+          revenue += Number(r.posted_price || 0) * qty;
+          paidOrders.add(`o:${r.order_number || r.id}`);
+        }
+      }
+    }
+    if (source !== "online") {
+      for (const r of prevRows.items) {
+        if (!allowed(r.item_id)) continue;
+        const qty = Number(r.quantity || 0);
+        units += qty;
+        if (r._status === "paid" || r._status === "completed") {
+          revenue += Number(r.unit_price || 0) * qty;
+          paidOrders.add(`i:${r.invoice_id}`);
+        }
+      }
+    }
+    return { revenue, units, paidOrders: paidOrders.size, aov: paidOrders.size ? revenue / paidOrders.size : 0 };
+  }, [prevRange, prevRows, source, allowedItemIds]);
+
+  /** Fractional change, or null when there is no prior figure to compare with. */
+  const change = (cur: number, prev: number | undefined) =>
+    prev === undefined || prev === 0 ? null : (cur - prev) / Math.abs(prev);
+
+  // Trend chart buckets: daily up to ~2 months, weekly up to a year, then monthly.
+  const trend = useMemo(() => {
+    const txns = aggregated.flatMap((r) => r.txns).filter((t) => t.date);
+    let start = startOfDay(dateFrom);
+    if (preset === "all") {
+      const first = txns.reduce<string | null>((m, t) => (m === null || t.date < m ? t.date : m), null);
+      start = first ? startOfDay(parseISO(first)) : startOfDay(subDays(effectiveTo, 29));
+    }
+    const span = differenceInCalendarDays(effectiveTo, start) + 1;
+    const bucket: "day" | "week" | "month" = span <= 62 ? "day" : span <= 371 ? "week" : "month";
+    const keyOf = (d: Date) =>
+      bucket === "day" ? format(d, "yyyy-MM-dd") : bucket === "week" ? format(startOfWeek(d), "yyyy-MM-dd") : format(d, "yyyy-MM");
+
+    const points = new Map<string, TrendPoint>();
+    let cursor = bucket === "week" ? startOfWeek(start) : bucket === "month" ? startOfMonth(start) : start;
+    while (cursor <= effectiveTo) {
+      points.set(keyOf(cursor), {
+        label: bucket === "month" ? format(cursor, "MMM yyyy") : format(cursor, "MMM d"),
+        title: bucket === "day" ? format(cursor, "EEE, MMM d yyyy") : bucket === "week" ? `Week of ${format(cursor, "MMM d, yyyy")}` : format(cursor, "MMMM yyyy"),
+        revenue: 0,
+        profit: 0,
+        units: 0,
+      });
+      cursor = bucket === "day" ? addDays(cursor, 1) : bucket === "week" ? addWeeks(cursor, 1) : addMonths(cursor, 1);
+    }
+    for (const t of txns) {
+      const pt = points.get(keyOf(parseISO(t.date)));
+      if (!pt) continue;
+      pt.units += t.quantity;
+      if (t.paymentStatus === "paid") pt.revenue += t.amount;
+      if (t.profit != null) pt.profit += t.profit;
+    }
+    return { bucket, data: Array.from(points.values()) };
+  }, [aggregated, dateFrom, effectiveTo, preset]);
+
+  // "Needs attention" — counted over every product, not the Products-tab filters.
+  const attention = useMemo(() => {
+    const parents = productMetrics.filter((p) => p.kind === "parent");
+    const of = (a: ProductAction) => parents.filter((p) => p.action === a);
+    const buy = of("Buy");
+    const dead = of("Dead");
+    const overstock = of("Overstock");
+    return {
+      buy,
+      dead,
+      deadValue: dead.reduce((s, p) => s + p.stock * p.cost, 0),
+      overstock,
+      overstockValue: overstock.reduce((s, p) => s + p.stock * p.cost, 0),
+    };
+  }, [productMetrics]);
+
+  const unpaidOrderCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of invoiceRows as any[]) {
+      const st = r._invoice?.status;
+      if (st !== "paid" && st !== "completed") ids.add(`i:${r.invoice_id}`);
+    }
+    for (const r of onlineRows as any[]) {
+      if (r.payment_status !== "paid") ids.add(`o:${r.order_number || r.id}`);
+    }
+    return ids.size;
+  }, [invoiceRows, onlineRows]);
+
+  const showProducts = (a: ActionFilter) => {
+    setActionFilter(a);
+    setTab("products");
+  };
 
   // Customers tab sorts
   const onlineCustSort = useSort(customerStats.onlineList, {
@@ -1148,7 +1415,6 @@ export default function BusinessInsightsPage() {
     categoryFilter !== "all",
     brandFilter !== "all",
     supplierFilter !== "all",
-    productSource !== "all",
   ].filter(Boolean).length;
 
   const resetDrawerFilters = () => {
@@ -1157,91 +1423,48 @@ export default function BusinessInsightsPage() {
     setCategoryFilter("all");
     setBrandFilter("all");
     setSupplierFilter("all");
-    setProductSource("all");
   };
 
-  const customRangePickers = (
-    <CustomRangePickers from={customFrom} to={customTo} onFrom={setCustomFrom} onTo={setCustomTo} />
-  );
+  const productColCount = 5 + (visibleCols.has("type") ? 1 : 0) + (isAdmin ? 2 + (visibleCols.has("cost") ? 1 : 0) + (visibleCols.has("gmroi") ? 1 : 0) : 0);
+  const missingCostTotal = missingCostCount + missingOnlineCostCount;
+  const inventoryValue = (itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0);
+  const rangeLabel = RANGE_OPTIONS.find((o) => o.v === preset)?.l ?? "";
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="page-header">
-        <h1 className="page-title">Business Insights</h1>
-        <p className="page-description">All sales (online + invoices) per item. Click a row to see when, who, and how many.</p>
-      </div>
-
-      {/* Filters — desktop: everything inline. */}
-      <div className="rounded-xl border bg-card p-3 sm:p-4 hidden md:flex flex-wrap items-center gap-2">
-        <ChipGroup value={preset} onChange={setPreset} options={RANGE_OPTIONS} />
-        {preset === "custom" && customRangePickers}
-        <div className="h-5 w-px bg-border mx-1" />
-        <ChipGroup value={source} onChange={setSource} options={SOURCE_OPTIONS} />
-        <div className="h-5 w-px bg-border mx-1" />
-        <ChipGroup value={payment} onChange={setPayment} options={PAYMENT_OPTIONS} />
-        <div className="h-5 w-px bg-border mx-1" />
-        <div className="flex items-center gap-1 flex-wrap">
-          <FilterCombobox value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} allLabel="All categories" className="h-7 text-xs w-[150px]" />
-          <FilterCombobox value={brandFilter} onChange={setBrandFilter} options={brandOptions} allLabel="All brands" className="h-7 text-xs w-[150px]" />
-          <FilterCombobox value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} allLabel="All suppliers" className="h-7 text-xs w-[160px]" />
+      {/* Header — one slim toolbar shared by desktop and mobile: range, filters, export. */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="page-header !mb-0">
+          <h1 className="page-title">Business Insights</h1>
+          <p className="page-description">Sales, profit and stock performance across online orders and invoices.</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search item or SKU..."
-              className="h-7 text-xs pl-7 w-[220px]"
-            />
-          </div>
-          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExport}>
-            <Download className="h-3.5 w-3.5 mr-1" />
-            Export
-          </Button>
-        </div>
-      </div>
-
-      {/* Filters — mobile: one scrollable row of date presets plus a drawer, so
-          the controls take ~2 rows instead of ~8 before any data is reachable. */}
-      <div className="md:hidden space-y-2">
-        <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {RANGE_OPTIONS.map((p) => (
-            <Button
-              key={p.v}
-              variant={preset === p.v ? "default" : "outline"}
-              size="sm"
-              className="h-8 shrink-0 rounded-full px-3 text-xs"
-              onClick={() => setPreset(p.v)}
-            >
-              {p.l}
-            </Button>
-          ))}
-        </div>
-        {preset === "custom" && customRangePickers}
         <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search item or SKU..."
-              className="h-9 text-sm pl-8"
-            />
-          </div>
+          <Select value={preset} onValueChange={(v) => setPreset(v as RangePreset)}>
+            <SelectTrigger className="h-9 flex-1 text-sm md:w-[170px] md:flex-none" aria-label="Date range">
+              <CalendarIcon className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue>{rangeLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {RANGE_OPTIONS.map((o) => (
+                <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 shrink-0 px-3 text-xs" aria-label="Filters">
-                <Filter className="h-4 w-4" />
+                <Filter className="h-4 w-4 md:mr-1.5" />
+                <span className="hidden md:inline">Filters</span>
                 {drawerFilterCount > 0 && (
-                  <Badge variant="secondary" className="ml-1.5 h-5 min-w-5 px-1.5">{drawerFilterCount}</Badge>
+                  <Badge variant="secondary" className="ml-1.5 h-5 min-w-5 px-1.5" data-testid="filter-count">{drawerFilterCount}</Badge>
                 )}
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto" aria-describedby={undefined}>
               <SheetHeader>
                 <SheetTitle>Filters</SheetTitle>
               </SheetHeader>
+              <p className="text-xs text-muted-foreground pt-1">Applies to every tab.</p>
               <div className="space-y-5 py-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Sales source</Label>
@@ -1250,10 +1473,6 @@ export default function BusinessInsightsPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Payment status</Label>
                   <ChipGroup value={payment} onChange={setPayment} options={PAYMENT_OPTIONS} fill />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Product type</Label>
-                  <ChipGroup value={productSource} onChange={setProductSource} options={PRODUCT_SOURCE_OPTIONS} fill />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Category</Label>
@@ -1275,12 +1494,19 @@ export default function BusinessInsightsPage() {
             </SheetContent>
           </Sheet>
           <Button variant="outline" size="sm" className="h-9 shrink-0 px-3 text-xs" onClick={handleExport} aria-label="Export">
-            <Download className="h-4 w-4" />
+            <Download className="h-4 w-4 md:mr-1.5" />
+            <span className="hidden md:inline">Export</span>
           </Button>
         </div>
       </div>
 
-      <div className="text-xs text-muted-foreground">
+      {preset === "custom" && (
+        <div className="flex md:justify-end">
+          <CustomRangePickers from={customFrom} to={customTo} onFrom={setCustomFrom} onTo={setCustomTo} />
+        </div>
+      )}
+
+      <div className="text-xs text-muted-foreground -mt-2">
         {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches"} · {format(dateFrom, "MMM d, yyyy")} — {format(dateTo, "MMM d, yyyy")} · {daysInRange} day{daysInRange === 1 ? "" : "s"}
       </div>
 
@@ -1295,113 +1521,283 @@ export default function BusinessInsightsPage() {
         <TabsContent value="overview" className="space-y-4">
           {(() => {
             const collected = totals.revTotal;
-            const outstandingTotal = outstanding.total;
-            const potential = collected + outstandingTotal;
             const grossProfitTotal = productMetrics.reduce((s, p) => s + p.grossProfit, 0);
             const avgMargin = collected > 0 ? (grossProfitTotal / collected) * 100 : 0;
-            const inventoryValue = (itemsAll as any[]).reduce((s, i) => s + Number(i.quantity || 0) * Number(i.cost_price || 0), 0);
             const aov = paidOrderCount > 0 ? collected / paidOrderCount : 0;
+            const productsSold = productMetrics.filter((p) => p.qtySold > 0).length;
             return (
-              <>
-                {/* First row: revenue breakdown */}
-                <div className={cn("grid gap-3 sm:gap-4 grid-cols-2", isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-1")}>
-                  {isAdmin && <StatCard title="Online Revenue" value={money(totals.revOnline)} icon={ShoppingCart} variant="success" description="Paid online orders" />}
-                  {isAdmin && <StatCard title="Invoice Revenue" value={money(totals.revInvoice)} icon={Receipt} variant="success" description="Paid invoices" />}
-                  {isAdmin && <StatCard title="Collected Revenue" value={money(collected)} icon={DollarSign} variant="success" description="Online + invoice (paid)" />}
-                  {isAdmin && <StatCard title="Outstanding Revenue" value={money(outstandingTotal)} icon={AlertTriangle} variant="warning" description="Unpaid / pending balance" />}
-                  {!isAdmin && <StatCard title="Units Sold" value={totals.qty} icon={Package} />}
+              <div className="space-y-1.5">
+                <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+                  {isAdmin ? (
+                    <>
+                      <StatCard
+                        title="Revenue"
+                        value={money(collected)}
+                        icon={DollarSign}
+                        variant="success"
+                        description="Paid orders"
+                        delta={change(collected, prevTotals?.revenue)}
+                        formula={
+                          <div className="space-y-0.5">
+                            <FormulaRow label="Online" value={money(totals.revOnline)} />
+                            <FormulaRow label="Invoices" value={money(totals.revInvoice)} />
+                            {prevTotals && <FormulaRow label="Previous period" value={money(prevTotals.revenue)} muted />}
+                          </div>
+                        }
+                      />
+                      <StatCard
+                        title="Gross Profit"
+                        value={money(grossProfitTotal)}
+                        icon={TrendingUp}
+                        variant="success"
+                        description={`${avgMargin.toFixed(1)}% margin`}
+                      />
+                      <StatCard
+                        title="Outstanding"
+                        value={money(outstanding.total)}
+                        icon={AlertTriangle}
+                        variant="warning"
+                        description={`${unpaidOrderCount} unpaid order${unpaidOrderCount === 1 ? "" : "s"}`}
+                        formula={
+                          <div className="space-y-0.5">
+                            <FormulaRow label="Invoices" value={money(outstanding.invoice)} />
+                            <FormulaRow label="Online" value={money(outstanding.online)} />
+                            <p className="pt-1 text-muted-foreground">Not counted in revenue, profit or margin until paid.</p>
+                          </div>
+                        }
+                      />
+                      <StatCard
+                        title="Avg Order Value"
+                        value={money(aov)}
+                        icon={ShoppingBag}
+                        description={`${paidOrderCount} paid order${paidOrderCount === 1 ? "" : "s"}`}
+                        delta={prevTotals && prevTotals.paidOrders > 0 ? change(aov, prevTotals.aov) : null}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <StatCard title="Units Sold" value={totals.qty} icon={Package} delta={change(totals.qty, prevTotals?.units)} />
+                      <StatCard title="Products Sold" value={productsSold} icon={ShoppingBag} description="With at least one sale" />
+                    </>
+                  )}
                 </div>
-
-                {/* Second row: profitability + operational */}
-                {isAdmin && (
-                  <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-                    <StatCard title="Gross Profit" value={money(grossProfitTotal)} icon={TrendingUp} variant="success" description="Paid orders only" />
-                    <StatCard title="Average Margin" value={`${avgMargin.toFixed(1)}%`} icon={TrendingUp} description="Paid orders only" />
-                    <StatCard title="Inventory Value" value={money(inventoryValue)} icon={Warehouse} />
-                    <StatCard title="Average Order Value" value={money(aov)} description={`${paidOrderCount} paid order${paidOrderCount === 1 ? "" : "s"}`} icon={ShoppingBag} />
-                  </div>
+                {prevRange && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Changes compare with the previous {prevRange.days} day{prevRange.days === 1 ? "" : "s"} ({format(parseISO(prevRange.from), "MMM d")} – {format(parseISO(prevRange.to), "MMM d, yyyy")}).
+                  </p>
                 )}
-
-                {/* Revenue summary */}
-                {isAdmin && (
-                  <div className="rounded-xl border bg-card p-4">
-                    <h2 className="text-sm font-semibold mb-3">Revenue Summary</h2>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between py-1.5 border-b">
-                        <span className="text-muted-foreground">Collected Revenue</span>
-                        <span className="font-semibold tabular-nums text-green-600">{money(collected)}</span>
-                      </div>
-                      <div className="flex items-center justify-between py-1.5 border-b">
-                        <span className="text-muted-foreground">Outstanding Revenue</span>
-                        <span className="font-semibold tabular-nums text-amber-600">{money(outstandingTotal)}</span>
-                      </div>
-                      <div className="flex items-center justify-between py-2">
-                        <span className="font-medium">Potential Revenue</span>
-                        <span className="font-bold tabular-nums text-base">{money(potential)}</span>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-2">
-                      Outstanding revenue is display-only — it is excluded from Revenue, COGS, Gross Profit, Margin, and Inventory calculations.
-                    </p>
-                  </div>
-                )}
-              </>
+              </div>
             );
           })()}
 
-          {/* Top 5 products */}
-          <div className="rounded-xl border bg-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Top Products</h2>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="rounded-md border overflow-hidden">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/40">
-                  <tr className="text-left">
-                    <SortableTh sortKey="name" label="Item" sort={top5Sort.sort} onToggle={top5Sort.toggle} />
-                    <SortableTh sortKey="qtySold" label="Units Sold" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />
-                    {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
-                    {/* Gross Profit would be clipped on a phone — the wrapper is overflow-hidden. */}
-                    {isAdmin && <SortableTh sortKey="grossProfit" label="Gross Profit" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" className="hidden sm:table-cell" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {top5.map((p) => (
-                    <tr key={p.key} className="border-t">
-                      <td className="px-3 py-1.5">
-                        <div className="font-medium">{p.name}</div>
-                        <div className="tabular-nums text-[10px] text-muted-foreground">{p.sku}</div>
-                      </td>
-                      <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
-                      {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(p.revenue)}</td>}
-                      {isAdmin && <td className="px-3 py-1.5 text-right text-green-600 hidden sm:table-cell">{money(p.grossProfit)}</td>}
+          <InsightsTrendChart data={trend.data} bucket={trend.bucket} isAdmin={isAdmin} money={money} />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* Top 5 products */}
+            <div className="min-w-0 rounded-xl border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold">Top Products</h2>
+                <Button variant="ghost" size="sm" className="h-7 text-xs -mr-2" onClick={() => showProducts("all")}>
+                  View all <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
+                </Button>
+              </div>
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left">
+                      <SortableTh sortKey="name" label="Item" sort={top5Sort.sort} onToggle={top5Sort.toggle} />
+                      <SortableTh sortKey="qtySold" label="Units Sold" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />
+                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" />}
+                      {/* Gross Profit would be clipped on a phone — the wrapper is overflow-hidden. */}
+                      {isAdmin && <SortableTh sortKey="grossProfit" label="Gross Profit" sort={top5Sort.sort} onToggle={top5Sort.toggle} align="right" className="hidden sm:table-cell" />}
                     </tr>
-                  ))}
-                  {productMetrics.every((p) => p.qtySold === 0) && (
-                    <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No sales in this range.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {top5.map((p) => (
+                      <tr key={p.key} className="border-t">
+                        <td className="px-3 py-1.5">
+                          <div className="font-medium">{p.name}</div>
+                          <div className="tabular-nums text-[10px] text-muted-foreground">{p.sku}</div>
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{p.qtySold}</td>
+                        {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(p.revenue)}</td>}
+                        {isAdmin && <td className="px-3 py-1.5 text-right text-green-600 hidden sm:table-cell">{money(p.grossProfit)}</td>}
+                      </tr>
+                    ))}
+                    {productMetrics.every((p) => p.qtySold === 0) && (
+                      <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No sales in this range.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Needs attention — each line opens the matching Products list. */}
+            <div className="min-w-0 rounded-xl border bg-card p-4">
+              <h2 className="text-sm font-semibold mb-3">Needs Attention</h2>
+              {(() => {
+                const items: { key: string; icon: typeof Clock; tone: string; title: string; detail: string; count: number; onClick?: () => void; to?: string }[] = [
+                  {
+                    key: "buy",
+                    icon: PackagePlus,
+                    tone: "text-red-600 bg-red-500/10",
+                    title: "Reorder soon",
+                    detail: "Under 14 days of stock at the current sales speed",
+                    count: attention.buy.length,
+                    onClick: () => showProducts("Buy"),
+                  },
+                  {
+                    key: "dead",
+                    icon: PackageX,
+                    tone: "text-muted-foreground bg-muted",
+                    title: "Not selling",
+                    detail: isAdmin ? `${money(attention.deadValue)} of stock with no sales in this range` : "In stock with no sales in this range",
+                    count: attention.dead.length,
+                    onClick: () => showProducts("Dead"),
+                  },
+                  {
+                    key: "overstock",
+                    icon: Boxes,
+                    tone: "text-orange-600 bg-orange-500/10",
+                    title: "Overstocked",
+                    detail: isAdmin ? `Over 180 days of stock · ${money(attention.overstockValue)} tied up` : "Over 180 days of stock",
+                    count: attention.overstock.length,
+                    onClick: () => showProducts("Overstock"),
+                  },
+                ];
+                if (isAdmin) {
+                  items.push({
+                    key: "unpaid",
+                    icon: Clock,
+                    tone: "text-amber-600 bg-amber-500/10",
+                    title: "Unpaid orders",
+                    detail: `${money(outstanding.total)} not yet collected`,
+                    count: unpaidOrderCount,
+                    to: "/pending-payments",
+                  });
+                  if (missingCostTotal > 0) {
+                    items.push({
+                      key: "cost",
+                      icon: AlertTriangle,
+                      tone: "text-amber-600 bg-amber-500/10",
+                      title: "Sales missing a cost",
+                      detail: "Left out of gross profit and margin — set costs in Inventory",
+                      count: missingCostTotal,
+                      to: "/inventory",
+                    });
+                  }
+                }
+                const shown = items.filter((i) => i.count > 0);
+                if (shown.length === 0) {
+                  return <p className="py-6 text-center text-xs text-muted-foreground">Nothing needs attention right now.</p>;
+                }
+                return (
+                  <div className="divide-y rounded-md border">
+                    {shown.map((i) => {
+                      const body = (
+                        <>
+                          <span className={cn("h-8 w-8 shrink-0 rounded-lg flex items-center justify-center", i.tone)}>
+                            <i.icon className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">{i.title}</span>
+                            <span className="block text-xs text-muted-foreground">{i.detail}</span>
+                          </span>
+                          <span className="text-sm font-semibold tabular-nums">{i.count}</span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </>
+                      );
+                      const cls = "flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors";
+                      return i.to ? (
+                        <Link key={i.key} to={i.to} className={cls}>{body}</Link>
+                      ) : (
+                        <button key={i.key} type="button" onClick={i.onClick} className={cls}>{body}</button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </TabsContent>
 
-
-
         {/* PRODUCTS */}
-        <TabsContent value="products" className="space-y-4">
-          {isAdmin && (missingCostCount > 0 || missingOnlineCostCount > 0) && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 space-y-1">
-              {missingCostCount > 0 && (
-                <div><strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned.</div>
-              )}
-              {missingOnlineCostCount > 0 && (
-                <div><strong>{missingOnlineCostCount}</strong> paid online sale{missingOnlineCostCount === 1 ? "" : "s"} excluded from gross profit / margin because the product had no cost at time of upload.</div>
-              )}
-              <div className="opacity-80">Revenue is still counted. Set costs in Inventory → Variations to include them.</div>
+        <TabsContent value="products" className="space-y-3">
+          {/* One toolbar for every product-only control. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative basis-full md:basis-auto md:flex-1 md:max-w-xs">
+              <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search item or SKU..."
+                className="h-9 text-sm pl-8"
+              />
             </div>
-          )}
+            <Select value={productSource} onValueChange={(v) => setProductSource(v as ProductSourceFilter)}>
+              <SelectTrigger className="h-9 flex-1 md:w-[120px] md:flex-none text-xs" aria-label="Product type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRODUCT_SOURCE_OPTIONS.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={actionFilter} onValueChange={(v) => setActionFilter(v as ActionFilter)}>
+              <SelectTrigger className="h-9 flex-1 md:w-[170px] md:flex-none text-xs" aria-label="Suggested action">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTION_OPTIONS.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {isAdmin && missingCostTotal > 0 && (
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex h-9 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-50 px-2.5 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200 cursor-help">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {missingCostTotal} missing cost
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs whitespace-normal text-xs leading-relaxed space-y-1">
+                  {missingCostCount > 0 && (
+                    <p><strong>{missingCostCount}</strong> invoice line{missingCostCount === 1 ? "" : "s"} excluded from gross profit / margin / GMROI because their variation has no cost assigned.</p>
+                  )}
+                  {missingOnlineCostCount > 0 && (
+                    <p><strong>{missingOnlineCostCount}</strong> paid online sale{missingOnlineCostCount === 1 ? "" : "s"} excluded from gross profit / margin because the product had no cost at time of upload.</p>
+                  )}
+                  <p className="opacity-80">Revenue is still counted. Set costs in Inventory → Variations to include them.</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="hidden md:inline-flex h-9 text-xs ml-auto">
+                  <Columns3 className="h-3.5 w-3.5 mr-1.5" />Columns
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel className="text-xs">Extra columns</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {OPTIONAL_COLS.filter((c) => isAdmin || !c.adminOnly).map((c) => (
+                  <DropdownMenuCheckboxItem
+                    key={c.v}
+                    checked={visibleCols.has(c.v)}
+                    onCheckedChange={() => toggleCol(c.v)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {c.l}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <div className="px-1 text-xs text-muted-foreground">
+            {filteredProducts.filter((p) => p.kind === "parent").length} product{filteredProducts.filter((p) => p.kind === "parent").length === 1 ? "" : "s"}
+            {isAdmin && <> · inventory value {money(inventoryValue)}</>}
+            <span className="hidden md:inline"> · click a row for its sales history</span>
+            <span className="md:hidden"> · tap a card for sales history</span>
+          </div>
 
           {/* Mobile: card list — the desktop table needs sideways scrolling to
               reach Revenue/GP/Margin, which is the main pain on a phone. */}
@@ -1439,90 +1835,115 @@ export default function BusinessInsightsPage() {
               </Button>
             </div>
 
-            <div className="px-1 text-xs text-muted-foreground">
-              {productSort.sorted.length} row{productSort.sorted.length === 1 ? "" : "s"} · tap a card for sales history
-            </div>
-
-            {productSort.sorted.length === 0 ? (
+            {productRows.length === 0 ? (
               <div className="rounded-xl border bg-card py-10 text-center text-xs text-muted-foreground">No items.</div>
             ) : (
-              productSort.sorted.slice(0, 500).map((p) => (
-                <InsightsProductCard
-                  key={p.key}
-                  product={p}
-                  txns={perUnitTxns.get(p.key) || []}
-                  isAdmin={isAdmin}
-                  money={money}
-                  isOpen={expandedProduct.has(p.key)}
-                  onToggle={() => toggleExpandProduct(p.key)}
-                />
-              ))
+              productRows.slice(0, 500).map(({ p, nested }) => {
+                const kids = p.kind === "parent" ? variationsByParent.get(p.itemId)?.length || 0 : 0;
+                return (
+                  <div key={p.key} className={cn("space-y-1", nested && "ml-4")}>
+                    <InsightsProductCard
+                      product={p}
+                      txns={perUnitTxns.get(p.key) || []}
+                      isAdmin={isAdmin}
+                      money={money}
+                      isOpen={expandedProduct.has(p.key)}
+                      onToggle={() => toggleExpandProduct(p.key)}
+                    />
+                    {kids > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => toggleVariations(p.itemId)}
+                        className="inline-flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {openVariations.has(p.itemId) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        {openVariations.has(p.itemId) ? "Hide" : "Show"} {kids} variation{kids === 1 ? "" : "s"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
 
           <div className="rounded-xl border bg-card overflow-hidden hidden md:block">
-            <div className="p-3 border-b flex flex-wrap items-center gap-2">
-              <div className="flex-1 min-w-[200px]">
-                <h2 className="text-sm font-semibold">Product Performance</h2>
-                <p className="text-xs text-muted-foreground">One row per product. Click a row to see per-order sales{isAdmin ? " and gross profit" : ""}.</p>
-              </div>
-              <ChipGroup value={productSource} onChange={setProductSource} options={PRODUCT_SOURCE_OPTIONS} />
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExport}>
-                <Download className="h-3.5 w-3.5 mr-1" />Export
-              </Button>
-            </div>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8" />
                     <SortableHeader sortKey="name" label="Item" sort={productSort.sort} onToggle={productSort.toggle} />
-                    <SortableHeader sortKey="source" label="Type" sort={productSort.sort} onToggle={productSort.toggle} />
+                    {visibleCols.has("type") && <SortableHeader sortKey="source" label="Type" sort={productSort.sort} onToggle={productSort.toggle} />}
                     <SortableHeader sortKey="stock" label="Stock" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
                     <SortableHeader sortKey="qtySold" label="Sold" sort={productSort.sort} onToggle={productSort.toggle} align="right" />
                     {isAdmin && <SortableHeader sortKey="revenue" label="Revenue" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
-                    {isAdmin && <SortableHeader sortKey="cost" label="Cost" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    {isAdmin && visibleCols.has("cost") && <SortableHeader sortKey="cost" label="Cost" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
                     {isAdmin && <SortableHeader sortKey="grossProfit" label="Gross Profit" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
-                    {isAdmin && <SortableHeader sortKey="margin" label="Margin" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
-                    {isAdmin && <SortableHeader sortKey="gmroi" label="GMROI" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    {isAdmin && visibleCols.has("gmroi") && <SortableHeader sortKey="gmroi" label="GMROI" sort={productSort.sort} onToggle={productSort.toggle} align="right" />}
+                    <TableHead className="text-xs text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {productSort.sorted.length === 0 ? (
-                    <TableRow><TableCell colSpan={isAdmin ? 10 : 5} className="text-center text-xs text-muted-foreground py-10">No items.</TableCell></TableRow>
-                  ) : productSort.sorted.slice(0, 500).map((p) => {
+                  {productRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={productColCount} className="text-center text-xs text-muted-foreground py-10">No items.</TableCell></TableRow>
+                  ) : productRows.slice(0, 500).map(({ p, nested }) => {
                     const isOpen = expandedProduct.has(p.key);
                     const txns = perUnitTxns.get(p.key) || [];
+                    const kids = p.kind === "parent" ? variationsByParent.get(p.itemId)?.length || 0 : 0;
                     return (
                       <Fragment key={p.key}>
-                        <TableRow className="hover:bg-muted/30 cursor-pointer" onClick={() => toggleExpandProduct(p.key)}>
+                        <TableRow className={cn("hover:bg-muted/30 cursor-pointer", nested && "bg-muted/10")} onClick={() => toggleExpandProduct(p.key)}>
                           <TableCell className="w-8 p-2 align-middle">
                             {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                           </TableCell>
                           <TableCell>
-                            <div className={cn("font-medium text-sm flex items-center gap-1.5", p.kind === "variation" && "pl-3")}>
+                            <div className={cn("font-medium text-sm flex items-center gap-1.5", nested && "pl-4")}>
                               {p.kind === "variation" && <span className="text-muted-foreground/60">↳</span>}
-                              <span>{p.name}</span>
-                              {p.kind === "variation" && (
-                                <span className="inline-flex items-center rounded bg-accent/40 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                                  Variation
-                                </span>
+                              <span>{nested ? p.variationLabel : p.name}</span>
+                              {!visibleCols.has("type") && !nested && p.source === "import" && (
+                                <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-600">Import</span>
                               )}
                             </div>
-                            <div className="tabular-nums text-[10px] text-muted-foreground">{p.sku}</div>
+                            <div className={cn("flex items-center gap-2 tabular-nums text-[10px] text-muted-foreground", nested && "pl-4")}>
+                              <span>{p.sku}</span>
+                              {kids > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); toggleVariations(p.itemId); }}
+                                  className="inline-flex items-center gap-0.5 rounded px-1 -mx-1 hover:bg-muted hover:text-foreground"
+                                  aria-expanded={openVariations.has(p.itemId)}
+                                >
+                                  {openVariations.has(p.itemId) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                  {kids} variation{kids === 1 ? "" : "s"}
+                                </button>
+                              )}
+                            </div>
                           </TableCell>
-                          <TableCell>
-                            <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium capitalize", p.source === "import" ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-secondary-foreground")}>
-                              {p.source || "local"}
-                            </span>
+                          {visibleCols.has("type") && (
+                            <TableCell>
+                              <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium capitalize", p.source === "import" ? "bg-blue-500/10 text-blue-600" : "bg-secondary text-secondary-foreground")}>
+                                {p.source || "local"}
+                              </span>
+                            </TableCell>
+                          )}
+                          <TableCell className="text-right text-sm">
+                            {p.kind === "variation" ? <span className="text-muted-foreground">—</span> : (
+                              <span className={cn(p.threshold > 0 && p.stock <= p.threshold && "text-destructive font-medium")}>{p.stock}</span>
+                            )}
                           </TableCell>
-                          <TableCell className="text-right text-sm">{p.stock}</TableCell>
-                          <TableCell className="text-right text-sm tabular-nums">{p.qtySold}</TableCell>
+                          <TableCell className="text-right text-sm tabular-nums">
+                            <div>{p.qtySold}</div>
+                            {p.variationQtySold > 0 && <div className="text-[10px] text-muted-foreground">+{p.variationQtySold} via variations</div>}
+                          </TableCell>
                           {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
-                          {isAdmin && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
-                          {isAdmin && <TableCell className="text-right text-sm text-green-600">{money(p.grossProfit)}</TableCell>}
-                          {isAdmin && <TableCell className="text-right text-sm">{p.qtySold ? `${p.margin.toFixed(1)}%` : "—"}</TableCell>}
+                          {isAdmin && visibleCols.has("cost") && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
                           {isAdmin && (
+                            <TableCell className="text-right text-sm">
+                              <div className={cn(p.grossProfit < 0 ? "text-red-600" : p.grossProfit > 0 ? "text-green-600" : "text-muted-foreground")}>{money(p.grossProfit)}</div>
+                              {p.qtySold > 0 && <div className="text-[10px] text-muted-foreground">{p.margin.toFixed(1)}% margin</div>}
+                            </TableCell>
+                          )}
+                          {isAdmin && visibleCols.has("gmroi") && (
                             <TableCell className="text-right text-sm">
                               {p.gmroi === null ? (
                                 <span
@@ -1536,10 +1957,20 @@ export default function BusinessInsightsPage() {
                               )}
                             </TableCell>
                           )}
+                          <TableCell className="text-right">
+                            {p.action ? (
+                              <>
+                                <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium", ACTION_CLASS[p.action])}>{p.action}</span>
+                                {p.action !== "Dead" && <div className="mt-0.5 text-[10px] text-muted-foreground">{fmtDays(p.daysRemaining)} days left</div>}
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">—</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                         {isOpen && (
                           <TableRow className="bg-muted/20 hover:bg-muted/20">
-                            <TableCell colSpan={isAdmin ? 10 : 5} className="p-0">
+                            <TableCell colSpan={productColCount} className="p-0">
                               <div className="px-4 py-3 space-y-3">
                                 <div className="text-xs font-semibold text-muted-foreground">
                                   Sales history ({txns.length}){isAdmin ? " — with per-order gross profit" : ""}
