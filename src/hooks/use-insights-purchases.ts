@@ -1,0 +1,209 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/paginate";
+
+export interface PoLine {
+  itemId: string | null;
+  name: string;
+  qty: number;
+  received: number;
+  /** Unit cost in pesos (overseas lines converted at the PO's rate). */
+  unitCostPhp: number;
+  receivedDate: string | null;
+}
+
+export interface PoRow {
+  id: string;
+  kind: "local" | "overseas";
+  number: string;
+  supplierId: string | null;
+  supplier: string;
+  orderDate: string | null;
+  expected: string | null;
+  dueDate: string | null;
+  status: string;
+  /** Goods total in pesos. */
+  goodsPhp: number;
+  /** Shipping, customs, delivery and other charges recorded on the PO, in pesos. */
+  chargesPhp: number;
+  lines: PoLine[];
+  /** Units ordered but not yet received. */
+  remainingUnits: number;
+  /** Peso value of those units. */
+  remainingPhp: number;
+  /** What is still owed on the PO — the same rule as the Financial Dashboard's payables. */
+  owedPhp: number;
+}
+
+// Overseas statuses that mean the supplier has not been paid in full. Mirrors
+// the payables rule in src/lib/api.ts so the two pages agree.
+const OVERSEAS_UNPAID = new Set(["unpaid", "draft", "sent", "shipped_not_paid"]);
+
+export const PO_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  unpaid: "Unpaid",
+  paid_not_shipped: "Paid, not shipped",
+  shipped_not_paid: "Shipped, not paid",
+  shipped: "Shipped",
+  partially_received: "Partly received",
+  received: "Received",
+  pending_cargo_adjustment: "Awaiting cargo bill",
+  cargo_adjusted: "Cargo adjusted",
+  closed: "Closed",
+};
+
+/**
+ * Every local and overseas purchase order with its lines, in pesos. Shared by
+ * the Purchases and Forecast tabs (same query key, fetched once).
+ */
+export function useInsightsPurchases(branchId: string | null) {
+  const query = useQuery({
+    queryKey: ["bi_purchases", branchId],
+    queryFn: async () => {
+      const [local, localItems, overseas, overseasItems, deposits, suppliers, overseasSuppliers] = await Promise.all([
+        fetchAllRows<any>(() => {
+          let q = supabase
+            .from("purchase_orders")
+            .select("id, po_number, order_date, expected_delivery, payment_due_date, status, supplier_id, total_amount, total_additional_charges, branch_id")
+            .order("id", { ascending: true });
+          if (branchId) q = q.eq("branch_id", branchId);
+          return q;
+        }),
+        fetchAllRows<any>(() =>
+          supabase.from("purchase_order_items").select("id, po_id, item_id, item_name, quantity, received_quantity, unit_cost, received_date").order("id", { ascending: true })
+        ),
+        fetchAllRows<any>(() => {
+          let q = supabase
+            .from("overseas_purchase_orders")
+            .select("id, po_number, order_date, expected_delivery, payment_due_date, status, supplier_id, total_amount, total_additional_charges, exchange_rate, branch_id")
+            .order("id", { ascending: true });
+          if (branchId) q = q.eq("branch_id", branchId);
+          return q;
+        }),
+        fetchAllRows<any>(() =>
+          supabase.from("overseas_purchase_order_items").select("id, po_id, item_id, item_name, quantity, received_quantity, unit_cost, received_date").order("id", { ascending: true })
+        ),
+        // Deposits are not fatal: without them the balance owed reads high, not wrong elsewhere.
+        fetchAllRows<any>(() => supabase.from("overseas_po_payments").select("id, po_id, php_amount").order("id", { ascending: true })).catch(() => []),
+        fetchAllRows<any>(() => supabase.from("suppliers").select("id, name").order("id", { ascending: true })),
+        fetchAllRows<any>(() => supabase.from("overseas_suppliers").select("id, name").order("id", { ascending: true })),
+      ]);
+      return { local, localItems, overseas, overseasItems, deposits, suppliers, overseasSuppliers };
+    },
+  });
+
+  const orders = useMemo<PoRow[]>(() => {
+    const d = query.data;
+    if (!d) return [];
+    const names = new Map<string, string>();
+    for (const s of d.suppliers) names.set(s.id, s.name);
+    for (const s of d.overseasSuppliers) names.set(s.id, s.name);
+    const group = (rows: any[]) => {
+      const m = new Map<string, any[]>();
+      for (const r of rows) {
+        const arr = m.get(r.po_id) || [];
+        arr.push(r);
+        m.set(r.po_id, arr);
+      }
+      return m;
+    };
+    const localLines = group(d.localItems);
+    const overseasLines = group(d.overseasItems);
+    const depositsByPo = new Map<string, number>();
+    for (const p of d.deposits) depositsByPo.set(p.po_id, (depositsByPo.get(p.po_id) || 0) + Number(p.php_amount || 0));
+
+    const build = (po: any, kind: PoRow["kind"], rawLines: any[], rate: number): PoRow => {
+      const lines: PoLine[] = rawLines.map((l) => ({
+        itemId: l.item_id || null,
+        name: l.item_name || "—",
+        qty: Number(l.quantity || 0),
+        received: Number(l.received_quantity || 0),
+        unitCostPhp: Number(l.unit_cost || 0) * rate,
+        receivedDate: l.received_date || null,
+      }));
+      const open = po.status !== "received";
+      let remainingUnits = 0;
+      let remainingPhp = 0;
+      if (open) {
+        for (const l of lines) {
+          const rem = l.qty - l.received;
+          if (rem <= 0) continue;
+          remainingUnits += rem;
+          remainingPhp += rem * l.unitCostPhp;
+        }
+      }
+      // Local POs are paid on receipt, so whatever has not arrived is still owed.
+      // Overseas POs are owed while unpaid, less any deposits already sent.
+      const owedPhp =
+        kind === "local"
+          ? remainingPhp
+          : OVERSEAS_UNPAID.has(po.status)
+            ? Math.max(remainingPhp - (depositsByPo.get(po.id) || 0), 0)
+            : 0;
+      return {
+        id: po.id,
+        kind,
+        number: po.po_number || "—",
+        supplierId: po.supplier_id || null,
+        supplier: names.get(po.supplier_id) || "No supplier",
+        orderDate: po.order_date || null,
+        expected: po.expected_delivery || null,
+        dueDate: po.payment_due_date || null,
+        status: po.status || "",
+        goodsPhp: Number(po.total_amount || 0) * rate,
+        chargesPhp: Number(po.total_additional_charges || 0),
+        lines,
+        remainingUnits,
+        remainingPhp,
+        owedPhp,
+      };
+    };
+
+    return [
+      ...d.local.map((po) => build(po, "local", localLines.get(po.id) || [], 1)),
+      ...d.overseas.map((po) => build(po, "overseas", overseasLines.get(po.id) || [], Number(po.exchange_rate || 1))),
+    ];
+  }, [query.data]);
+
+  /** Units on order per item, across every open PO. */
+  const onOrderByItem = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const po of orders) {
+      if (po.status === "received") continue;
+      for (const l of po.lines) {
+        const rem = l.qty - l.received;
+        if (l.itemId && rem > 0) m.set(l.itemId, (m.get(l.itemId) || 0) + rem);
+      }
+    }
+    return m;
+  }, [orders]);
+
+  /** Average days from order to receipt, per supplier, over every received line. */
+  const leadTimeBySupplier = useMemo(() => {
+    const acc = new Map<string, { days: number; n: number; onTime: number; withExpected: number }>();
+    for (const po of orders) {
+      if (!po.supplierId || !po.orderDate) continue;
+      const ordered = new Date(po.orderDate).getTime();
+      for (const l of po.lines) {
+        if (!l.receivedDate) continue;
+        const days = Math.round((new Date(l.receivedDate).getTime() - ordered) / 86400000);
+        if (days < 0) continue;
+        const e = acc.get(po.supplierId) || { days: 0, n: 0, onTime: 0, withExpected: 0 };
+        e.days += days;
+        e.n += 1;
+        if (po.expected) {
+          e.withExpected += 1;
+          if (l.receivedDate <= po.expected) e.onTime += 1;
+        }
+        acc.set(po.supplierId, e);
+      }
+    }
+    const out = new Map<string, { avgDays: number; onTimePct: number | null }>();
+    for (const [k, e] of acc) out.set(k, { avgDays: e.days / e.n, onTimePct: e.withExpected ? (e.onTime / e.withExpected) * 100 : null });
+    return out;
+  }, [orders]);
+
+  return { orders, onOrderByItem, leadTimeBySupplier, isLoading: query.isLoading };
+}

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { LucideIcon, Info } from "lucide-react";
+import { LucideIcon, Info, ArrowUp, ArrowDown } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface StatCardProps {
@@ -19,9 +19,22 @@ interface StatCardProps {
    * small marker so the explanation is discoverable rather than hidden.
    */
   formula?: ReactNode;
+  /**
+   * Change against a comparison period, as a fraction (0.12 = +12%), shown as
+   * a coloured chip beside the description. Null hides it — there was nothing
+   * to compare against.
+   */
+  delta?: number | null;
+  /** Set when a rise is bad news (e.g. outstanding balances), flipping the colours. */
+  deltaInverse?: boolean;
 }
 
-export function StatCard({ title, value, icon: Icon, description, variant = "default", tone, formula }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, description, variant = "default", tone, formula, delta, deltaInverse }: StatCardProps) {
+  const hasDelta = delta != null && Number.isFinite(delta);
+  // Under half a percent reads as "0%" — colour and arrow it as flat, not a rise.
+  if (hasDelta && Math.abs(delta!) < 0.005) delta = 0;
+  const good = hasDelta && (deltaInverse ? delta! < 0 : delta! > 0);
+  const bad = hasDelta && (deltaInverse ? delta! > 0 : delta! < 0);
   const card = (
     <div className={cn("stat-card", formula && "cursor-help")}>
       <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
@@ -43,7 +56,24 @@ export function StatCard({ title, value, icon: Icon, description, variant = "def
         tone === "asset" && "text-emerald-600 dark:text-emerald-500",
         tone === "liability" && "text-red-600 dark:text-red-500",
       )}>{value}</div>
-      {description && <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 truncate">{description}</p>}
+      {(description || hasDelta) && (
+        <div className="mt-1 flex items-center gap-1.5 min-w-0">
+          {hasDelta && (
+            <span
+              className={cn(
+                "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] sm:text-[11px] font-medium tabular-nums",
+                good && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500",
+                bad && "bg-red-500/10 text-red-600 dark:text-red-500",
+                !good && !bad && "bg-muted text-muted-foreground",
+              )}
+            >
+              {delta! > 0 ? <ArrowUp className="h-2.5 w-2.5" /> : delta! < 0 ? <ArrowDown className="h-2.5 w-2.5" /> : null}
+              {Math.abs(delta! * 100) >= 1000 ? ">999" : Math.abs(delta! * 100).toFixed(0)}%
+            </span>
+          )}
+          {description && <p className="text-[11px] sm:text-xs text-muted-foreground truncate">{description}</p>}
+        </div>
+      )}
     </div>
   );
 

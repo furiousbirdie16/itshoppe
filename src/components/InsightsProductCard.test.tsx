@@ -25,6 +25,7 @@ const product: ProductMetric = {
   daysRemaining: 75.5,
   gmroi: 1.8,
   avgInventoryValue: 533,
+  variationQtySold: 0,
   action: "Maintain",
 };
 

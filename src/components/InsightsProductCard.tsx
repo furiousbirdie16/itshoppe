@@ -1,17 +1,8 @@
 import { format } from "date-fns";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ProductAction, ProductMetric, SaleTxn } from "@/types/insights";
-
-const ACTION_CLASS: Record<ProductAction, string> = {
-  Buy: "bg-red-500/10 text-red-600 border-red-500/30",
-  Maintain: "bg-green-500/10 text-green-600 border-green-500/30",
-  Reduce: "bg-amber-500/10 text-amber-600 border-amber-500/30",
-  Overstock: "bg-orange-500/10 text-orange-600 border-orange-500/30",
-  Dead: "bg-muted text-muted-foreground border-border",
-};
-
-const fmtDays = (d: number) => (d === Infinity ? "∞" : d > 999 ? ">999" : Math.round(d).toString());
+import type { ProductMetric, SaleTxn } from "@/types/insights";
+import { ACTION_CLASS, fmtDays } from "@/lib/insights";
 
 function Metric({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
   return (
@@ -62,16 +53,19 @@ export function InsightsProductCard({ product: p, txns, isAdmin, money, isOpen, 
             >
               {p.source || "local"}
             </span>
-            <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium", ACTION_CLASS[p.action])}>
-              {p.action}
-            </span>
+            {p.action && (
+              <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium", ACTION_CLASS[p.action])}>
+                {p.action}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 border-t pt-2.5">
-          <Metric label="Stock" value={p.stock} className={p.threshold > 0 && p.stock <= p.threshold ? "text-destructive" : ""} />
-          <Metric label="Sold" value={p.qtySold} />
-          <Metric label="Days left" value={fmtDays(p.daysRemaining)} />
+          {/* Variations hold no stock of their own — it is counted on the parent. */}
+          <Metric label="Stock" value={p.kind === "variation" ? "—" : p.stock} className={p.threshold > 0 && p.stock <= p.threshold ? "text-destructive" : ""} />
+          <Metric label="Sold" value={p.variationQtySold > 0 ? `${p.qtySold} (+${p.variationQtySold} var.)` : p.qtySold} />
+          <Metric label="Days left" value={p.kind === "variation" ? "—" : fmtDays(p.daysRemaining)} />
           {isAdmin && <Metric label="Revenue" value={money(p.revenue)} />}
           {isAdmin && <Metric label="Gross profit" value={money(p.grossProfit)} className="text-green-600" />}
           {isAdmin && <Metric label="Margin" value={p.qtySold ? `${p.margin.toFixed(1)}%` : "—"} />}
