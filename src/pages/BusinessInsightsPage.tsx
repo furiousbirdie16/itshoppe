@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
-import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, subDays, addDays, addWeeks, addMonths, differenceInCalendarDays, parseISO } from "date-fns";
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, differenceInCalendarDays, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
@@ -20,14 +20,16 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Users, ArrowUp, ArrowDown, ArrowUpDown, Columns3, PackagePlus, PackageX, Boxes, Clock } from "lucide-react";
+import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Users, ArrowUp, ArrowDown, ArrowUpDown, Columns3, PackagePlus, PackageX, Boxes, Clock, Truck, LineChart } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
-import { ACTION_CLASS, fmtDays } from "@/lib/insights";
+import { ACTION_CLASS, fmtDays, makeBuckets } from "@/lib/insights";
 import { InsightsTrendChart, type TrendPoint } from "@/components/InsightsTrendChart";
+import { InsightsPurchasesTab } from "@/components/InsightsPurchasesTab";
+import { InsightsForecastTab } from "@/components/InsightsForecastTab";
 import type { ProductAction, ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
@@ -446,7 +448,7 @@ export default function BusinessInsightsPage() {
       // No quantity column here — variations do not hold their own stock, it sits
       // on the parent. Selecting it made PostgREST reject the whole request, so
       // this returned nothing and no variation rows were built at all.
-      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price")
+      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price, factor")
     ),
   });
 
@@ -1032,7 +1034,8 @@ export default function BusinessInsightsPage() {
     // variations reads as "Dead" while it is selling.
     const variationQtyByItem = new Map<string, number>();
     for (const v of variationsAll as any[]) {
-      const q = perUnitSales.get(unitKey(v.item_id, v.id))?.qty || 0;
+      // A variation sale uses `factor` base units of the parent (a 10-pack uses 10).
+      const q = (perUnitSales.get(unitKey(v.item_id, v.id))?.qty || 0) * Number(v.factor || 1);
       if (q) variationQtyByItem.set(v.item_id, (variationQtyByItem.get(v.item_id) || 0) + q);
     }
 
@@ -1333,23 +1336,10 @@ export default function BusinessInsightsPage() {
       const first = txns.reduce<string | null>((m, t) => (m === null || t.date < m ? t.date : m), null);
       start = first ? startOfDay(parseISO(first)) : startOfDay(subDays(effectiveTo, 29));
     }
-    const span = differenceInCalendarDays(effectiveTo, start) + 1;
-    const bucket: "day" | "week" | "month" = span <= 62 ? "day" : span <= 371 ? "week" : "month";
-    const keyOf = (d: Date) =>
-      bucket === "day" ? format(d, "yyyy-MM-dd") : bucket === "week" ? format(startOfWeek(d), "yyyy-MM-dd") : format(d, "yyyy-MM");
-
-    const points = new Map<string, TrendPoint>();
-    let cursor = bucket === "week" ? startOfWeek(start) : bucket === "month" ? startOfMonth(start) : start;
-    while (cursor <= effectiveTo) {
-      points.set(keyOf(cursor), {
-        label: bucket === "month" ? format(cursor, "MMM yyyy") : format(cursor, "MMM d"),
-        title: bucket === "day" ? format(cursor, "EEE, MMM d yyyy") : bucket === "week" ? `Week of ${format(cursor, "MMM d, yyyy")}` : format(cursor, "MMMM yyyy"),
-        revenue: 0,
-        profit: 0,
-        units: 0,
-      });
-      cursor = bucket === "day" ? addDays(cursor, 1) : bucket === "week" ? addWeeks(cursor, 1) : addMonths(cursor, 1);
-    }
+    const { bucket, keyOf, slots } = makeBuckets(start, effectiveTo);
+    const points = new Map<string, TrendPoint>(
+      slots.map((sl) => [sl.key, { label: sl.label, title: sl.title, revenue: 0, profit: 0, units: 0 }]),
+    );
     for (const t of txns) {
       const pt = points.get(keyOf(parseISO(t.date)));
       if (!pt) continue;
@@ -1511,11 +1501,16 @@ export default function BusinessInsightsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 md:inline-flex md:w-auto">
-          <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
-          <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>
-          <TabsTrigger value="customers"><Users className="h-3.5 w-3.5 mr-1.5" />Customers</TabsTrigger>
-        </TabsList>
+        {/* Scrolls sideways on a phone rather than squeezing five labels into one row. */}
+        <div className="-mx-3 overflow-x-auto px-3 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="inline-flex w-max">
+            <TabsTrigger value="overview"><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Overview</TabsTrigger>
+            <TabsTrigger value="products"><Package className="h-3.5 w-3.5 mr-1.5" />Products</TabsTrigger>
+            <TabsTrigger value="purchases"><Truck className="h-3.5 w-3.5 mr-1.5" />Purchases</TabsTrigger>
+            <TabsTrigger value="forecast"><LineChart className="h-3.5 w-3.5 mr-1.5" />Forecast</TabsTrigger>
+            <TabsTrigger value="customers"><Users className="h-3.5 w-3.5 mr-1.5" />Customers</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* OVERVIEW */}
         <TabsContent value="overview" className="space-y-4">
@@ -2031,6 +2026,33 @@ export default function BusinessInsightsPage() {
           </div>
         </TabsContent>
 
+
+        {/* PURCHASES */}
+        <TabsContent value="purchases">
+          <InsightsPurchasesTab
+            fromStr={fromStr}
+            toStr={toStr}
+            dateFrom={dateFrom}
+            effectiveTo={effectiveTo}
+            allTime={preset === "all"}
+            branchId={activeBranchId}
+            isAdmin={isAdmin}
+            money={money}
+            supplierFilter={supplierFilter}
+          />
+        </TabsContent>
+
+        {/* FORECAST */}
+        <TabsContent value="forecast">
+          <InsightsForecastTab
+            branchId={activeBranchId}
+            isAdmin={isAdmin}
+            money={money}
+            items={itemsAll as any[]}
+            variations={variationsAll as any[]}
+            allowedItemIds={allowedItemIds}
+          />
+        </TabsContent>
 
         {/* CUSTOMERS */}
         <TabsContent value="customers" className="space-y-4">

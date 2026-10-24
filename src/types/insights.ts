@@ -45,7 +45,7 @@ export interface ProductMetric {
   daysRemaining: number;
   gmroi: number | null;
   avgInventoryValue: number | null;
-  /** Units sold by this parent's variations — they draw on the parent's stock. Always 0 on variation rows. */
+  /** Parent base units used by its variations' sales (qty × factor) — they draw on the parent's stock. Always 0 on variation rows. */
   variationQtySold: number;
   /**
    * Null when there is nothing to recommend: variation rows (stock is held on
