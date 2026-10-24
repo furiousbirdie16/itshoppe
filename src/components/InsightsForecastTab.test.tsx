@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { MemoryRouter } from "react-router-dom";
 import { format, subDays } from "date-fns";
 
 const daysAgo = (n: number) => format(subDays(new Date(), n), "yyyy-MM-dd");
@@ -40,11 +41,13 @@ function renderTab(stock: number) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const items = [{ id: "i1", name: "Router", sku: "RT-1", quantity: stock, cost_price: 60, created_at: "2024-01-01" }];
   return render(
-    <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <InsightsForecastTab branchId={null} isAdmin={false} money={() => "—"} items={items} variations={[]} allowedItemIds={null} />
-      </TooltipProvider>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <InsightsForecastTab branchId={null} isAdmin={false} money={() => "—"} items={items} variations={[]} allowedItemIds={null} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
+import { median, type SupplierLeadStats } from "@/lib/restock";
 
 export interface PoLine {
   itemId: string | null;
@@ -21,6 +22,8 @@ export interface PoRow {
   supplier: string;
   orderDate: string | null;
   expected: string | null;
+  /** Overseas only: when the supplier shipped it. */
+  shippedAt: string | null;
   dueDate: string | null;
   status: string;
   /** Goods total in pesos. */
@@ -77,7 +80,7 @@ export function useInsightsPurchases(branchId: string | null) {
         fetchAllRows<any>(() => {
           let q = supabase
             .from("overseas_purchase_orders")
-            .select("id, po_number, order_date, expected_delivery, payment_due_date, status, supplier_id, total_amount, total_additional_charges, exchange_rate, branch_id")
+            .select("id, po_number, order_date, expected_delivery, shipped_at, payment_due_date, status, supplier_id, total_amount, total_additional_charges, exchange_rate, branch_id")
             .order("id", { ascending: true });
           if (branchId) q = q.eq("branch_id", branchId);
           return q;
@@ -150,6 +153,7 @@ export function useInsightsPurchases(branchId: string | null) {
         supplier: names.get(po.supplier_id) || "No supplier",
         orderDate: po.order_date || null,
         expected: po.expected_delivery || null,
+        shippedAt: po.shipped_at ? String(po.shipped_at).slice(0, 10) : null,
         dueDate: po.payment_due_date || null,
         status: po.status || "",
         goodsPhp: Number(po.total_amount || 0) * rate,
@@ -180,28 +184,48 @@ export function useInsightsPurchases(branchId: string | null) {
     return m;
   }, [orders]);
 
-  /** Average days from order to receipt, per supplier, over every received line. */
+  /**
+   * What past deliveries say about each supplier: median days from order to
+   * the goods arriving, and for overseas orders with a ship date, how that
+   * splits into production (order → shipped) and transit (shipped → received).
+   * One figure per PO — the day its first goods were received — so a PO with
+   * many lines does not count many times.
+   */
   const leadTimeBySupplier = useMemo(() => {
-    const acc = new Map<string, { days: number; n: number; onTime: number; withExpected: number }>();
+    const acc = new Map<string, { total: number[]; production: number[]; transit: number[]; onTime: number; withExpected: number }>();
+    const days = (from: string, to: string) => Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000);
     for (const po of orders) {
       if (!po.supplierId || !po.orderDate) continue;
-      const ordered = new Date(po.orderDate).getTime();
-      for (const l of po.lines) {
-        if (!l.receivedDate) continue;
-        const days = Math.round((new Date(l.receivedDate).getTime() - ordered) / 86400000);
-        if (days < 0) continue;
-        const e = acc.get(po.supplierId) || { days: 0, n: 0, onTime: 0, withExpected: 0 };
-        e.days += days;
-        e.n += 1;
-        if (po.expected) {
-          e.withExpected += 1;
-          if (l.receivedDate <= po.expected) e.onTime += 1;
+      const received = po.lines.map((l) => l.receivedDate).filter((d): d is string => !!d).sort()[0];
+      if (!received) continue;
+      const total = days(po.orderDate, received);
+      if (total < 0) continue;
+      const e = acc.get(po.supplierId) || { total: [], production: [], transit: [], onTime: 0, withExpected: 0 };
+      e.total.push(total);
+      if (po.shippedAt) {
+        const prod = days(po.orderDate, po.shippedAt);
+        const trans = days(po.shippedAt, received);
+        if (prod >= 0 && trans >= 0) {
+          e.production.push(prod);
+          e.transit.push(trans);
         }
-        acc.set(po.supplierId, e);
       }
+      if (po.expected) {
+        e.withExpected += 1;
+        if (received <= po.expected) e.onTime += 1;
+      }
+      acc.set(po.supplierId, e);
     }
-    const out = new Map<string, { avgDays: number; onTimePct: number | null }>();
-    for (const [k, e] of acc) out.set(k, { avgDays: e.days / e.n, onTimePct: e.withExpected ? (e.onTime / e.withExpected) * 100 : null });
+    const out = new Map<string, SupplierLeadStats>();
+    for (const [k, e] of acc) {
+      out.set(k, {
+        days: median(e.total)!,
+        deliveries: e.total.length,
+        productionDays: median(e.production),
+        transitDays: median(e.transit),
+        onTimePct: e.withExpected ? (e.onTime / e.withExpected) * 100 : null,
+      });
+    }
     return out;
   }, [orders]);
 

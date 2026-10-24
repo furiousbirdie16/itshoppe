@@ -17,10 +17,12 @@ const tables: Record<string, any[]> = {
   overseas_purchase_orders: [
     { id: "o1", po_number: "OPO-1", order_date: "2026-09-01", status: "unpaid", supplier_id: "os1", total_amount: 100, total_additional_charges: 0, exchange_rate: 50 },
     { id: "o2", po_number: "OPO-2", order_date: "2026-09-01", status: "shipped", supplier_id: "os1", total_amount: 100, total_additional_charges: 0, exchange_rate: 50 },
+    { id: "o3", po_number: "OPO-3", order_date: "2026-07-01", shipped_at: "2026-07-21T08:00:00Z", status: "received", supplier_id: "os1", total_amount: 100, total_additional_charges: 0, exchange_rate: 50 },
   ],
   overseas_purchase_order_items: [
     { id: "c", po_id: "o1", item_id: "i2", item_name: "AP", quantity: 4, received_quantity: 0, unit_cost: 25, received_date: null },
     { id: "d", po_id: "o2", item_id: "i2", item_name: "AP", quantity: 4, received_quantity: 0, unit_cost: 25, received_date: null },
+    { id: "e", po_id: "o3", item_id: "i2", item_name: "AP", quantity: 4, received_quantity: 4, unit_cost: 25, received_date: "2026-07-31" },
   ],
   overseas_po_payments: [{ id: "p", po_id: "o1", php_amount: 2000 }],
   suppliers: [{ id: "s1", name: "Local Co" }],
@@ -52,7 +54,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe("useInsightsPurchases", () => {
   it("converts overseas orders to pesos and counts only unreceived goods as still to arrive", async () => {
     const { result } = renderHook(() => useInsightsPurchases(null), { wrapper });
-    await waitFor(() => expect(result.current.orders).toHaveLength(4));
+    await waitFor(() => expect(result.current.orders).toHaveLength(5));
     const po1 = result.current.orders.find((o) => o.id === "po1")!;
     expect(po1.supplier).toBe("Local Co");
     expect(po1.remainingUnits).toBe(5);
@@ -66,17 +68,19 @@ describe("useInsightsPurchases", () => {
 
   it("follows the dashboard's payables rule: local unreceived goods, overseas unpaid less deposits", async () => {
     const { result } = renderHook(() => useInsightsPurchases(null), { wrapper });
-    await waitFor(() => expect(result.current.orders).toHaveLength(4));
+    await waitFor(() => expect(result.current.orders).toHaveLength(5));
     const owed = Object.fromEntries(result.current.orders.map((o) => [o.id, o.owedPhp]));
-    expect(owed).toEqual({ po1: 500, po2: 0, o1: 3000, o2: 0 });
+    expect(owed).toEqual({ po1: 500, po2: 0, o1: 3000, o2: 0, o3: 0 });
   });
 
   it("totals units on order per item and measures supplier lead time from received lines", async () => {
     const { result } = renderHook(() => useInsightsPurchases(null), { wrapper });
-    await waitFor(() => expect(result.current.orders).toHaveLength(4));
+    await waitFor(() => expect(result.current.orders).toHaveLength(5));
     expect(result.current.onOrderByItem.get("i1")).toBe(5);
     expect(result.current.onOrderByItem.get("i2")).toBe(8);
     // 9 days (Sep 1 → Sep 10, late against Sep 8) and 4 days (Aug 1 → Aug 5, on time).
-    expect(result.current.leadTimeBySupplier.get("s1")).toEqual({ avgDays: 6.5, onTimePct: 50 });
+    expect(result.current.leadTimeBySupplier.get("s1")).toEqual({ days: 6.5, deliveries: 2, productionDays: null, transitDays: null, onTimePct: 50 });
+    // Overseas with a ship date: 20 days production (Jul 1 → Jul 21) + 10 transit (→ Jul 31).
+    expect(result.current.leadTimeBySupplier.get("os1")).toMatchObject({ days: 30, productionDays: 20, transitDays: 10 });
   });
 });

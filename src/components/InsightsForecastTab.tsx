@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay, startOfWeek, subDays } from "date-fns";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { FileText, PackagePlus, TrendingUp, Wallet } from "lucide-react";
@@ -13,6 +14,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { makeBuckets } from "@/lib/insights";
+import { HISTORY_DAYS, SAFETY_DAYS, itemDailyRate, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate } from "@/lib/restock";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -28,28 +30,12 @@ interface Props {
 }
 
 type Horizon = 30 | 60 | 90;
-const HISTORY_DAYS = 90;
-// Weights for the last 30, the 30 before, and the 30 before that. Recent
-// weeks count most so a product picking up (or dying off) shows quickly.
-const WEIGHTS = [0.5, 0.3, 0.2];
-const SAFETY_DAYS = 7;
-const DEFAULT_LEAD_DAYS = 14;
 
 const ACTUAL_COLOR = "hsl(var(--primary))";
 const FORECAST_COLOR = "hsl(var(--primary) / 0.35)";
 const compact = (v: number) =>
   Math.abs(v) >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
-
-/** Weighted daily rate from per-day amounts keyed by days-ago (1 = yesterday). */
-function weightedDailyRate(byDaysAgo: Map<number, number>) {
-  const windows = [0, 0, 0];
-  for (const [ago, v] of byDaysAgo) {
-    if (ago < 1 || ago > HISTORY_DAYS) continue;
-    windows[Math.min(2, Math.floor((ago - 1) / 30))] += v;
-  }
-  return windows.reduce((s, w, i) => s + (w / 30) * WEIGHTS[i], 0);
-}
 
 export function InsightsForecastTab({ branchId, isAdmin, money, items, variations, allowedItemIds }: Props) {
   const [horizon, setHorizon] = useState<Horizon>(30);
@@ -160,7 +146,8 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
   });
 
   const itemIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
-  const factorByVariation = useMemo(() => new Map<string, number>(variations.map((v) => [v.id, Number(v.factor || 1)])), [variations]);
+  const variationById = useMemo(() => new Map<string, any>(variations.map((v) => [v.id, v])), [variations]);
+  const itemById = useMemo(() => new Map<string, any>(items.map((i) => [i.id, i])), [items]);
 
   // ---- Demand -------------------------------------------------------------
   const demand = useMemo(() => {
@@ -175,8 +162,8 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
       if (ago < 1 || ago > HISTORY_DAYS) continue;
       revenueByAgo.set(ago, (revenueByAgo.get(ago) || 0) + r.amount);
       if (!r.itemId) continue;
-      // Variation sales draw `factor` base units of the parent.
-      const base = r.qty * (r.variationId ? factorByVariation.get(r.variationId) ?? 1 : 1);
+      // Stock units used: packs take `factor` units, cuts a share of a roll.
+      const base = stockUnitsSold(r.qty, r.variationId ? variationById.get(r.variationId) : null, itemById.get(r.itemId)?.units_per_stock);
       const m = unitsByItem.get(r.itemId) || new Map<number, number>();
       m.set(ago, (m.get(ago) || 0) + base);
       unitsByItem.set(r.itemId, m);
@@ -188,24 +175,15 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
     const dailyRevenue = weightedDailyRate(revenueByAgo);
     const last = Array.from(revenueByAgo.entries()).filter(([ago]) => ago <= horizon).reduce((s, [, v]) => s + v, 0);
 
-    // Per-item rate. An item newer than the history window is averaged over its
-    // own life, so it is not diluted by days it did not exist.
     const rateByItem = new Map<string, number>();
     for (const it of items) {
       const byAgo = unitsByItem.get(it.id);
-      if (!byAgo) continue;
-      const age = it.created_at ? differenceInCalendarDays(today, parseISO(it.created_at)) : HISTORY_DAYS;
-      if (age < HISTORY_DAYS) {
-        const total = Array.from(byAgo.values()).reduce((s, v) => s + v, 0);
-        rateByItem.set(it.id, total / Math.max(7, age));
-      } else {
-        rateByItem.set(it.id, weightedDailyRate(byAgo));
-      }
+      if (byAgo) rateByItem.set(it.id, itemDailyRate(byAgo, it.created_at, today));
     }
     const margin = itemRevenue > 0 ? (itemRevenue - itemCost) / itemRevenue : 0;
     const units = Array.from(rateByItem.values()).reduce((s, v) => s + v, 0) * horizon;
     return { dailyRevenue, revenue: dailyRevenue * horizon, lastPeriodRevenue: last, margin, units, rateByItem, revenueByAgo };
-  }, [sales, items, allowedItemIds, factorByVariation, horizon, today]);
+  }, [sales, items, allowedItemIds, variationById, itemById, horizon, today]);
 
   // Weekly chart: last 12 weeks actual, then the forecast horizon.
   const chart = useMemo(() => {
@@ -288,29 +266,16 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
     const rows = [];
     for (const it of items) {
       const rate = demand.rateByItem.get(it.id) || 0;
-      if (rate <= 0) continue;
       const links = linksByItem.get(it.id) || [];
       const link = links.find((l) => l.is_primary) || links[0];
       const supplierId = link ? link.supplier_id || link.overseas_supplier_id : null;
-      let lead = link?.lead_time_days ?? null;
-      let leadSource: "set" | "history" | "default" = "set";
-      if (lead == null && supplierId && leadTimeBySupplier.get(supplierId)) {
-        lead = Math.round(leadTimeBySupplier.get(supplierId)!.avgDays);
-        leadSource = "history";
-      }
-      if (lead == null) {
-        lead = DEFAULT_LEAD_DAYS;
-        leadSource = "default";
-      }
+      const lead = resolveLeadTime(link?.lead_time_days, supplierId ? leadTimeBySupplier.get(supplierId) : null);
       const stock = Math.max(0, Number(it.quantity || 0));
       const onOrder = onOrderByItem.get(it.id) || 0;
-      // Enough to cover the lead time, a safety buffer and the forecast horizon.
-      const target = rate * (lead + SAFETY_DAYS + horizon);
-      let suggested = Math.ceil(target - stock - onOrder);
-      if (suggested <= 0) continue;
-      suggested = Math.max(suggested, Number(link?.moq || 0));
-      const daysLeft = stock / rate;
-      const orderBy = addDays(today, Math.floor((stock + onOrder) / rate - lead - SAFETY_DAYS));
+      // Same plan as the Reorder List, covering the chosen horizon after delivery.
+      const plan = planReorder({ stock, onOrder, rate, leadDays: lead.days, coverDays: horizon, minStock: it.low_stock_threshold, moq: link?.moq });
+      if (plan.suggested <= 0) continue;
+      const orderByDays = Number.isFinite(plan.orderByDays) ? plan.orderByDays : 0;
       rows.push({
         id: it.id,
         name: it.name as string,
@@ -318,14 +283,15 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
         stock,
         onOrder,
         rate,
-        runOut: addDays(today, Math.floor(daysLeft)),
-        daysLeft,
-        lead,
-        leadSource,
-        orderBy,
-        orderByDays: differenceInCalendarDays(orderBy, today),
-        suggested,
-        cost: suggested * Number(it.cost_price || 0),
+        runOut: addDays(today, Math.floor(Number.isFinite(plan.daysLeft) ? plan.daysLeft : 0)),
+        daysLeft: plan.daysLeft,
+        lead: lead.days,
+        leadSource: lead.source,
+        orderBy: addDays(today, orderByDays),
+        orderByDays,
+        now: plan.group === "now",
+        suggested: plan.suggested,
+        cost: plan.suggested * Number(it.cost_price || 0),
       });
     }
     return rows;
@@ -342,7 +308,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
     suggested: (r) => r.suggested,
     cost: (r) => r.cost,
   }, { key: "orderBy", dir: "asc" });
-  const orderNow = reorder.filter((r) => r.orderByDays <= 0).length;
+  const orderNow = reorder.filter((r) => r.now).length;
   const reorderCost = reorder.reduce((s, r) => s + r.cost, 0);
 
   if (isLoading) {
@@ -498,7 +464,10 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
 
       <div className="rounded-xl border bg-card overflow-hidden">
         <div className="p-4 pb-3">
-          <h2 className="text-sm font-semibold">Reorder planner</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Reorder planner</h2>
+            <Link to="/low-stock-alerts" className="text-xs text-primary hover:underline">Create POs in the Reorder List →</Link>
+          </div>
           <p className="text-xs text-muted-foreground">
             {reorder.length === 0
               ? `Stock on hand and on order covers the next ${horizon} days for every selling item.`
@@ -529,19 +498,19 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">{r.stock.toLocaleString()}</TableCell>
                   <TableCell className="text-right text-sm tabular-nums hidden sm:table-cell">{r.onOrder ? r.onOrder.toLocaleString() : <span className="text-muted-foreground">—</span>}</TableCell>
-                  <TableCell className="text-right text-sm tabular-nums hidden md:table-cell">{r.rate < 1 ? r.rate.toFixed(2) : r.rate.toFixed(1)}</TableCell>
+                  <TableCell className="text-right text-sm tabular-nums hidden md:table-cell">{r.rate === 0 ? "—" : r.rate < 1 ? r.rate.toFixed(2) : r.rate.toFixed(1)}</TableCell>
                   <TableCell className="text-sm hidden md:table-cell whitespace-nowrap">
-                    {r.stock === 0 ? <span className="text-red-600">Out of stock</span> : format(r.runOut, "MMM d")}
+                    {r.stock === 0 ? <span className="text-red-600">Out of stock</span> : r.rate === 0 ? "—" : format(r.runOut, "MMM d")}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums hidden lg:table-cell">
                     {r.lead} days
                     {r.leadSource !== "set" && (
-                      <div className="text-[10px] text-muted-foreground">{r.leadSource === "history" ? "from past orders" : "default — set on supplier link"}</div>
+                      <div className="text-[10px] text-muted-foreground">{r.leadSource === "history" ? "from past deliveries" : "default — set on supplier link"}</div>
                     )}
                   </TableCell>
-                  <TableCell className={cn("text-sm whitespace-nowrap", r.orderByDays <= 0 ? "text-red-600 font-medium" : r.orderByDays <= 7 && "text-amber-600")}>
-                    {r.orderByDays <= 0 ? "Now" : format(r.orderBy, "MMM d")}
-                    {r.orderByDays < 0 && <div className="text-[10px] font-normal">{-r.orderByDays} day{r.orderByDays === -1 ? "" : "s"} late</div>}
+                  <TableCell className={cn("text-sm whitespace-nowrap", r.now ? "text-red-600 font-medium" : r.orderByDays <= 7 && "text-amber-600")}>
+                    {r.now ? "Now" : format(r.orderBy, "MMM d")}
+                    {r.now && r.orderByDays < 0 && <div className="text-[10px] font-normal">{-r.orderByDays} day{r.orderByDays === -1 ? "" : "s"} late</div>}
                   </TableCell>
                   <TableCell className="text-right text-sm font-semibold tabular-nums">{r.suggested.toLocaleString()}</TableCell>
                   {isAdmin && <TableCell className="text-right text-sm tabular-nums hidden sm:table-cell">{money(r.cost)}</TableCell>}

@@ -26,7 +26,8 @@ import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
-import { ACTION_CLASS, fmtDays, makeBuckets } from "@/lib/insights";
+import { ACTION_CLASS, fmtDays, fmtUnits, makeBuckets } from "@/lib/insights";
+import { stockUnitsSold } from "@/lib/restock";
 import { InsightsTrendChart, type TrendPoint } from "@/components/InsightsTrendChart";
 import { InsightsPurchasesTab } from "@/components/InsightsPurchasesTab";
 import { InsightsForecastTab } from "@/components/InsightsForecastTab";
@@ -437,7 +438,7 @@ export default function BusinessInsightsPage() {
   const { data: itemsAllRaw = [] } = useQuery({
     queryKey: ["bi_items_all"],
     queryFn: async () => fetchAllRows<any>(() =>
-      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at, category, brand")
+      supabase.from("items").select("id, name, sku, quantity, cost_price, selling_price, low_stock_threshold, source, created_at, category, brand, units_per_stock")
     ),
   });
 
@@ -448,7 +449,7 @@ export default function BusinessInsightsPage() {
       // No quantity column here — variations do not hold their own stock, it sits
       // on the parent. Selecting it made PostgREST reject the whole request, so
       // this returned nothing and no variation rows were built at all.
-      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price, factor")
+      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price, factor, type")
     ),
   });
 
@@ -1034,8 +1035,8 @@ export default function BusinessInsightsPage() {
     // variations reads as "Dead" while it is selling.
     const variationQtyByItem = new Map<string, number>();
     for (const v of variationsAll as any[]) {
-      // A variation sale uses `factor` base units of the parent (a 10-pack uses 10).
-      const q = (perUnitSales.get(unitKey(v.item_id, v.id))?.qty || 0) * Number(v.factor || 1);
+      // Stock units used: a 10-pack takes 10, a 3 m cut takes 3/305 of a roll.
+      const q = stockUnitsSold(perUnitSales.get(unitKey(v.item_id, v.id))?.qty || 0, v, itemsById.get(v.item_id)?.units_per_stock);
       if (q) variationQtyByItem.set(v.item_id, (variationQtyByItem.get(v.item_id) || 0) + q);
     }
 
@@ -1928,7 +1929,7 @@ export default function BusinessInsightsPage() {
                           </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
                             <div>{p.qtySold}</div>
-                            {p.variationQtySold > 0 && <div className="text-[10px] text-muted-foreground">+{p.variationQtySold} via variations</div>}
+                            {p.variationQtySold > 0 && <div className="text-[10px] text-muted-foreground">+{fmtUnits(p.variationQtySold)} via variations</div>}
                           </TableCell>
                           {isAdmin && <TableCell className="text-right text-sm">{money(p.revenue)}</TableCell>}
                           {isAdmin && visibleCols.has("cost") && <TableCell className="text-right text-sm text-muted-foreground">{money(p.totalCost)}</TableCell>}
