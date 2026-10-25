@@ -11,13 +11,22 @@ const items = [
   { id: "fast", name: "Patch Cord", sku: "PC-1", quantity: 30, low_stock_threshold: 0, cost_price: 35, base_unit: "pcs", units_per_stock: 1, created_at: "2024-01-01", source: "local" },
   // Below its minimum, nothing sells: watch it.
   { id: "idle", name: "HDMI Cable", sku: "HD-1", quantity: 2, low_stock_threshold: 5, cost_price: 220, base_unit: "pcs", units_per_stock: 1, created_at: "2024-01-01", source: "local" },
+  // 3 left against a minimum of 500, 300 on order: On order, with a top-up to come.
+  { id: "balun", name: "Video Balun", sku: "VB-1", quantity: 3, low_stock_threshold: 500, cost_price: 26, base_unit: "pcs", units_per_stock: 1, created_at: "2024-01-01", source: "import" },
   // Plenty of stock: not listed at all.
   { id: "fine", name: "Connectors", sku: "RJ-1", quantity: 900, low_stock_threshold: 10, cost_price: 1, base_unit: "pcs", units_per_stock: 1, created_at: "2024-01-01", source: "local" },
 ];
 const online = Array.from({ length: 60 }, (_, i) => ({
   item_id: "fast", variation_id: null, quantity: 3, deal_price: 90, order_date: daysAgo(i + 1), status: "completed",
 }));
-const tables: Record<string, any[]> = { online_sales: online };
+const balunSales = Array.from({ length: 90 }, (_, i) => ({
+  item_id: "balun", variation_id: null, quantity: 6, deal_price: 40, order_date: daysAgo(i + 1), status: "completed",
+}));
+const tables: Record<string, any[]> = {
+  online_sales: [...online, ...balunSales].map((r, i) => ({ id: `o${i}`, order_number: `ORD-${i}`, ...r })),
+  overseas_purchase_orders: [{ id: "opo", po_number: "OPO-9", order_date: daysAgo(20), expected_delivery: daysAgo(-10), status: "shipped", supplier_id: null, total_amount: 0, exchange_rate: 1 }],
+  overseas_purchase_order_items: [{ id: "l", po_id: "opo", item_id: "balun", item_name: "Video Balun", quantity: 300, received_quantity: 0, unit_cost: 0.4, received_date: null }],
+};
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
@@ -81,9 +90,22 @@ describe("Reorder List", () => {
     expect(within(screen.getByRole("table")).getByText("HDMI Cable")).toBeInTheDocument();
   });
 
+  it("lists an item below its minimum with an order coming under On order, with the top-up still to order", async () => {
+    renderPage();
+    const table = await screen.findByRole("table");
+    await within(table).findByText("Patch Cord");
+    expect(within(table).queryByText("Video Balun")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /On order/ }));
+    const onOrder = screen.getByRole("table");
+    expect(within(onOrder).getByText("Video Balun")).toBeInTheDocument();
+    // 500 minimum − 3 in stock − 300 coming.
+    expect(within(onOrder).getByText(/order 197 more by/)).toBeInTheDocument();
+  });
+
   it("flags the 30-day default lead time when no supplier lead time is known", async () => {
     renderPage();
-    expect(await screen.findByText(/uses the 30-day default lead time/)).toBeInTheDocument();
+    expect(await screen.findByText(/use the 30-day default lead time|uses the 30-day default lead time/)).toBeInTheDocument();
   });
 
   it("opens the PO form for just that item from its Order button", async () => {

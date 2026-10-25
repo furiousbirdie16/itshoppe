@@ -15,13 +15,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
+import { useRestockInputs } from "@/hooks/use-restock-inputs";
 import { peso } from "@/lib/currency";
 import { fmtUnits } from "@/lib/insights";
 import {
   DEFAULT_LEAD_DAYS,
   HISTORY_DAYS,
   SAFETY_DAYS,
-  itemDailyRate,
+  itemDemand,
+  type DemandSale,
   planReorder,
   resolveLeadTime,
   stockUnitsSold,
@@ -48,11 +50,15 @@ const COVER_DAYS = 30;
 
 const GROUPS: { v: Group; label: string; hint: string }[] = [
   { v: "now", label: "Order now", hint: "Will run short before a new order could arrive, or below its minimum with nothing on order." },
-  { v: "ordered", label: "On order", hint: "Low or due soon, but what is already on order covers it." },
+  { v: "ordered", label: "On order", hint: "Low or due soon, with an order already coming. The order-by date says when more is needed." },
   { v: "watch", label: "Watch", hint: "Below its minimum but not selling, or due to be ordered within two weeks." },
 ];
 
 interface SaleRow {
+  /** Unique per sale line — remembers an "include this big order" choice. */
+  id: string;
+  /** Invoice or order number. */
+  ref: string;
   item_id: string;
   /** Stock units used — a cut off a roll is a fraction of one. */
   baseQty: number;
@@ -122,7 +128,7 @@ export default function LowStockAlertsPage() {
         fetchAllRows<any>(() =>
           supabase
             .from("invoice_items")
-            .select("item_id, variation_id, quantity, unit_price, invoices!inner(invoice_date, status)")
+            .select("id, item_id, variation_id, quantity, unit_price, invoices!inner(invoice_number, invoice_date, status)")
             .gte("invoices.invoice_date", since)
             // Cancelled orders never sold, and reserved ones have not sold yet —
             // counting either as demand shortens days-left and triggers early
@@ -133,7 +139,7 @@ export default function LowStockAlertsPage() {
         fetchAllRows<any>(() =>
           supabase
             .from("online_sales")
-            .select("item_id, variation_id, quantity, deal_price, order_date, status")
+            .select("id, order_number, item_id, variation_id, quantity, deal_price, order_date, status")
             .gte("order_date", since)
             .eq("status", "completed")
             .order("id"),
@@ -141,15 +147,17 @@ export default function LowStockAlertsPage() {
       ]);
       const itemsById = new Map(items.map((i) => [i.id, i]));
       const variationById = new Map(variations.map((v) => [v.id, v]));
-      const toRow = (itemId: string, variationId: string | null, qty: number, price: number, date: string): SaleRow => ({
+      const toRow = (id: string, ref: string, itemId: string, variationId: string | null, qty: number, price: number, date: string): SaleRow => ({
+        id,
+        ref,
         item_id: itemId,
         baseQty: stockUnitsSold(qty, variationId ? variationById.get(variationId) : null, itemsById.get(itemId)?.units_per_stock),
         amount: qty * price,
         date,
       });
       const out: SaleRow[] = [];
-      for (const r of invRows) if (r.item_id) out.push(toRow(r.item_id, r.variation_id, Number(r.quantity || 0), Number(r.unit_price || 0), r.invoices?.invoice_date));
-      for (const r of onlRows) if (r.item_id) out.push(toRow(r.item_id, r.variation_id, Number(r.quantity || 0), Number(r.deal_price || 0), r.order_date));
+      for (const r of invRows) if (r.item_id) out.push(toRow(`inv:${r.id}`, docNo(r.invoices?.invoice_number) || "Invoice", r.item_id, r.variation_id, Number(r.quantity || 0), Number(r.unit_price || 0), r.invoices?.invoice_date));
+      for (const r of onlRows) if (r.item_id) out.push(toRow(`onl:${r.id}`, r.order_number || "Online order", r.item_id, r.variation_id, Number(r.quantity || 0), Number(r.deal_price || 0), r.order_date));
       return out;
     },
   });
@@ -157,6 +165,9 @@ export default function LowStockAlertsPage() {
   // Open orders and what past deliveries say about each supplier — shared with
   // Business Insights, so both pages agree.
   const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(null);
+  // Receipts and stock corrections to rebuild each day's stock, and the big
+  // orders chosen to count anyway — shared with the Forecast tab.
+  const { adjustmentsByItem, receiptsByItem, includeIds, toggleInclude } = useRestockInputs(orders, today);
 
   // Latest cost change per item
   const { data: lastCostMap = {} } = useQuery<Record<string, { date: string; cost: number; supplier: string | null; po: string | null }>>({
@@ -218,10 +229,13 @@ export default function LowStockAlertsPage() {
         latestLocal: latestLocal.get(it.id),
         lastCost: lastCostMap[it.id],
         leadTimeBySupplier,
+        receipts: receiptsByItem.get(it.id) || [],
+        adjustments: adjustmentsByItem.get(it.id) || [],
+        includeIds,
         today,
       }),
     );
-  }, [items, salesRows, orders, onOrderByItem, itemSupplierMap, lastCostMap, leadTimeBySupplier, today]);
+  }, [items, salesRows, orders, onOrderByItem, itemSupplierMap, lastCostMap, leadTimeBySupplier, receiptsByItem, adjustmentsByItem, includeIds, today]);
 
   const listed = useMemo(() => rows.filter((r) => r.plan.group !== "ok"), [rows]);
 
@@ -434,7 +448,7 @@ export default function LowStockAlertsPage() {
               </div>
               {isOpen && (
                 <div className="border-t bg-muted/20 p-3">
-                  <ItemDetails row={r} money={money} isAdmin={isAdmin} onHistory={() => setHistoryItem(r.item)} onCostHistory={isAdmin ? () => setCostHistoryItem(r.item) : undefined} />
+                  <ItemDetails row={r} money={money} isAdmin={isAdmin} onHistory={() => setHistoryItem(r.item)} onCostHistory={isAdmin ? () => setCostHistoryItem(r.item) : undefined} onToggleInclude={toggleInclude} />
                 </div>
               )}
             </div>
@@ -536,6 +550,7 @@ export default function LowStockAlertsPage() {
                             isAdmin={isAdmin}
                             onHistory={() => setHistoryItem(r.item)}
                             onCostHistory={isAdmin ? () => setCostHistoryItem(r.item) : undefined}
+                            onToggleInclude={toggleInclude}
                           />
                         </TableCell>
                       </TableRow>
@@ -580,22 +595,34 @@ function buildRow(
     latestLocal: { id: string; name: string } | undefined;
     lastCost: { date: string; cost: number; supplier: string | null; po: string | null } | undefined;
     leadTimeBySupplier: Map<string, SupplierLeadStats>;
+    receipts: { daysAgo: number; units: number }[];
+    adjustments: { daysAgo: number; units: number }[];
+    includeIds: Set<string>;
     today: Date;
   },
 ) {
-  const byAgo = new Map<number, number>();
+  const lines: DemandSale[] = [];
   let q7 = 0, q30 = 0, q90 = 0, a90 = 0;
   for (const s of ctx.sales) {
     if (!s.date) continue;
     const ago = differenceInCalendarDays(ctx.today, parseISO(s.date));
     if (ago < 0 || ago > HISTORY_DAYS) continue;
-    byAgo.set(ago, (byAgo.get(ago) || 0) + s.baseQty);
+    lines.push({ id: s.id, ref: s.ref, daysAgo: ago, units: s.baseQty });
     if (ago <= 7) q7 += s.baseQty;
     if (ago <= 30) q30 += s.baseQty;
     q90 += s.baseQty;
     a90 += s.amount;
   }
-  const rate = itemDailyRate(byAgo, it.created_at, ctx.today);
+  const demand = itemDemand({
+    sales: lines,
+    stockNow: it.quantity,
+    receipts: ctx.receipts,
+    adjustments: ctx.adjustments,
+    createdAt: it.created_at,
+    today: ctx.today,
+    includeIds: ctx.includeIds,
+  });
+  const rate = demand.rate;
 
   // Preferred supplier: the item's supplier link, else the last local supplier it was bought from.
   const link = ctx.itemSupplier;
@@ -622,6 +649,7 @@ function buildRow(
     item: it,
     threshold,
     rate,
+    demand,
     q7, q30, q90, a90,
     plan,
     lead,
@@ -644,10 +672,17 @@ function WhenCell({ row: r, group, today }: { row: Row; group: Group; today: Dat
     const next = r.openPos[0];
     if (!next) return <span className="text-muted-foreground">—</span>;
     const late = !!next.expected && parseISO(next.expected) < today;
+    // Still short of the target once it arrives: say when to order the rest.
+    const more = r.plan.suggested > 0 && Number.isFinite(r.plan.orderByDays);
     return (
       <>
         <div className={cn(late && "text-destructive font-medium")}>{next.expected ? fmtDate(next.expected) : "No date"}{late && " · late"}</div>
         <div className="text-[10px] text-muted-foreground">{next.number}</div>
+        {more && (
+          <div className={cn("text-[10px]", r.plan.orderByDays <= 7 ? "text-amber-600" : "text-muted-foreground")}>
+            order {r.plan.suggested.toLocaleString()} more {r.plan.orderByDays <= 0 ? "now" : `by ${fmtDate(addDays(today, r.plan.orderByDays))}`}
+          </div>
+        )}
       </>
     );
   }
@@ -1135,6 +1170,7 @@ function ItemDetails({
   isAdmin,
   onHistory,
   onCostHistory,
+  onToggleInclude,
 }: {
   row: Row;
   money: (n: number) => string;
@@ -1142,6 +1178,8 @@ function ItemDetails({
   onHistory: () => void;
   /** Omitted for non-admins — cost history is admin-only. */
   onCostHistory?: () => void;
+  /** Count a set-aside big order after all, or set it aside again. */
+  onToggleInclude: (lineId: string) => void;
 }) {
   const unit = r.item.base_unit || "pcs";
   const lead = r.lead;
@@ -1155,8 +1193,30 @@ function ItemDetails({
           <Detail label="Last 7 days">{fmtUnits(r.q7)}</Detail>
           <Detail label="Last 30 days">{fmtUnits(r.q30)}</Detail>
           <Detail label={`Last ${HISTORY_DAYS} days`}>{fmtUnits(r.q90)}{isAdmin && <span className="text-muted-foreground"> · {money(r.a90)}</span>}</Detail>
-          <Detail label="Rate used">{r.rate > 0 ? `${r.rate < 1 ? r.rate.toFixed(2) : r.rate.toFixed(1)} / day` : "No sales"}</Detail>
-          <p className="pt-1 text-[11px] text-muted-foreground">Recent weeks count most. Cuts count as their share of a {unit}.</p>
+          <Detail label="Rate used">
+            <span className="font-medium">{r.rate > 0 ? `${r.rate < 1 ? r.rate.toFixed(2) : r.rate.toFixed(1)} / day` : "No sales"}</span>
+            {r.demand.usedDays > 0 && (
+              <div className="text-[11px] text-muted-foreground">
+                {fmtUnits(r.demand.usedUnits)} sales over {r.demand.usedDays} day{r.demand.usedDays === 1 ? "" : "s"} with stock
+              </div>
+            )}
+          </Detail>
+          {r.demand.shortDays > 0 && (
+            <Detail label="Not counted">
+              <span className="text-muted-foreground">{r.demand.shortDays} day{r.demand.shortDays === 1 ? "" : "s"} too low on stock to sell</span>
+            </Detail>
+          )}
+          {[...r.demand.leftOut.map((o) => ({ o, inc: false })), ...r.demand.included.map((o) => ({ o, inc: true }))].map(({ o, inc }) => (
+            <Detail key={o.id} label={inc ? "Big order (counted)" : "Left out"}>
+              <span className="text-muted-foreground">{fmtUnits(o.units)} {unit} · {o.ref}</span>{" "}
+              <button type="button" onClick={() => onToggleInclude(o.id)} className="text-xs text-primary hover:underline">
+                {inc ? "Leave out" : "Include"}
+              </button>
+            </Detail>
+          ))}
+          <p className="pt-1 text-[11px] text-muted-foreground">
+            Recent weeks count most. Days too low on stock to fill a usual order, and one-off big orders, are left out. Cuts count as their share of a {unit}.
+          </p>
         </div>
 
         <div className="rounded-lg border bg-background p-3 space-y-1">
