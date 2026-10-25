@@ -82,6 +82,8 @@ export function InventoryMobileCard({
   const canSeeCost = isAdmin || source === "local";
   const openRoll = Number(item.open_roll_remaining ?? 0);
   const invValue = qty * Number(item.cost_price || 0);
+  const incoming = Number(item.incoming_quantity ?? 0);
+  const reserved = Number(item.reserved_quantity ?? 0);
 
   return (
     <div className={`rounded-xl border bg-card p-3 space-y-3 ${selected ? "ring-1 ring-primary" : ""}`}>
@@ -121,7 +123,18 @@ export function InventoryMobileCard({
           }
           className={threshold > 0 && qty <= threshold ? "text-destructive" : ""}
         />
-        <Field label="Unit" value={unit} />
+        {/* The same two figures as the desktop table's columns: what is on
+            the way from open POs, and what invoices are holding back. */}
+        <Field
+          label="Incoming"
+          value={incoming > 0 ? <>{incoming} <span className="text-xs font-normal text-muted-foreground">on order</span></> : "—"}
+          className={incoming > 0 ? "text-blue-600" : "text-muted-foreground"}
+        />
+        <Field
+          label="Reserved"
+          value={reserved > 0 ? reserved : "—"}
+          className={reserved > 0 ? "text-amber-600" : "text-muted-foreground"}
+        />
         {isAdmin && <Field label="Inventory Value" value={peso(invValue)} />}
         <Field label="Cost Price" value={canSeeCost ? peso(Number(item.cost_price || 0)) : "—"} />
         <Field label="Selling Price" value={peso(Number(item.selling_price || 0))} />
