@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_LEAD_DAYS, median, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate } from "./restock";
+import { DEFAULT_LEAD_DAYS, itemDemand, median, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate, type DemandSale } from "./restock";
 
 describe("stockUnitsSold", () => {
   it("counts a plain sale one for one", () => {
@@ -66,7 +66,62 @@ describe("planReorder", () => {
   it("orders now when below its minimum and still selling", () => {
     expect(planReorder({ stock: 50, onOrder: 0, rate: 0.5, leadDays: 10, coverDays: 30, minStock: 60 }).group).toBe("now");
   });
+  it("puts it under On order when below its minimum but an order is coming", () => {
+    // 3 in stock, 300 coming, minimum 500, ~6/day, 31-day lead: the Video Balun case.
+    const p = planReorder({ stock: 3, onOrder: 300, rate: 6, leadDays: 31, coverDays: 30, minStock: 500 });
+    expect(p.group).toBe("ordered");
+    // Still 197 short of the minimum, to order in ~12 days.
+    expect(p.suggested).toBe(197);
+    expect(p.orderByDays).toBe(12);
+  });
   it("leaves healthy stock alone", () => {
     expect(planReorder({ stock: 500, onOrder: 0, rate: 2, leadDays: 10, coverDays: 30 })).toMatchObject({ group: "ok", suggested: 0 });
+  });
+});
+
+describe("itemDemand", () => {
+  const today = new Date(2026, 9, 25);
+  const daily = (perDay: number, from: number, to: number, prefix = "s"): DemandSale[] =>
+    Array.from({ length: to - from + 1 }, (_, i) => ({ id: `${prefix}${from + i}`, ref: "INV", daysAgo: from + i, units: perDay }));
+  const base = { receipts: [], adjustments: [], createdAt: "2024-01-01", today };
+
+  it("gives the plain rate when stock never ran short", () => {
+    const d = itemDemand({ ...base, sales: daily(2, 1, 90), stockNow: 50 });
+    expect(d.rate).toBeCloseTo(2);
+    expect(d.shortDays).toBe(0);
+  });
+
+  it("leaves out days that started without enough stock to sell", () => {
+    // Sold 4 a day until 30 days ago, then ran out: the empty month is not "no demand".
+    const d = itemDemand({ ...base, sales: daily(4, 31, 90), stockNow: 0 });
+    expect(d.shortDays).toBe(30);
+    expect(d.usedDays).toBe(60);
+    expect(d.rate).toBeCloseTo(4);
+  });
+
+  it("sets aside a one-off big order, and counts it when included", () => {
+    const sales = [...daily(2, 1, 90), { id: "big", ref: "INV-1234", daysAgo: 45, units: 400 }];
+    const d = itemDemand({ ...base, sales, stockNow: 1000 });
+    expect(d.leftOut.map((o) => o.ref)).toEqual(["INV-1234"]);
+    expect(d.rate).toBeCloseTo(2);
+    const withIt = itemDemand({ ...base, sales, stockNow: 1000, includeIds: new Set(["big"]) });
+    expect(withIt.leftOut).toHaveLength(0);
+    expect(withIt.included).toHaveLength(1);
+    expect(withIt.rate).toBeGreaterThan(2);
+  });
+
+  it("leaves no days out when the stock records do not add up", () => {
+    // 100 received 5 days ago with nothing before it: earlier stock would be negative.
+    const d = itemDemand({ ...base, sales: daily(1, 1, 90), stockNow: 50, receipts: [{ daysAgo: 5, units: 100 }] });
+    expect(d.shortDays).toBe(0);
+    expect(d.usedDays).toBe(90);
+  });
+
+  it("counts receipts and corrections when rebuilding stock", () => {
+    // Out of stock until a delivery of 60 ten days ago; 3 a day since.
+    const d = itemDemand({ ...base, sales: daily(3, 1, 10), stockNow: 30, receipts: [{ daysAgo: 10, units: 60 }] });
+    // Only the days since the delivery had stock.
+    expect(d.usedDays).toBe(9);
+    expect(d.rate).toBeCloseTo(3, 0);
   });
 });

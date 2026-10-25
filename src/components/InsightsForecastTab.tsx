@@ -14,7 +14,8 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { makeBuckets } from "@/lib/insights";
-import { HISTORY_DAYS, SAFETY_DAYS, itemDailyRate, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate } from "@/lib/restock";
+import { HISTORY_DAYS, SAFETY_DAYS, itemDemand, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate, type DemandSale } from "@/lib/restock";
+import { useRestockInputs } from "@/hooks/use-restock-inputs";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -45,6 +46,8 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
   const historyFrom = iso(subDays(today, HISTORY_DAYS));
 
   const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(branchId);
+  // Same inputs as the Reorder List, so a big order left out there is left out here too.
+  const { adjustmentsByItem, receiptsByItem, includeIds } = useRestockInputs(orders, today);
 
   // Every booked sale (paid or not) over the last 90 days — demand, not cash.
   const { data: sales, isLoading } = useQuery({
@@ -53,7 +56,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
       const online = await fetchAllRows<any>(() => {
         let q = supabase
           .from("online_sales")
-          .select("id, order_date, quantity, posted_price, item_id, variation_id")
+          .select("id, order_number, order_date, quantity, posted_price, item_id, variation_id")
           .eq("status", "completed")
           .gte("order_date", historyFrom)
           .order("id", { ascending: true });
@@ -63,14 +66,14 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
       const invs = await fetchAllRows<any>(() => {
         let q = supabase
           .from("invoices")
-          .select("id, invoice_date")
+          .select("id, invoice_number, invoice_date")
           .in("status", ["confirmed", "paid", "unpaid", "shipped", "completed"] as any)
           .gte("invoice_date", historyFrom)
           .order("id", { ascending: true });
         if (branchId) q = q.eq("branch_id", branchId);
         return q;
       });
-      const dateById = new Map<string, string>(invs.map((i: any) => [i.id, i.invoice_date]));
+      const invById = new Map<string, any>(invs.map((i: any) => [i.id, i]));
       const ids = invs.map((i: any) => i.id);
       const lines: any[] = [];
       for (let i = 0; i < ids.length; i += 200) {
@@ -81,9 +84,9 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
         lines.push(...rows);
       }
       return [
-        ...online.map((r: any) => ({ date: r.order_date, qty: Number(r.quantity || 0), amount: Number(r.posted_price || 0) * Number(r.quantity || 0), itemId: r.item_id, variationId: r.variation_id })),
-        ...lines.map((r: any) => ({ date: dateById.get(r.invoice_id), qty: Number(r.quantity || 0), amount: Number(r.unit_price || 0) * Number(r.quantity || 0), itemId: r.item_id, variationId: r.variation_id })),
-      ].filter((r) => r.date) as { date: string; qty: number; amount: number; itemId: string | null; variationId: string | null }[];
+        ...online.map((r: any) => ({ id: `onl:${r.id}`, ref: r.order_number || "Online order", date: r.order_date, qty: Number(r.quantity || 0), amount: Number(r.posted_price || 0) * Number(r.quantity || 0), itemId: r.item_id, variationId: r.variation_id })),
+        ...lines.map((r: any) => ({ id: `inv:${r.id}`, ref: invById.get(r.invoice_id)?.invoice_number || "Invoice", date: invById.get(r.invoice_id)?.invoice_date, qty: Number(r.quantity || 0), amount: Number(r.unit_price || 0) * Number(r.quantity || 0), itemId: r.item_id, variationId: r.variation_id })),
+      ].filter((r) => r.date) as { id: string; ref: string; date: string; qty: number; amount: number; itemId: string | null; variationId: string | null }[];
     },
   });
 
@@ -152,21 +155,24 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
   // ---- Demand -------------------------------------------------------------
   const demand = useMemo(() => {
     const revenueByAgo = new Map<number, number>();
-    const unitsByItem = new Map<string, Map<number, number>>();
+    const linesByItem = new Map<string, DemandSale[]>();
     let itemRevenue = 0;
     let itemCost = 0;
     const costById = new Map<string, number>(items.map((i) => [i.id, Number(i.cost_price || 0)]));
     for (const r of sales || []) {
       if (allowedItemIds && (!r.itemId || !allowedItemIds.has(r.itemId))) continue;
       const ago = differenceInCalendarDays(today, parseISO(r.date));
-      if (ago < 1 || ago > HISTORY_DAYS) continue;
-      revenueByAgo.set(ago, (revenueByAgo.get(ago) || 0) + r.amount);
+      if (ago < 0 || ago > HISTORY_DAYS) continue;
+      if (!r.itemId && ago >= 1) revenueByAgo.set(ago, (revenueByAgo.get(ago) || 0) + r.amount);
       if (!r.itemId) continue;
       // Stock units used: packs take `factor` units, cuts a share of a roll.
       const base = stockUnitsSold(r.qty, r.variationId ? variationById.get(r.variationId) : null, itemById.get(r.itemId)?.units_per_stock);
-      const m = unitsByItem.get(r.itemId) || new Map<number, number>();
-      m.set(ago, (m.get(ago) || 0) + base);
-      unitsByItem.set(r.itemId, m);
+      // Today's sales only help rebuild stock; rates use whole days.
+      const arr = linesByItem.get(r.itemId) || [];
+      arr.push({ id: r.id, ref: r.ref, daysAgo: ago, units: base });
+      linesByItem.set(r.itemId, arr);
+      if (ago < 1) continue;
+      revenueByAgo.set(ago, (revenueByAgo.get(ago) || 0) + r.amount);
       if (costById.has(r.itemId)) {
         itemRevenue += r.amount;
         itemCost += base * (costById.get(r.itemId) || 0);
@@ -177,13 +183,23 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
 
     const rateByItem = new Map<string, number>();
     for (const it of items) {
-      const byAgo = unitsByItem.get(it.id);
-      if (byAgo) rateByItem.set(it.id, itemDailyRate(byAgo, it.created_at, today));
+      const lines = linesByItem.get(it.id);
+      if (!lines) continue;
+      const d = itemDemand({
+        sales: lines,
+        stockNow: Number(it.quantity || 0),
+        receipts: receiptsByItem.get(it.id) || [],
+        adjustments: adjustmentsByItem.get(it.id) || [],
+        createdAt: it.created_at,
+        today,
+        includeIds,
+      });
+      rateByItem.set(it.id, d.rate);
     }
     const margin = itemRevenue > 0 ? (itemRevenue - itemCost) / itemRevenue : 0;
     const units = Array.from(rateByItem.values()).reduce((s, v) => s + v, 0) * horizon;
     return { dailyRevenue, revenue: dailyRevenue * horizon, lastPeriodRevenue: last, margin, units, rateByItem, revenueByAgo };
-  }, [sales, items, allowedItemIds, variationById, itemById, horizon, today]);
+  }, [sales, items, allowedItemIds, variationById, itemById, receiptsByItem, adjustmentsByItem, includeIds, horizon, today]);
 
   // Weekly chart: last 12 weeks actual, then the forecast horizon.
   const chart = useMemo(() => {

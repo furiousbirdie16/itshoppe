@@ -38,23 +38,127 @@ export function weightedDailyRate(byDaysAgo: Map<number, number>) {
   return windows.reduce((s, w, i) => s + (w / 30) * WEIGHTS[i], 0);
 }
 
-/**
- * An item's daily sales rate. One newer than the history window is averaged
- * over its own life (at least a week), so days it did not exist do not dilute it.
- */
-export function itemDailyRate(byDaysAgo: Map<number, number>, createdAt: string | null | undefined, today: Date) {
-  const age = createdAt ? differenceInCalendarDays(today, parseISO(createdAt)) : HISTORY_DAYS;
-  if (age >= HISTORY_DAYS) return weightedDailyRate(byDaysAgo);
-  let total = 0;
-  for (const [ago, v] of byDaysAgo) if (ago >= 1 && ago <= HISTORY_DAYS) total += v;
-  return total / Math.max(7, age);
-}
-
 export function median(values: number[]): number | null {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/** One sale line of an item, in stock units. */
+export interface DemandSale {
+  /** Stable id of the line — what "include this order" remembers. */
+  id: string;
+  /** Invoice or order number, for showing what was left out. */
+  ref: string;
+  /** Days ago (0 = today). */
+  daysAgo: number;
+  units: number;
+}
+
+export interface Demand {
+  /** Units a day the plan uses. */
+  rate: number;
+  /** Sales the rate is built from — the history window, less one-off big orders. */
+  usedUnits: number;
+  /** Days those sales are spread over — days the item existed and had enough stock to sell. */
+  usedDays: number;
+  /** Days left out because stock was too low to fill a typical order. */
+  shortDays: number;
+  /** One-off big orders set aside, unless included. */
+  leftOut: DemandSale[];
+  /** Big orders that would be set aside but were included by hand. */
+  included: DemandSale[];
+}
+
+/**
+ * How fast an item really sells, from its last 90 days of sales.
+ *
+ * Two things distort a plain average, and both are corrected:
+ *
+ * - Running short. Days that began with too little stock to fill a typical
+ *   order sold little because nothing was there, not because nobody wanted it.
+ *   Those days are left out. Stock per day is rebuilt backwards from today's
+ *   stock using sales, PO receipts and manual adjustments; if that ever goes
+ *   negative the records are incomplete, and no days are left out rather than
+ *   guess.
+ * - One-off big orders. A single sale at least 8× the item's usual order size
+ *   and at least 15% of the period's sales (a project order) would inflate the
+ *   rate for months. It is set aside and listed, and can be included by hand.
+ *
+ * The last 30 days still count most (50 / 30 / 20 across the three months).
+ * Days before the item was created are left out, so new items are not diluted.
+ */
+export function itemDemand(p: {
+  sales: DemandSale[];
+  stockNow: number;
+  /** Stock received from POs, by day. */
+  receipts: { daysAgo: number; units: number }[];
+  /** Manual stock corrections, signed (+ found, − missing). */
+  adjustments: { daysAgo: number; units: number }[];
+  createdAt?: string | null;
+  today: Date;
+  /** Line ids the user has chosen to count even though they look like one-offs. */
+  includeIds?: Set<string>;
+}): Demand {
+  const sales = p.sales.filter((s) => s.daysAgo >= 0 && s.daysAgo <= HISTORY_DAYS && s.units > 0);
+  const total = sales.reduce((a, s) => a + s.units, 0);
+
+  // One-off big orders.
+  const usual = median(sales.map((s) => s.units)) ?? 0;
+  const big = sales.length >= 4 && usual > 0 ? sales.filter((s) => s.units >= usual * 8 && s.units >= total * 0.15) : [];
+  const leftOut = big.filter((s) => !p.includeIds?.has(s.id));
+  const included = big.filter((s) => p.includeIds?.has(s.id));
+  const leftOutIds = new Set(leftOut.map((s) => s.id));
+
+  // Stock change on each day (ago), to walk backwards from today's stock.
+  const change = new Map<number, number>();
+  const add = (ago: number, v: number) => change.set(ago, (change.get(ago) || 0) + v);
+  for (const s of sales) add(s.daysAgo, -s.units);
+  for (const r of p.receipts) if (r.daysAgo >= 0) add(r.daysAgo, r.units);
+  for (const a of p.adjustments) if (a.daysAgo >= 0) add(a.daysAgo, a.units);
+
+  // startOfDay[k] = stock when day k (days ago) began.
+  const startOfDay: number[] = [];
+  let level = p.stockNow - (change.get(0) || 0);
+  for (let k = 1; k <= HISTORY_DAYS; k++) {
+    level -= change.get(k) || 0;
+    startOfDay[k] = level;
+  }
+  const reliable = startOfDay.slice(1).every((v) => v >= -0.01);
+  const needed = Math.max(usual, 1e-6);
+
+  const age = p.createdAt ? differenceInCalendarDays(p.today, parseISO(p.createdAt)) : HISTORY_DAYS;
+  const windows = [0, 1, 2].map(() => ({ units: 0, days: 0 }));
+  let usedUnits = 0;
+  let usedDays = 0;
+  let shortDays = 0;
+  const soldOn = new Map<number, number>();
+  for (const s of sales) if (!leftOutIds.has(s.id)) soldOn.set(s.daysAgo, (soldOn.get(s.daysAgo) || 0) + s.units);
+  for (let k = 1; k <= HISTORY_DAYS; k++) {
+    if (k > age) continue;
+    const w = windows[Math.floor((k - 1) / 30)];
+    if (reliable && startOfDay[k] < needed) {
+      shortDays += 1;
+      continue;
+    }
+    const u = soldOn.get(k) || 0;
+    w.units += u;
+    w.days += 1;
+    usedUnits += u;
+    usedDays += 1;
+  }
+
+  // Weighted across the three months, skipping a month with under 5 usable days.
+  let weighted = 0;
+  let weightSum = 0;
+  windows.forEach((w, i) => {
+    if (w.days < 5) return;
+    weighted += (w.units / w.days) * WEIGHTS[i];
+    weightSum += WEIGHTS[i];
+  });
+  const rate = weightSum > 0 ? weighted / weightSum : usedDays > 0 ? usedUnits / usedDays : 0;
+  return { rate, usedUnits, usedDays, shortDays, leftOut, included };
 }
 
 /** What past deliveries say about a supplier. Medians, so one disaster does not skew it. */
@@ -115,8 +219,8 @@ export interface ReorderPlan {
  * is always respected.
  *
  * Groups:
- * - now: will run short before a new order could arrive, or below its minimum
- *   with nothing on order while still selling.
+ * - now: will run short before a new order could arrive (what is on order
+ *   included), or below its minimum with nothing on order while still selling.
  * - ordered: low or due soon, but what is on order covers it.
  * - watch: below its minimum but not selling, or due to be ordered within two weeks.
  * - ok: nothing to do.
@@ -143,7 +247,9 @@ export function planReorder(p: {
 
   let group: ReorderGroup = "ok";
   const shortBeforeArrival = p.rate > 0 && orderByDays <= 0;
-  const minUncovered = belowMin && stock + p.onOrder <= min;
+  // Below the minimum with nothing coming: order. With something coming, it is
+  // On order — the order-by date says when more will be needed.
+  const minUncovered = belowMin && p.onOrder <= 0;
   if ((shortBeforeArrival || (minUncovered && p.rate > 0)) && suggested > 0) group = "now";
   else if (p.onOrder > 0 && (belowMin || (p.rate > 0 && daysLeft <= p.leadDays + SAFETY_DAYS))) group = "ordered";
   else if (belowMin || (p.rate > 0 && orderByDays <= 14)) group = "watch";
