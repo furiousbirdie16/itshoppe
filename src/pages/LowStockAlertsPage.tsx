@@ -16,6 +16,8 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { useRestockInputs } from "@/hooks/use-restock-inputs";
+import { useStockSplit } from "@/hooks/use-stock-split";
+import { BranchStockSplit } from "@/components/BranchStockSplit";
 import { peso } from "@/lib/currency";
 import { fmtUnits } from "@/lib/insights";
 import {
@@ -165,6 +167,9 @@ export default function LowStockAlertsPage() {
   // Open orders and what past deliveries say about each supplier — shared with
   // Business Insights, so both pages agree.
   const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(null);
+  // Ordering is for the whole business, so stock here is every branch added
+  // together — always shown split so a count at one branch can be checked.
+  const stockSplit = useStockSplit();
   // Receipts and stock corrections to rebuild each day's stock, and the big
   // orders chosen to count anyway — shared with the Forecast tab.
   const { adjustmentsByItem, receiptsByItem, includeIds, toggleInclude } = useRestockInputs(orders, today);
@@ -325,7 +330,7 @@ export default function LowStockAlertsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Reorder List</h1>
-          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times.</p>
+          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times. Stock is all branches together.</p>
         </div>
         <Button disabled={selectedRows.length === 0} onClick={() => setPoRows(selectedRows)} className="shrink-0">
           <ShoppingCart className="h-4 w-4 mr-1.5" />
@@ -415,6 +420,7 @@ export default function LowStockAlertsPage() {
                   <span className={cn("font-semibold tabular-nums", r.plan.belowMin && "text-destructive")}>{fmtUnits(r.item.quantity)}</span>
                   <span className="text-muted-foreground"> / </span>
                   <MinStockEditor value={r.threshold} onSave={(v) => updateThreshold.mutate({ id: r.item.id, value: v })} />
+                  <BranchStockSplit split={stockSplit.get(r.item.id)} />
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{group === "ordered" ? "Arrives" : "Order by"}</div>
@@ -513,6 +519,7 @@ export default function LowStockAlertsPage() {
                         <span className="text-muted-foreground"> / </span>
                         <MinStockEditor value={r.threshold} onSave={(v) => updateThreshold.mutate({ id: r.item.id, value: v })} />
                         <div className="text-[10px] text-muted-foreground">{unit}</div>
+                        <BranchStockSplit split={stockSplit.get(r.item.id)} />
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
                         {r.item.quantity <= 0 ? <span className="text-destructive">Out</span> : Number.isFinite(daysLeft) ? `${Math.floor(daysLeft)}d` : <span className="text-muted-foreground">No sales</span>}

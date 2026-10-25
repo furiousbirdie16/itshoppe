@@ -1,3 +1,5 @@
+import { BranchStockSplit } from "@/components/BranchStockSplit";
+import type { BranchQty } from "@/hooks/use-stock-split";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +26,8 @@ const STATUS_META: Record<StockStatus, { label: string; className: string }> = {
 interface Props {
   item: any;
   branchLabel: string;
+  /** Per-branch stock while all branches are combined; omitted for a single branch. */
+  stockSplit?: BranchQty[];
   isAdmin: boolean;
   viewArchived: boolean;
   selected: boolean;
@@ -66,7 +70,7 @@ function IconAction({ icon: Icon, label, onClick, danger, primary }: { icon: any
 }
 
 export function InventoryMobileCard({
-  item, branchLabel, isAdmin, viewArchived, selected, onToggleSelect,
+  item, branchLabel, stockSplit, isAdmin, viewArchived, selected, onToggleSelect,
   onTransfer, onAdjust, onHistory, onPricing, onSuppliers, onBundles,
   onEdit, onArchive, onRestore, onDelete,
 }: Props) {
@@ -112,6 +116,7 @@ export function InventoryMobileCard({
               {openRoll > 0 && (
                 <span className="ml-1 text-[10px] font-normal text-muted-foreground">+{openRoll} open</span>
               )}
+              {stockSplit && <BranchStockSplit split={stockSplit} className="text-[11px]" />}
             </>
           }
           className={threshold > 0 && qty <= threshold ? "text-destructive" : ""}

@@ -16,6 +16,9 @@ import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { makeBuckets } from "@/lib/insights";
 import { HISTORY_DAYS, SAFETY_DAYS, itemDemand, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate, type DemandSale } from "@/lib/restock";
 import { useRestockInputs } from "@/hooks/use-restock-inputs";
+import { useStockSplit } from "@/hooks/use-stock-split";
+import { useBranch } from "@/contexts/BranchContext";
+import { BranchStockSplit } from "@/components/BranchStockSplit";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -48,6 +51,9 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
   const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(branchId);
   // Same inputs as the Reorder List, so a big order left out there is left out here too.
   const { adjustmentsByItem, receiptsByItem, includeIds } = useRestockInputs(orders, today);
+  const { branches } = useBranch();
+  const combinedBranches = !branchId && branches.length > 1;
+  const stockSplit = useStockSplit();
 
   // Every booked sale (paid or not) over the last 90 days — demand, not cash.
   const { data: sales, isLoading } = useQuery({
@@ -512,7 +518,10 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
                     <div className="text-sm font-medium">{r.name}</div>
                     <div className="text-[10px] text-muted-foreground tabular-nums">{r.sku}</div>
                   </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums">{r.stock.toLocaleString()}</TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {r.stock.toLocaleString()}
+                    {combinedBranches && <BranchStockSplit split={stockSplit.get(r.id)} />}
+                  </TableCell>
                   <TableCell className="text-right text-sm tabular-nums hidden sm:table-cell">{r.onOrder ? r.onOrder.toLocaleString() : <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="text-right text-sm tabular-nums hidden md:table-cell">{r.rate === 0 ? "—" : r.rate < 1 ? r.rate.toFixed(2) : r.rate.toFixed(1)}</TableCell>
                   <TableCell className="text-sm hidden md:table-cell whitespace-nowrap">

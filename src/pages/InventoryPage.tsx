@@ -37,6 +37,9 @@ import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/componen
 import { useBranch } from "@/contexts/BranchContext";
 import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
 import InventoryMobileCard from "@/components/InventoryMobileCard";
+import { AllBranchesNotice } from "@/components/AllBranchesNotice";
+import { BranchStockSplit } from "@/components/BranchStockSplit";
+import { useStockSplit } from "@/hooks/use-stock-split";
 
 
 const INVENTORY_COLUMNS: ColumnDef[] = [
@@ -154,6 +157,9 @@ export default function InventoryPage() {
     setFilters(prev => ({ ...prev, [key]: value }));
 
   const { activeBranchId, activeBranch, branches } = useBranch();
+  // Per-branch stock, shown under each figure while all branches are combined.
+  const stockSplit = useStockSplit();
+  const combined = activeBranchId === null && branches.length > 1;
   // Which branch the quantity fields refer to, asked for in the dialog when the
   // toolbar says "All branches": the branch switcher sits behind the dialog and
   // cannot be reached without throwing the form away.
@@ -643,6 +649,7 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      <AllBranchesNotice />
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Inventory</h1>
@@ -1196,6 +1203,7 @@ export default function InventoryPage() {
                 key={item.id}
                 item={item}
                 branchLabel={branchLabel}
+                stockSplit={combined ? stockSplit.get(item.id) : undefined}
                 isAdmin={isAdmin}
                 viewArchived={viewArchived}
                 selected={selectedIds.has(item.id)}
@@ -1304,6 +1312,7 @@ export default function InventoryPage() {
                               + {item.open_roll_remaining}{item.base_unit || 'm'} open
                             </span>
                           )}
+                          {combined && <BranchStockSplit split={stockSplit.get(item.id)} />}
                         </TableCell>
                       );
                     case "branch":
