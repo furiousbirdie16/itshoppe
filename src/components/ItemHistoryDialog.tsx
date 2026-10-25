@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -416,9 +417,79 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     };
   }, [ledger, item]);
 
+  // Shared by the desktop table and the phone cards.
+  const details = (r: (typeof filtered)[number]) => ({
+    transferDetail: r.category === "transfer" && r.dest_before != null && r.dest_after != null
+      ? ` · dest ${r.dest_before}→${r.dest_after}`
+      : "",
+    openDetail: (r.open_before != null && r.open_after != null && (r.open_before !== 0 || r.open_after !== 0))
+      ? ` · open ${r.open_before}→${r.open_after}${r.unit || "m"}`
+      : "",
+  });
+  const refNode = (r: (typeof filtered)[number]) => (
+    <>
+      {r.reference_kind === "invoice" && r.reference_id ? (
+        <button
+          type="button"
+          onClick={() => setInvoiceDetailId(r.reference_id)}
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+          title="View invoice details"
+        >
+          {r.reference_no}<ExternalLink className="h-3 w-3" />
+        </button>
+      ) : r.reference_kind === "online_sale" && r.reference_id ? (
+        <button
+          type="button"
+          onClick={() => setOnlineSaleDetailId(r.reference_id)}
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+          title="View online sale details"
+        >
+          {r.reference_no}<ExternalLink className="h-3 w-3" />
+        </button>
+      ) : r.reference_link && r.reference_no !== "—" ? (
+        <Link to={r.reference_link} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => onOpenChange(false)}>
+          {r.reference_no}<ExternalLink className="h-3 w-3" />
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">{r.reference_no}</span>
+      )}
+    </>
+  );
+  const changeNode = (r: (typeof filtered)[number]) => {
+    const locShort = r.category === "transfer" && r.dest_location
+      ? `${(r.location || "?")[0].toUpperCase()}→${r.dest_location[0].toUpperCase()}`
+      : "";
+    const qtyMoved = r.quantity;
+    return (
+      <>
+      {/* A transfer moves stock without changing the branch total,
+          so it shows the quantity and where it went, not ± . */}
+      {r.category === "transfer" && r.dest_location ? (
+        <span className="text-sm font-medium text-slate-600">
+          {qtyMoved} <span className="text-[10px] uppercase text-muted-foreground">{locShort}</span>
+        </span>
+      ) : r.qty_in > 0 ? (
+        <span className="text-sm font-medium text-emerald-600">+{r.qty_in}</span>
+      ) : r.qty_out > 0 ? (
+        <span className="text-sm font-medium text-rose-600">−{r.qty_out}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground">—</span>
+      )}
+      {r.unit ? <span className="ml-1 text-[10px] text-muted-foreground">{r.unit}</span> : null}
+      </>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col">
+      <DialogContent
+        className="sm:max-w-6xl max-h-[100dvh] h-[100dvh] p-4 rounded-none md:h-auto md:max-h-[90vh] md:p-6 md:rounded-lg flex flex-col"
+        // On a touch screen, focusing the search box on open raises the
+        // keyboard over the list before anyone has asked to search.
+        onOpenAutoFocus={(e) => {
+          if (window.matchMedia?.("(pointer: coarse)").matches) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-lg">
             Inventory Ledger — {item?.name}
@@ -429,7 +500,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
         </DialogHeader>
 
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="shrink-0 grid grid-cols-3 sm:grid-cols-5 gap-2 [&_.p-3]:p-2 sm:[&_.p-3]:p-3">
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Movements</div><div className="text-lg font-semibold">{stats.count}</div></CardContent></Card>
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Total In</div><div className="text-lg font-semibold text-emerald-600">+{stats.totalIn}</div></CardContent></Card>
             <Card><CardContent className="p-3"><div className="text-[10px] uppercase text-muted-foreground">Total Out</div><div className="text-lg font-semibold text-rose-600">−{stats.totalOut}</div></CardContent></Card>
@@ -489,13 +560,13 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_140px_140px] gap-2">
-          <div className="relative">
+        <div className="shrink-0 grid grid-cols-2 sm:grid-cols-[1fr_180px_140px_140px] gap-2">
+          <div className="relative col-span-2 sm:col-span-1 sm:self-end">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input placeholder="Search reference, notes, type..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-7 h-9 text-sm" />
           </div>
           <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as any)}>
-            <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 text-sm col-span-2 sm:col-span-1 sm:self-end"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All movements</SelectItem>
               <SelectItem value="transfers">Transfers (warehouse ↔ store)</SelectItem>
@@ -515,7 +586,62 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           </div>
         </div>
 
-        <div className="border rounded-md overflow-auto flex-1">
+        {/* Phones: a card per movement. The 11-column table has no room there,
+            and squeezed into what was left of the screen it showed nothing. */}
+        <div className="md:hidden shrink-0 space-y-2">
+          {isLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading ledger...</p>
+          ) : filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No movements found</p>
+          ) : filtered.map((r) => {
+            const { transferDetail, openDetail } = details(r);
+            const place = [
+              r.wh_after != null ? `Warehouse ${r.wh_before != null && r.wh_before !== r.wh_after ? `${r.wh_before}→` : ""}${r.wh_after}` : null,
+              r.st_after != null ? `Store ${r.st_before != null && r.st_before !== r.st_after ? `${r.st_before}→` : ""}${r.st_after}` : null,
+              hasOpenRoll && r.open_after != null ? `Open roll ${r.open_before != null && r.open_before !== r.open_after ? `${r.open_before}→` : ""}${r.open_after}` : null,
+            ].filter(Boolean).join(" · ");
+            return (
+              <div key={r.id} className={cn("rounded-lg border p-3 text-xs space-y-1.5", r.discrepancy !== 0 && "border-amber-300 bg-amber-50/70")}>
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant="outline" className={`text-[10px] ${CATEGORY_COLORS[r.category]}`}>{r.label}</Badge>
+                  <span className="whitespace-nowrap">{changeNode(r)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                  <span>
+                    {new Date(r.created_at).toLocaleString()}
+                    {r.reference_date && r.reference_date.slice(0, 10) !== r.created_at.slice(0, 10) && <> · dated {r.reference_date}</>}
+                  </span>
+                  <span className="shrink-0">{r.branch_label}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="tabular-nums">{refNode(r)}</span>
+                  {r.total_after != null && (
+                    <span className="whitespace-nowrap tabular-nums">
+                      <span className="text-muted-foreground">Total </span>
+                      {r.total_before != null && r.total_before !== r.total_after && <span className="text-muted-foreground">{r.total_before} → </span>}
+                      <span className="font-semibold">{r.total_after}</span>
+                    </span>
+                  )}
+                </div>
+                {place && <div className="text-muted-foreground tabular-nums">{place}</div>}
+                {r.discrepancy !== 0 && (
+                  <div className="flex items-center gap-1 font-medium text-amber-700">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    {r.discrepancy > 0 ? "+" : ""}{r.discrepancy} unexplained — stock had already changed without a record
+                  </div>
+                )}
+                {(r.notes || transferDetail || openDetail || r.user !== "—") && (
+                  <div className="text-muted-foreground break-words">
+                    {r.notes}{transferDetail}{openDetail}
+                    {r.user !== "—" && <span className="block text-[10px]">{r.user}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block border rounded-md overflow-auto flex-1 min-h-0">
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
@@ -540,16 +666,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={hasOpenRoll ? 11 : 10} className="h-24 text-center"><div className="flex flex-col items-center gap-1 text-muted-foreground"><History className="h-5 w-5" /><span className="text-sm">No movements found</span></div></TableCell></TableRow>
               ) : filtered.map((r) => {
-                const locShort = r.category === "transfer" && r.dest_location
-                  ? `${(r.location || "?")[0].toUpperCase()}→${r.dest_location[0].toUpperCase()}`
-                  : "";
-                const qtyMoved = r.quantity;
-                const transferDetail = r.category === "transfer" && r.dest_before != null && r.dest_after != null
-                  ? ` · dest ${r.dest_before}→${r.dest_after}`
-                  : "";
-                const openDetail = (r.open_before != null && r.open_after != null && (r.open_before !== 0 || r.open_after !== 0))
-                  ? ` · open ${r.open_before}→${r.open_after}${r.unit || "m"}`
-                  : "";
+                const { transferDetail, openDetail } = details(r);
                 return (
                 <TableRow key={r.id} className={r.discrepancy !== 0 ? "bg-amber-50/70 hover:bg-amber-50" : undefined}>
                   <TableCell className="text-xs whitespace-nowrap">
@@ -577,49 +694,8 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs tabular-nums">
-                    {r.reference_kind === "invoice" && r.reference_id ? (
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceDetailId(r.reference_id)}
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                        title="View invoice details"
-                      >
-                        {r.reference_no}<ExternalLink className="h-3 w-3" />
-                      </button>
-                    ) : r.reference_kind === "online_sale" && r.reference_id ? (
-                      <button
-                        type="button"
-                        onClick={() => setOnlineSaleDetailId(r.reference_id)}
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                        title="View online sale details"
-                      >
-                        {r.reference_no}<ExternalLink className="h-3 w-3" />
-                      </button>
-                    ) : r.reference_link && r.reference_no !== "—" ? (
-                      <Link to={r.reference_link} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => onOpenChange(false)}>
-                        {r.reference_no}<ExternalLink className="h-3 w-3" />
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">{r.reference_no}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
-                    {/* A transfer moves stock without changing the branch total,
-                        so it shows the quantity and where it went, not ± . */}
-                    {r.category === "transfer" && r.dest_location ? (
-                      <span className="text-sm font-medium text-slate-600">
-                        {qtyMoved} <span className="text-[10px] uppercase text-muted-foreground">{locShort}</span>
-                      </span>
-                    ) : r.qty_in > 0 ? (
-                      <span className="text-sm font-medium text-emerald-600">+{r.qty_in}</span>
-                    ) : r.qty_out > 0 ? (
-                      <span className="text-sm font-medium text-rose-600">−{r.qty_out}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                    {r.unit ? <span className="ml-1 text-[10px] text-muted-foreground">{r.unit}</span> : null}
-                  </TableCell>
+                  <TableCell className="text-xs tabular-nums">{refNode(r)}</TableCell>
+                  <TableCell className="text-right whitespace-nowrap">{changeNode(r)}</TableCell>
                   <BalanceCell before={r.wh_before} after={r.wh_after} />
                   <BalanceCell before={r.st_before} after={r.st_after} />
                   {hasOpenRoll && (
@@ -641,7 +717,22 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
           </Table>
         </div>
 
-        <p className="text-[11px] text-muted-foreground">
+        {/* Long, so phones fold it away; there is room for it from md up. */}
+        <details className="md:hidden shrink-0 text-[11px] text-muted-foreground">
+          <summary className="cursor-pointer select-none">How to read this ledger</summary>
+          <p className="mt-1">
+          Recorded is when the stock moved, which is not always the date on the
+          document — an order placed one day and entered the next shows both.
+          Business Insights reports by the document's date, so that is the one to
+          compare against. Balances are what each movement recorded at the time, read oldest to newest —
+          not worked backwards from today, so they can disagree with the current stock
+          ({item?.quantity ?? 0}) and show you where. A row marked{" "}
+          <span className="text-amber-700">unexplained</span> found the stock already
+          different from what the movement before it left behind: something changed it
+          without being recorded.
+          </p>
+        </details>
+        <p className="hidden md:block text-[11px] text-muted-foreground">
           Recorded is when the stock moved, which is not always the date on the
           document — an order placed one day and entered the next shows both.
           Business Insights reports by the document's date, so that is the one to
