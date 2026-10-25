@@ -1,3 +1,5 @@
+import { BranchStockSplit } from "@/components/BranchStockSplit";
+import type { BranchQty } from "@/hooks/use-stock-split";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +26,8 @@ const STATUS_META: Record<StockStatus, { label: string; className: string }> = {
 interface Props {
   item: any;
   branchLabel: string;
+  /** Per-branch stock while all branches are combined; omitted for a single branch. */
+  stockSplit?: BranchQty[];
   isAdmin: boolean;
   viewArchived: boolean;
   selected: boolean;
@@ -66,7 +70,7 @@ function IconAction({ icon: Icon, label, onClick, danger, primary }: { icon: any
 }
 
 export function InventoryMobileCard({
-  item, branchLabel, isAdmin, viewArchived, selected, onToggleSelect,
+  item, branchLabel, stockSplit, isAdmin, viewArchived, selected, onToggleSelect,
   onTransfer, onAdjust, onHistory, onPricing, onSuppliers, onBundles,
   onEdit, onArchive, onRestore, onDelete,
 }: Props) {
@@ -78,6 +82,8 @@ export function InventoryMobileCard({
   const canSeeCost = isAdmin || source === "local";
   const openRoll = Number(item.open_roll_remaining ?? 0);
   const invValue = qty * Number(item.cost_price || 0);
+  const incoming = Number(item.incoming_quantity ?? 0);
+  const reserved = Number(item.reserved_quantity ?? 0);
 
   return (
     <div className={`rounded-xl border bg-card p-3 space-y-3 ${selected ? "ring-1 ring-primary" : ""}`}>
@@ -112,11 +118,23 @@ export function InventoryMobileCard({
               {openRoll > 0 && (
                 <span className="ml-1 text-[10px] font-normal text-muted-foreground">+{openRoll} open</span>
               )}
+              {stockSplit && <BranchStockSplit split={stockSplit} className="text-[11px]" />}
             </>
           }
           className={threshold > 0 && qty <= threshold ? "text-destructive" : ""}
         />
-        <Field label="Unit" value={unit} />
+        {/* The same two figures as the desktop table's columns: what is on
+            the way from open POs, and what invoices are holding back. */}
+        <Field
+          label="Incoming"
+          value={incoming > 0 ? <>{incoming} <span className="text-xs font-normal text-muted-foreground">on order</span></> : "—"}
+          className={incoming > 0 ? "text-blue-600" : "text-muted-foreground"}
+        />
+        <Field
+          label="Reserved"
+          value={reserved > 0 ? reserved : "—"}
+          className={reserved > 0 ? "text-amber-600" : "text-muted-foreground"}
+        />
         {isAdmin && <Field label="Inventory Value" value={peso(invValue)} />}
         <Field label="Cost Price" value={canSeeCost ? peso(Number(item.cost_price || 0)) : "—"} />
         <Field label="Selling Price" value={peso(Number(item.selling_price || 0))} />

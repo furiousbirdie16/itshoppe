@@ -26,6 +26,8 @@ import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
+import { BranchStockSplit } from "@/components/BranchStockSplit";
+import { useStockSplit } from "@/hooks/use-stock-split";
 import { ACTION_CLASS, fmtDays, fmtUnits, makeBuckets } from "@/lib/insights";
 import { stockUnitsSold } from "@/lib/restock";
 import { InsightsTrendChart, type TrendPoint } from "@/components/InsightsTrendChart";
@@ -231,7 +233,10 @@ function CustomRangePickers({
 export default function BusinessInsightsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { activeBranchId, activeBranch } = useBranch();
+  const { activeBranchId, activeBranch, branches } = useBranch();
+  // Stock is every branch added together under "All branches"; show the split.
+  const stockSplit = useStockSplit();
+  const combinedBranches = activeBranchId === null && branches.length > 1;
   const money = (n: number) => (isAdmin ? peso(n) : "—");
   // Arriving from a "Sales History" link elsewhere in the app: ?item=<sku>.
   // The page opens on the product with its whole history in view, rather than
@@ -456,10 +461,14 @@ export default function BusinessInsightsPage() {
   // Real on-hand quantities. items.quantity stopped being maintained when
   // per-branch stock arrived, so it reports figures frozen at that migration.
   const { data: branchStockRaw = [] } = useQuery({
-    queryKey: ["bi_branch_stock"],
-    queryFn: async () => fetchAllRows<any>(() =>
-      supabase.from("item_branch_stock").select("item_id, quantity")
-    ),
+    // Follows the branch picker like the sales do: Manila's sales against
+    // every branch's stock made days-left and the stock column read wrong.
+    queryKey: ["bi_branch_stock", activeBranchId],
+    queryFn: async () => fetchAllRows<any>(() => {
+      let q = supabase.from("item_branch_stock").select("id, item_id, quantity").order("id");
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      return q;
+    }),
   });
 
   const stockByItem = useMemo(() => {
@@ -1840,6 +1849,7 @@ export default function BusinessInsightsPage() {
                   <div key={p.key} className={cn("space-y-1", nested && "ml-4")}>
                     <InsightsProductCard
                       product={p}
+                      stockSplit={combinedBranches && p.kind === "parent" ? stockSplit.get(p.itemId) : undefined}
                       txns={perUnitTxns.get(p.key) || []}
                       isAdmin={isAdmin}
                       money={money}
@@ -1924,7 +1934,10 @@ export default function BusinessInsightsPage() {
                           )}
                           <TableCell className="text-right text-sm">
                             {p.kind === "variation" ? <span className="text-muted-foreground">—</span> : (
-                              <span className={cn(p.threshold > 0 && p.stock <= p.threshold && "text-destructive font-medium")}>{p.stock}</span>
+                              <>
+                                <span className={cn(p.threshold > 0 && p.stock <= p.threshold && "text-destructive font-medium")}>{p.stock}</span>
+                                {combinedBranches && <BranchStockSplit split={stockSplit.get(p.itemId)} />}
+                              </>
                             )}
                           </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">

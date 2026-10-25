@@ -23,7 +23,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ role: "admin" }) }));
 vi.mock("@/contexts/BranchContext", () => ({
-  useBranch: () => ({ activeBranchId: null, activeBranch: null }),
+  useBranch: () => ({ activeBranchId: null, activeBranch: null, branches: [] }),
 }));
 
 import BusinessInsightsPage from "./BusinessInsightsPage";

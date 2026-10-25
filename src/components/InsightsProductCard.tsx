@@ -1,3 +1,5 @@
+import { BranchStockSplit } from "@/components/BranchStockSplit";
+import type { BranchQty } from "@/hooks/use-stock-split";
 import { format } from "date-fns";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +17,8 @@ function Metric({ label, value, className }: { label: string; value: React.React
 
 interface Props {
   product: ProductMetric;
+  /** Per-branch stock while all branches are combined. */
+  stockSplit?: BranchQty[];
   txns: SaleTxn[];
   isAdmin: boolean;
   money: (n: number) => string;
@@ -27,7 +31,7 @@ interface Props {
  * table needs horizontal scrolling to reach the money columns; this shows the
  * same figures stacked so a phone only ever scrolls vertically.
  */
-export function InsightsProductCard({ product: p, txns, isAdmin, money, isOpen, onToggle }: Props) {
+export function InsightsProductCard({ product: p, stockSplit, txns, isAdmin, money, isOpen, onToggle }: Props) {
   return (
     <div className="rounded-xl border bg-card">
       <button
@@ -63,7 +67,10 @@ export function InsightsProductCard({ product: p, txns, isAdmin, money, isOpen, 
 
         <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 border-t pt-2.5">
           {/* Variations hold no stock of their own — it is counted on the parent. */}
-          <Metric label="Stock" value={p.kind === "variation" ? "—" : p.stock} className={p.threshold > 0 && p.stock <= p.threshold ? "text-destructive" : ""} />
+          <div>
+            <Metric label="Stock" value={p.kind === "variation" ? "—" : p.stock} className={p.threshold > 0 && p.stock <= p.threshold ? "text-destructive" : ""} />
+            {stockSplit && <BranchStockSplit split={stockSplit} />}
+          </div>
           <Metric label="Sold" value={p.variationQtySold > 0 ? `${p.qtySold} (+${fmtUnits(p.variationQtySold)} var.)` : p.qtySold} />
           <Metric label="Days left" value={p.kind === "variation" ? "—" : fmtDays(p.daysRemaining)} />
           {isAdmin && <Metric label="Revenue" value={money(p.revenue)} />}

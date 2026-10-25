@@ -16,7 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown, MapPin, Container } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown, MapPin, Container, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveItem } from "@/lib/reorder";
 
 import ExportButton from "@/components/ExportButton";
@@ -26,6 +27,7 @@ import { toast } from "sonner";
 import { peso } from "@/lib/currency";
 import { StatusBadge } from "@/components/StatusBadge";
 import { OverseasPOMobileCard } from "@/components/OverseasPOMobileCard";
+import { OverseasPOItemsBreakdown, ReceivedProgress } from "@/components/OverseasPOItemsBreakdown";
 import { addMonths, format } from "date-fns";
 import { ItemSearch } from "@/components/ItemSearch";
 import type { OverseasPurchaseOrder, OverseasSupplier, OverseasPurchaseOrderItem } from "@/types/database";
@@ -42,6 +44,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { CargoCostDialog } from "@/components/CargoCostDialog";
 import { docNo } from "@/lib/doc-number";
+import { cn } from "@/lib/utils";
 
 interface LineItem {
   /** The existing row, when this line is one the PO already had. Carried so an
@@ -889,6 +892,9 @@ export default function OverseasPurchaseOrdersPage() {
   const phpTotal = foreignTotal * (parseFloat(exchangeRate) || 0);
   const currencySymbol = currency === "USD" ? "$" : "¥";
 
+  // For the PO links on Incoming Stock.
+  const orderById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
+
   const incomingRows = useMemo<IncomingStockRow[]>(() => {
     const ordersById = new Map(orders.map((order) => [order.id, order]));
 
@@ -1036,8 +1042,7 @@ export default function OverseasPurchaseOrdersPage() {
    */
   const renderOverseasPOActions = (po: any) => (
     <>
-                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openPreview(po)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>}
-                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewPO(po)} className="h-7 w-7 rounded-md" title="View PO"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {po.status !== "received" && (
                       <Button
                         variant="ghost"
@@ -1097,26 +1102,31 @@ export default function OverseasPurchaseOrdersPage() {
                           button repeated. */}
                       <MapPin className={`h-3.5 w-3.5 ${shipmentByPo.get(po.id) ? "text-primary" : "text-muted-foreground"}`} />
                     </Button>
-                    {isAdmin && isShippedStatus(po.status) && (
-                      <Button variant="ghost" size="icon" onClick={() => setCargoPO(po)} className="h-7 w-7 rounded-md" title="Cargo cost & landed costs">
-                        <Container className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
+                    {/* Used now and then, so they wait behind one button rather
+                        than crowding the row. */}
+                    {isAdmin && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md" title="More actions" aria-label="More actions">
+                            <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => openPreview(po)}><FileDown className="mr-2 h-3.5 w-3.5" /> Preview & download PDF</DropdownMenuItem>
+                          {isShippedStatus(po.status) && (
+                            <DropdownMenuItem onSelect={() => setCargoPO(po)}><Container className="mr-2 h-3.5 w-3.5" /> Cargo & landed costs</DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onSelect={() => openEdit(po)}><Pencil className="mr-2 h-3.5 w-3.5" /> Edit</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => deleteMut.mutate(po.id)}><Trash2 className="mr-2 h-3.5 w-3.5" /> Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
-                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(po)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>}
-                    {isAdmin && <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>}
     </>
   );
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="orders" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
-          <TabsTrigger value="incoming">Incoming Stock</TabsTrigger>
-          <TabsTrigger value="tracking">Tracking</TabsTrigger>
-        </TabsList>
-        <TabsContent value="orders" className="space-y-6 mt-0">
-      <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas PO</h1>
           <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
@@ -1140,7 +1150,20 @@ export default function OverseasPurchaseOrdersPage() {
             </div>
           )}
         </div>
-        <div className="toolbar-actions">
+
+      <Tabs defaultValue="orders" className="space-y-5">
+        {/* Scrolls sideways on a phone instead of squeezing the labels. */}
+        <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="inline-flex w-max">
+            <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
+            <TabsTrigger value="incoming">Incoming Stock</TabsTrigger>
+            <TabsTrigger value="tracking">Tracking</TabsTrigger>
+          </TabsList>
+        </div>
+        {/* Kept mounted (hidden) on the other tabs: the PO details and receive
+            dialogs live here, and Incoming Stock opens them from its PO links. */}
+        <TabsContent value="orders" forceMount className="space-y-5 mt-0 data-[state=inactive]:hidden">
+      <div className="flex flex-wrap items-center justify-end gap-2">
           {isAdmin && selectedIds.size > 0 && (
             <>
               <BulkEditDialog
@@ -1212,7 +1235,6 @@ export default function OverseasPurchaseOrdersPage() {
               <Plus className="h-4 w-4 mr-1.5" /> New Overseas PO
             </Button>
           )}
-        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -1225,7 +1247,8 @@ export default function OverseasPurchaseOrdersPage() {
             className="pl-9"
           />
         </div>
-        <div className="inline-flex rounded-lg border bg-card p-0.5">
+        <div className="-mx-3 w-[calc(100%+1.5rem)] overflow-x-auto px-3 sm:mx-0 sm:w-auto sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="inline-flex rounded-lg border bg-card p-0.5 whitespace-nowrap">
           {([
             { key: "all", label: `All (${orders.length})` },
             { key: "not_shipped", label: `Not Shipped (${bucketCounts.not_shipped})` },
@@ -1245,6 +1268,7 @@ export default function OverseasPurchaseOrdersPage() {
               {b.label}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -1598,36 +1622,64 @@ export default function OverseasPurchaseOrdersPage() {
       <CargoCostDialog po={cargoPO} open={!!cargoPO} onOpenChange={(o) => { if (!o) setCargoPO(null); }} />
 
       <Dialog open={!!viewPO} onOpenChange={() => setViewPO(null)}>
-        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-lg">PO {docNo(viewPO?.po_number)}</DialogTitle></DialogHeader>
+        {/* Full screen on a phone: the product list is the point of this view,
+            and in a floating box it needed sideways swiping to read. */}
+        <DialogContent className="sm:max-w-5xl h-[100dvh] max-h-[100dvh] rounded-none p-4 sm:h-auto sm:max-h-[90vh] sm:rounded-lg sm:p-6 overflow-y-auto">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-lg flex flex-wrap items-center gap-2 pr-6">
+              PO {docNo(viewPO?.po_number)}
+              {viewPO && <StatusBadge status={viewPO.status} context="overseas_po" />}
+            </DialogTitle>
+          </DialogHeader>
           {viewPO && (
-            <div className="space-y-5 pt-2">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-muted-foreground">Supplier:</span> <span className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</span></div>
-                <div><span className="text-muted-foreground">Status:</span> <StatusBadge status={viewPO.status} context="overseas_po" /></div>
-                {isAdmin && <div><span className="text-muted-foreground">Currency:</span> {viewPO.currency}</div>}
-                {isAdmin && <div><span className="text-muted-foreground">Rate:</span> {viewPO.exchange_rate}</div>}
-                {isAdmin && isShippedStatus(viewPO.status) && (
-                  <div className="col-span-2">
-                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setCargoPO(viewPO)}>
-                      <Container className="mr-1.5 h-3.5 w-3.5" /> Cargo cost & landed costs
-                    </Button>
-                  </div>
-                )}
+            <div className="space-y-4 pt-1">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                <div><div className="text-xs text-muted-foreground">Supplier</div><div className="font-medium">{viewPO.overseas_suppliers?.name || "—"}</div></div>
+                <div><div className="text-xs text-muted-foreground">Ordered</div><div className="font-medium">{viewPO.order_date ? new Date(viewPO.order_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</div></div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Arrival</div>
+                  {(() => {
+                    const a = arrivalFor(viewPO.id, viewPO.expected_delivery);
+                    if (!a) return <div className="text-muted-foreground">—</div>;
+                    const d = new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                    return a.confirmed ? <div className="font-medium text-success">✓ {d}</div> : <div className="font-medium">est. {d}</div>;
+                  })()}
+                </div>
+                <div><div className="text-xs text-muted-foreground">Branch</div><div className="font-medium">{branchNameById.get((viewPO as any).branch_id) || "—"}</div></div>
+                {isAdmin && <div><div className="text-xs text-muted-foreground">Currency · rate</div><div className="font-medium">{viewPO.currency} · {viewPO.exchange_rate}</div></div>}
+
                 {(viewPO as any).payment_due_date && (() => {
                   const due = (viewPO as any).payment_due_date as string;
                   // Only unpaid orders can be late; once paid the date is history.
                   const overdue = !isPaidStatus(viewPO.status) && due < new Date().toISOString().slice(0, 10);
                   return (
                     <div>
-                      <span className="text-muted-foreground">Payment due:</span>{" "}
-                      <span className={overdue ? "font-medium text-destructive" : "font-medium"}>
+                      <div className="text-xs text-muted-foreground">Payment due</div>
+                      <div className={overdue ? "font-medium text-destructive" : "font-medium"}>
                         {new Date(due).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                         {overdue && " · overdue"}
-                      </span>
+                      </div>
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* The next things done with an order, without closing this and
+                  hunting for the row's icon. */}
+              <div className="flex flex-wrap gap-2">
+                {viewPO.status !== "received" && (
+                  <Button size="sm" className="h-8 text-xs" onClick={() => { const po = viewPO; setViewPO(null); setReceiveOpen(po.id); setReceiveBranchId((po as any).branch_id || activeBranchId || ""); setReceiveQtys({}); }}>
+                    <PackageCheck className="mr-1.5 h-3.5 w-3.5" /> Receive items
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openTrackFor(viewPO)}>
+                  <MapPin className="mr-1.5 h-3.5 w-3.5" /> {shipmentByPo.get(viewPO.id) ? "Edit tracking" : "Add tracking"}
+                </Button>
+                {isAdmin && isShippedStatus(viewPO.status) && (
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setCargoPO(viewPO)}>
+                    <Container className="mr-1.5 h-3.5 w-3.5" /> Cargo & landed costs
+                  </Button>
+                )}
               </div>
               {viewPO.notes && (
                 <div className="rounded-lg border bg-muted/40 p-3">
@@ -1636,75 +1688,32 @@ export default function OverseasPurchaseOrdersPage() {
                   <p className="mt-1 whitespace-pre-wrap text-sm">{viewPO.notes}</p>
                 </div>
               )}
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Products</p>
-                  <p className="mt-1 text-2xl font-semibold">{viewItems.length}</p>
-                </div>
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Ordered Qty</p>
-                  <p className="mt-1 text-2xl font-semibold">{viewItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0)}</p>
-                </div>
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Received Qty</p>
-                  <p className="mt-1 text-2xl font-semibold">{viewItems.reduce((sum, item) => sum + Number(item.received_quantity || 0), 0)}</p>
-                </div>
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Remaining Qty</p>
-                  <p className="mt-1 text-2xl font-semibold">
-                    {viewItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0) - Number(item.received_quantity || 0)), 0)}
-                  </p>
-                </div>
-              </div>
+              {(() => {
+                const ordered = viewItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+                const received = viewItems.reduce((sum, item) => sum + Number(item.received_quantity || 0), 0);
+                const remaining = viewItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0) - Number(item.received_quantity || 0)), 0);
+                return (
+                  <div className="grid grid-cols-4 divide-x rounded-lg border bg-card text-center">
+                    {[
+                      ["Products", viewItems.length],
+                      ["Ordered", ordered],
+                      ["Received", received],
+                      ["To come", remaining],
+                    ].map(([label, value]) => (
+                      <div key={label as string} className="px-2 py-2.5">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                        <div className="text-lg font-semibold tabular-nums">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div className="rounded-lg border bg-card">
                 <div className="border-b px-4 py-3">
-                  <h3 className="text-sm font-semibold">Ordered Products Breakdown</h3>
-                  <p className="text-xs text-muted-foreground">Per-product quantities, receiving progress, and value.</p>
+                  <h3 className="text-sm font-semibold">Products</h3>
                 </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">SKU</TableHead>
-                      <TableHead className="text-xs">Product</TableHead>
-                      <TableHead className="text-xs">Description</TableHead>
-                      <TableHead className="text-xs text-right">Ordered</TableHead>
-                      <TableHead className="text-xs text-right">Received</TableHead>
-                      <TableHead className="text-xs text-right">Remaining</TableHead>
-                      <TableHead className="text-xs">Date Received</TableHead>
-                      {isAdmin && <TableHead className="text-xs text-right">Unit ({viewPO.currency})</TableHead>}
-                      {isAdmin && <TableHead className="text-xs text-right">Line Total</TableHead>}
-                      {isAdmin && <TableHead className="text-xs text-right">PHP Value</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {viewItems.map(item => {
-                      const orderedQty = Number(item.quantity || 0);
-                      const receivedQty = item.item_id ? Number(item.received_quantity || 0) : 0;
-                      const remainingQty = item.item_id ? Math.max(0, orderedQty - receivedQty) : orderedQty;
-                      const lineTotal = orderedQty * Number(item.unit_cost || 0);
-
-                      return (
-                        <TableRow key={item.id}>
-                          <TableCell className="tabular-nums text-xs font-medium text-primary">{item.items?.sku || "—"}</TableCell>
-                          <TableCell className="text-sm font-medium">{item.item_name}</TableCell>
-                          <TableCell className="max-w-[220px] text-sm text-muted-foreground">{item.description || "—"}</TableCell>
-                          <TableCell className="text-sm text-right">{orderedQty}</TableCell>
-                          <TableCell className="text-sm text-right">{item.item_id ? receivedQty : "—"}</TableCell>
-                          <TableCell className="text-sm text-right font-medium">{remainingQty}</TableCell>
-                          <TableCell className="text-sm">{item.received_date ? new Date(item.received_date).toLocaleDateString("en-US") : "—"}</TableCell>
-                          {isAdmin && <TableCell className="text-sm text-right">{Number(item.unit_cost || 0).toLocaleString("en", { minimumFractionDigits: 2 })}</TableCell>}
-                          {isAdmin && (
-                            <TableCell className="text-sm text-right font-medium">
-                              {viewPO.currency === "USD" ? "$" : "¥"}{lineTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
-                            </TableCell>
-                          )}
-                          {isAdmin && <TableCell className="text-sm text-right">{peso(lineTotal * Number(viewPO.exchange_rate || 1))}</TableCell>}
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <OverseasPOItemsBreakdown items={viewItems as any} currency={viewPO.currency} exchangeRate={Number(viewPO.exchange_rate || 1)} isAdmin={isAdmin} />
               </div>
 
               {isAdmin && (
@@ -2018,6 +2027,7 @@ export default function OverseasPurchaseOrdersPage() {
                   selected={selectedIds.has(po.id)}
                   onToggleSelect={() => toggleOne(po.id)}
                   actions={renderOverseasPOActions(po)}
+                  onOpen={() => setViewPO(po)}
                   balanceLeft={paidSoFar(po.id) > 0 && !isPaidStatus(po.status) ? phpBalance(po) : null}
                   itemsSummary={
                     totalItems === 0 ? "—" : (
@@ -2066,7 +2076,9 @@ export default function OverseasPurchaseOrdersPage() {
               return (
               <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
                 {isAdmin && <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>}
-                <TableCell className="font-medium text-sm tabular-nums">{docNo(po.po_number)}</TableCell>
+                <TableCell className="font-medium text-sm tabular-nums">
+                  <button type="button" onClick={() => setViewPO(po)} className="text-primary hover:underline">{docNo(po.po_number)}</button>
+                </TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm whitespace-nowrap">{branchNameById.get((po as any).branch_id) || "—"}</TableCell>
                 <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
@@ -2136,137 +2148,178 @@ export default function OverseasPurchaseOrdersPage() {
         </TabsContent>
         <TabsContent value="incoming" className="mt-0">
       <section className="space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Incoming Stocks</h2>
-            <p className="text-sm text-muted-foreground">
-              {filteredIncomingRows.length} item{filteredIncomingRows.length !== 1 ? "s" : ""}
-              {filteredIncomingRows.length !== incomingRows.length ? ` (filtered from ${incomingRows.length})` : ""}
-            </p>
+        {/* One row of filters, no labels: the placeholders say what they are. */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_200px_190px]">
+          <div className="relative col-span-2 sm:col-span-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search product, SKU or PO..."
+              value={incomingSearch}
+              onChange={(e) => setIncomingSearch(e.target.value)}
+              className="pl-9 h-9"
+            />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_180px] xl:items-end">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search ordered products..."
-                value={incomingSearch}
-                onChange={(e) => setIncomingSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Supplier</Label>
-              <Select value={incomingSupplierFilter} onValueChange={setIncomingSupplierFilter}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="All suppliers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All suppliers</SelectItem>
-                  {suppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.name}>{supplier.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Receiving Status</Label>
-              <Select value={incomingReceiptFilter} onValueChange={setIncomingReceiptFilter}>
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="incoming">Still incoming</SelectItem>
-                  <SelectItem value="all">All ordered items</SelectItem>
-                  <SelectItem value="partial">Partially received</SelectItem>
-                  <SelectItem value="unreceived">Not yet received</SelectItem>
-                  <SelectItem value="received">Fully received</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Ordered Qty</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {filteredIncomingRows.reduce((sum, row) => sum + row.ordered_quantity, 0)}
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Received Qty</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {filteredIncomingRows.reduce((sum, row) => sum + row.received_quantity, 0)}
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Remaining Qty</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {filteredIncomingRows.reduce((sum, row) => sum + row.remaining_quantity, 0)}
-            </p>
-          </div>
-          {isAdmin && (
-            <div className="rounded-lg border bg-card p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">PHP Value</p>
-              <p className="mt-1 text-2xl font-semibold text-primary">
-                {peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="data-table-wrapper">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableHeader sortKey="po_number" label="PO #" sort={incomingSort} onToggle={toggleIncomingSort} />
-                <SortableHeader sortKey="supplier" label="Supplier" sort={incomingSort} onToggle={toggleIncomingSort} />
-                <SortableHeader sortKey="product" label="Product" sort={incomingSort} onToggle={toggleIncomingSort} />
-                <SortableHeader sortKey="sku" label="SKU" sort={incomingSort} onToggle={toggleIncomingSort} />
-                <SortableHeader sortKey="ordered" label="Ordered" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
-                <SortableHeader sortKey="received" label="Received" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
-                <SortableHeader sortKey="remaining" label="Remaining" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
-                {isAdmin && <SortableHeader sortKey="unit_cost" label="Unit Cost" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />}
-                {isAdmin && <SortableHeader sortKey="php_value" label="PHP Value" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />}
-                <SortableHeader sortKey="expected_delivery" label="ETA" sort={incomingSort} onToggle={toggleIncomingSort} />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedIncomingRows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10}>
-                    <div className="empty-state">
-                      <ShoppingCart className="empty-state-icon" />
-                      <p className="text-sm">No ordered products match your filters</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : sortedIncomingRows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="text-sm tabular-nums font-medium">{docNo(row.po_number)}</TableCell>
-                  <TableCell className="text-sm">{row.supplier_name}</TableCell>
-                  <TableCell>
-                    <div className="min-w-[180px]">
-                      <p className="text-sm font-medium">{row.item_name}</p>
-                      <p className="text-xs text-muted-foreground">{row.description || "—"}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums">{row.sku || "—"}</TableCell>
-                  <TableCell className="text-sm text-right">{row.ordered_quantity}</TableCell>
-                  <TableCell className="text-sm text-right">{row.received_quantity}</TableCell>
-                  <TableCell className="text-sm text-right font-medium">{row.remaining_quantity}</TableCell>
-                  {isAdmin && (
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
-                    </TableCell>
-                  )}
-                  {isAdmin && <TableCell className="text-sm text-right tabular-nums text-primary">{peso(row.php_value)}</TableCell>}
-                  <TableCell className="text-sm">{row.expected_delivery ? new Date(row.expected_delivery).toLocaleDateString("en-US") : "—"}</TableCell>
-                </TableRow>
+          <Select value={incomingSupplierFilter} onValueChange={setIncomingSupplierFilter}>
+            <SelectTrigger className="h-9" aria-label="Supplier">
+              <SelectValue placeholder="All suppliers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All suppliers</SelectItem>
+              {suppliers.map((supplier) => (
+                <SelectItem key={supplier.id} value={supplier.name}>{supplier.name}</SelectItem>
               ))}
-            </TableBody>
-          </Table>
+            </SelectContent>
+          </Select>
+          <Select value={incomingReceiptFilter} onValueChange={setIncomingReceiptFilter}>
+            <SelectTrigger className="h-9" aria-label="Receiving status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="incoming">Still incoming</SelectItem>
+              <SelectItem value="all">All ordered items</SelectItem>
+              <SelectItem value="partial">Partially received</SelectItem>
+              <SelectItem value="unreceived">Not yet received</SelectItem>
+              <SelectItem value="received">Fully received</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
+        {/* Totals for what the filters show, in one strip. */}
+        {(() => {
+          const ordered = filteredIncomingRows.reduce((sum, row) => sum + row.ordered_quantity, 0);
+          const received = filteredIncomingRows.reduce((sum, row) => sum + row.received_quantity, 0);
+          const remaining = filteredIncomingRows.reduce((sum, row) => sum + row.remaining_quantity, 0);
+          const cells: [string, string][] = [
+            ["Products", String(filteredIncomingRows.length)],
+            ["Ordered", ordered.toLocaleString()],
+            ["Received", received.toLocaleString()],
+            ["To come", remaining.toLocaleString()],
+          ];
+          if (isAdmin) cells.push(["PHP value", peso(filteredIncomingRows.reduce((sum, row) => sum + row.php_value, 0))]);
+          return (
+            <div className={cn("grid divide-x rounded-lg border bg-card text-center", isAdmin ? "grid-cols-2 sm:grid-cols-5 [&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(n+3)]:border-t-0" : "grid-cols-4")}>
+              {cells.map(([label, value]) => (
+                <div key={label} className={cn("px-2 py-2.5", label === "PHP value" && "col-span-2 sm:col-span-1")}>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                  <div className={cn("text-lg font-semibold tabular-nums", label === "PHP value" && "text-primary")}>{value}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {(() => {
+          const today = new Date().toISOString().slice(0, 10);
+          const eta = (row: IncomingStockRow) => {
+            const a = arrivalFor(row.po_id, row.expected_delivery);
+            if (!a) return { node: <span className="text-muted-foreground">—</span>, late: false };
+            const d = new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+            // Late: the estimate has passed and goods are still to come.
+            const late = !a.confirmed && a.date < today && row.remaining_quantity > 0;
+            return {
+              late,
+              node: a.confirmed
+                ? <span className="text-success">✓ {d}</span>
+                : <span className={late ? "font-medium text-destructive" : undefined}>est. {d}{late && " · late"}</span>,
+            };
+          };
+          const poLink = (row: IncomingStockRow) => {
+            const po = orderById.get(row.po_id);
+            return po ? (
+              <button type="button" onClick={() => setViewPO(po)} className="font-medium tabular-nums text-primary hover:underline">{row.po_number}</button>
+            ) : (
+              <span className="font-medium tabular-nums">{row.po_number}</span>
+            );
+          };
+          const empty = (
+            <div className="empty-state">
+              <ShoppingCart className="empty-state-icon" />
+              <p className="text-sm">No ordered products match your filters</p>
+            </div>
+          );
+          return (
+            <>
+              {/* Phones: a card per product line. */}
+              <div className="md:hidden space-y-2">
+                {sortedIncomingRows.length === 0 ? empty : sortedIncomingRows.map((row) => {
+                  const e = eta(row);
+                  return (
+                    <div key={row.id} className={cn("rounded-xl border bg-card p-3 space-y-2", e.late && "border-destructive/40")}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold leading-snug">{row.item_name}</div>
+                          <div className="text-[11px] text-muted-foreground">{row.sku || "No SKU"}{row.description ? ` · ${row.description}` : ""}</div>
+                        </div>
+                        {isAdmin && <div className="shrink-0 text-right text-sm font-semibold tabular-nums text-primary">{peso(row.php_value)}</div>}
+                      </div>
+                      <div className="flex items-end justify-between gap-3">
+                        <ReceivedProgress received={row.received_quantity} ordered={row.ordered_quantity} />
+                        <div className="text-right text-xs">
+                          {row.remaining_quantity > 0
+                            ? <div className="font-semibold tabular-nums">{row.remaining_quantity} to come</div>
+                            : <div className="font-medium text-success">All received</div>}
+                          <div>{e.node}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t pt-2 text-xs">
+                        {poLink(row)}
+                        <span className="truncate text-muted-foreground">{row.supplier_name}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="data-table-wrapper hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <SortableHeader sortKey="po_number" label="PO" sort={incomingSort} onToggle={toggleIncomingSort} />
+                      <SortableHeader sortKey="product" label="Product" sort={incomingSort} onToggle={toggleIncomingSort} />
+                      <SortableHeader sortKey="received" label="Received" sort={incomingSort} onToggle={toggleIncomingSort} />
+                      <SortableHeader sortKey="remaining" label="To come" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />
+                      {isAdmin && <SortableHeader sortKey="unit_cost" label="Unit cost" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />}
+                      {isAdmin && <SortableHeader sortKey="php_value" label="PHP value" sort={incomingSort} onToggle={toggleIncomingSort} align="right" />}
+                      <SortableHeader sortKey="expected_delivery" label="ETA" sort={incomingSort} onToggle={toggleIncomingSort} />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedIncomingRows.length === 0 ? (
+                      <TableRow><TableCell colSpan={isAdmin ? 7 : 5}>{empty}</TableCell></TableRow>
+                    ) : sortedIncomingRows.map((row) => {
+                      const e = eta(row);
+                      return (
+                        <TableRow key={row.id}>
+                          <TableCell className="text-sm">
+                            {poLink(row)}
+                            <div className="text-[11px] text-muted-foreground">{row.supplier_name}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="min-w-[180px]">
+                              <p className="text-sm font-medium">{row.item_name}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                <span className="tabular-nums">{row.sku || "No SKU"}</span>{row.description ? ` · ${row.description}` : ""}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell><ReceivedProgress received={row.received_quantity} ordered={row.ordered_quantity} /></TableCell>
+                          <TableCell className={cn("text-sm text-right tabular-nums", row.remaining_quantity > 0 ? "font-semibold" : "text-muted-foreground")}>{row.remaining_quantity}</TableCell>
+                          {isAdmin && (
+                            <TableCell className="text-sm text-right tabular-nums">
+                              {row.currency === "USD" ? "$" : "¥"}{row.unit_cost.toLocaleString("en", { minimumFractionDigits: 2 })}
+                            </TableCell>
+                          )}
+                          {isAdmin && <TableCell className="text-sm text-right tabular-nums text-primary">{peso(row.php_value)}</TableCell>}
+                          <TableCell className="text-sm whitespace-nowrap">{e.node}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          );
+        })()}
       </section>
         </TabsContent>
 

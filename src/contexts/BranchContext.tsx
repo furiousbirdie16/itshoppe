@@ -19,6 +19,9 @@ interface BranchContextType {
   setActiveBranchId: (id: string | null) => void;
   /** Admins may switch to "All branches" (null). Regular users cannot. */
   canPickAll: boolean;
+  /** The branch the app opens in on this device, or null when none is set. */
+  homeBranchId: string | null;
+  setHomeBranchId: (id: string | null) => void;
   loading: boolean;
 }
 
@@ -28,12 +31,37 @@ const BranchContext = createContext<BranchContextType>({
   activeBranch: null,
   setActiveBranchId: () => {},
   canPickAll: false,
+  homeBranchId: null,
+  setHomeBranchId: () => {},
   loading: true,
 });
 
 export const useBranch = () => useContext(BranchContext);
 
+// The last single branch picked on this device.
 const STORAGE_KEY = "active_branch_id";
+// The branch the app opens in, set with the star beside the picker.
+const HOME_KEY = "home_branch_id";
+// This visit's pick, including "All branches". Kept for the session only, so
+// a combined view chosen yesterday does not greet you today: forgetting it was
+// on made stock counts read double.
+const SESSION_KEY = "active_branch_session";
+
+const read = (store: "local" | "session", key: string): string | null => {
+  try {
+    return (store === "local" ? localStorage : sessionStorage).getItem(key);
+  } catch {
+    return null;
+  }
+};
+const write = (store: "local" | "session", key: string, value: string | null) => {
+  try {
+    const s = store === "local" ? localStorage : sessionStorage;
+    if (value === null) s.removeItem(key); else s.setItem(key, value);
+  } catch {
+    // Storage blocked: the choice just will not be remembered.
+  }
+};
 
 export function BranchProvider({ children }: { children: ReactNode }) {
   const { user, role, loading: authLoading } = useAuth();
@@ -64,9 +92,17 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const [homeBranchId, setHomeBranchIdState] = useState<string | null>(() => read("local", HOME_KEY));
+
+  // Opening order: this session's pick, then the home branch, then the last
+  // single branch used. "All branches" is only ever a session pick.
   const [activeBranchId, setActiveBranchIdState] = useState<string | null>(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    return stored === "ALL" ? null : stored;
+    const session = read("session", SESSION_KEY);
+    if (session) return session === "ALL" ? null : session;
+    const home = read("local", HOME_KEY);
+    if (home) return home;
+    const last = read("local", STORAGE_KEY);
+    return last && last !== "ALL" ? last : null;
   });
 
   // Ensure the stored active branch is still valid for this user.
@@ -76,21 +112,28 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       // Fallback to first available branch (or null for admin)
       const fallback = canPickAll ? null : branches[0]?.id ?? null;
       setActiveBranchIdState(fallback);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, fallback ?? "ALL");
-      }
+      write("session", SESSION_KEY, fallback ?? "ALL");
     } else if (activeBranchId === null && !canPickAll && branches.length > 0) {
       const first = branches[0].id;
       setActiveBranchIdState(first);
-      if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, first);
+      write("local", STORAGE_KEY, first);
     }
-  }, [branches, isLoading, authLoading, activeBranchId, canPickAll]);
+    // A home branch this user can no longer see is dropped.
+    if (homeBranchId && branches.length > 0 && !branches.some((b) => b.id === homeBranchId)) {
+      setHomeBranchIdState(null);
+      write("local", HOME_KEY, null);
+    }
+  }, [branches, isLoading, authLoading, activeBranchId, canPickAll, homeBranchId]);
 
   const setActiveBranchId = (id: string | null) => {
     setActiveBranchIdState(id);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, id ?? "ALL");
-    }
+    write("session", SESSION_KEY, id ?? "ALL");
+    if (id) write("local", STORAGE_KEY, id);
+  };
+
+  const setHomeBranchId = (id: string | null) => {
+    setHomeBranchIdState(id);
+    write("local", HOME_KEY, id);
   };
 
   const activeBranch = useMemo(
@@ -106,6 +149,8 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         activeBranch,
         setActiveBranchId,
         canPickAll,
+        homeBranchId,
+        setHomeBranchId,
         loading: authLoading || isLoading,
       }}
     >

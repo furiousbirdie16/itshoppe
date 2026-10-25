@@ -17,6 +17,8 @@ interface Props {
   actions: React.ReactNode;
   /** Pesos still owed after down payments; null when nothing has been paid yet. */
   balanceLeft?: number | null;
+  /** Opens the PO's details — the PO number is the link. */
+  onOpen?: () => void;
 }
 
 const fmtDate = (d: string) =>
@@ -30,7 +32,7 @@ const fmtDate = (d: string) =>
  * and arrival stacked beneath, so nothing needs horizontal scrolling.
  */
 export function OverseasPOMobileCard({
-  po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions, balanceLeft,
+  po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions, balanceLeft, onOpen,
 }: Props) {
   return (
     <div className={cn("rounded-xl border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
@@ -39,7 +41,11 @@ export function OverseasPOMobileCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <span className="truncate tabular-nums text-xs font-semibold">{docNo(po.po_number)}</span>
+            {onOpen ? (
+              <button type="button" onClick={onOpen} className="truncate text-left tabular-nums text-sm font-semibold text-primary hover:underline">{docNo(po.po_number)}</button>
+            ) : (
+              <span className="truncate tabular-nums text-xs font-semibold">{docNo(po.po_number)}</span>
+            )}
             {isAdmin && (
               <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
                 {peso(Number(po.total_amount) * Number(po.exchange_rate || 1))}
