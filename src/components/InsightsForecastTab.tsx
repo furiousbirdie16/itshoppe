@@ -50,7 +50,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
 
   const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(branchId);
   // Same inputs as the Reorder List, so a big order left out there is left out here too.
-  const { adjustmentsByItem, receiptsByItem, includeIds } = useRestockInputs(orders, today);
+  const { adjustmentsByItem, receiptsByItem, includeIds } = useRestockInputs(orders, today, branchId);
   const { branches } = useBranch();
   const combinedBranches = !branchId && branches.length > 1;
   const stockSplit = useStockSplit();

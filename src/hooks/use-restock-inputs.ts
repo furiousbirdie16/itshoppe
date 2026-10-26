@@ -29,22 +29,28 @@ type Event = { daysAgo: number; units: number };
  * The include choices live in this browser only — they tune a suggestion,
  * nothing else reads them.
  */
-export function useRestockInputs(orders: PoRow[], today: Date) {
+export function useRestockInputs(orders: PoRow[], today: Date, branchId: string | null = null) {
   const since = format(subDays(today, HISTORY_DAYS + 1), "yyyy-MM-dd");
 
-  // Manual corrections only: transfers between branches cancel out across the
-  // business, and sales and receipts come from their own records.
+  // Manual corrections, and for one branch its transfers too: across the
+  // whole business transfers between branches cancel out, but a branch's
+  // stock rises and falls with them. Sales and receipts come from their own
+  // records.
   const { data: adjustmentRows = [] } = useQuery({
-    queryKey: ["restock_adjustments", since],
+    queryKey: ["restock_adjustments", since, branchId],
     queryFn: async () =>
-      fetchAllRows<any>(() =>
-        supabase
+      fetchAllRows<any>(() => {
+        let q = supabase
           .from("inventory_movements")
           .select("id, item_id, variation_id, type, quantity, reference_type, created_at")
-          .in("type", ["adjust_surplus", "adjust_missing"])
+          .in("type", branchId
+            ? ["adjust_surplus", "adjust_missing", "transfer_b2b_in", "transfer_b2b_out"]
+            : ["adjust_surplus", "adjust_missing"])
           .gte("created_at", since)
-          .order("id", { ascending: true }),
-      ),
+          .order("id", { ascending: true });
+        if (branchId) q = q.eq("branch_id", branchId);
+        return q;
+      }),
   });
 
   const adjustmentsByItem = useMemo(() => {
@@ -52,7 +58,8 @@ export function useRestockInputs(orders: PoRow[], today: Date) {
     for (const r of adjustmentRows) {
       // Open-roll corrections change the cut roll (in metres), not the stock count.
       if (!r.item_id || r.variation_id || !r.created_at || r.reference_type === "open_roll_adjustment") continue;
-      const units = Number(r.quantity || 0) * (r.type === "adjust_missing" ? -1 : 1);
+      const out = r.type === "adjust_missing" || r.type === "transfer_b2b_out";
+      const units = Number(r.quantity || 0) * (out ? -1 : 1);
       const arr = m.get(r.item_id) || [];
       arr.push({ daysAgo: differenceInCalendarDays(today, parseISO(r.created_at)), units });
       m.set(r.item_id, arr);

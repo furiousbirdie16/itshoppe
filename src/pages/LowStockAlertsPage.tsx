@@ -18,6 +18,7 @@ import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { useRestockInputs } from "@/hooks/use-restock-inputs";
 import { useStockSplit } from "@/hooks/use-stock-split";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
+import { useBranch } from "@/contexts/BranchContext";
 import { peso } from "@/lib/currency";
 import { fmtUnits } from "@/lib/insights";
 import {
@@ -102,12 +103,15 @@ export default function LowStockAlertsPage() {
   const [poRows, setPoRows] = useState<ReturnType<typeof buildRow>[] | null>(null);
   const [recentlyCreatedPoItems, setRecentlyCreatedPoItems] = useState<Set<string>>(new Set());
   const today = useMemo(() => startOfDay(new Date()), []);
+  // The branch picked in the toolbar: its stock, its sales, its orders. "All
+  // branches" is the whole business added together.
+  const { activeBranchId, activeBranch } = useBranch();
 
   // items.quantity is frozen at the per-branch migration; item_branch_stock is
   // the live figure. Reading the old column made every alert here wrong.
   const { data: items = [], isLoading } = useQuery<Item[]>({
-    queryKey: ["lowstock-items-with-stock"],
-    queryFn: () => getItemsWithStock(),
+    queryKey: ["lowstock-items-with-stock", activeBranchId],
+    queryFn: () => getItemsWithStock(activeBranchId),
   });
 
   const { data: variations = [] } = useQuery({
@@ -124,29 +128,33 @@ export default function LowStockAlertsPage() {
   // days-left figure on this page came out far too optimistic.
   const since = useMemo(() => format(subDays(today, HISTORY_DAYS), "yyyy-MM-dd"), [today]);
   const { data: salesRows = [] } = useQuery<SaleRow[]>({
-    queryKey: ["lowstock-sales", since, items.length, variations.length],
+    queryKey: ["lowstock-sales", since, items.length, variations.length, activeBranchId],
     enabled: items.length > 0,
     queryFn: async () => {
       const [invRows, onlRows] = await Promise.all([
-        fetchAllRows<any>(() =>
-          supabase
+        fetchAllRows<any>(() => {
+          let q = supabase
             .from("invoice_items")
-            .select("id, item_id, variation_id, quantity, unit_price, invoices!inner(invoice_number, invoice_date, status)")
+            .select("id, item_id, variation_id, quantity, unit_price, invoices!inner(invoice_number, invoice_date, status, branch_id)")
             .gte("invoices.invoice_date", since)
             // Cancelled orders never sold, and reserved ones have not sold yet —
             // counting either as demand shortens days-left and triggers early
             // reorders. A reserved order is counted once it becomes a real sale.
             .not("invoices.status", "in", "(draft,cancelled,reserved)")
-            .order("id"),
-        ),
-        fetchAllRows<any>(() =>
-          supabase
+            .order("id");
+          if (activeBranchId) q = q.eq("invoices.branch_id", activeBranchId);
+          return q;
+        }),
+        fetchAllRows<any>(() => {
+          let q = supabase
             .from("online_sales")
             .select("id, order_number, item_id, variation_id, quantity, deal_price, order_date, status")
             .gte("order_date", since)
             .eq("status", "completed")
-            .order("id"),
-        ),
+            .order("id");
+          if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+          return q;
+        }),
       ]);
       const itemsById = new Map(items.map((i) => [i.id, i]));
       const variationById = new Map(variations.map((v) => [v.id, v]));
@@ -167,13 +175,18 @@ export default function LowStockAlertsPage() {
 
   // Open orders and what past deliveries say about each supplier — shared with
   // Business Insights, so both pages agree.
-  const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(null);
-  // Ordering is for the whole business, so stock here is every branch added
-  // together — always shown split so a count at one branch can be checked.
-  const stockSplit = useStockSplit();
-  // Receipts and stock corrections to rebuild each day's stock, and the big
-  // orders chosen to count anyway — shared with the Forecast tab.
-  const { adjustmentsByItem, receiptsByItem, includeIds, toggleInclude } = useRestockInputs(orders, today);
+  // Orders for the branch picked; how long a supplier takes is a fact about
+  // the supplier, so lead times are learned from every branch's deliveries.
+  const { orders, onOrderByItem } = useInsightsPurchases(activeBranchId);
+  const { leadTimeBySupplier } = useInsightsPurchases(null);
+  // With "All branches", stock is every branch added together, shown split so
+  // a count at one branch can be checked. One branch needs no split.
+  const allSplit = useStockSplit();
+  const stockSplit = useMemo(() => (activeBranchId ? new Map<string, never>() : allSplit), [activeBranchId, allSplit]);
+  // Receipts, stock corrections and (for one branch) transfers to rebuild each
+  // day's stock, and the big orders chosen to count anyway — shared with the
+  // Forecast tab.
+  const { adjustmentsByItem, receiptsByItem, includeIds, toggleInclude } = useRestockInputs(orders, today, activeBranchId);
 
   // Latest cost change per item
   const { data: lastCostMap = {} } = useQuery<Record<string, { date: string; cost: number; supplier: string | null; po: string | null }>>({
@@ -331,7 +344,7 @@ export default function LowStockAlertsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Reorder List</h1>
-          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times. Stock is all branches together.</p>
+          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times. {activeBranch ? `Stock, sales and orders for ${activeBranch.branch_name} only.` : "Stock, sales and orders are all branches together."}</p>
         </div>
         <Button disabled={selectedRows.length === 0} onClick={() => setPoRows(selectedRows)} className="shrink-0">
           <ShoppingCart className="h-4 w-4 mr-1.5" />
@@ -579,6 +592,7 @@ export default function LowStockAlertsPage() {
         onOpenChange={(o) => !o && setPoRows(null)}
         rows={dialogRows}
         money={money}
+        branchId={activeBranchId}
         onCreated={(ids) => {
           setRecentlyCreatedPoItems((prev) => new Set([...prev, ...ids]));
           setSelectedIds(new Set());
@@ -794,12 +808,15 @@ function BulkPODialog({
   rows,
   money,
   onCreated,
+  branchId,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   rows: BulkPORow[];
   money: (n: number) => string;
   onCreated: (itemIds: string[]) => void;
+  /** The branch being looked at; its POs are for it. */
+  branchId: string | null;
 }) {
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -921,6 +938,7 @@ function BulkPODialog({
             order_date: new Date().toISOString().split("T")[0],
             notes: "Auto-created from the Reorder List",
             total_amount: total,
+            ...(branchId ? { branch_id: branchId } : {}),
             currency: g.currency as any,
             exchange_rate,
           } as any);
@@ -947,6 +965,7 @@ function BulkPODialog({
             order_date: new Date().toISOString().split("T")[0],
             notes: "Auto-created from the Reorder List",
             total_amount: total,
+            ...(branchId ? { branch_id: branchId } : {}),
           } as any);
           const lineItems = g.rows.map((r) => {
             const e = edits[r.item.id];
