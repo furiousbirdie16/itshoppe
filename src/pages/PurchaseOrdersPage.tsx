@@ -15,6 +15,9 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SupplierSearch } from "@/components/SupplierSearch";
 import { ItemSearch } from "@/components/ItemSearch";
 import { moveItem } from "@/lib/reorder";
+import { useDragReorder } from "@/hooks/use-drag-reorder";
+import { DragHandle } from "@/components/DragHandle";
+import { cn } from "@/lib/utils";
 import { Plus, Trash2, Eye, PackageCheck, ShoppingCart, FileDown, Pencil, Search, ArrowUp, ArrowDown } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { DocumentPreview } from "@/components/DocumentPreview";
@@ -53,6 +56,8 @@ export default function PurchaseOrdersPage() {
   const [editLines, setEditLines] = useState<LineItem[]>([]);
   const [form, setForm] = useState({ supplier_id: "", notes: "", order_date: todayISO(), payment_terms: "", branch_id: "" });
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: 0, unit_cost: 0 }]);
+  const dragLines = useDragReorder((from, to) => setLines((l) => moveItem(l, from, to)));
+  const dragEditLines = useDragReorder((from, to) => setEditLines((l) => moveItem(l, from, to)));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
@@ -452,10 +457,10 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-2">
                 {lines.map((line, idx) => (
-                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
-                    <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_112px_96px] sm:items-center gap-2">
+                  <div key={idx} {...dragLines.rowProps(idx)} className={cn("border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1", dragLines.rowClass(idx))}>
+                    <div className="grid grid-cols-1 sm:grid-cols-[36px_1fr_84px_112px_96px] sm:items-center gap-2">
                       {/* A number makes it possible to say "move line 3 up". */}
-                      <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
+                      <DragHandle index={idx} {...dragLines.handleProps(idx)} className="sm:justify-end" />
                       <ItemSearch
                         items={items}
                         value={line.item_id}
@@ -747,9 +752,9 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-2">
                 {editLines.map((line, idx) => (
-                  <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
-                    <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_112px_96px] sm:items-center gap-2">
-                      <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
+                  <div key={idx} {...dragEditLines.rowProps(idx)} className={cn("border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1", dragEditLines.rowClass(idx))}>
+                    <div className="grid grid-cols-1 sm:grid-cols-[36px_1fr_84px_112px_96px] sm:items-center gap-2">
+                      <DragHandle index={idx} {...dragEditLines.handleProps(idx)} className="sm:justify-end" />
                       <ItemSearch
                         items={items}
                         value={line.item_id}

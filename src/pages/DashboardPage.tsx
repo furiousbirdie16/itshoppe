@@ -3,7 +3,7 @@ import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatCard, FormulaRow } from "@/components/StatCard";
-import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp, Landmark, PiggyBank, HandCoins, Scale, BookmarkPlus } from "lucide-react";
+import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, TrendingUp, Landmark, PiggyBank, Scale, BookmarkPlus } from "lucide-react";
 import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { useBranch } from "@/contexts/BranchContext";
@@ -61,10 +61,15 @@ export default function DashboardPage() {
   const coReserved = Number(allBranches?.reservedStockValue || 0);
   const coIncoming = Number(allBranches?.incomingAssetsValue || 0);
   const coSupplierPOs = Number(allBranches?.accountsPayableValue || 0);
+  // The owner's account has no card of its own: what the owner owes the
+  // company is a receivable, what the company owes the owner a payable.
+  const ownerOwesCompany = Math.max(-finance.dueToOwner, 0);
+  const companyOwesOwner = Math.max(finance.dueToOwner, 0);
+  const receivablesTotal = finance.receivables + ownerOwesCompany;
+  const billsTotal = finance.billsAndChecks + companyOwesOwner;
   const assetsTotal =
-    coInventory + coReserved + finance.receivables + coIncoming + finance.totalCashAvailable;
-  const liabilitiesTotal =
-    finance.billsAndChecks + Math.max(finance.dueToOwner, 0) + finance.loansOutstanding;
+    coInventory + coReserved + receivablesTotal + coIncoming + finance.totalCashAvailable;
+  const liabilitiesTotal = billsTotal + finance.loansOutstanding;
   const netAssetValue = assetsTotal - liabilitiesTotal;
 
   // What is genuinely free to spend: cash on hand less everything already
@@ -202,15 +207,16 @@ export default function DashboardPage() {
         {isAdmin && (
           <StatCard
             title="Receivables"
-            value={peso(finance.receivables)}
+            value={peso(receivablesTotal)}
             icon={Wallet}
             tone="asset"
-            description="Unpaid invoices + manual"
+            description={ownerOwesCompany > 0 ? "Unpaid invoices + manual + owner" : "Unpaid invoices + manual"}
             formula={
               <div className="space-y-1">
-                <p>Money customers still owe you.</p>
-                <FormulaRow label="Invoices" value="confirmed, unpaid, shipped" muted />
-                <FormulaRow label="Plus manual receivables" value="not marked paid" muted />
+                <p>Money still owed to the company.</p>
+                <FormulaRow label="Invoices + manual receivables" value={peso(finance.receivables)} />
+                {ownerOwesCompany > 0 && <FormulaRow label="Owner owes the company" value={peso(ownerOwesCompany)} />}
+                <p className="text-muted-foreground pt-1">The owner's account counts here when the owner has taken out more than they put in.</p>
               </div>
             }
           />
@@ -250,31 +256,15 @@ export default function DashboardPage() {
         {isAdmin && (
           <StatCard
             title="Payables — Bills & Checks"
-            value={peso(finance.billsAndChecks)}
+            value={peso(billsTotal)}
             icon={Receipt}
             tone="liability"
-            description="From the Payables page"
+            description={companyOwesOwner > 0 ? "Payables page + owed to owner" : "From the Payables page"}
             formula={
               <div className="space-y-1">
-                <p>Amount less amount paid, across every payable not settled.</p>
-                <FormulaRow label="Excludes" value="paid, cleared, cancelled" muted />
-              </div>
-            }
-          />
-        )}
-        {isAdmin && (
-          <StatCard
-            title="Due to Owner"
-            value={peso(finance.dueToOwner)}
-            icon={HandCoins}
-            tone="liability"
-            description={finance.dueToOwner >= 0 ? "Not yet repaid" : "Overpaid"}
-            formula={
-              <div className="space-y-1">
-                <p>What the owner spent for the company, less what has been repaid.</p>
-                <FormulaRow label="Money out of the owner account" value="owner paid for the company" muted />
-                <FormulaRow label="Less money in" value="company repaid the owner" muted />
-                <p className="text-muted-foreground pt-1">An overpaid owner is not counted as an asset in Net Asset Value.</p>
+                <FormulaRow label="Bills & checks not settled" value={peso(finance.billsAndChecks)} />
+                {companyOwesOwner > 0 && <FormulaRow label="Company owes the owner" value={peso(companyOwesOwner)} />}
+                <p className="text-muted-foreground pt-1">The owner's account counts here when the owner has paid for more than they have been repaid.</p>
               </div>
             }
           />
@@ -332,12 +322,11 @@ export default function DashboardPage() {
               <div className="space-y-1">
                 <FormulaRow label="Inventory" value={peso(coInventory)} />
                 {coReserved > 0 && <FormulaRow label="Reserved stock" value={peso(coReserved)} />}
-                <FormulaRow label="Receivables" value={peso(finance.receivables)} />
+                <FormulaRow label="Receivables" value={peso(receivablesTotal)} />
                 <FormulaRow label="Incoming" value={peso(coIncoming)} />
                 <FormulaRow label="Cash & bank" value={peso(finance.totalCashAvailable)} />
                 <div className="border-t my-1" />
-                <FormulaRow label="Bills & checks" value={`\u2212 ${peso(finance.billsAndChecks)}`} />
-                <FormulaRow label="Due to owner" value={`\u2212 ${peso(Math.max(finance.dueToOwner, 0))}`} />
+                <FormulaRow label="Bills, checks & owner" value={`\u2212 ${peso(billsTotal)}`} />
                 <FormulaRow label="Loans" value={`\u2212 ${peso(finance.loansOutstanding)}`} />
                 <div className="border-t my-1" />
                 <FormulaRow label="Net Asset Value" value={peso(netAssetValue)} />

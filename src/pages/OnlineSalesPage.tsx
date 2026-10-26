@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getExistingOnlineSaleKeys, getItems, getItemsWithStock, getItemVariations } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,12 +12,16 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
+import { useDragReorder } from "@/hooks/use-drag-reorder";
+import { DragHandle } from "@/components/DragHandle";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
 import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
 import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
+import { expandBundle, getSkuBundles, skuKey, type SkuBundle } from "@/lib/sku-bundles";
+import { SkuBundleDialog } from "@/components/SkuBundleDialog";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
@@ -36,8 +41,9 @@ type BulkCell = string | number | Date | boolean | null | undefined;
 
 interface SaleLine {
   product_name: string;
-  quantity: number;
-  posted_price: number;
+  /** "" while the field is blank, as on the invoice form. */
+  quantity: number | "";
+  posted_price: number | "";
   item_id: string;
   variation_id: string | null;
 }
@@ -56,8 +62,8 @@ interface SaleForm {
 
 const emptyLine: SaleLine = {
   product_name: "",
-  quantity: 0,
-  posted_price: 0,
+  quantity: "",
+  posted_price: "",
   item_id: "",
   variation_id: null,
 };
@@ -203,6 +209,7 @@ export default function OnlineSalesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<OnlineSale | null>(null);
   const [form, setForm] = useState<SaleForm>(emptyForm);
+  const dragLines = useDragReorder((from, to) => setForm((f) => ({ ...f, lines: moveItem(f.lines, from, to) })));
   // The branch a new sale belongs to: the one picked in the form, else the
   // page's. Asking in the form means a half-typed sale is never lost to a
   // toolbar the user forgot to set first. Declared after `form` on purpose —
@@ -247,7 +254,11 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string; unmatched_sku?: string; bundle_sku?: string }[]>([]);
+  /** The sheet last read, so it can be read again once a SKU is set up. */
+  const lastBulkSheet = useRef<BulkCell[][] | null>(null);
+  /** The SKU being set up from an upload line, if any. */
+  const [setupSku, setSetupSku] = useState<string | null>(null);
   /** What a Shopee export import left out, for the summary above the preview. */
   const [bulkNote, setBulkNote] = useState("");
   const [bulkUploading, setBulkUploading] = useState(false);
@@ -324,11 +335,15 @@ export default function OnlineSalesPage() {
   };
 
   const handleSave = async () => {
-    const cleanLines = form.lines.filter(l => l.product_name.trim());
-    if (cleanLines.length === 0) { toast.error("Add at least one item with a product name"); return; }
+    // The invoice form's rules: a line needs an item or a name and a
+    // quantity; a price of 0 is allowed (a freebie, a replacement) and only
+    // warned about.
+    const cleanLines = form.lines
+      .filter(l => l.product_name.trim() || l.item_id)
+      .map(l => ({ ...l, quantity: Number(l.quantity) || 0, posted_price: Number(l.posted_price) || 0 }));
+    if (cleanLines.length === 0) { toast.error("Add at least one item"); return; }
     for (const l of cleanLines) {
-      if (!l.quantity || Number(l.quantity) <= 0) { toast.error(`"${l.product_name}" must have a quantity greater than 0`); return; }
-      if (!l.posted_price || Number(l.posted_price) <= 0) { toast.error(`"${l.product_name}" must have a price greater than 0`); return; }
+      if (l.quantity <= 0) { toast.error(`"${l.product_name || "Item"}" must have a quantity greater than 0`); return; }
     }
     // Warn (but allow) if store stock is insufficient — only when creating new sales.
     if (!editingSale) {
@@ -588,23 +603,13 @@ export default function OnlineSalesPage() {
   };
 
   // Bulk upload
-  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBulkFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        // IMPORTANT: do NOT use cellDates — it converts Excel serials into JS Date
-        // objects in local time, which causes -1 day shifts depending on timezone.
-        // Using raw:false returns the formatted display string (e.g. "4/21/26"),
-        // which we parse explicitly below as-is, ignoring any timezone.
-        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
-          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
-        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
-
+  /**
+   * Read an order sheet into the preview. Kept apart from the file picker so
+   * the same sheet can be read again after a SKU is set up from its preview.
+   */
+  const processBulkSheet = async (sheetRows: BulkCell[][]) => {
+    type BulkRow = (typeof bulkRows)[number];
+    try {
         // Order lines already in the ERP are marked, not uploaded again: an
         // export for "this week" overlaps the one from last week.
         const markDuplicates = async <R extends { order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }>(rows: R[]) => {
@@ -616,6 +621,18 @@ export default function OnlineSalesPage() {
           );
         };
 
+        // A SKU is an item or variation of ours, or a bundle SKU standing for
+        // one or more of them (a kit, or a name that differs from ours).
+        const bundles: SkuBundle[] = await qc.fetchQuery({ queryKey: ["sku-bundles"], queryFn: getSkuBundles });
+        const bundleByKey = new Map(bundles.map((b) => [skuKey(b.sku), b]));
+        const resolveSku = (sku: string, qty: number, price: number) => {
+          const m = matchShopeeSku(sku, items as any[], variations as any[]);
+          if (m.itemId) return { bundle: null as string | null, lines: [{ item_id: m.itemId, variation_id: m.variationId, quantity: qty, unitPrice: price, label: sku }] };
+          const b = bundleByKey.get(skuKey(sku));
+          if (b) return { bundle: b.sku, lines: expandBundle(b, qty, price) };
+          return null;
+        };
+
         // Shopee's own export, as downloaded from Seller Centre. Only ship
         // time, order ID, SKU Reference No., deal price and quantity are taken.
         if (isShopeeExport(sheetRows[0])) {
@@ -625,29 +642,30 @@ export default function OnlineSalesPage() {
             return;
           }
           const { rows: shopeeRows, skipped } = parseShopeeExport(sheetRows);
-          const mapped = shopeeRows.map((r) => {
-            const m = matchShopeeSku(r.sku, items as any[], variations as any[]);
+          const mapped = shopeeRows.flatMap((r): BulkRow[] => {
+            const resolved = r.sku ? resolveSku(r.sku, r.quantity, r.dealPrice) : null;
             const error = !r.sku
               ? "No SKU Reference No."
-              : !m.itemId
+              : !resolved
                 ? `No item with SKU "${r.sku}"`
                 : !r.date
                   ? "No ship time"
                   : r.quantity <= 0
                     ? "No quantity"
                     : undefined;
-            return {
-              product_name: r.sku,
-              quantity: r.quantity,
-              sales_channel: "shopee" as SalesChannel,
-              posted_price: r.dealPrice,
-              order_date: r.date,
-              order_id: r.orderId,
-              item_id: m.itemId,
-              variation_id: m.variationId,
-              valid: !error,
-              error,
-            };
+            const base = { sales_channel: "shopee" as SalesChannel, order_date: r.date, order_id: r.orderId };
+            if (!resolved || error) {
+              return [{
+                ...base, product_name: r.sku, quantity: r.quantity, posted_price: r.dealPrice,
+                item_id: null, variation_id: null, valid: false, error,
+                unmatched_sku: !resolved && r.sku ? r.sku : undefined,
+              }];
+            }
+            return resolved.lines.map((l) => ({
+              ...base, product_name: l.label, quantity: l.quantity, posted_price: l.unitPrice,
+              item_id: l.item_id, variation_id: l.variation_id, valid: true, error: undefined as string | undefined,
+              bundle_sku: resolved.bundle ?? undefined,
+            }));
           });
           const checked = await markDuplicates(mapped);
           const dupes = checked.filter((r) => r.error === "Already in the ERP").length;
@@ -716,7 +734,7 @@ export default function OnlineSalesPage() {
         };
 
         const { indexes, dataRows } = resolvedColumns;
-        const parsed = dataRows.map((row) => {
+        const parsed = dataRows.flatMap((row): BulkRow[] => {
           const product_name = normalizeBulkCell(row[indexes.product]);
           const rawChannel = normalizeBulkCell(indexes.channel >= 0 ? row[indexes.channel] : "shopee").toLowerCase();
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : rawChannel.includes("shopee") ? "shopee" : "others";
@@ -725,23 +743,53 @@ export default function OnlineSalesPage() {
           const order_date = parseDate(indexes.date >= 0 ? row[indexes.date] : null);
           const order_id = normalizeBulkCell(indexes.orderId >= 0 ? row[indexes.orderId] : "");
 
-          // Strict SKU match — try parent item SKU first, then variation SKU
-          const skuLower = product_name.toLowerCase();
-          const matchedItem = items.find(i => i.sku.toLowerCase() === skuLower);
-          const matchedVariation = !matchedItem
-            ? variations.find(v => (v.sku || "").toLowerCase() === skuLower)
-            : null;
-          const resolvedItemId = matchedItem?.id || matchedVariation?.item_id || null;
-          const resolvedVariationId = matchedVariation?.id || null;
+          // SKU match — an item or variation, else a bundle SKU.
+          const resolved = product_name ? resolveSku(product_name, quantity, posted_price) : null;
 
           let error: string | undefined;
           if (!product_name) error = "Missing SKU";
-          else if (!resolvedItemId) error = `SKU "${product_name}" not found in inventory`;
+          else if (!resolved) error = `SKU "${product_name}" not found in inventory`;
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: resolvedItemId, variation_id: resolvedVariationId, valid: !error, error };
+          if (!resolved || error) {
+            return [{
+              product_name, quantity, sales_channel, posted_price, order_date, order_id,
+              item_id: null as string | null, variation_id: null as string | null, valid: false, error,
+              unmatched_sku: !resolved && product_name ? product_name : undefined,
+            }];
+          }
+          return resolved.lines.map((l) => ({
+            product_name: l.label, quantity: l.quantity, sales_channel, posted_price: l.unitPrice, order_date, order_id,
+            item_id: l.item_id as string | null, variation_id: l.variation_id, valid: true, error: undefined as string | undefined,
+            bundle_sku: resolved.bundle ?? undefined,
+          }));
         });
         setBulkRows(await markDuplicates(parsed));
+    } catch (err) {
+      console.error("Bulk parse error", err);
+      toast.error("Failed to parse file");
+    }
+  };
+
+  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        // IMPORTANT: do NOT use cellDates — it converts Excel serials into JS Date
+        // objects in local time, which causes -1 day shifts depending on timezone.
+        // Using raw:false returns the formatted display string (e.g. "4/21/26"),
+        // which we parse explicitly below as-is, ignoring any timezone.
+        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
+          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
+        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        lastBulkSheet.current = sheetRows;
+        await processBulkSheet(sheetRows);
       } catch (err) {
         console.error("Bulk parse error", err);
         toast.error("Failed to parse file");
@@ -1792,80 +1840,89 @@ export default function OnlineSalesPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium">Items {!editingSale && form.lines.length > 1 && <span className="text-muted-foreground font-normal">({form.lines.length})</span>}</Label>
+                <Label className="text-xs font-medium">Line Items</Label>
                 {!editingSale && (
-                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setForm(f => ({ ...f, lines: [...f.lines, { ...emptyLine }] }))}>
-                    <Plus className="h-3 w-3 mr-1" /> Add another item
+                  <Button type="button" variant="outline" size="sm" className="h-7 rounded-md text-xs" onClick={() => setForm(f => ({ ...f, lines: [...f.lines, { ...emptyLine }] }))}>
+                    <Plus className="h-3 w-3 mr-1" /> Add
                   </Button>
                 )}
               </div>
-              {form.lines.map((line, idx) => (
-                <div key={idx} className="border rounded-lg p-3 space-y-3 bg-muted/30">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
-                    {!editingSale && form.lines.length > 1 && (
-                      <div className="flex items-center gap-0.5">
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move up" disabled={idx === 0}
-                          onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx - 1) }))}>
-                          <ArrowUp className="h-3 w-3" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move down" disabled={idx === form.lines.length - 1}
-                          onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx + 1) }))}>
-                          <ArrowDown className="h-3 w-3" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Remove line" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))}>
-                          <X className="h-3 w-3" />
-                        </Button>
+              {/* Laid out and checked like the invoice form's lines. */}
+              <div className="space-y-2">
+                {form.lines.map((line, idx) => {
+                  const selectedItem = (items as any[]).find((i) => i.id === line.item_id);
+                  const canReorder = !editingSale && form.lines.length > 1;
+                  const setLine = (patch: Partial<SaleLine>) =>
+                    setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], ...patch }; return { ...f, lines }; });
+                  return (
+                    <div key={idx} {...dragLines.rowProps(idx)} className={cn("border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1", dragLines.rowClass(idx))}>
+                      <div className="grid grid-cols-1 sm:grid-cols-[36px_1fr_84px_112px_96px] sm:items-center gap-2">
+                        {canReorder ? (
+                          <DragHandle index={idx} {...dragLines.handleProps(idx)} className="sm:justify-end" />
+                        ) : (
+                          <span className="hidden sm:block text-right text-[11px] tabular-nums text-muted-foreground">{idx + 1}</span>
+                        )}
+                        <ItemSearch
+                          items={items}
+                          value={line.item_id}
+                          variationId={line.variation_id}
+                          customName={line.product_name}
+                          onChange={(itemId, item, customName, variation) => {
+                            if (variation && item) {
+                              setLine({ item_id: item.id, variation_id: variation.id, product_name: variation.name, posted_price: Number(variation.selling_price) || "" });
+                            } else if (itemId && item) {
+                              setLine({ item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) || "" });
+                            } else {
+                              setLine({ item_id: "", variation_id: null, product_name: customName || "" });
+                            }
+                          }}
+                          placeholder="Search item or variation..."
+                          allowCustom
+                        />
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
+                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; setLine({ quantity: v === "" ? "" : (parseInt(v) || "") }); }} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                          <Input type="number" value={line.posted_price} onChange={e => { const v = e.target.value; setLine({ posted_price: v === "" ? "" : (Number.isFinite(parseFloat(v)) ? parseFloat(v) : "") }); }} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <div className="flex items-center gap-0.5">
+                            {canReorder && (
+                              <>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx - 1) }))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx + 1) }))} disabled={idx === form.lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
+                              </>
+                            )}
+                            {!editingSale && form.lines.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] text-muted-foreground">Inventory Item / Variation (optional)</Label>
-                    <ItemSearch
-                      items={items}
-                      value={line.item_id}
-                      variationId={line.variation_id}
-                      onChange={(_itemId, item, _custom, variation) => {
-                        setForm(f => {
-                          const lines = [...f.lines];
-                          if (variation && item) {
-                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: variation.id, product_name: variation.name, posted_price: Number(variation.selling_price) };
-                          } else if (item) {
-                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) };
-                          }
-                          return { ...f, lines };
-                        });
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] text-muted-foreground">Product Name</Label>
-                    <Input value={line.product_name} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], product_name: e.target.value }; return { ...f, lines }; })} placeholder="Product name" className="h-9" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] text-muted-foreground">Quantity</Label>
-                      <Input type="number" min={1} value={line.quantity || ""} placeholder="Qty" onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
+                      {/* What this line comes to, so the arithmetic is visible
+                          rather than only in the total at the bottom. */}
+                      {Number(line.quantity) > 0 && Number(line.posted_price) > 0 && (
+                        <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
+                          {Number(line.quantity)} × {peso(Number(line.posted_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.posted_price))}</span>
+                        </p>
+                      )}
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(line.item_id || line.product_name) && (line.posted_price === "" || Number(line.posted_price) <= 0) && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
+                      )}
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] text-muted-foreground">Selling Price</Label>
-                      <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
-                    </div>
-                  </div>
-                  {/* What this line comes to, so the arithmetic is visible
-                      rather than only in the total at the bottom. */}
-                  {Number(line.quantity) > 0 && Number(line.posted_price) > 0 && (
-                    <p className="text-[11px] text-muted-foreground text-right tabular-nums">
-                      {Number(line.quantity)} × {peso(Number(line.posted_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.posted_price))}</span>
-                    </p>
-                  )}
+                  );
+                })}
+              </div>
+              <div className="flex justify-end mt-3 pt-3 border-t">
+                <span className="text-sm font-semibold">Total: {peso(form.lines.reduce((sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.posted_price) || 0), 0))}</span>
+              </div>
+              {form.lines.some(l => (l.item_id || l.product_name) && (l.posted_price === "" || Number(l.posted_price) <= 0)) && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                  Warning: One or more items do not have a price. You can still save this order.
                 </div>
-              ))}
+              )}
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
-              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
+              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="resize-none" rows={2} />
             </div>
 
             {editingSale && (
@@ -1961,12 +2018,20 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="tabular-nums text-xs">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.order_date}</TableCell>
-                        <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          {row.product_name || "—"}
+                          {row.bundle_sku && <span className="block text-[11px] text-muted-foreground">from {row.bundle_sku}</span>}
+                        </TableCell>
                         <TableCell className="text-sm text-center">{row.quantity}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
                         <TableCell className="text-xs">
                           {row.valid ? <span className="text-green-600">✓</span> : <span className={row.error === "Already in the ERP" ? "text-muted-foreground" : "text-destructive"}>{row.error}</span>}
+                          {row.unmatched_sku && (
+                            <Button type="button" variant="outline" size="sm" className="mt-1 h-6 px-2 text-[11px]" onClick={() => setSetupSku(row.unmatched_sku!)}>
+                              Set up this SKU
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1981,6 +2046,15 @@ export default function OnlineSalesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <SkuBundleDialog
+        open={!!setupSku}
+        onOpenChange={(o) => { if (!o) setSetupSku(null); }}
+        initialSku={setupSku ?? ""}
+        items={items as any}
+        // Read the same sheet again, so the line just set up turns green.
+        onSaved={() => { if (lastBulkSheet.current) void processBulkSheet(lastBulkSheet.current); }}
+      />
 
       {/* Mark Paid Dialog */}
       <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>

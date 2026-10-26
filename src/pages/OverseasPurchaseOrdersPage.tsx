@@ -19,6 +19,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Pencil, Trash2, ShoppingCart, Eye, X, PackageCheck, Upload, Search, FileDown, Truck, BadgeDollarSign, HandCoins, ArrowUp, ArrowDown, MapPin, Container, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveItem } from "@/lib/reorder";
+import { useDragReorder } from "@/hooks/use-drag-reorder";
+import { DragHandle } from "@/components/DragHandle";
 
 import ExportButton from "@/components/ExportButton";
 import OverseasPOBulkUploadDialog from "@/components/OverseasPOBulkUploadDialog";
@@ -148,6 +150,7 @@ export default function OverseasPurchaseOrdersPage() {
   const [notes, setNotes] = useState("");
   const [branchId, setBranchId] = useState("");
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
+  const dragLines = useDragReorder((from, to) => setLines((l) => moveItem(l, from, to)));
   const [exchangeRate, setExchangeRate] = useState("1");
   const [paidFromAccountId, setPaidFromAccountId] = useState("");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
@@ -1412,10 +1415,10 @@ export default function OverseasPurchaseOrdersPage() {
               </div>
                <div className="space-y-2">
                  {lines.map((line, idx) => (
-                   <div key={idx} className="space-y-1 border rounded-md p-2 sm:border-0 sm:p-0">
-                     <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_120px_96px] gap-2 sm:items-end">
+                   <div key={idx} {...dragLines.rowProps(idx)} className={cn("space-y-1 border rounded-md p-2 sm:border-0 sm:p-0", dragLines.rowClass(idx))}>
+                     <div className="grid grid-cols-1 sm:grid-cols-[36px_1fr_84px_120px_96px] gap-2 sm:items-end">
                        {/* A number makes it possible to say "move line 3 up". */}
-                       <span className="hidden sm:block pb-2 text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
+                       <DragHandle index={idx} {...dragLines.handleProps(idx)} className="sm:justify-end pb-2" />
                        <div className="space-y-1">
                          {idx === 0 && <Label className="text-[10px] text-muted-foreground hidden sm:block">Item (search by SKU)</Label>}
                          <ItemSearch

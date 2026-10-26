@@ -37,6 +37,8 @@ import { Lock } from "lucide-react";
 
 import { useBranch } from "@/contexts/BranchContext";
 import { moveItem } from "@/lib/reorder";
+import { useDragReorder } from "@/hooks/use-drag-reorder";
+import { DragHandle } from "@/components/DragHandle";
 import { InvoiceSerialsPanel } from "@/components/InvoiceSerialsPanel";
 import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
 import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
@@ -80,6 +82,7 @@ export default function InvoicesPage() {
     } catch {/* ignore */}
   };
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
+  const dragLines = useDragReorder((from, to) => setLines((l) => moveItem(l, from, to)));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters
@@ -1284,10 +1287,10 @@ export default function InvoicesPage() {
                 {lines.map((line, idx) => {
                   const selectedItem = items.find(i => i.id === line.item_id);
                   return (
-                    <div key={idx} className="border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1">
-                      <div className="grid grid-cols-1 sm:grid-cols-[18px_1fr_84px_112px_96px] sm:items-center gap-2">
+                    <div key={idx} {...dragLines.rowProps(idx)} className={cn("border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1", dragLines.rowClass(idx))}>
+                      <div className="grid grid-cols-1 sm:grid-cols-[36px_1fr_84px_112px_96px] sm:items-center gap-2">
                         {/* A number makes it possible to say "move line 3 up". */}
-                        <span className="hidden sm:block text-[11px] tabular-nums text-muted-foreground text-right">{idx + 1}</span>
+                        <DragHandle index={idx} {...dragLines.handleProps(idx)} className="sm:justify-end" />
                         <ItemSearch
                           items={items}
                           value={line.item_id}
