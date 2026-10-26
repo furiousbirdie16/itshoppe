@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download , GripVertical } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
+import { useDragReorder } from "@/hooks/use-drag-reorder";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -203,6 +204,7 @@ export default function OnlineSalesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<OnlineSale | null>(null);
   const [form, setForm] = useState<SaleForm>(emptyForm);
+  const dragLines = useDragReorder((from, to) => setForm((f) => ({ ...f, lines: moveItem(f.lines, from, to) })));
   // The branch a new sale belongs to: the one picked in the form, else the
   // page's. Asking in the form means a half-typed sale is never lost to a
   // toolbar the user forgot to set first. Declared after `form` on purpose —
@@ -1800,9 +1802,15 @@ export default function OnlineSalesPage() {
                 )}
               </div>
               {form.lines.map((line, idx) => (
-                <div key={idx} className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                <div key={idx} {...dragLines.rowProps(idx)} className={cn("border rounded-lg p-3 space-y-3 bg-muted/30", dragLines.rowClass(idx))}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
+                    {!editingSale && form.lines.length > 1 ? (
+                      <span {...dragLines.handleProps(idx)} className="flex cursor-grab touch-none select-none items-center gap-1 text-xs font-medium text-muted-foreground active:cursor-grabbing" title="Drag to reorder">
+                        <GripVertical className="h-3.5 w-3.5" /> Item {idx + 1}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
+                    )}
                     {!editingSale && form.lines.length > 1 && (
                       <div className="flex items-center gap-0.5">
                         <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move up" disabled={idx === 0}
