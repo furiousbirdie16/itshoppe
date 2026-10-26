@@ -3,15 +3,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getExistingOnlineSaleKeys, getItems, getItemsWithStock, getItemVariations } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download , GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
+import { DragHandle } from "@/components/DragHandle";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -37,8 +39,9 @@ type BulkCell = string | number | Date | boolean | null | undefined;
 
 interface SaleLine {
   product_name: string;
-  quantity: number;
-  posted_price: number;
+  /** "" while the field is blank, as on the invoice form. */
+  quantity: number | "";
+  posted_price: number | "";
   item_id: string;
   variation_id: string | null;
 }
@@ -57,8 +60,8 @@ interface SaleForm {
 
 const emptyLine: SaleLine = {
   product_name: "",
-  quantity: 0,
-  posted_price: 0,
+  quantity: "",
+  posted_price: "",
   item_id: "",
   variation_id: null,
 };
@@ -326,11 +329,15 @@ export default function OnlineSalesPage() {
   };
 
   const handleSave = async () => {
-    const cleanLines = form.lines.filter(l => l.product_name.trim());
-    if (cleanLines.length === 0) { toast.error("Add at least one item with a product name"); return; }
+    // The invoice form's rules: a line needs an item or a name and a
+    // quantity; a price of 0 is allowed (a freebie, a replacement) and only
+    // warned about.
+    const cleanLines = form.lines
+      .filter(l => l.product_name.trim() || l.item_id)
+      .map(l => ({ ...l, quantity: Number(l.quantity) || 0, posted_price: Number(l.posted_price) || 0 }));
+    if (cleanLines.length === 0) { toast.error("Add at least one item"); return; }
     for (const l of cleanLines) {
-      if (!l.quantity || Number(l.quantity) <= 0) { toast.error(`"${l.product_name}" must have a quantity greater than 0`); return; }
-      if (!l.posted_price || Number(l.posted_price) <= 0) { toast.error(`"${l.product_name}" must have a price greater than 0`); return; }
+      if (l.quantity <= 0) { toast.error(`"${l.product_name || "Item"}" must have a quantity greater than 0`); return; }
     }
     // Warn (but allow) if store stock is insufficient — only when creating new sales.
     if (!editingSale) {
@@ -1794,86 +1801,89 @@ export default function OnlineSalesPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium">Items {!editingSale && form.lines.length > 1 && <span className="text-muted-foreground font-normal">({form.lines.length})</span>}</Label>
+                <Label className="text-xs font-medium">Line Items</Label>
                 {!editingSale && (
-                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setForm(f => ({ ...f, lines: [...f.lines, { ...emptyLine }] }))}>
-                    <Plus className="h-3 w-3 mr-1" /> Add another item
+                  <Button type="button" variant="outline" size="sm" className="h-7 rounded-md text-xs" onClick={() => setForm(f => ({ ...f, lines: [...f.lines, { ...emptyLine }] }))}>
+                    <Plus className="h-3 w-3 mr-1" /> Add
                   </Button>
                 )}
               </div>
-              {form.lines.map((line, idx) => (
-                <div key={idx} {...dragLines.rowProps(idx)} className={cn("border rounded-lg p-3 space-y-3 bg-muted/30", dragLines.rowClass(idx))}>
-                  <div className="flex items-center justify-between">
-                    {!editingSale && form.lines.length > 1 ? (
-                      <span {...dragLines.handleProps(idx)} className="flex cursor-grab touch-none select-none items-center gap-1 text-xs font-medium text-muted-foreground active:cursor-grabbing" title="Drag to reorder">
-                        <GripVertical className="h-3.5 w-3.5" /> Item {idx + 1}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-medium text-muted-foreground">Item {idx + 1}</span>
-                    )}
-                    {!editingSale && form.lines.length > 1 && (
-                      <div className="flex items-center gap-0.5">
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move up" disabled={idx === 0}
-                          onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx - 1) }))}>
-                          <ArrowUp className="h-3 w-3" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Move down" disabled={idx === form.lines.length - 1}
-                          onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx + 1) }))}>
-                          <ArrowDown className="h-3 w-3" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Remove line" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))}>
-                          <X className="h-3 w-3" />
-                        </Button>
+              {/* Laid out and checked like the invoice form's lines. */}
+              <div className="space-y-2">
+                {form.lines.map((line, idx) => {
+                  const selectedItem = (items as any[]).find((i) => i.id === line.item_id);
+                  const canReorder = !editingSale && form.lines.length > 1;
+                  const setLine = (patch: Partial<SaleLine>) =>
+                    setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], ...patch }; return { ...f, lines }; });
+                  return (
+                    <div key={idx} {...dragLines.rowProps(idx)} className={cn("border rounded-md p-2 sm:border-0 sm:p-0 sm:py-1", dragLines.rowClass(idx))}>
+                      <div className="grid grid-cols-1 sm:grid-cols-[36px_1fr_84px_112px_96px] sm:items-center gap-2">
+                        {canReorder ? (
+                          <DragHandle index={idx} {...dragLines.handleProps(idx)} className="sm:justify-end" />
+                        ) : (
+                          <span className="hidden sm:block text-right text-[11px] tabular-nums text-muted-foreground">{idx + 1}</span>
+                        )}
+                        <ItemSearch
+                          items={items}
+                          value={line.item_id}
+                          variationId={line.variation_id}
+                          customName={line.product_name}
+                          onChange={(itemId, item, customName, variation) => {
+                            if (variation && item) {
+                              setLine({ item_id: item.id, variation_id: variation.id, product_name: variation.name, posted_price: Number(variation.selling_price) || "" });
+                            } else if (itemId && item) {
+                              setLine({ item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) || "" });
+                            } else {
+                              setLine({ item_id: "", variation_id: null, product_name: customName || "" });
+                            }
+                          }}
+                          placeholder="Search item or variation..."
+                          allowCustom
+                        />
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
+                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; setLine({ quantity: v === "" ? "" : (parseInt(v) || "") }); }} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                          <Input type="number" value={line.posted_price} onChange={e => { const v = e.target.value; setLine({ posted_price: v === "" ? "" : (Number.isFinite(parseFloat(v)) ? parseFloat(v) : "") }); }} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <div className="flex items-center gap-0.5">
+                            {canReorder && (
+                              <>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx - 1) }))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: moveItem(f.lines, idx, idx + 1) }))} disabled={idx === form.lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
+                              </>
+                            )}
+                            {!editingSale && form.lines.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] text-muted-foreground">Inventory Item / Variation (optional)</Label>
-                    <ItemSearch
-                      items={items}
-                      value={line.item_id}
-                      variationId={line.variation_id}
-                      onChange={(_itemId, item, _custom, variation) => {
-                        setForm(f => {
-                          const lines = [...f.lines];
-                          if (variation && item) {
-                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: variation.id, product_name: variation.name, posted_price: Number(variation.selling_price) };
-                          } else if (item) {
-                            lines[idx] = { ...lines[idx], item_id: item.id, variation_id: null, product_name: item.name, posted_price: Number(item.selling_price) };
-                          }
-                          return { ...f, lines };
-                        });
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] text-muted-foreground">Product Name</Label>
-                    <Input value={line.product_name} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], product_name: e.target.value }; return { ...f, lines }; })} placeholder="Product name" className="h-9" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] text-muted-foreground">Quantity</Label>
-                      <Input type="number" min={1} value={line.quantity || ""} placeholder="Qty" onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], quantity: parseInt(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
+                      {/* What this line comes to, so the arithmetic is visible
+                          rather than only in the total at the bottom. */}
+                      {Number(line.quantity) > 0 && Number(line.posted_price) > 0 && (
+                        <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
+                          {Number(line.quantity)} × {peso(Number(line.posted_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.posted_price))}</span>
+                        </p>
+                      )}
+                      {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(line.item_id || line.product_name) && (line.posted_price === "" || Number(line.posted_price) <= 0) && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
+                      )}
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] text-muted-foreground">Selling Price</Label>
-                      <Input type="number" min={0} step="0.01" value={line.posted_price} onChange={e => setForm(f => { const lines = [...f.lines]; lines[idx] = { ...lines[idx], posted_price: parseFloat(e.target.value) || 0 }; return { ...f, lines }; })} className="h-9 numeric-field" />
-                    </div>
-                  </div>
-                  {/* What this line comes to, so the arithmetic is visible
-                      rather than only in the total at the bottom. */}
-                  {Number(line.quantity) > 0 && Number(line.posted_price) > 0 && (
-                    <p className="text-[11px] text-muted-foreground text-right tabular-nums">
-                      {Number(line.quantity)} × {peso(Number(line.posted_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.posted_price))}</span>
-                    </p>
-                  )}
+                  );
+                })}
+              </div>
+              <div className="flex justify-end mt-3 pt-3 border-t">
+                <span className="text-sm font-semibold">Total: {peso(form.lines.reduce((sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.posted_price) || 0), 0))}</span>
+              </div>
+              {form.lines.some(l => (l.item_id || l.product_name) && (l.posted_price === "" || Number(l.posted_price) <= 0)) && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                  Warning: One or more items do not have a price. You can still save this order.
                 </div>
-              ))}
+              )}
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
-              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="h-9" />
+              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="resize-none" rows={2} />
             </div>
 
             {editingSale && (
