@@ -13,9 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal } from "lucide-react";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
@@ -42,19 +43,25 @@ import { BranchStockSplit } from "@/components/BranchStockSplit";
 import { useStockSplit } from "@/hooks/use-stock-split";
 
 
+// Branch is off by default: it is the same on every row (the branch being
+// viewed), so it took a column to say one thing. Source shows as a small tag
+// under the name instead of a column of its own.
 const INVENTORY_COLUMNS: ColumnDef[] = [
-  { key: "name", label: "Name", required: true },
-  { key: "source", label: "Source", defaultVisible: true },
-  { key: "branch", label: "Branch", defaultVisible: true },
+  { key: "name", label: "Item", required: true },
   { key: "quantity", label: "Available", defaultVisible: true },
   { key: "reserved_quantity", label: "Reserved", defaultVisible: true },
   { key: "incoming_quantity", label: "Incoming", defaultVisible: true },
   { key: "warehouse_quantity", label: "Warehouse", defaultVisible: false },
   { key: "store_quantity", label: "Store", defaultVisible: false },
   { key: "cost_price", label: "Cost", defaultVisible: true },
-  { key: "selling_price", label: "Sell", defaultVisible: true },
-  { key: "low_stock_threshold", label: "Threshold", defaultVisible: true },
+  { key: "selling_price", label: "Price", defaultVisible: true },
+  { key: "low_stock_threshold", label: "Alert at", defaultVisible: true },
+  { key: "source", label: "Source", defaultVisible: false },
+  { key: "branch", label: "Branch", defaultVisible: false },
 ];
+
+/** Columns that hold a short value: kept as narrow as their contents. */
+const NARROW_COLUMNS = new Set(["quantity", "reserved_quantity", "incoming_quantity", "warehouse_quantity", "store_quantity", "cost_price", "selling_price", "low_stock_threshold", "source", "branch"]);
 
 type StockStatusFilter = "all" | "in_stock" | "low_stock" | "out_of_stock" | "overstocked";
 type QtyOp = "any" | "eq" | "gt" | "lt" | "range";
@@ -623,7 +630,7 @@ export default function InventoryPage() {
   if (filters.location !== "any") chips.push({ key: "loc", label: `Location: ${filters.location}`, clear: () => setF("location", "any") });
   if (filters.productStatus !== "any") chips.push({ key: "ps", label: `Status: ${filters.productStatus}`, clear: () => setF("productStatus", "any") });
 
-  const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("inventory:columns:v1", INVENTORY_COLUMNS);
+  const { state: colState, orderedColumns, visibleColumns, toggle: toggleCol, move: moveCol, reset: resetCols } = useColumnPrefs("inventory:columns:v2", INVENTORY_COLUMNS);
   const visibleColCount = 2 + visibleColumns.length;
 
   // --- Mobile card list: incremental (infinite scroll) rendering ---
@@ -654,98 +661,18 @@ export default function InventoryPage() {
         <div className="page-header mb-0">
           <h1 className="page-title">Inventory</h1>
           <p className="page-description">
-            {viewArchived ? `${items.length} archived` : `${items.length} items in stock`}
+            {viewArchived ? `${items.length} archived` : `${items.length} items`}
           </p>
         </div>
         <div className="toolbar-actions">
-          <Button
-            variant={viewArchived ? "default" : "outline"}
-            onClick={() => { setViewArchived(v => !v); setSelectedIds(new Set()); }}
-            className="rounded-lg h-9 px-4 text-sm font-medium"
-            title="Toggle archived view"
-          >
-            {viewArchived ? <ArchiveRestore className="h-4 w-4 mr-1.5" /> : <Archive className="h-4 w-4 mr-1.5" />}
-            {viewArchived ? "Viewing Archived" : "View Archived"}
-          </Button>
-
-          {selectedIds.size > 0 && !viewArchived && (() => {
-            const selectedItems = items.filter(i => selectedIds.has(i.id));
-            const allLocal = selectedItems.every(i => (((i as any).source as string) || 'local') === 'local');
-            const canBulkEditCost = isAdmin || allLocal;
-            return (
-              <BulkEditDialog
-                selectedIds={Array.from(selectedIds)}
-                entityLabel="items"
-                fields={([
-                  { key: "name", label: "Name", type: "text" },
-                  { key: "sku", label: "SKU", type: "text" },
-                  { key: "description", label: "Description", type: "textarea" },
-                  { key: "category", label: "Category", type: "text" },
-                  { key: "brand", label: "Brand", type: "text" },
-                  { key: "barcode", label: "Barcode", type: "text" },
-                  { key: "supplier_sku", label: "Supplier SKU", type: "text" },
-                  ...(isAdmin ? [
-                    { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
-                    { key: "status", label: "Status", type: "select", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }, { value: "discontinued", label: "Discontinued" }] },
-                  ] : []),
-                  { key: "base_unit", label: "Base Unit (e.g. pcs, m, kg)", type: "text" },
-                  { key: "units_per_stock", label: "Units Per Stock", type: "number", transform: (v) => parseFloat(v) || 1 },
-                  { key: "open_roll_remaining", label: "Open Roll Remaining", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  // Stock is per branch, so on "All branches" the bulk edit has
-                  // to be told which one before it can touch quantities.
-                  ...(isAdmin && !activeBranchId ? [
-                    { key: "_branch", label: "Branch (tick this to edit quantities)", type: "select", options: branches.map((b) => ({ value: b.id, label: `${b.branch_name} (${b.branch_code})` })) },
-                  ] : []),
-                  ...(isAdmin ? [
-                    { key: "warehouse_quantity", label: "Warehouse Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
-                    { key: "store_quantity", label: "Store Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
-                  ] : []),
-                  ...(canBulkEditCost ? [
-                    { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  ] : []),
-                  { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
-                  ...(isAdmin ? [
-                    { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
-                  ] : []),
-                ]) as BulkField[]}
-                updateOne={async (id, patch) => {
-                  const { rest, wh, st } = splitQty(patch as any);
-                  // Not a column on items — it only says where the quantities go.
-                  const pickedBranch = (rest as any)._branch as string | undefined;
-                  delete (rest as any)._branch;
-                  if (Object.keys(rest).length > 0) await updateItem(id, rest as Partial<Item>);
-                  if (wh !== undefined || st !== undefined) {
-                    const branchId = activeBranchId || pickedBranch;
-                    if (!branchId) throw new Error("Tick Branch and choose one — stock is kept per branch.");
-                    const moved = await setBranchQuantities({ itemId: id, branchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
-                    bulkAdjustments.current.push(...moved);
-                  }
-                }}
-                onSuccess={() => {
-                  // One message for the whole edit, not one per item.
-                  notifyInventoryAdjustments(bulkAdjustments.current);
-                  bulkAdjustments.current = [];
-                  queryClient.invalidateQueries({ queryKey: ["items"] });
-                  queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] });
-                  setSelectedIds(new Set());
-                }}
-              />
-            );
-          })()}
-
-          {selectedIds.size > 0 && !viewArchived && (
-            <Button variant="outline" onClick={() => setArchiveConfirm({ ids: Array.from(selectedIds), label: `${selectedIds.size} selected item${selectedIds.size > 1 ? "s" : ""}` })} className="rounded-lg h-9 px-4 text-sm font-medium">
-              <Archive className="h-4 w-4 mr-1.5" /> Archive {selectedIds.size}
-            </Button>
-          )}
-          {selectedIds.size > 0 && viewArchived && isAdmin && (
-            <Button variant="outline" onClick={() => unarchiveMut.mutate(Array.from(selectedIds))} className="rounded-lg h-9 px-4 text-sm font-medium">
-              <ArchiveRestore className="h-4 w-4 mr-1.5" /> Restore {selectedIds.size}
-            </Button>
-          )}
-          {selectedIds.size > 0 && isAdmin && (
-            <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
-              <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size}
+          {/* Only shown while looking at archived items, as the way back. */}
+          {viewArchived && (
+            <Button
+              variant="default"
+              onClick={() => { setViewArchived(false); setSelectedIds(new Set()); }}
+              className="rounded-lg h-9 px-4 text-sm font-medium"
+            >
+              <ArchiveRestore className="h-4 w-4 mr-1.5" /> Back to items
             </Button>
           )}
 
@@ -802,12 +729,25 @@ export default function InventoryPage() {
             dateField={(r: any) => r.created_at?.split("T")[0] || ""}
             fileName={viewArchived ? "Inventory-Archived" : "Inventory"}
           />
-          <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Upload className="h-4 w-4 mr-1.5" /> Bulk Upload
-          </Button>
-          <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
-            <Pencil className="h-4 w-4 mr-1.5" /> Bulk Edit
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="rounded-lg h-9 px-3 text-sm font-medium">
+                <MoreHorizontal className="h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">More</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => setBulkOpen(true)}><Upload className="mr-2 h-4 w-4" /> Add items from a file</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setBulkEditOpen(true)}><Pencil className="mr-2 h-4 w-4" /> Update items from a file</DropdownMenuItem>
+              {!viewArchived && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => { setViewArchived(true); setSelectedIds(new Set()); }}>
+                    <Archive className="mr-2 h-4 w-4" /> View archived items
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ColumnVisibilityMenu columns={orderedColumns} visible={colState.visible} onToggle={toggleCol} onMove={moveCol} onReset={resetCols} />
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
@@ -1178,6 +1118,103 @@ export default function InventoryPage() {
       <BulkEditUploadDialog open={bulkEditOpen} onOpenChange={setBulkEditOpen} items={items} isAdmin={isAdmin} onSuccess={() => { queryClient.invalidateQueries({ queryKey: ["items"] }); queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] }); }} />
 
       {/* Mobile: card layout (<768px) */}
+      {/* What can be done to the ticked items, together and out of the
+          toolbar, where they used to appear and disappear among the rest. */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          {selectedIds.size > 0 && !viewArchived && (() => {
+            const selectedItems = items.filter(i => selectedIds.has(i.id));
+            const allLocal = selectedItems.every(i => (((i as any).source as string) || 'local') === 'local');
+            const canBulkEditCost = isAdmin || allLocal;
+            return (
+              <BulkEditDialog
+                selectedIds={Array.from(selectedIds)}
+                entityLabel="items"
+                trigger={
+                  <Button variant="outline" className="h-9 rounded-lg px-4 text-sm font-medium">
+                    <Pencil className="h-4 w-4 mr-1.5" /> Edit selected
+                  </Button>
+                }
+                fields={([
+                  { key: "name", label: "Name", type: "text" },
+                  { key: "sku", label: "SKU", type: "text" },
+                  { key: "description", label: "Description", type: "textarea" },
+                  { key: "category", label: "Category", type: "text" },
+                  { key: "brand", label: "Brand", type: "text" },
+                  { key: "barcode", label: "Barcode", type: "text" },
+                  { key: "supplier_sku", label: "Supplier SKU", type: "text" },
+                  ...(isAdmin ? [
+                    { key: "source", label: "Source (Local / Import)", type: "select", options: [{ value: "local", label: "Local" }, { value: "import", label: "Import" }] },
+                    { key: "status", label: "Status", type: "select", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }, { value: "discontinued", label: "Discontinued" }] },
+                  ] : []),
+                  { key: "base_unit", label: "Base Unit (e.g. pcs, m, kg)", type: "text" },
+                  { key: "units_per_stock", label: "Units Per Stock", type: "number", transform: (v) => parseFloat(v) || 1 },
+                  { key: "open_roll_remaining", label: "Open Roll Remaining", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  // Stock is per branch, so on "All branches" the bulk edit has
+                  // to be told which one before it can touch quantities.
+                  ...(isAdmin && !activeBranchId ? [
+                    { key: "_branch", label: "Branch (tick this to edit quantities)", type: "select", options: branches.map((b) => ({ value: b.id, label: `${b.branch_name} (${b.branch_code})` })) },
+                  ] : []),
+                  ...(isAdmin ? [
+                    { key: "warehouse_quantity", label: "Warehouse Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
+                    { key: "store_quantity", label: "Store Quantity", type: "number", transform: (v) => parseInt(v) || 0 },
+                  ] : []),
+                  ...(canBulkEditCost ? [
+                    { key: "cost_price", label: "Cost Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  ] : []),
+                  { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
+                  ...(isAdmin ? [
+                    { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
+                  ] : []),
+                ]) as BulkField[]}
+                updateOne={async (id, patch) => {
+                  const { rest, wh, st } = splitQty(patch as any);
+                  // Not a column on items — it only says where the quantities go.
+                  const pickedBranch = (rest as any)._branch as string | undefined;
+                  delete (rest as any)._branch;
+                  if (Object.keys(rest).length > 0) await updateItem(id, rest as Partial<Item>);
+                  if (wh !== undefined || st !== undefined) {
+                    const branchId = activeBranchId || pickedBranch;
+                    if (!branchId) throw new Error("Tick Branch and choose one — stock is kept per branch.");
+                    const moved = await setBranchQuantities({ itemId: id, branchId, warehouse: wh ?? null, store: st ?? null, notes: "Bulk edit" });
+                    bulkAdjustments.current.push(...moved);
+                  }
+                }}
+                onSuccess={() => {
+                  // One message for the whole edit, not one per item.
+                  notifyInventoryAdjustments(bulkAdjustments.current);
+                  bulkAdjustments.current = [];
+                  queryClient.invalidateQueries({ queryKey: ["items"] });
+                  queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] });
+                  setSelectedIds(new Set());
+                }}
+              />
+            );
+          })()}
+
+          {selectedIds.size > 0 && !viewArchived && (
+            <Button variant="outline" onClick={() => setArchiveConfirm({ ids: Array.from(selectedIds), label: `${selectedIds.size} selected item${selectedIds.size > 1 ? "s" : ""}` })} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Archive className="h-4 w-4 mr-1.5" /> Archive {selectedIds.size}
+            </Button>
+          )}
+          {selectedIds.size > 0 && viewArchived && isAdmin && (
+            <Button variant="outline" onClick={() => unarchiveMut.mutate(Array.from(selectedIds))} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <ArchiveRestore className="h-4 w-4 mr-1.5" /> Restore {selectedIds.size}
+            </Button>
+          )}
+          {selectedIds.size > 0 && isAdmin && (
+            <Button variant="destructive" onClick={() => bulkDeleteMut.mutate()} disabled={bulkDeleteMut.isPending} className="rounded-lg h-9 px-4 text-sm font-medium">
+              <Trash2 className="h-4 w-4 mr-1.5" /> Delete {selectedIds.size}
+            </Button>
+          )}
+
+          <Button variant="ghost" onClick={() => setSelectedIds(new Set())} className="ml-auto h-9 rounded-lg px-3 text-sm">
+            Clear
+          </Button>
+        </div>
+      )}
+
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
           <div className="flex justify-center py-12">
@@ -1246,9 +1283,23 @@ export default function InventoryPage() {
               </TableHead>
               {visibleColumns.map((c) => {
                 const align = (c.key === "name" || c.key === "source" || c.key === "branch") ? "left" : "right";
-                return <SortableHeader key={`h-${c.key}`} sortKey={c.key} label={c.label} sort={sort} onToggle={toggle} align={align} />;
+                return (
+                  <SortableHeader
+                    key={`h-${c.key}`}
+                    sortKey={c.key}
+                    label={c.label}
+                    sort={sort}
+                    onToggle={toggle}
+                    align={align}
+                    // w-px: as narrow as the contents allow, so the item name
+                    // takes the spare width instead of every number column.
+                    className={NARROW_COLUMNS.has(c.key) ? "w-px whitespace-nowrap" : undefined}
+                  />
+                );
               })}
-              <TableHead className="text-xs text-right w-32 sticky right-0 z-20 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">Actions</TableHead>
+              <TableHead className="w-px whitespace-nowrap text-xs text-right sticky right-0 z-20 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1280,32 +1331,31 @@ export default function InventoryPage() {
                   switch (c.key) {
                     case "name":
                       return (
-                        <TableCell key="c-name" className="font-medium text-sm">
-                          <div className="flex flex-col">
-                            <span className="flex items-center gap-1.5">
-                              {item.name}
+                        <TableCell key="c-name" className="min-w-[200px] max-w-[420px]">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="flex items-start gap-1.5 text-sm font-medium leading-snug">
+                              <span className="line-clamp-2">{item.name}</span>
                               {item.status && item.status !== "active" && (
-                                <Badge variant="outline" className="text-[9px] uppercase h-4 px-1">{item.status}</Badge>
+                                <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] uppercase">{item.status}</Badge>
                               )}
                             </span>
-                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                            <span className="truncate text-[11px] text-muted-foreground">
                               {item.sku}
-                              {item.category && <> · <span className="text-muted-foreground/80">{item.category}</span></>}
+                              {item.category && <> · {item.category}</>}
+                              {((item as any).source as string) === "import" && <> · <span className="text-sky-700 dark:text-sky-400">Import</span></>}
                             </span>
                           </div>
                         </TableCell>
                       );
                     case "source":
                       return (
-                        <TableCell key="c-source">
-                          <Badge variant={((item as any).source === 'import') ? 'secondary' : 'outline'} className="text-[10px] uppercase">
-                            {((item as any).source as string) || 'local'}
-                          </Badge>
+                        <TableCell key="c-source" className="whitespace-nowrap text-sm capitalize text-muted-foreground">
+                          {((item as any).source as string) || "local"}
                         </TableCell>
                       );
                     case "quantity":
                       return (
-                        <TableCell key="c-qty" className={`text-right text-sm font-semibold ${item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
+                        <TableCell key="c-qty" className={`whitespace-nowrap text-right text-sm font-semibold tabular-nums ${item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive' : ''}`}>
                           {item.quantity}
                           {(item.units_per_stock ?? 1) > 1 && (item.open_roll_remaining ?? 0) > 0 && (
                             <span className="ml-1 text-[10px] font-normal text-muted-foreground">
@@ -1317,35 +1367,34 @@ export default function InventoryPage() {
                       );
                     case "branch":
                       return (
-                        <TableCell key="c-branch" className="text-sm">
-                          <Badge variant="outline" className="text-[10px] uppercase">{branchLabel}</Badge>
-                        </TableCell>
+                        <TableCell key="c-branch" className="whitespace-nowrap text-sm text-muted-foreground">{branchLabel}</TableCell>
                       );
                     case "reserved_quantity": {
                       const rq = Number((item as any).reserved_quantity ?? 0);
                       return (
-                        <TableCell key="c-res" className="text-right text-sm">
-                          <span className={rq > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"}>{rq}</span>
+                        <TableCell key="c-res" className="text-right text-sm tabular-nums">
+                          {/* A dash for none: a column of zeros hid the few that matter. */}
+                          {rq > 0 ? <span className="font-medium text-amber-600">{rq}</span> : <span className="text-muted-foreground/60">—</span>}
                         </TableCell>
                       );
                     }
                     case "incoming_quantity": {
                       const iq = Number((item as any).incoming_quantity ?? 0);
                       return (
-                        <TableCell key="c-inc" className="text-right text-sm">
-                          <span className={iq > 0 ? "text-blue-600 font-medium" : "text-muted-foreground"}>{iq}</span>
+                        <TableCell key="c-inc" className="text-right text-sm tabular-nums">
+                          {iq > 0 ? <span className="font-medium text-blue-600">{iq}</span> : <span className="text-muted-foreground/60">—</span>}
                         </TableCell>
                       );
                     }
                     case "warehouse_quantity":
-                      return <TableCell key="c-wh" className="text-right text-sm">{(item as any).warehouse_quantity ?? 0}</TableCell>;
+                      return <TableCell key="c-wh" className="text-right text-sm tabular-nums">{(item as any).warehouse_quantity ?? 0}</TableCell>;
                     case "store_quantity":
-                      return <TableCell key="c-st" className="text-right text-sm">{(item as any).store_quantity ?? 0}</TableCell>;
+                      return <TableCell key="c-st" className="text-right text-sm tabular-nums">{(item as any).store_quantity ?? 0}</TableCell>;
                     case "cost_price":
                       return (
                         <TableCell
                           key="c-cost"
-                          className="text-right text-sm text-muted-foreground"
+                          className="whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground"
                           // Hover only: the averaged cost is the one that counts.
                           title={isAdmin && (item as any).landed_cost_latest ? `Latest landed ${peso(Number((item as any).landed_cost_latest))}` : undefined}
                         >
@@ -1355,7 +1404,7 @@ export default function InventoryPage() {
                     case "selling_price": {
                       const low = isLowMargin(item);
                       return (
-                        <TableCell key="c-sell" className="text-right text-sm">
+                        <TableCell key="c-sell" className="whitespace-nowrap text-right text-sm tabular-nums">
                           <span className={low ? "inline-flex items-center gap-1 text-destructive" : undefined}>
                             {low && (
                               <AlertTriangle
@@ -1372,7 +1421,7 @@ export default function InventoryPage() {
                     }
                     case "low_stock_threshold":
                       return (
-                        <TableCell key="c-th" className="text-right text-sm">
+                        <TableCell key="c-th" className="text-right text-sm tabular-nums">
                           <span className={item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold ? 'text-destructive font-medium' : 'text-muted-foreground'}>
                             {item.low_stock_threshold ?? 0}
                           </span>
@@ -1382,52 +1431,55 @@ export default function InventoryPage() {
                       return null;
                   }
                 })}
-                <TableCell className="text-right sticky right-0 z-10 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
+                <TableCell className="w-px whitespace-nowrap text-right sticky right-0 z-10 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
+                  {/* Two at hand, the rest in a menu: nine icons on every row
+                      made this the widest column on the page. */}
                   <div className="flex justify-end gap-0.5">
-                    {!viewArchived && (
-                      <>
-                        <Button variant="ghost" size="icon" onClick={() => setTransferItem(item)} className="h-7 w-7 rounded-md" title="Transfer stock">
-                          <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setAdjustItem(item)} className="h-7 w-7 rounded-md" title="Adjust stock">
-                          <ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                      </>
+                    {isAdmin && !viewArchived && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md" title="Edit">
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
                     )}
                     <Button variant="ghost" size="icon" onClick={() => setHistoryItem(item)} className="h-7 w-7 rounded-md" title="Stock history">
                       <History className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
-                    {isAdmin && (
-                      <Button variant="ghost" size="icon" onClick={() => setCostHistoryItem(item)} className="h-7 w-7 rounded-md" title="Cost history">
-                        <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={() => setSuppliersItem(item)} className="h-7 w-7 rounded-md" title="Suppliers">
-                      <Truck className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                    {!viewArchived && (
-                      <Button variant="ghost" size="icon" onClick={() => setVariationsItem(item)} className="h-7 w-7 rounded-md" title="Variations">
-                        <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    )}
-                    {isAdmin && !viewArchived && (
-                      <>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md" title="Edit">
-                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setArchiveConfirm({ ids: [item.id], label: `"${item.name}"` })} className="h-7 w-7 rounded-md" title="Archive">
-                          <Archive className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) deleteMut.mutate(item.id); }} className="h-7 w-7 rounded-md" title="Delete">
-                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
-                        </Button>
-                      </>
-                    )}
                     {isAdmin && viewArchived && (
                       <Button variant="ghost" size="icon" onClick={() => unarchiveMut.mutate([item.id])} className="h-7 w-7 rounded-md" title="Restore">
                         <ArchiveRestore className="h-3.5 w-3.5 text-primary" />
                       </Button>
                     )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md" title="More">
+                          <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        {!viewArchived && (
+                          <>
+                            <DropdownMenuItem onClick={() => setTransferItem(item)}><ArrowLeftRight className="mr-2 h-4 w-4" /> Transfer stock</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setAdjustItem(item)}><ClipboardEdit className="mr-2 h-4 w-4" /> Adjust stock</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setVariationsItem(item)}><Layers className="mr-2 h-4 w-4" /> Variations</DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuItem onClick={() => setSuppliersItem(item)}><Truck className="mr-2 h-4 w-4" /> Suppliers</DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem onClick={() => setCostHistoryItem(item)}><DollarSign className="mr-2 h-4 w-4" /> Cost history</DropdownMenuItem>
+                        )}
+                        {isAdmin && !viewArchived && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => setArchiveConfirm({ ids: [item.id], label: `"${item.name}"` })}><Archive className="mr-2 h-4 w-4" /> Archive</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => { if (confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) deleteMut.mutate(item.id); }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </TableCell>
               </TableRow>
