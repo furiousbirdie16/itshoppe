@@ -652,6 +652,12 @@ function buildRow(
     coverDays: COVER_DAYS,
     minStock: threshold,
     moq: link?.moq,
+    // Each open order from the day it is due, so stock that is not here yet is
+    // not treated as on the shelf. Late or undated orders count as arriving now.
+    incoming: ctx.openPos.map((po) => ({
+      qty: po.remaining,
+      inDays: po.expected ? Math.max(0, differenceInCalendarDays(parseISO(po.expected), ctx.today)) : 0,
+    })),
   });
   return {
     item: it,

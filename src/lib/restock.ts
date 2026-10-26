@@ -225,6 +225,45 @@ export interface ReorderPlan {
  * - watch: below its minimum but not selling, or due to be ordered within two weeks.
  * - ok: nothing to do.
  */
+/**
+ * When stock runs out, counting what is on order from the day it arrives.
+ *
+ * Treating everything on order as already on the shelf is right while the
+ * shelf lasts until it lands, and wrong when it does not: an item at 0 with
+ * 20 due in 19 days sells nothing in between, so those 20 start being used on
+ * day 19, not today. Days spent at 0 waiting for an order already placed are
+ * returned too (up to `horizon`), because sales lost then do not need to be
+ * bought for.
+ */
+export function projectStock(
+  stock: number,
+  rate: number,
+  incoming: { qty: number; inDays: number }[],
+  horizon: number,
+): { runOutDay: number; waitingDays: number } {
+  if (!(rate > 0)) return { runOutDay: Infinity, waitingDays: 0 };
+  let level = Math.max(0, stock);
+  let t = 0;
+  let waitingDays = 0;
+  const arrivals = [...incoming]
+    .filter((a) => a.qty > 0)
+    .map((a) => ({ qty: a.qty, inDays: Math.max(0, a.inDays) }))
+    .sort((a, b) => a.inDays - b.inDays);
+  for (const a of arrivals) {
+    const emptyAt = t + level / rate;
+    if (emptyAt < a.inDays) {
+      // Out before it lands: nothing sells until it does.
+      waitingDays += Math.max(0, Math.min(a.inDays, horizon) - Math.min(emptyAt, horizon));
+      level = 0;
+    } else {
+      level -= rate * (a.inDays - t);
+    }
+    t = a.inDays;
+    level += a.qty;
+  }
+  return { runOutDay: t + level / rate, waitingDays };
+}
+
 export function planReorder(p: {
   stock: number;
   onOrder: number;
@@ -233,14 +272,26 @@ export function planReorder(p: {
   coverDays: number;
   minStock?: number | null;
   moq?: number | null;
+  /**
+   * What is on order, with days until it arrives (0 if late or undated). When
+   * given, it is counted from its arrival; when not, it counts as on hand.
+   */
+  incoming?: { qty: number; inDays: number }[];
 }): ReorderPlan {
   const stock = Math.max(0, p.stock);
   const min = Math.max(0, Number(p.minStock || 0));
   const belowMin = min > 0 && stock <= min;
   const daysLeft = p.rate > 0 ? stock / p.rate : Infinity;
-  const orderByDays = p.rate > 0 ? Math.floor((stock + p.onOrder) / p.rate - p.leadDays - SAFETY_DAYS) : Infinity;
+  const projection = p.incoming
+    ? projectStock(stock, p.rate, p.incoming, p.leadDays)
+    : { runOutDay: p.rate > 0 ? (stock + p.onOrder) / p.rate : Infinity, waitingDays: 0 };
+  const orderByDays = p.rate > 0 ? Math.floor(projection.runOutDay - p.leadDays - SAFETY_DAYS) : Infinity;
 
-  const byRate = p.rate > 0 ? p.rate * (p.leadDays + SAFETY_DAYS + p.coverDays) - stock - p.onOrder : 0;
+  // Days at 0 waiting for an order already placed are sales that will not
+  // happen, so they are not bought for again.
+  const byRate = p.rate > 0
+    ? p.rate * (p.leadDays + SAFETY_DAYS + p.coverDays - projection.waitingDays) - stock - p.onOrder
+    : 0;
   const byMin = min > 0 ? min - stock - p.onOrder : 0;
   let suggested = Math.ceil(Math.max(byRate, byMin, 0) - 1e-9);
   if (suggested > 0) suggested = Math.max(suggested, Number(p.moq || 0));
