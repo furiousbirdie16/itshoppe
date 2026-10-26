@@ -34,6 +34,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
 import { supabase } from "@/integrations/supabase/client";
 import { useBranch } from "@/contexts/BranchContext";
+import { searchMatches } from "@/lib/search";
 
 type SalesChannel = "shopee" | "lazada" | "others";
 
@@ -435,7 +436,7 @@ export default function OnlineSalesPage() {
     const qMax = num(filterQtyMax); if (qMax !== null && qty > qMax) return false;
     if (filter) {
       const q = filter.toLowerCase();
-      if (!s.product_name?.toLowerCase().includes(q) && !s.order_number?.toLowerCase().includes(q)) return false;
+      if (!searchMatches(q, s.product_name, s.order_number)) return false;
     }
     return true;
   };

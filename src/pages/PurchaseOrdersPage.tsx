@@ -29,6 +29,7 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 interface LineItem { item_id: string; item_name: string; quantity: number; unit_cost: number; }
 
@@ -86,8 +87,7 @@ export default function PurchaseOrdersPage() {
   const filtered = pos.filter((po: any) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [po.po_number, docNo(po.po_number), po.suppliers?.name, po.order_date, po.payment_due_date, po.status, po.notes]
-      .some((value) => (value || "").toString().toLowerCase().includes(q));
+    return searchMatches(q, ...[po.po_number, docNo(po.po_number), po.suppliers?.name, po.order_date, po.payment_due_date, po.status, po.notes]);
   });
 
   const { sort, toggle, sorted: sortedPOs } = useSort<any>(filtered, {

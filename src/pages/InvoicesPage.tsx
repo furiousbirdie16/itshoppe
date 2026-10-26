@@ -44,6 +44,7 @@ import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
 import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
 import { paymentReferenceUrls } from "@/lib/payment-references";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 
@@ -176,7 +177,7 @@ export default function InvoicesPage() {
       if (q) {
         const hay = [inv.invoice_number, docNo(inv.invoice_number), inv.customers?.name, inv.sales_agent, inv.notes, inv.reseller_id ? customerNameById.get(inv.reseller_id) : ""]
           .map((x: any) => String(x || "").toLowerCase()).join(" ");
-        if (!hay.includes(q)) return false;
+        if (!searchMatches(q, hay)) return false;
       }
       return true;
     });

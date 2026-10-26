@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { UserPlus, Shield, User, Trash2, Search } from "lucide-react";
 import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
 import { UserBranchesCell } from "@/components/UserBranchesCell";
+import { searchMatches } from "@/lib/search";
 
 const USER_COLUMNS: ColumnDef[] = [
   { key: "user", label: "User", defaultVisible: true },
@@ -56,8 +57,7 @@ export default function UsersPage() {
   const filteredUsers = users.filter((managedUser) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [managedUser.display_name, managedUser.email, managedUser.role]
-      .some((value) => (value || "").toLowerCase().includes(q));
+    return searchMatches(q, ...[managedUser.display_name, managedUser.email, managedUser.role]);
   });
 
   const updateRoleMutation = useMutation({

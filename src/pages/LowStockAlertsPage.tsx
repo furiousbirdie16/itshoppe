@@ -44,6 +44,7 @@ import { ShoppingCart, Search, ChevronRight, ChevronDown, History, DollarSign, B
 import { cn } from "@/lib/utils";
 import type { Item } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 type Group = Exclude<ReorderGroup, "ok">;
 
@@ -253,7 +254,7 @@ export default function LowStockAlertsPage() {
     let out = listed;
     if (search) {
       const q = search.toLowerCase();
-      out = out.filter((r) => r.item.name.toLowerCase().includes(q) || (r.item.sku || "").toLowerCase().includes(q));
+      out = out.filter((r) => searchMatches(q, r.item.name, r.item.sku, (r.item as any).brand, (r.item as any).category));
     }
     if (sourceFilter !== "all") out = out.filter((r) => (r.item.source || "local") === sourceFilter);
     if (supplierFilter !== "all") out = out.filter((r) => r.supplier?.name === supplierFilter);

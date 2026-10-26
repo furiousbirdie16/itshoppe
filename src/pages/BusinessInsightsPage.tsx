@@ -37,6 +37,7 @@ import type { ProductAction, ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 type RangePreset = "today" | "7d" | "30d" | "60d" | "90d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
@@ -903,7 +904,7 @@ export default function BusinessInsightsPage() {
 
     // === Sheet 2: Sales Summary (per-unit sold in range) ===
     const q = search.trim().toLowerCase();
-    const salesRows = q ? sorted.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q)) : sorted;
+    const salesRows = q ? sorted.filter((r) => searchMatches(q, r.name, r.sku)) : sorted;
     const summaryRows = salesRows.map((r) => {
       const base: Record<string, unknown> = {
         Item: r.name,
@@ -1202,7 +1203,7 @@ export default function BusinessInsightsPage() {
   const filteredProducts = useMemo(() => {
     let list = productMetrics;
     if (productSource !== "all") list = list.filter((p) => (p.source || "local") === productSource);
-    if (productSearch) list = list.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch));
+    if (productSearch) list = list.filter((p) => searchMatches(productSearch, p.name, p.sku));
     if (actionFilter !== "all") list = list.filter((p) => p.action === actionFilter);
     return list;
   }, [productMetrics, productSource, productSearch, actionFilter]);

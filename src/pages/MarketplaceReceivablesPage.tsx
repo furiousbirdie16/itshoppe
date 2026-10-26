@@ -22,6 +22,7 @@ import {
   channelBadgeClass,
   DEFAULT_MARKETPLACE_FEE_PCT,
 } from "@/lib/marketplaceReceivables";
+import { searchMatches } from "@/lib/search";
 
 export default function MarketplaceReceivablesPage() {
   const { activeBranchId } = useBranch();
@@ -44,7 +45,7 @@ export default function MarketplaceReceivablesPage() {
       if (filterChannel !== "all" && r.sales_channel !== filterChannel) return false;
       if (dateFrom && (r.order_date || "") < dateFrom) return false;
       if (dateTo && (r.order_date || "") > dateTo) return false;
-      if (q && !r.order_number?.toLowerCase().includes(q) && !r.product_name?.toLowerCase().includes(q)) return false;
+      if (q && !searchMatches(q, r.order_number, r.product_name)) return false;
       return true;
     });
   }, [rows, search, filterChannel, dateFrom, dateTo]);

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Item } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 interface Props {
   item: Item | null;
@@ -92,7 +93,7 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
     if (search.trim()) {
       const q = search.toLowerCase();
       const hay = [r.po_number, docNo(r.po_number), r.supplier_name, r.changed_by_email, r.reason].map(x => String(x || "").toLowerCase()).join(" ");
-      if (!hay.includes(q)) return false;
+      if (!searchMatches(q, hay)) return false;
     }
     return true;
   }), [rows, supplierFilter, userFilter, poFilter, from, to, directionFilter, search]);

@@ -37,6 +37,7 @@ import { ColumnVisibilityMenu, useColumnVisibility, type ColumnDef } from "@/com
 import { TagsFilter, normalizeTag, tagKey } from "@/components/TagsInput";
 import { Tag as TagIcon } from "lucide-react";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 const CUSTOMER_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Customer Name", required: true },
@@ -265,8 +266,7 @@ export default function CustomersPage() {
     const q = search.trim().toLowerCase();
     if (q) {
       const cls = classificationMeta(customer.classification).label;
-      const hit = [customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address, cls]
-        .some((value) => (value || "").toLowerCase().includes(q));
+      const hit = searchMatches(q, ...[customer.name, customer.contact_person, customer.email, customer.phone, customer.address, customer._lastAgent, customer.country, customer.province_state, customer.city_municipality, customer.barangay_village, customer.full_address, cls]);
       if (!hit) return false;
     }
     if (tab !== "all") {

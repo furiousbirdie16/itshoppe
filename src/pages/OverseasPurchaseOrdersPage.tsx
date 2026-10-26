@@ -47,6 +47,7 @@ import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { CargoCostDialog } from "@/components/CargoCostDialog";
 import { docNo } from "@/lib/doc-number";
 import { cn } from "@/lib/utils";
+import { searchMatches } from "@/lib/search";
 
 interface LineItem {
   /** The existing row, when this line is one the PO already had. Carried so an
@@ -363,7 +364,7 @@ export default function OverseasPurchaseOrdersPage() {
 
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [
+    return searchMatches(q, ...[
       order.po_number, docNo(order.po_number),
       order.overseas_suppliers?.name,
       order.status,
@@ -372,7 +373,7 @@ export default function OverseasPurchaseOrdersPage() {
       order.expected_delivery,
       order.notes,
       branchNameById.get(order.branch_id) || "",
-    ].some((value) => (value || "").toString().toLowerCase().includes(q));
+    ]);
   });
   const bucketCounts = orders.reduce(
     (acc, o: any) => {
@@ -519,8 +520,7 @@ export default function OverseasPurchaseOrdersPage() {
     const q = trackSearch.trim().toLowerCase();
     if (!q) return byStatus;
     return byStatus.filter((r) =>
-      [r.shipment.tracking_number, r.po_number, docNo(r.po_number), r.supplier, r.shipment.shipping_method]
-        .some((v) => (v || "").toLowerCase().includes(q)),
+      searchMatches(q, ...[r.shipment.tracking_number, r.po_number, docNo(r.po_number), r.supplier, r.shipment.shipping_method]),
     );
   }, [shipments, orders, trackSearch, trackStatusFilter]);
   const shipmentByPo = useMemo(() => {
@@ -945,7 +945,7 @@ export default function OverseasPurchaseOrdersPage() {
 
   const filteredIncomingRows = incomingRows.filter((row) => {
     const q = incomingSearch.trim().toLowerCase();
-    const matchesSearch = !q || [
+    const matchesSearch = !q || searchMatches(q, ...[
       row.po_number, docNo(row.po_number),
       row.supplier_name,
       row.item_name,
@@ -954,7 +954,7 @@ export default function OverseasPurchaseOrdersPage() {
       row.status,
       row.order_date,
       row.expected_delivery,
-    ].some((value) => (value || "").toString().toLowerCase().includes(q));
+    ]);
 
     const matchesSupplier = incomingSupplierFilter === "all" || row.supplier_name === incomingSupplierFilter;
     const matchesReceipt =

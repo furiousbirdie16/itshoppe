@@ -26,6 +26,7 @@ import { FilterCombobox } from "@/components/FilterCombobox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBranch } from "@/contexts/BranchContext";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 interface ManualForm {
   customer_id: string;
@@ -295,8 +296,7 @@ export default function PendingPaymentsPage() {
     if (!q) return rows;
 
     return rows.filter((row) =>
-      [row.source, row.reference, row.customer, row.date, row.due_date, row.status, String(row.amount)]
-        .some((value) => (value || "").toLowerCase().includes(q)),
+      searchMatches(q, ...[row.source, row.reference, row.customer, row.date, row.due_date, row.status, String(row.amount)]),
     );
   }, [filteredInvoices, filteredManual, search, tab]);
 

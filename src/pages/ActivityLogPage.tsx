@@ -9,6 +9,7 @@ import { Search } from "lucide-react";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
+import { searchMatches } from "@/lib/search";
 
 const actionColors: Record<string, string> = {
   created: "bg-success/10 text-success border-success/20",
@@ -43,15 +44,7 @@ export default function ActivityLogPage() {
   const { state, orderedColumns, visibleColumns, isVisible, toggle, move, reset } = useColumnPrefs("cols:activity-log", COLUMNS);
 
   const filtered = (logs || []).filter((log) => {
-    const s = search.toLowerCase();
-    return (
-      !s ||
-      log.user_email.toLowerCase().includes(s) ||
-      log.action.toLowerCase().includes(s) ||
-      log.entity_type.toLowerCase().includes(s) ||
-      (log.entity_id && log.entity_id.toLowerCase().includes(s)) ||
-      JSON.stringify(log.details).toLowerCase().includes(s)
-    );
+    return searchMatches(search, log.user_email, log.action, log.entity_type, log.entity_id, JSON.stringify(log.details));
   });
 
   const { sort, toggle: sortToggle, sorted: sortedLogs } = useSort<any>(filtered, {

@@ -22,6 +22,7 @@ import type { Payable } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { searchMatches } from "@/lib/search";
 
 const NO_SUPPLIER = "none";
 // Radix Select cannot hold an empty string, so "settles no account" needs a sentinel.
@@ -115,8 +116,7 @@ export default function PayablesPage() {
   const filtered = scoped.filter((p) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [p.payee, p.check_number, p.check_bank, p.category, p.notes]
-      .some((v) => (v || "").toLowerCase().includes(q));
+    return searchMatches(q, ...[p.payee, p.check_number, p.check_bank, p.category, p.notes]);
   });
 
   const { sort, toggle, sorted } = useSort<Payable>(filtered, {

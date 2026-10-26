@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { searchMatches } from "@/lib/search";
 
 const defaultForm = { name: "", contact_person: "", email: "", phone: "", address: "", country: "", currency: "USD" as "USD" | "RMB", exchange_rate: "1", notes: "" };
 
@@ -51,7 +52,7 @@ export default function OverseasSuppliersPage() {
   const filtered = suppliers.filter((supplier) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [
+    return searchMatches(q, ...[
       supplier.name,
       supplier.country,
       supplier.contact_person,
@@ -60,7 +61,7 @@ export default function OverseasSuppliersPage() {
       supplier.email,
       supplier.phone,
       supplier.notes,
-    ].some((value) => (value || "").toLowerCase().includes(q));
+    ]);
   });
   const { sort, toggle, sorted: sortedSuppliers } = useSort<OverseasSupplier>(filtered, {
     name: (r) => r.name,

@@ -42,6 +42,7 @@ import InventoryMobileCard from "@/components/InventoryMobileCard";
 import { AllBranchesNotice } from "@/components/AllBranchesNotice";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
 import { useStockSplit } from "@/hooks/use-stock-split";
+import { searchMatches } from "@/lib/search";
 
 
 // Branch is off by default: it is the same on every row (the branch being
@@ -512,11 +513,10 @@ export default function InventoryPage() {
 
       // Search across many fields
       if (q) {
-        const hay = [
+        if (!searchMatches(q,
           i.name, i.sku, i.description,
           (i as any).barcode, (i as any).supplier_sku, (i as any).brand, (i as any).category,
-        ].filter(Boolean).map(v => String(v).toLowerCase());
-        if (!hay.some(h => h.includes(q))) return false;
+        )) return false;
       }
 
       if (lowMarginOnly && !isLowMargin(i)) return false;

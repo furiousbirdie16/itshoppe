@@ -15,6 +15,7 @@ import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
+import { searchMatches } from "@/lib/search";
 
 const SUPPLIER_COLUMNS: ColumnDef[] = [
   { key: "name", label: "Name", defaultVisible: true },
@@ -51,8 +52,7 @@ export default function SuppliersPage() {
   const filtered = suppliers.filter((supplier) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [supplier.name, supplier.contact_person, supplier.email, supplier.phone, supplier.address]
-      .some((value) => (value || "").toLowerCase().includes(q));
+    return searchMatches(q, ...[supplier.name, supplier.contact_person, supplier.email, supplier.phone, supplier.address]);
   });
   const { sort, toggle, sorted: sortedSuppliers } = useSort<Supplier>(filtered, {
     name: (r) => r.name,

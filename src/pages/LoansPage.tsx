@@ -21,6 +21,7 @@ import { peso } from "@/lib/currency";
 import type { Loan, LoanPayment } from "@/types/database";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { searchMatches } from "@/lib/search";
 
 const emptyForm = { lender: "", principal_amount: "", interest_rate: "", due_date: "", notes: "" };
 
@@ -116,7 +117,7 @@ export default function LoansPage() {
   const filtered = loans.filter((loan) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [loan.lender, loan.notes].some((value) => (value || "").toLowerCase().includes(q));
+    return searchMatches(q, ...[loan.lender, loan.notes]);
   });
 
   const { sort, toggle, sorted: sortedLoans } = useSort<Loan>(filtered, {
