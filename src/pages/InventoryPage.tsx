@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities, notifyInventoryAdjustments, getBranchStock } from "@/lib/api";
 import { peso } from "@/lib/currency";
+import { SkuBundlesManager } from "@/components/SkuBundlesManager";
 import { getMarginTarget } from "@/lib/landed-cost-api";
 import { marginOf } from "@/lib/landed-cost";
 import { Button } from "@/components/ui/button";
@@ -188,6 +189,8 @@ export default function InventoryPage() {
    */
   const { data: marginTarget = 20 } = useQuery({ queryKey: ["margin-target"], queryFn: getMarginTarget, enabled: isAdmin });
   const [lowMarginOnly, setLowMarginOnly] = useState(false);
+  /** The list of marketplace SKUs that stand for one or more items. */
+  const [bundlesOpen, setBundlesOpen] = useState(false);
   const isLowMargin = (item: Item) => {
     if (!isAdmin) return false;
     const m = marginOf(Number(item.selling_price), Number(item.cost_price));
@@ -738,6 +741,7 @@ export default function InventoryPage() {
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => setBulkOpen(true)}><Upload className="mr-2 h-4 w-4" /> Add items from a file</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setBulkEditOpen(true)}><Pencil className="mr-2 h-4 w-4" /> Update items from a file</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setBundlesOpen(true)}><Layers className="mr-2 h-4 w-4" /> Bundle SKUs</DropdownMenuItem>
               {!viewArchived && (
                 <>
                   <DropdownMenuSeparator />
@@ -1095,6 +1099,8 @@ export default function InventoryPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <SkuBundlesManager open={bundlesOpen} onOpenChange={setBundlesOpen} items={items} />
 
       {/* Archive confirmation */}
       <Dialog open={!!archiveConfirm} onOpenChange={(o) => { if (!o) setArchiveConfirm(null); }}>

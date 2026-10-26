@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
 import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
 import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
+import { expandBundle, getSkuBundles, skuKey, type SkuBundle } from "@/lib/sku-bundles";
+import { SkuBundleDialog } from "@/components/SkuBundleDialog";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
@@ -252,7 +254,11 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string; unmatched_sku?: string; bundle_sku?: string }[]>([]);
+  /** The sheet last read, so it can be read again once a SKU is set up. */
+  const lastBulkSheet = useRef<BulkCell[][] | null>(null);
+  /** The SKU being set up from an upload line, if any. */
+  const [setupSku, setSetupSku] = useState<string | null>(null);
   /** What a Shopee export import left out, for the summary above the preview. */
   const [bulkNote, setBulkNote] = useState("");
   const [bulkUploading, setBulkUploading] = useState(false);
@@ -597,23 +603,13 @@ export default function OnlineSalesPage() {
   };
 
   // Bulk upload
-  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBulkFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        // IMPORTANT: do NOT use cellDates — it converts Excel serials into JS Date
-        // objects in local time, which causes -1 day shifts depending on timezone.
-        // Using raw:false returns the formatted display string (e.g. "4/21/26"),
-        // which we parse explicitly below as-is, ignoring any timezone.
-        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
-          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
-        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
-
+  /**
+   * Read an order sheet into the preview. Kept apart from the file picker so
+   * the same sheet can be read again after a SKU is set up from its preview.
+   */
+  const processBulkSheet = async (sheetRows: BulkCell[][]) => {
+    type BulkRow = (typeof bulkRows)[number];
+    try {
         // Order lines already in the ERP are marked, not uploaded again: an
         // export for "this week" overlaps the one from last week.
         const markDuplicates = async <R extends { order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string }>(rows: R[]) => {
@@ -625,6 +621,18 @@ export default function OnlineSalesPage() {
           );
         };
 
+        // A SKU is an item or variation of ours, or a bundle SKU standing for
+        // one or more of them (a kit, or a name that differs from ours).
+        const bundles: SkuBundle[] = await qc.fetchQuery({ queryKey: ["sku-bundles"], queryFn: getSkuBundles });
+        const bundleByKey = new Map(bundles.map((b) => [skuKey(b.sku), b]));
+        const resolveSku = (sku: string, qty: number, price: number) => {
+          const m = matchShopeeSku(sku, items as any[], variations as any[]);
+          if (m.itemId) return { bundle: null as string | null, lines: [{ item_id: m.itemId, variation_id: m.variationId, quantity: qty, unitPrice: price, label: sku }] };
+          const b = bundleByKey.get(skuKey(sku));
+          if (b) return { bundle: b.sku, lines: expandBundle(b, qty, price) };
+          return null;
+        };
+
         // Shopee's own export, as downloaded from Seller Centre. Only ship
         // time, order ID, SKU Reference No., deal price and quantity are taken.
         if (isShopeeExport(sheetRows[0])) {
@@ -634,29 +642,30 @@ export default function OnlineSalesPage() {
             return;
           }
           const { rows: shopeeRows, skipped } = parseShopeeExport(sheetRows);
-          const mapped = shopeeRows.map((r) => {
-            const m = matchShopeeSku(r.sku, items as any[], variations as any[]);
+          const mapped = shopeeRows.flatMap((r): BulkRow[] => {
+            const resolved = r.sku ? resolveSku(r.sku, r.quantity, r.dealPrice) : null;
             const error = !r.sku
               ? "No SKU Reference No."
-              : !m.itemId
+              : !resolved
                 ? `No item with SKU "${r.sku}"`
                 : !r.date
                   ? "No ship time"
                   : r.quantity <= 0
                     ? "No quantity"
                     : undefined;
-            return {
-              product_name: r.sku,
-              quantity: r.quantity,
-              sales_channel: "shopee" as SalesChannel,
-              posted_price: r.dealPrice,
-              order_date: r.date,
-              order_id: r.orderId,
-              item_id: m.itemId,
-              variation_id: m.variationId,
-              valid: !error,
-              error,
-            };
+            const base = { sales_channel: "shopee" as SalesChannel, order_date: r.date, order_id: r.orderId };
+            if (!resolved || error) {
+              return [{
+                ...base, product_name: r.sku, quantity: r.quantity, posted_price: r.dealPrice,
+                item_id: null, variation_id: null, valid: false, error,
+                unmatched_sku: !resolved && r.sku ? r.sku : undefined,
+              }];
+            }
+            return resolved.lines.map((l) => ({
+              ...base, product_name: l.label, quantity: l.quantity, posted_price: l.unitPrice,
+              item_id: l.item_id, variation_id: l.variation_id, valid: true, error: undefined as string | undefined,
+              bundle_sku: resolved.bundle ?? undefined,
+            }));
           });
           const checked = await markDuplicates(mapped);
           const dupes = checked.filter((r) => r.error === "Already in the ERP").length;
@@ -725,7 +734,7 @@ export default function OnlineSalesPage() {
         };
 
         const { indexes, dataRows } = resolvedColumns;
-        const parsed = dataRows.map((row) => {
+        const parsed = dataRows.flatMap((row): BulkRow[] => {
           const product_name = normalizeBulkCell(row[indexes.product]);
           const rawChannel = normalizeBulkCell(indexes.channel >= 0 ? row[indexes.channel] : "shopee").toLowerCase();
           const sales_channel: SalesChannel = rawChannel.includes("lazada") ? "lazada" : rawChannel.includes("shopee") ? "shopee" : "others";
@@ -734,23 +743,53 @@ export default function OnlineSalesPage() {
           const order_date = parseDate(indexes.date >= 0 ? row[indexes.date] : null);
           const order_id = normalizeBulkCell(indexes.orderId >= 0 ? row[indexes.orderId] : "");
 
-          // Strict SKU match — try parent item SKU first, then variation SKU
-          const skuLower = product_name.toLowerCase();
-          const matchedItem = items.find(i => i.sku.toLowerCase() === skuLower);
-          const matchedVariation = !matchedItem
-            ? variations.find(v => (v.sku || "").toLowerCase() === skuLower)
-            : null;
-          const resolvedItemId = matchedItem?.id || matchedVariation?.item_id || null;
-          const resolvedVariationId = matchedVariation?.id || null;
+          // SKU match — an item or variation, else a bundle SKU.
+          const resolved = product_name ? resolveSku(product_name, quantity, posted_price) : null;
 
           let error: string | undefined;
           if (!product_name) error = "Missing SKU";
-          else if (!resolvedItemId) error = `SKU "${product_name}" not found in inventory`;
+          else if (!resolved) error = `SKU "${product_name}" not found in inventory`;
           else if (posted_price < 0) error = "Negative price";
 
-          return { product_name, quantity, sales_channel, posted_price, order_date, order_id, item_id: resolvedItemId, variation_id: resolvedVariationId, valid: !error, error };
+          if (!resolved || error) {
+            return [{
+              product_name, quantity, sales_channel, posted_price, order_date, order_id,
+              item_id: null as string | null, variation_id: null as string | null, valid: false, error,
+              unmatched_sku: !resolved && product_name ? product_name : undefined,
+            }];
+          }
+          return resolved.lines.map((l) => ({
+            product_name: l.label, quantity: l.quantity, sales_channel, posted_price: l.unitPrice, order_date, order_id,
+            item_id: l.item_id as string | null, variation_id: l.variation_id, valid: true, error: undefined as string | undefined,
+            bundle_sku: resolved.bundle ?? undefined,
+          }));
         });
         setBulkRows(await markDuplicates(parsed));
+    } catch (err) {
+      console.error("Bulk parse error", err);
+      toast.error("Failed to parse file");
+    }
+  };
+
+  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        // IMPORTANT: do NOT use cellDates — it converts Excel serials into JS Date
+        // objects in local time, which causes -1 day shifts depending on timezone.
+        // Using raw:false returns the formatted display string (e.g. "4/21/26"),
+        // which we parse explicitly below as-is, ignoring any timezone.
+        const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
+          .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
+        if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        lastBulkSheet.current = sheetRows;
+        await processBulkSheet(sheetRows);
       } catch (err) {
         console.error("Bulk parse error", err);
         toast.error("Failed to parse file");
@@ -1979,12 +2018,20 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="tabular-nums text-xs">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.order_date}</TableCell>
-                        <TableCell className="text-sm">{row.product_name || "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          {row.product_name || "—"}
+                          {row.bundle_sku && <span className="block text-[11px] text-muted-foreground">from {row.bundle_sku}</span>}
+                        </TableCell>
                         <TableCell className="text-sm text-center">{row.quantity}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
                         <TableCell className="text-xs">
                           {row.valid ? <span className="text-green-600">✓</span> : <span className={row.error === "Already in the ERP" ? "text-muted-foreground" : "text-destructive"}>{row.error}</span>}
+                          {row.unmatched_sku && (
+                            <Button type="button" variant="outline" size="sm" className="mt-1 h-6 px-2 text-[11px]" onClick={() => setSetupSku(row.unmatched_sku!)}>
+                              Set up this SKU
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1999,6 +2046,15 @@ export default function OnlineSalesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <SkuBundleDialog
+        open={!!setupSku}
+        onOpenChange={(o) => { if (!o) setSetupSku(null); }}
+        initialSku={setupSku ?? ""}
+        items={items as any}
+        // Read the same sheet again, so the line just set up turns green.
+        onSaved={() => { if (lastBulkSheet.current) void processBulkSheet(lastBulkSheet.current); }}
+      />
 
       {/* Mark Paid Dialog */}
       <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
