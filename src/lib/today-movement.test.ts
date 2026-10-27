@@ -33,12 +33,14 @@ describe("buildTodayRows", () => {
     left: (id: string, b: string | null) => `${id}@${b}`,
   };
 
-  it("lists each product that moved, per branch, sales or not", () => {
+  it("lists each product that moved, per branch, sales or not — transfers left out", () => {
     const rows = buildTodayRows([
       mv({ item_id: "i1", quantity: 2 }),
       mv({ item_id: "i1", quantity: 1 }),
       mv({ item_id: "i2", type: "out_invoice", quantity: 50, unit: "m" }),
-      mv({ item_id: "i3", type: "transfer_b2b_in", quantity: 10, reference_type: "stock_transfer" }),
+      mv({ item_id: "i3", type: "adjust_surplus", quantity: 10, reference_type: "manual_adjustment" }),
+      mv({ item_id: "i4", type: "transfer_b2b_in", quantity: 10, reference_type: "stock_transfer" }),
+      mv({ item_id: "i5", type: "transfer_w2s", quantity: 3, reference_type: "transfer" }),
       mv({ item_id: "i1", branch_id: "gsn", quantity: 4 }),
     ], look);
     expect(rows).toEqual([

@@ -1,5 +1,6 @@
 /**
- * Today's movement sheet: every product whose stock moved today at a branch,
+ * Today's movement sheet: every product whose stock moved today at a branch
+ * (sales, returns, deliveries, adjustments — not transfers),
  * with what sold and what is left, and a blank column to fill in by hand.
  */
 
@@ -59,6 +60,9 @@ export function buildTodayRows(
   const groups = new Map<string, MovementLike[]>();
   for (const m of movements) {
     if (!m.item_id) continue;
+    // Transfers (branch to branch, warehouse to store) are left out: moving
+    // stock about is not what this sheet is for.
+    if (m.type.startsWith("transfer")) continue;
     const key = `${m.branch_id ?? ""}|${m.item_id}`;
     groups.set(key, [...(groups.get(key) || []), m]);
   }
