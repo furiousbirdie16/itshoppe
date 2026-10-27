@@ -98,3 +98,19 @@ export async function setMarginTarget(percent: number) {
   });
   if (error) throw error;
 }
+
+/** Payable categories counted only when due (see lib/payable-timing). "Rent" until set. */
+export async function getDeferredPayableCategories(): Promise<string[]> {
+  const { data } = await db.from("app_settings").select("value").eq("key", "deferred_payable_categories").maybeSingle();
+  const list = data?.value?.categories;
+  return Array.isArray(list) ? list.map(String) : ["Rent"];
+}
+
+export async function setDeferredPayableCategories(categories: string[]) {
+  const { error } = await db.from("app_settings").upsert({
+    key: "deferred_payable_categories",
+    value: { categories },
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}

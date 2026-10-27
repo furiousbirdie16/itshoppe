@@ -6,6 +6,8 @@ import {
 } from "@/lib/api";
 import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
 import type { CashAccount, CashTransaction, Payable } from "@/types/database";
+import { payableTiming } from "@/lib/payable-timing";
+import { getDeferredPayableCategories } from "@/lib/landed-cost-api";
 
 /** Payable statuses that are settled and no longer outstanding. */
 const SETTLED: Payable["status"][] = ["paid", "cleared", "cancelled"];
@@ -41,6 +43,7 @@ export function useFinanceSummary() {
   const { data: payables = [] } = useQuery({ queryKey: ["payables"], queryFn: getPayables });
   const { data: loans = [] } = useQuery({ queryKey: ["loans"], queryFn: getLoans });
   const { data: receivables = 0 } = useQuery({ queryKey: ["accounts-receivable"], queryFn: () => getAccountsReceivable() });
+  const { data: deferredCategories = ["Rent"] } = useQuery({ queryKey: ["deferred-payable-categories"], queryFn: getDeferredPayableCategories });
 
   return useMemo(() => {
     const fxByAccount: Record<string, ReturnType<typeof fxPosition>> = {};
@@ -81,7 +84,14 @@ export function useFinanceSummary() {
       .reduce((s, t) => s + Number(t.amount || 0), 0);
     const ownerOpening = ownerAccounts.reduce((s, a) => s + Number(a.opening_balance || 0), 0);
 
-    const billsAndChecks = payables.reduce((s, p) => s + payableOutstanding(p), 0);
+    // Rent and the like count from the month they are due; everything else,
+    // supplier checks included, counts in full now (see lib/payable-timing).
+    const timing = payableTiming(
+      payables.map((p) => ({ category: p.category, due_date: p.due_date, outstanding: payableOutstanding(p) })),
+      deferredCategories,
+      new Date(),
+    );
+    const billsAndChecks = timing.owedNow;
 
     return {
       accounts,
@@ -100,10 +110,15 @@ export function useFinanceSummary() {
       receivables: Number(receivables || 0),
       /** Net still owed to the owner; negative means the owner was overpaid. */
       dueToOwner: ownerPaid - ownerRepaid - ownerOpening,
-      /** Outstanding bills and post-dated checks — NOT supplier purchase orders. */
+      /** Outstanding bills and checks owed now — NOT supplier purchase orders. Deferred categories count from their month. */
       billsAndChecks,
+      /** What leaves cash soon: everything owed now, less deferred-category checks beyond 30 days. */
+      billsDueSoon: timing.dueSoon,
+      /** Deferred-category payables dated after this month, not yet counted. */
+      billsLater: timing.later,
+      deferredCategories,
       loansOutstanding: loans.reduce((s, l) => s + Number(l.principal_amount || 0), 0),
       monthlyLoanPayment: loans.reduce((s, l) => s + Number(l.monthly_payment || 0), 0),
     };
-  }, [accounts, txns, payables, loans, receivables]);
+  }, [accounts, txns, payables, loans, receivables, deferredCategories]);
 }

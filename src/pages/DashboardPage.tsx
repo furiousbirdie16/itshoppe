@@ -75,7 +75,7 @@ export default function DashboardPage() {
   // What is genuinely free to spend: cash on hand less everything already
   // committed to suppliers and bills. Can go negative, which is the point —
   // that means commitments already exceed the cash to cover them.
-  const cashForPurchasing = finance.totalCashAvailable - coSupplierPOs - finance.billsAndChecks;
+  const cashForPurchasing = finance.totalCashAvailable - coSupplierPOs - finance.billsDueSoon;
 
   if (isLoading) {
     return (
@@ -259,10 +259,17 @@ export default function DashboardPage() {
             value={peso(billsTotal)}
             icon={Receipt}
             tone="liability"
-            description={companyOwesOwner > 0 ? "Payables page + owed to owner" : "From the Payables page"}
+            description={
+              finance.billsLater > 0
+                ? `${peso(finance.billsLater)} ${finance.deferredCategories.join(", ").toLowerCase()} dated later, not yet counted`
+                : companyOwesOwner > 0 ? "Payables page + owed to owner" : "From the Payables page"
+            }
             formula={
               <div className="space-y-1">
-                <FormulaRow label="Bills & checks not settled" value={peso(finance.billsAndChecks)} />
+                <FormulaRow label="Bills & checks owed now" value={peso(finance.billsAndChecks)} />
+                {finance.billsLater > 0 && (
+                  <FormulaRow label={`${finance.deferredCategories.join(", ")} dated after this month`} value={`${peso(finance.billsLater)} not counted`} muted />
+                )}
                 {companyOwesOwner > 0 && <FormulaRow label="Company owes the owner" value={peso(companyOwesOwner)} />}
                 <p className="text-muted-foreground pt-1">The owner's account counts here when the owner has paid for more than they have been repaid.</p>
               </div>
@@ -300,7 +307,7 @@ export default function DashboardPage() {
               <div className="space-y-1">
                 <FormulaRow label="Total cash available" value={peso(finance.totalCashAvailable)} />
                 <FormulaRow label="Less supplier POs" value={`\u2212 ${peso(coSupplierPOs)}`} />
-                <FormulaRow label="Less bills & checks" value={`\u2212 ${peso(finance.billsAndChecks)}`} />
+                <FormulaRow label="Less bills & checks due soon" value={`\u2212 ${peso(finance.billsDueSoon)}`} />
                 <div className="border-t my-1" />
                 <FormulaRow label="Free to spend" value={peso(cashForPurchasing)} />
                 <p className="text-muted-foreground pt-1">Goes negative when what you have committed already exceeds the cash to cover it.</p>
