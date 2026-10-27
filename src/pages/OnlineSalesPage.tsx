@@ -255,7 +255,7 @@ export default function OnlineSalesPage() {
 
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string; unmatched_sku?: string; bundle_sku?: string }[]>([]);
+  const [bulkRows, setBulkRows] = useState<{ product_name: string; quantity: number; sales_channel: SalesChannel; posted_price: number; order_date: string; order_id: string; item_id: string | null; variation_id: string | null; valid: boolean; error?: string; unmatched_sku?: string; bundle_sku?: string; note?: string }[]>([]);
   /** The sheet last read, so it can be read again once a SKU is set up. */
   const lastBulkSheet = useRef<BulkCell[][] | null>(null);
   /** The SKU being set up from an upload line, if any. */
@@ -643,18 +643,26 @@ export default function OnlineSalesPage() {
             return;
           }
           const { rows: shopeeRows, skipped } = parseShopeeExport(sheetRows);
+          // Orders are marked shipped here when they are packed, before the
+          // courier scans them and Shopee records a ship time — so a line
+          // with none is dated the day it is uploaded, and says so.
+          const nowDate = new Date();
+          const uploadDay = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}-${String(nowDate.getDate()).padStart(2, "0")}`;
           const mapped = shopeeRows.flatMap((r): BulkRow[] => {
             const resolved = r.sku ? resolveSku(r.sku, r.quantity, r.dealPrice) : null;
             const error = !r.sku
               ? "No SKU Reference No."
               : !resolved
                 ? `No item with SKU "${r.sku}"`
-                : !r.date
-                  ? "No ship time"
-                  : r.quantity <= 0
+                : r.quantity <= 0
                     ? "No quantity"
                     : undefined;
-            const base = { sales_channel: "shopee" as SalesChannel, order_date: r.date, order_id: r.orderId };
+            const base = {
+              sales_channel: "shopee" as SalesChannel,
+              order_date: r.date || uploadDay,
+              order_id: r.orderId,
+              note: r.date ? undefined : "No ship time — dated today",
+            };
             if (!resolved || error) {
               return [{
                 ...base, product_name: r.sku, quantity: r.quantity, posted_price: r.dealPrice,
@@ -677,6 +685,10 @@ export default function OnlineSalesPage() {
             count("Unpaid") ? `${count("Unpaid")} unpaid left out` : "",
             count("No tracking number") ? `${count("No tracking number")} without tracking left out` : "",
             dupes ? `${dupes} already in the ERP` : "",
+            (() => {
+              const n = new Set(checked.filter((r) => r.valid && r.note).map((r) => r.order_id)).size;
+              return n ? `${n} order${n === 1 ? "" : "s"} with no ship time dated today` : "";
+            })(),
           ].filter(Boolean);
           setBulkNote(notes.join(" · "));
           setBulkRows(checked);
@@ -2028,6 +2040,7 @@ export default function OnlineSalesPage() {
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
                         <TableCell className="text-xs">
                           {row.valid ? <span className="text-green-600">✓</span> : <span className={row.error === "Already in the ERP" ? "text-muted-foreground" : "text-destructive"}>{row.error}</span>}
+                          {row.note && row.valid && <span className="block text-[11px] text-amber-700 dark:text-amber-400">{row.note}</span>}
                           {row.unmatched_sku && (
                             <Button type="button" variant="outline" size="sm" className="mt-1 h-6 px-2 text-[11px]" onClick={() => setSetupSku(row.unmatched_sku!)}>
                               Set up this SKU
