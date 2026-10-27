@@ -24,6 +24,7 @@ import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, Chevr
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
+import { TodayMovementExport } from "@/components/TodayMovementExport";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
@@ -1440,6 +1441,7 @@ export default function BusinessInsightsPage() {
           <p className="page-description">Sales, profit and stock performance across online orders and invoices.</p>
         </div>
         <div className="flex items-center gap-2">
+          <TodayMovementExport />
           <Select value={preset} onValueChange={(v) => setPreset(v as RangePreset)}>
             <SelectTrigger className="h-9 flex-1 text-sm md:w-[170px] md:flex-none" aria-label="Date range">
               <CalendarIcon className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
