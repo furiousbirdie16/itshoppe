@@ -186,3 +186,42 @@ describe("buildCostReview", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe("charges for chosen lines", () => {
+  const lines = [
+    { id: "cab4", qty: 30, unitCost: 60 },
+    { id: "cab9", qty: 20, unitCost: 80 },
+    { id: "panel", qty: 30, unitCost: 40 },
+  ];
+
+  it("splits a pallet among the cabinets only, by their CBM", () => {
+    const a = allocateCargo(lines, {
+      cargoAmount: 0, otherCharges: 0, exchangeRate: 1,
+      lineCbm: { cab4: 1, cab9: 3, panel: 0.5 }, boxes: [],
+      targetedCharges: [{ amount: 1600, lineIds: ["cab4", "cab9"] }],
+    });
+    close(a.lines.cab4.cargo, 400);
+    close(a.lines.cab9.cargo, 1200);
+    close(a.lines.panel.cargo, 0);
+  });
+
+  it("adds to the shared bill", () => {
+    const a = allocateCargo(lines, {
+      cargoAmount: 450, otherCharges: 0, exchangeRate: 1,
+      lineCbm: { cab4: 1, cab9: 1, panel: 1 }, boxes: [],
+      targetedCharges: [{ amount: 100, lineIds: ["panel"] }],
+    });
+    close(a.lines.cab4.cargo, 150);
+    close(a.lines.panel.cargo, 250);
+  });
+
+  it("falls back to value among its lines when they have no CBM", () => {
+    const a = allocateCargo(lines, {
+      cargoAmount: 0, otherCharges: 0, exchangeRate: 1, lineCbm: {}, boxes: [],
+      targetedCharges: [{ amount: 3400, lineIds: ["cab4", "cab9"] }],
+    });
+    // cab4 worth 1800, cab9 1600
+    close(a.lines.cab4.cargo, 1800);
+    close(a.lines.cab9.cargo, 1600);
+  });
+});

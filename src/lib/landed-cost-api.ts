@@ -12,6 +12,8 @@ export interface PoCargo {
   boxes: CargoBox[];
   /** Non-item PO lines not to spread over the items. */
   excluded_lines: string[];
+  /** Non-item lines that apply to some items only: fee line id → item line ids. */
+  fee_targets: Record<string, string[]>;
   notes: string;
   applied_at: string | null;
   applied_by_email: string | null;
@@ -28,6 +30,7 @@ export async function getPoCargo(poId: string): Promise<PoCargo | null> {
     line_cbm: data.line_cbm || {},
     boxes: Array.isArray(data.boxes) ? data.boxes : [],
     excluded_lines: Array.isArray(data.excluded_lines) ? data.excluded_lines : [],
+    fee_targets: data.fee_targets && typeof data.fee_targets === "object" ? data.fee_targets : {},
   };
 }
 
@@ -36,6 +39,8 @@ export async function savePoCargo(
   cargo: Omit<PoCargo, "po_id" | "applied_at" | "applied_by_email">,
   /** True when the saved row had exclusions, so an empty list must be written to clear them. */
   hadExclusions = false,
+  /** The same, for fee targets. */
+  hadTargets = false,
 ) {
   const { data: { session } } = await supabase.auth.getSession();
   const { error } = await db.from("overseas_po_cargo").upsert({
@@ -47,6 +52,7 @@ export async function savePoCargo(
     // Only sent when there is something to say, so saving still works on a
     // database without the column.
     ...(cargo.excluded_lines.length || hadExclusions ? { excluded_lines: cargo.excluded_lines } : {}),
+    ...(Object.keys(cargo.fee_targets).length || hadTargets ? { fee_targets: cargo.fee_targets } : {}),
     notes: cargo.notes,
     updated_at: new Date().toISOString(),
     updated_by_email: session?.user?.email ?? null,
