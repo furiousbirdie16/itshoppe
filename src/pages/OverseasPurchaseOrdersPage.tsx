@@ -688,11 +688,18 @@ export default function OverseasPurchaseOrdersPage() {
     paid && shipped ? "shipped" : paid ? "paid_not_shipped" : shipped ? "shipped_not_paid" : "unpaid";
 
   const statusMut = useMutation({
-    mutationFn: async ({ id, status, expectedDelivery }: { id: string; status: string; expectedDelivery?: string | null }) =>
-      updateOverseasPurchaseOrder(id, {
-        status,
-        ...(expectedDelivery !== undefined ? { expected_delivery: expectedDelivery } : {}),
-      } as any),
+    mutationFn: async ({ id, status, expectedDelivery, paidFrom, rate }: { id: string; status: string; expectedDelivery?: string | null; paidFrom?: string | null; rate?: number }) =>
+      updateOverseasPurchaseOrder(
+        id,
+        {
+          status,
+          ...(expectedDelivery !== undefined ? { expected_delivery: expectedDelivery } : {}),
+          ...(paidFrom !== undefined ? { paid_from_account_id: paidFrom } : {}),
+          ...(rate !== undefined ? { exchange_rate: rate } : {}),
+        } as any,
+        // A rate chosen in the pay dialog stays; it is not replaced by the account's average.
+        { keepRate: rate !== undefined },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseas_pos"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -711,6 +718,53 @@ export default function OverseasPurchaseOrdersPage() {
    * for something that has not left.
    */
   const [shipDialog, setShipDialog] = useState<OverseasPurchaseOrder | null>(null);
+
+  /**
+   * Marking an order paid asks what paid it: which account the money left,
+   * and at what rate. From Alipay (or any account in the order's currency) the
+   * balance leaves in that currency and the rate sets what the order cost in
+   * pesos; from a peso bank, balance × rate is what leaves the bank.
+   */
+  const [payDialog, setPayDialog] = useState<OverseasPurchaseOrder | null>(null);
+  const [payAccountId, setPayAccountId] = useState("");
+  const [payRate, setPayRate] = useState("");
+  const NO_PAY_ACCOUNT = "__none";
+  const payAccounts = useMemo(() => {
+    const po = payDialog;
+    if (!po) return [];
+    // The order's own currency, or pesos — RMB cannot pay a USD order.
+    return allCashAccounts
+      .filter((a) => a.is_active && a.account_type !== "owner" && (a.currency === (po as any).currency || !isForeign(a)))
+      .sort((a, b) => Number(isForeign(b)) - Number(isForeign(a)));
+  }, [payDialog, allCashAccounts]);
+  /** What the order's currency on hand cost on average: the rate offered as "current". */
+  const heldRateFor = (accountId: string, cur: string) =>
+    fxHoldings.find((h) => h.account.id === accountId)?.averageRate
+    || fxHoldings.find((h) => h.account.currency === cur)?.averageRate
+    || 0;
+  const openPayFor = (po: OverseasPurchaseOrder) => {
+    const cur = (po as any).currency as string;
+    const preferred = (po as any).paid_from_account_id as string | null;
+    const usable = allCashAccounts.filter((a) => a.is_active && a.account_type !== "owner" && (a.currency === cur || !isForeign(a)));
+    const account = usable.find((a) => a.id === preferred) || usable.find((a) => a.currency === cur) || usable[0];
+    const held = account && isForeign(account) ? heldRateFor(account.id, cur) : 0;
+    setPayAccountId(account?.id || NO_PAY_ACCOUNT);
+    setPayRate(String(held || Number(po.exchange_rate) || ""));
+    setPayDialog(po);
+  };
+  const confirmPay = () => {
+    const po = payDialog;
+    if (!po) return;
+    const rate = Number(payRate);
+    if (!(rate > 0)) { toast.error("Enter the rate"); return; }
+    statusMut.mutate({
+      id: po.id,
+      status: statusFromFlags(true, isShippedStatus(po.status)),
+      paidFrom: payAccountId === NO_PAY_ACCOUNT ? null : payAccountId,
+      rate,
+    });
+    setPayDialog(null);
+  };
   const [shipEta, setShipEta] = useState("");
 
   /**
@@ -728,6 +782,10 @@ export default function OverseasPurchaseOrdersPage() {
       // A date already on the order is better information than a guess.
       setShipEta(po.expected_delivery || defaultEta());
       setShipDialog(po);
+      return;
+    }
+    if (flag === "paid" && !paid) {
+      openPayFor(po);
       return;
     }
     const next = flag === "paid" ? statusFromFlags(!paid, shipped) : statusFromFlags(paid, !shipped);
@@ -1817,6 +1875,95 @@ export default function OverseasPurchaseOrdersPage() {
             </div>
 
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Marking an order paid: from which account, and at what rate. */}
+      <Dialog open={!!payDialog} onOpenChange={(o) => { if (!o) setPayDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Mark {docNo(payDialog?.po_number)} as paid</DialogTitle>
+          </DialogHeader>
+          {payDialog && (() => {
+            const cur = (payDialog as any).currency as string;
+            const balance = Math.max(Number(payDialog.total_amount || 0) - paidSoFar(payDialog.id), 0);
+            const account = allCashAccounts.find((a) => a.id === payAccountId);
+            const foreignAcct = !!account && isForeign(account);
+            const rate = Number(payRate) || 0;
+            const held = heldRateFor(payAccountId, cur);
+            const php = Math.round(balance * rate * 100) / 100;
+            return (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                  Balance to pay: <span className="font-semibold tabular-nums">{foreignAmount(balance, cur as any)}</span>
+                  {paidSoFar(payDialog.id) > 0 && (
+                    <span className="block text-[11px] text-muted-foreground">
+                      after {foreignAmount(paidSoFar(payDialog.id), cur as any)} in down payments
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Pay from</Label>
+                  <Select
+                    value={payAccountId}
+                    onValueChange={(v) => {
+                      setPayAccountId(v);
+                      const a = allCashAccounts.find((x) => x.id === v);
+                      // Switching to Alipay offers its own rate.
+                      if (a && isForeign(a)) {
+                        const h = heldRateFor(a.id, cur);
+                        if (h > 0) setPayRate(String(h));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {payAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}{isForeign(a) ? ` (${a.currency})` : ""}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={NO_PAY_ACCOUNT}>No account — don't touch balances</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Rate (₱ per 1 {cur})</Label>
+                  <div className="flex gap-2">
+                    <Input type="number" min={0} step="any" inputMode="decimal" value={payRate} onChange={(e) => setPayRate(e.target.value)} className="h-9" />
+                    {held > 0 && (
+                      <Button type="button" variant="outline" className="h-9 shrink-0 text-xs" onClick={() => setPayRate(String(Math.round(held * 10000) / 10000))}>
+                        Use current ({held.toFixed(2)})
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {held > 0
+                      ? `Current = what the ${cur} you hold cost on average.`
+                      : `No ${cur} held to take a current rate from.`}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border px-3 py-2 text-sm">
+                  {payAccountId === NO_PAY_ACCOUNT ? (
+                    <span className="text-muted-foreground">No account balance changes. The order is valued at {foreignAmount(balance, cur as any)} × {rate || "—"} = <span className="font-medium text-foreground">{peso(php)}</span>.</span>
+                  ) : foreignAcct ? (
+                    <span>Takes <span className="font-semibold tabular-nums">{foreignAmount(balance, cur as any)}</span> out of {account?.name}. The order is valued at <span className="font-medium tabular-nums">{peso(php)}</span>.</span>
+                  ) : (
+                    <span>Takes <span className="font-semibold tabular-nums">{peso(php)}</span> out of {account?.name} ({foreignAmount(balance, cur as any)} × {rate || "—"}).</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialog(null)}>Cancel</Button>
+            <Button onClick={confirmPay} disabled={statusMut.isPending}>
+              {statusMut.isPending ? "Saving..." : "Mark Paid"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

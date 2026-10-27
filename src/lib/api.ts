@@ -1804,7 +1804,7 @@ const OVERSEAS_PAID_STATUSES = new Set([
  * used to pay it agree. Set only on payment: it records what the order cost,
  * and later purchases at other rates must not rewrite history.
  */
-const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
+const syncOverseasPoPayment = async (po: OverseasPurchaseOrder, opts: { keepRate?: boolean } = {}) => {
   const accountId = (po as any).paid_from_account_id as string | null;
 
   const { data: existing } = await from("cash_transactions")
@@ -1817,7 +1817,21 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
   const { data: downRows } = await from("overseas_po_payments")
     .select("amount").eq("po_id", po.id);
   const downPaid = ((downRows as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
-  const amount = Math.max(Number(po.total_amount || 0) - downPaid, 0);
+  const balance = Math.max(Number(po.total_amount || 0) - downPaid, 0);
+
+  // In the account's own money: RMB out of Alipay for an RMB order, pesos out
+  // of a peso bank at the order's rate. A peso bank used to have the RMB figure
+  // taken out as if it were pesos — ¥3,900 left as ₱3,900.
+  const { data: account } = accountId
+    ? await from("cash_accounts").select("*").eq("id", accountId).maybeSingle()
+    : { data: null };
+  const foreign = !!account && isForeign(account as CashAccount);
+  if (paid && foreign && (account as any).currency !== (po as any).currency) {
+    throw new Error(`A ${(po as any).currency} order cannot be paid from a ${(account as any).currency} account. Use a ${(po as any).currency} or peso account.`);
+  }
+  const amount = foreign
+    ? balance
+    : Math.round(balance * Number((po as any).exchange_rate || 1) * 100) / 100;
 
   if (!paid || !accountId || amount <= 0) {
     // Un-paid again, no account named, or deposits already cover it all.
@@ -1836,7 +1850,6 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
     return;
   }
 
-  const { data: account } = await from("cash_accounts").select("*").eq("id", accountId).maybeSingle();
   const actor = await currentActor();
 
   const { data: supplier } = await from("overseas_suppliers")
@@ -1860,7 +1873,8 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
   // Value the order at what the currency actually cost. Read after the
   // withdrawal, though an outflow is consumed at the average and leaves it
   // unchanged — so this is the same rate the payment was valued at.
-  if (account && isForeign(account as CashAccount)) {
+  // Unless the rate was chosen when it was marked paid.
+  if (foreign && !opts.keepRate) {
     const txns = await getCashTransactions([accountId]);
     const { averageRate } = fxPosition(txns);
     if (averageRate > 0) {
@@ -1982,7 +1996,12 @@ export const deleteOverseasPoPayment = async (id: string) => {
   }
 };
 
-export const updateOverseasPurchaseOrder = async (id: string, po: Partial<OverseasPurchaseOrder>) => {
+export const updateOverseasPurchaseOrder = async (
+  id: string,
+  po: Partial<OverseasPurchaseOrder>,
+  /** keepRate: the exchange rate was chosen by hand; do not replace it with the account's average. */
+  opts: { keepRate?: boolean } = {},
+) => {
   // Detect a status transition into a "shipped" state so we can auto-create a shipment.
   const shippedStatuses = new Set(["shipped", "shipped_not_paid", "sent"]);
   let prevStatus: string | null = null;
@@ -2022,9 +2041,11 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
   // Never let a ledger problem block the PO update itself, but do not hide it
   // either: a payment that silently failed to post is how a balance goes wrong.
   try {
-    await syncOverseasPoPayment(updatedPo);
+    await syncOverseasPoPayment(updatedPo, opts);
   } catch (e) {
     console.warn("Overseas PO updated, but posting the payment failed:", e);
+    // Paying from an account in the wrong currency is something to say, not log.
+    if (String((e as any)?.message || "").includes("cannot be paid from")) throw e;
   }
 
   return updatedPo;
