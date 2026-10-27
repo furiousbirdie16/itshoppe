@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPayables, createPayable, updatePayable, deletePayable, getSuppliers, getCashAccounts } from "@/lib/api";
+import { PayablesBulkUpload } from "@/components/PayablesBulkUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
-import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle , Upload } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
 import { peso } from "@/lib/currency";
@@ -94,6 +95,7 @@ export default function PayablesPage() {
   // Active accounts only — a payable should not be settled from a closed one.
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   const accounts = allAccounts.filter((a) => a.is_active);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   // Settled payables leave the working list entirely — they are not money the
   // business still owes — and collect in their own tab.
@@ -229,6 +231,9 @@ export default function PayablesPage() {
           <p className="page-description">Post-dated checks and company payables</p>
         </div>
         <div className="toolbar-actions">
+          <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Upload className="h-4 w-4 mr-1.5" /> Upload
+          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Payable
           </Button>
@@ -494,6 +499,7 @@ export default function PayablesPage() {
           </TableBody>
         </Table>
       </div>
+      <PayablesBulkUpload open={bulkOpen} onOpenChange={setBulkOpen} accounts={accounts} payables={payables} />
     </div>
   );
 }

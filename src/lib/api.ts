@@ -2821,13 +2821,15 @@ export const createCashTransfer = async (args: {
 // them is a transfer like any other. The table remains as a backup of the
 // records copied across in 20260825000000_owner_as_cash_account.sql.
 
-export const getPayables = async (): Promise<Payable[]> => {
-  const { data, error } = await from("payables")
-    .select("*, suppliers(*)")
-    .order("due_date", { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return data;
-};
+// Paged: a book of post-dated checks passes the 1000-row cap quickly, and a
+// short read would hide payables and let the upload re-enter a check.
+export const getPayables = async (): Promise<Payable[]> =>
+  fetchAllRows<Payable>(() =>
+    from("payables")
+      .select("*, suppliers(*)")
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("id"),
+  );
 
 /**
  * Keeps the cash/bank side of a payable in step with its status.
