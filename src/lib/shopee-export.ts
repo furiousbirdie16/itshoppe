@@ -109,7 +109,10 @@ export function skipReason(status: string, tracking: string): SkipReason | null 
   const s = norm(status);
   if (s.includes("cancel")) return "Cancelled";
   if (s === "unpaid" || s.includes("to pay")) return "Unpaid";
-  if (!String(tracking ?? "").trim()) return "No tracking number";
+  // No tracking number means not yet printed and packed — not a sale yet. A
+  // placeholder ("-", "N/A") is as good as blank.
+  const t = String(tracking ?? "").trim().toLowerCase();
+  if (!t || /^[-–—./\s]+$/.test(t) || ["n/a", "na", "none", "null", "nil", "tbd"].includes(t)) return "No tracking number";
   return null;
 }
 

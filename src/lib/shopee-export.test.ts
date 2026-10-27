@@ -60,6 +60,10 @@ describe("skipReason", () => {
     expect(skipReason("Completed", "  ")).toBe("No tracking number");
     expect(skipReason("Completed", "PH1")).toBeNull();
   });
+  it("treats a placeholder tracking number as none", () => {
+    for (const t of ["-", "—", "N/A", "n/a", "none", " . "]) expect(skipReason("To ship", t)).toBe("No tracking number");
+    expect(skipReason("To ship", "PH261372470925W")).toBeNull();
+  });
 });
 
 describe("shopeeDate", () => {
