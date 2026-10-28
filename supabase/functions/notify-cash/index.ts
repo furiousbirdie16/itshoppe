@@ -63,10 +63,58 @@ Deno.serve(async (req) => {
       );
     };
 
-    const { transaction_id, transfer_group_id } = await req.json();
+    const { transaction_id, transfer_group_id, edited } = await req.json();
     let message = "";
 
-    if (transfer_group_id) {
+    if (transaction_id && edited) {
+      // An edit: what the line was and what it is now, from the record the
+      // database keeps of every change.
+      const { data: txn } = await admin
+        .from("cash_transactions")
+        .select("direction, amount, category, payee, cash_accounts(id, name, currency, opening_balance)")
+        .eq("id", transaction_id)
+        .maybeSingle();
+      if (!txn) return json({ error: "Transaction not found" }, 404);
+      const { data: lastEdit } = await admin
+        .from("cash_transaction_edits")
+        .select("changes, edited_at")
+        .eq("transaction_id", transaction_id)
+        .order("edited_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const changes = ((lastEdit as any)?.changes || {}) as Record<string, { from: unknown; to: unknown }>;
+      // Saved without changing anything that matters: nothing to announce.
+      if (!lastEdit || Object.keys(changes).length === 0) return json({ ok: true, skipped: "no change" });
+
+      const account = (txn as any).cash_accounts;
+      const currency = account?.currency || "PHP";
+      const labels: Record<string, string> = {
+        amount: "Amount", direction: "In / out", account_id: "Account", txn_date: "Date",
+        category: "Category", payee: "Payee", reference: "Reference", notes: "Notes", fx_rate: "Rate",
+      };
+      const accountIds = [changes.account_id?.from, changes.account_id?.to].filter(Boolean) as string[];
+      const { data: accts } = accountIds.length
+        ? await admin.from("cash_accounts").select("id, name").in("id", accountIds)
+        : { data: [] as any[] };
+      const nameOf = new Map(((accts as any[]) || []).map((a) => [a.id, a.name]));
+      const show = (field: string, v: unknown) => {
+        if (v === null || v === undefined || v === "") return "—";
+        if (field === "amount") return money(Number(v), currency);
+        if (field === "account_id") return esc(nameOf.get(String(v)) || "another account");
+        return esc(String(v));
+      };
+      const lines = Object.entries(changes).map(([f, { from, to }]) =>
+        `${labels[f] || f}: <s>${show(f, from)}</s> → <b>${show(f, to)}</b>`,
+      );
+      const detail = [(txn as any).category, (txn as any).payee].filter(Boolean).join(" · ");
+
+      message =
+        `✏️ <b>Cash line edited</b>\n` +
+        `${esc(account?.name || "—")}${detail ? ` · ${esc(detail)}` : ""}\n` +
+        lines.join("\n") + "\n" +
+        `${esc(account?.name || "")} balance: <b>${money(await balanceOf(account), currency)}</b>\n` +
+        `<i>Edited by ${esc(recordedBy)}</i>`;
+    } else if (transfer_group_id) {
       const { data: legs } = await admin
         .from("cash_transactions")
         .select("direction, amount, notes, cash_accounts(id, name, currency, opening_balance)")

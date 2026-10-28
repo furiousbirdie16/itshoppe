@@ -2777,6 +2777,8 @@ export const updateCashTransaction = async (id: string, t: Partial<CashTransacti
     .eq("id", id).select().single();
   if (error) throw error;
   await logActivity("updated_cash_transaction", "cash_transaction", id);
+  // Said out loud, like a new entry: what it was and what it is now.
+  notify("notify-cash", { transaction_id: id, edited: true });
   return data as CashTransaction;
 };
 
