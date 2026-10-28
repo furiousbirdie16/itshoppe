@@ -17,14 +17,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal , Download } from "lucide-react";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
 import { VariationsManager } from "@/components/VariationsManager";
 import TransferStockDialog from "@/components/TransferStockDialog";
 import AdjustStockDialog from "@/components/AdjustStockDialog";
-import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
@@ -679,59 +678,11 @@ export default function InventoryPage() {
             </Button>
           )}
 
-          <ExportButton
-            data={items}
-            columns={{
-              "Name": (r: any) => r.name,
-              "SKU": (r: any) => r.sku,
-              "Source": (r: any) => r.source || "local",
-              "Category": (r: any) => r.category || "",
-              "Brand": (r: any) => r.brand || "",
-              "Barcode": (r: any) => r.barcode || "",
-              "Supplier SKU": (r: any) => r.supplier_sku || "",
-              "Status": (r: any) => r.status || "active",
-              "Description": (r: any) => r.description || "",
-              "Base Unit": (r: any) => r.base_unit || "",
-              "Units Per Stock": (r: any) => r.units_per_stock || 1,
-              "Open Roll Remaining": (r: any) => r.open_roll_remaining || 0,
-              "Quantity": (r: any) => r.quantity,
-              "Warehouse Qty": (r: any) => r.warehouse_quantity ?? 0,
-              "Store Qty": (r: any) => r.store_quantity ?? 0,
-              "Low Stock Threshold": (r: any) => r.low_stock_threshold ?? "",
-              ...(isAdmin
-                ? { "Cost Price": (r: any) => r.cost_price }
-                : { "Cost Price": (r: any) => ((r.source ?? "local") === "local" ? r.cost_price : "") }),
-              "Selling Price": (r: any) => r.selling_price,
-              "Archived At": (r: any) => r.archived_at || "",
-              "Archived By": (r: any) => r.archived_by_email || "",
-              "Created": (r: any) => r.created_at || "",
-              "Updated": (r: any) => r.updated_at || "",
-            }}
-            childItems={{
-              table: "item_variations",
-              foreignKey: "item_id",
-              select: "*",
-              columns: {
-                "Variation Name": (v: any) => v.name || "",
-                "Variation SKU": (v: any) => v.sku || "",
-                "Variation Type": (v: any) => v.type || "",
-                "Variation Factor": (v: any) => Number(v.factor || 1),
-                "Variation Unit": (v: any, p: any) =>
-                  v.type === "cut" ? (p.base_unit || "m") : "pack",
-                "Variation Stock Available": (v: any, p: any) => {
-                  const factor = Number(v.factor || 1) || 1;
-                  const ups = Number(p.units_per_stock || 1) || 1;
-                  const qty = Number(p.quantity || 0);
-                  const open = Number(p.open_roll_remaining || 0);
-                  const totalBase = v.type === "cut" ? qty * ups + open : qty * ups;
-                  return Math.floor(totalBase / factor);
-                },
-                "Variation Selling Price": (v: any) => Number(v.selling_price || 0),
-              },
-            }}
-            dateField={(r: any) => r.created_at?.split("T")[0] || ""}
-            fileName={viewArchived ? "Inventory-Archived" : "Inventory"}
-          />
+          {/* Opens the download-and-update sheet: one place to take the
+              inventory out to Excel and bring the edits back. */}
+          <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Download className="h-4 w-4 mr-1.5" /> Export
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-lg h-9 px-3 text-sm font-medium">
@@ -740,7 +691,6 @@ export default function InventoryPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => setBulkOpen(true)}><Upload className="mr-2 h-4 w-4" /> Add items from a file</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setBulkEditOpen(true)}><Pencil className="mr-2 h-4 w-4" /> Update items from a file</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setBundlesOpen(true)}><Layers className="mr-2 h-4 w-4" /> Bundle SKUs</DropdownMenuItem>
               {!viewArchived && (
                 <>
