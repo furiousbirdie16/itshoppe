@@ -1,15 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { getActivityLogs } from "@/lib/activity-log";
-import { format } from "date-fns";
+import { getActivityLogs, searchActivityLogs } from "@/lib/activity-log";
+import { format, subDays, parseISO } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
-import { searchMatches } from "@/lib/search";
+import { searchMatches, searchWords } from "@/lib/search";
 
 const actionColors: Record<string, string> = {
   created: "bg-success/10 text-success border-success/20",
@@ -36,16 +38,41 @@ const COLUMNS: ColumnDef[] = [
 
 export default function ActivityLogPage() {
   const [search, setSearch] = useState("");
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ["activity-logs"],
-    queryFn: getActivityLogs,
+  // A date range, last 7 days to start with, loaded in full; "Load older"
+  // reaches back a week at a time.
+  const day = (d: Date) => format(d, "yyyy-MM-dd");
+  const [fromDay, setFromDay] = useState(() => day(subDays(new Date(), 6)));
+  const [toDay, setToDay] = useState(() => day(new Date()));
+  const { data: rangeLogs, isLoading: rangeLoading } = useQuery({
+    queryKey: ["activity-logs", fromDay, toDay],
+    queryFn: () => getActivityLogs(fromDay, toDay),
   });
+
+  // A search covers the whole log, every date, in the database — waiting a
+  // moment after typing stops so it does not run on every key.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+  const words = searchWords(debounced);
+  const { data: searchResult, isFetching: searching } = useQuery({
+    queryKey: ["activity-logs-search", words.join(" ")],
+    queryFn: () => searchActivityLogs(words),
+    enabled: words.length > 0,
+  });
+  // Null: the search function is not in the database yet — search what is loaded.
+  const searchingAll = words.length > 0 && searchResult !== null && searchResult !== undefined;
+  const logs = searchingAll ? searchResult : rangeLogs;
+  const isLoading = words.length > 0 ? searching && !searchResult : rangeLoading;
 
   const { state, orderedColumns, visibleColumns, isVisible, toggle, move, reset } = useColumnPrefs("cols:activity-log", COLUMNS);
 
-  const filtered = (logs || []).filter((log) => {
-    return searchMatches(search, log.user_email, log.action, log.entity_type, log.entity_id, JSON.stringify(log.details));
-  });
+  const filtered = searchingAll
+    ? logs || []
+    : (logs || []).filter((log) =>
+        searchMatches(search, log.user_email, log.action, log.entity_type, log.entity_id, JSON.stringify(log.details)),
+      );
 
   const { sort, toggle: sortToggle, sorted: sortedLogs } = useSort<any>(filtered, {
     created_at: (r) => r.created_at,
@@ -105,6 +132,16 @@ export default function ActivityLogPage() {
             className="pl-9"
           />
         </div>
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">From</Label>
+            <Input type="date" value={fromDay} max={toDay} onChange={(e) => e.target.value && setFromDay(e.target.value)} className="h-9 w-[150px]" disabled={searchingAll} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">To</Label>
+            <Input type="date" value={toDay} min={fromDay} onChange={(e) => e.target.value && setToDay(e.target.value)} className="h-9 w-[150px]" disabled={searchingAll} />
+          </div>
+        </div>
         <ColumnVisibilityMenu
           columns={orderedColumns}
           visible={state.visible}
@@ -113,6 +150,12 @@ export default function ActivityLogPage() {
           onReset={reset}
         />
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        {searchingAll
+          ? `Searching every date — ${filtered.length}${filtered.length >= 500 ? "+ (newest 500 shown)" : ""} match${filtered.length === 1 ? "" : "es"}.`
+          : `${filtered.length} entr${filtered.length === 1 ? "y" : "ies"} from ${format(parseISO(fromDay), "MMM d, yyyy")} to ${format(parseISO(toDay), "MMM d, yyyy")}.`}
+      </p>
 
       <div className="data-table-wrapper">
         <Table>
@@ -145,6 +188,14 @@ export default function ActivityLogPage() {
           </TableBody>
         </Table>
       </div>
+
+      {!searchingAll && (
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" onClick={() => setFromDay(day(subDays(parseISO(fromDay), 7)))} disabled={rangeLoading}>
+            Load older (another 7 days)
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

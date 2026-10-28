@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/paginate";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -57,12 +58,32 @@ export async function logActivity(
   }
 }
 
-export async function getActivityLogs(): Promise<ActivityLog[]> {
-  const { data, error } = await db
-    .from("activity_logs")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (error) throw error;
-  return data;
+/**
+ * Every entry between two days, inclusive — paged past the 1000-row cap. It
+ * used to be the newest 500 entries, which on a busy week was a day or two,
+ * and everything older was simply not there.
+ */
+export async function getActivityLogs(fromDay: string, toDay: string): Promise<ActivityLog[]> {
+  const from = new Date(`${fromDay}T00:00:00`).toISOString();
+  const to = new Date(`${toDay}T23:59:59.999`).toISOString();
+  return fetchAllRows<ActivityLog>(() =>
+    db
+      .from("activity_logs")
+      .select("*")
+      .gte("created_at", from)
+      .lte("created_at", to)
+      .order("created_at", { ascending: false })
+      .order("id"),
+  );
+}
+
+/**
+ * The newest entries, from any date, containing every word given. Null when
+ * the search function is not in the database yet, so the page can fall back
+ * to searching what it has loaded.
+ */
+export async function searchActivityLogs(words: string[], limit = 500): Promise<ActivityLog[] | null> {
+  const { data, error } = await db.rpc("search_activity_logs", { p_words: words, p_limit: limit });
+  if (error) return null;
+  return (data as ActivityLog[]) || [];
 }
