@@ -75,16 +75,27 @@ export async function applyLandedCosts(poId: string, rows: LandedCostRow[]): Pro
   return Number(data || 0);
 }
 
-/** Every branch's stock of each item, added up. */
-export async function getTotalStock(itemIds: string[]): Promise<Record<string, number>> {
-  const out: Record<string, number> = {};
+/**
+ * Stock and cost of each item: at one branch (the one a shipment is for), or
+ * every branch added up with the company cost when no branch is given.
+ */
+export async function getStockAndCost(itemIds: string[], branchId: string | null): Promise<Record<string, { qty: number; cost: number | null }>> {
+  const out: Record<string, { qty: number; cost: number | null }> = {};
   for (let i = 0; i < itemIds.length; i += 150) {
-    const { data, error } = await db
+    let q = db
       .from("item_branch_stock")
-      .select("item_id, quantity")
+      .select("item_id, quantity, cost_price")
       .in("item_id", itemIds.slice(i, i + 150));
+    if (branchId) q = q.eq("branch_id", branchId);
+    const { data, error } = await q;
     if (error) throw error;
-    for (const r of data || []) out[r.item_id] = (out[r.item_id] || 0) + Number(r.quantity || 0);
+    for (const r of data || []) {
+      const cur = out[r.item_id] || { qty: 0, cost: null };
+      cur.qty += Number(r.quantity || 0);
+      // One branch: its own cost. All: left to the company figure.
+      if (branchId && r.cost_price != null) cur.cost = Number(r.cost_price);
+      out[r.item_id] = cur;
+    }
   }
   return out;
 }

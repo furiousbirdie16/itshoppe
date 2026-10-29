@@ -5,6 +5,7 @@ import { peso } from "@/lib/currency";
 import { SkuBundlesManager } from "@/components/SkuBundlesManager";
 import { getMarginTarget } from "@/lib/landed-cost-api";
 import { marginOf } from "@/lib/landed-cost";
+import { costFromRows } from "@/lib/branch-cost";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -173,6 +174,8 @@ export default function InventoryPage() {
   // cannot be reached without throwing the form away.
   const [formBranchId, setFormBranchId] = useState("");
   const qtyBranchId = activeBranchId || formBranchId;
+  /** The cost the form opened with (the branch's, once loaded), to tell whether it was changed. */
+  const editingCostRef = useRef(0);
   /**
    * The chosen branch's own stock for the item being edited, as loaded.
    *
@@ -217,7 +220,7 @@ export default function InventoryPage() {
       return fetchAllRows<any>(() => {
         let q = (supabase as any)
           .from("item_branch_stock")
-          .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+          .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock, cost_price")
           .order("id");
         if (activeBranchId) q = q.eq("branch_id", activeBranchId);
         return q;
@@ -243,6 +246,15 @@ export default function InventoryPage() {
     }
     return m;
   }, [branchStockRows]);
+
+  // Each branch's cost per item: the picked branch's own, or on "All branches"
+  // every branch blended by stock, with each branch's figure kept for the hover.
+  const costRowsByItem = useMemo(() => {
+    const m = new Map<string, { quantity: number; cost_price: number | null; branch_id: string }[]>();
+    for (const r of branchStockRows) m.set(r.item_id, [...(m.get(r.item_id) || []), r]);
+    return m;
+  }, [branchStockRows]);
+  const branchCodeById = useMemo(() => new Map(branches.map((b) => [b.id, b.branch_code])), [branches]);
 
   // Reserved quantity — invoice line quantities on invoices currently in "reserved" status
   // for the active branch (or across all visible branches when admin picks "All").
@@ -322,9 +334,17 @@ export default function InventoryPage() {
         units_per_stock: s && s.ups ? s.ups : it.units_per_stock,
         reserved_quantity: reservedMap.get(it.id) || 0,
         incoming_quantity: incomingMap.get(it.id) || 0,
+        cost_price: costFromRows(Number(it.cost_price || 0), costRowsByItem.get(it.id) || []),
+        /** Every branch's own cost, for "All branches" — "MNL ₱100.00 · GSN ₱120.00". */
+        branch_costs: activeBranchId
+          ? null
+          : (costRowsByItem.get(it.id) || [])
+              .filter((r) => r.cost_price != null)
+              .map((r) => `${branchCodeById.get(r.branch_id) || "?"} ${peso(Number(r.cost_price))}`)
+              .join(" · "),
       };
     });
-  }, [rawItems, branchStockMap, reservedMap, incomingMap]);
+  }, [rawItems, branchStockMap, reservedMap, incomingMap, costRowsByItem, activeBranchId, branchCodeById]);
 
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
 
@@ -378,7 +398,21 @@ export default function InventoryPage() {
   const updateMut = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Item> }) => {
       const { rest, wh, st } = splitQty(data);
+      // Cost is per branch: set for the branch the form is about, or for every
+      // branch on "All branches" with none picked — with a cost-history entry
+      // either way, rather than written straight onto the item.
+      const newCost = (rest as any).cost_price;
+      delete (rest as any).cost_price;
       const res = await updateItem(id, rest);
+      if (newCost !== undefined && Number.isFinite(Number(newCost)) && Math.abs(Number(newCost) - Number(editingCostRef.current)) >= 0.005) {
+        const { error } = await (supabase as any).rpc("set_item_cost", {
+          _item_id: id,
+          _new_cost: Number(newCost),
+          _reason: "Item form",
+          _branch_id: qtyBranchId || null,
+        });
+        if (error) throw error;
+      }
       if (wh !== undefined || st !== undefined) {
         if (!qtyBranchId) throw new Error("Pick which branch these quantities are for.");
         const moved = await setBranchQuantities({ itemId: id, branchId: qtyBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
@@ -422,6 +456,7 @@ export default function InventoryPage() {
     setOpen(true);
   };
   const openEdit = (item: Item) => {
+    editingCostRef.current = Number(item.cost_price || 0);
     setEditing(item);
     setForm({
       name: item.name, sku: item.sku, description: item.description,
@@ -453,7 +488,10 @@ export default function InventoryPage() {
       .then((cur) => {
         if (cancelled) return;
         setBranchQty({ wh: cur.warehouse_quantity, st: cur.store_quantity });
-        setForm((f) => ({ ...f, warehouse_quantity: String(cur.warehouse_quantity), store_quantity: String(cur.store_quantity) }));
+        // That branch's own cost, so it is the one being edited.
+        const branchCost = cur.cost_price ?? Number(editingCostRef.current);
+        editingCostRef.current = branchCost;
+        setForm((f) => ({ ...f, warehouse_quantity: String(cur.warehouse_quantity), store_quantity: String(cur.store_quantity), cost_price: String(branchCost) }));
       })
       .catch(() => { if (!cancelled) toast.error("Could not load this branch's stock"); })
       .finally(() => { if (!cancelled) setBranchQtyLoading(false); });
@@ -977,7 +1015,10 @@ export default function InventoryPage() {
                   <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
                 </Field>
                 {canEditCost && (
-                  <Field label="Cost (₱)">
+                  <Field
+                    label="Cost (₱)"
+                    hint={editing ? (qtyBranchId ? `For ${branches.find((b) => b.id === qtyBranchId)?.branch_name ?? "this branch"} only` : "For every branch — pick a branch above to set one branch's cost") : undefined}
+                  >
                     <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
                     {isAdmin && editing && (editing as any).landed_cost_latest != null && (
                       <p className="text-[10px] text-muted-foreground">latest landed {peso(Number((editing as any).landed_cost_latest))}</p>
@@ -1352,7 +1393,10 @@ export default function InventoryPage() {
                           key="c-cost"
                           className="whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground"
                           // Hover only: the averaged cost is the one that counts.
-                          title={isAdmin && (item as any).landed_cost_latest ? `Latest landed ${peso(Number((item as any).landed_cost_latest))}` : undefined}
+                          title={[
+                            (item as any).branch_costs ? `By branch: ${(item as any).branch_costs}` : "",
+                            isAdmin && (item as any).landed_cost_latest ? `Latest landed ${peso(Number((item as any).landed_cost_latest))}` : "",
+                          ].filter(Boolean).join("\n") || undefined}
                         >
                           {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
                         </TableCell>

@@ -8,6 +8,7 @@ import { payablePosting } from "@/lib/payable-posting";
 import { isForeign, fxPosition } from "@/lib/fx";
 import { fetchAllRows } from "@/lib/paginate";
 import { pickLastOverseasCosts, type LastCost } from "@/lib/last-overseas-cost";
+import { costFromRows } from "@/lib/branch-cost";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,7 +18,7 @@ const _from = (table: string) => _sb.from(table);
 /** Read the branch-scoped stock row (returns zeros if missing). */
 export async function getBranchStock(itemId: string, branchId: string) {
   const { data } = await _from("item_branch_stock")
-    .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+    .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock, cost_price")
     .eq("item_id", itemId)
     .eq("branch_id", branchId)
     .maybeSingle();
@@ -28,6 +29,8 @@ export async function getBranchStock(itemId: string, branchId: string) {
     quantity: Number(r.quantity || 0),
     open_roll_remaining: Number(r.open_roll_remaining || 0),
     units_per_stock: Number(r.units_per_stock || 1),
+    /** This branch's own cost; null when it has none yet (the company cost applies). */
+    cost_price: r.cost_price == null ? null : Number(r.cost_price),
   };
 }
 
@@ -359,11 +362,13 @@ export const getItemsWithStock = async (branchId?: string | null): Promise<Item[
   // here — and a short read would understate stock on hand, not just a total.
   const stock = await fetchAllRows<any>(() => {
     let stockQ = from("item_branch_stock")
-      .select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining")
+      .select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining, cost_price")
       .order("id");
     if (branchId) stockQ = stockQ.eq("branch_id", branchId);
     return stockQ;
   });
+  const costRows: Record<string, { quantity: number; cost_price: number | null }[]> = {};
+  for (const r of (stock as any[]) || []) (costRows[r.item_id] ||= []).push(r);
 
   const byItem: Record<string, { quantity: number; warehouse: number; store: number; open: number }> = {};
   for (const r of (stock as any[]) || []) {
@@ -382,6 +387,8 @@ export const getItemsWithStock = async (branchId?: string | null): Promise<Item[
       warehouse_quantity: s?.warehouse ?? 0,
       store_quantity: s?.store ?? 0,
       open_roll_remaining: s?.open ?? 0,
+      // The branch's own cost, or every branch blended by stock (lib/branch-cost).
+      cost_price: costFromRows(Number(i.cost_price || 0), costRows[i.id] || []),
     };
   });
 };
@@ -1400,9 +1407,9 @@ export const getDashboardStats = async (branchId?: string | null) => {
   // Paged, because this table holds one row per item per branch — a few hundred
   // items across three branches already passes the 1000-row cap, and the
   // shortfall would show up as a quietly smaller Inventory Value.
-  const branchStock = await fetchAllRows<{ item_id: string; quantity: number; branch_id: string }>(() => {
+  const branchStock = await fetchAllRows<{ item_id: string; quantity: number; branch_id: string; cost_price: number | null }>(() => {
     let stockQ = from("item_branch_stock")
-      .select("item_id, quantity, branch_id")
+      .select("item_id, quantity, branch_id, cost_price")
       .order("id", { ascending: true });
     if (branchId) stockQ = stockQ.eq("branch_id", branchId);
     return stockQ;
@@ -1524,7 +1531,15 @@ export const getDashboardStats = async (branchId?: string | null) => {
 
 
   const itemsList = ((items as any[]) || []).map((i: any) => ({ ...i, quantity: qtyByItem[i.id] ?? 0 }));
-  const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
+  // Each branch's stock at that branch's own cost.
+  const itemCost = new Map(((items as any[]) || []).map((i: any) => [i.id, Number(i.cost_price || 0)]));
+  // Only items in the list, as before (the list leaves out archived ones).
+  const totalValue = ((branchStock as any[]) || [])
+    .filter((r: any) => itemCost.has(r.item_id))
+    .reduce(
+      (sum: number, r: any) => sum + Number(r.quantity || 0) * (r.cost_price == null ? itemCost.get(r.item_id)! : Number(r.cost_price)),
+      0,
+    );
 
   // Reserving an invoice takes the stock out of item_branch_stock, so it has
   // already left totalValue above. It is still ours until the sale completes,

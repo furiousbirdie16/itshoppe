@@ -9,14 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOverseasPOItems } from "@/lib/api";
-import { applyLandedCosts, getMarginTarget, getPoCargo, getTotalStock, savePoCargo } from "@/lib/landed-cost-api";
+import { applyLandedCosts, getMarginTarget, getPoCargo, getStockAndCost, savePoCargo } from "@/lib/landed-cost-api";
 import { allocateCargo, buildCostReview, type CargoBox } from "@/lib/landed-cost";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  po: { id: string; po_number: string; currency: string; exchange_rate: number } | null;
+  po: { id: string; po_number: string; currency: string; exchange_rate: number; branch_id?: string | null } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -48,9 +48,12 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     enabled: open && !!poId,
   });
   const itemIds = useMemo(() => [...new Set(lines.map((l: any) => l.item_id).filter(Boolean))] as string[], [lines]);
+  // The shipment's own branch: its stock is what the new cost averages with,
+  // and its cost is the one that changes.
+  const poBranch = po?.branch_id ?? null;
   const { data: stock = {} } = useQuery({
-    queryKey: ["total-stock", itemIds],
-    queryFn: () => getTotalStock(itemIds),
+    queryKey: ["stock-and-cost", itemIds, poBranch],
+    queryFn: () => getStockAndCost(itemIds, poBranch),
     enabled: open && itemIds.length > 0,
   });
   const { data: marginTarget = 20 } = useQuery({ queryKey: ["margin-target"], queryFn: getMarginTarget, enabled: open });
@@ -148,9 +151,9 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       if (!l.item_id || !l.items) continue;
       items[l.item_id] = {
         itemId: l.item_id,
-        currentCost: Number(l.items.cost_price || 0),
+        currentCost: Number((stock as any)[l.item_id]?.cost ?? l.items.cost_price ?? 0),
         sellingPrice: Number(l.items.selling_price || 0),
-        stockNow: Number((stock as Record<string, number>)[l.item_id] || 0),
+        stockNow: Number((stock as any)[l.item_id]?.qty || 0),
       };
     }
     return buildCostReview(
@@ -212,6 +215,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", poId] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["items-with-stock"] });
+      queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] });
       queryClient.invalidateQueries({ queryKey: ["item_cost_history"] });
       toast.success(`Costs updated for ${count} item${count === 1 ? "" : "s"}`);
       onOpenChange(false);
@@ -242,7 +246,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
           <DialogDescription className="text-xs">
             {step === "cargo"
               ? "Enter the cargo bill and the CBM each item took. The bill is split by CBM."
-              : `New cost averages the stock you already hold with this shipment. Margin is flagged below ${marginTarget}%.`}
+              : `New cost averages the stock ${poBranch ? "this PO's branch" : "you"} already hold${poBranch ? "s" : ""} with this shipment, and changes that branch's cost only. Margin is flagged below ${marginTarget}%.`}
           </DialogDescription>
         </DialogHeader>
 

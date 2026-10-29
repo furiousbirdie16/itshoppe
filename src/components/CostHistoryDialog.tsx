@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useBranch } from "@/contexts/BranchContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -42,7 +43,7 @@ interface CostRow {
 }
 
 const sourceLabel = (s: string) =>
-  s === "po_received" ? "Local PO" : s === "overseas_po_received" ? "Import PO" : s === "manual" ? "Manual" : s === "cargo_landed" ? "Landed (cargo)" : s;
+  s === "po_received" ? "Local PO" : s === "overseas_po_received" ? "Import PO" : s === "manual" ? "Manual" : s === "cargo_landed" ? "Landed (cargo)" : s === "transfer" ? "Transfer in" : s;
 
 export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
   const qc = useQueryClient();
@@ -58,6 +59,8 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
   const [to, setTo] = useState("");
   const [poFilter, setPoFilter] = useState("");
 
+  const { activeBranchId, activeBranch, branches } = useBranch();
+  const branchCode = useMemo(() => new Map(branches.map((b) => [b.id, b.branch_code])), [branches]);
   const [overrideValue, setOverrideValue] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -113,10 +116,12 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
     const val = parseFloat(overrideValue);
     if (!Number.isFinite(val) || val < 0) { toast.error("Enter a valid cost"); return; }
     setSubmitting(true);
-    const { error } = await (supabase as any).rpc("set_item_cost_manual", {
+    // For the branch being viewed; on "All branches", every branch.
+    const { error } = await (supabase as any).rpc("set_item_cost", {
       _item_id: item.id,
       _new_cost: val,
       _reason: overrideReason || "Manual cost override",
+      _branch_id: activeBranchId,
     });
     setSubmitting(false);
     if (error) { toast.error(error.message); return; }
@@ -126,6 +131,7 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
     setTab("history");
     qc.invalidateQueries({ queryKey: ["item_cost_history", item.id] });
     qc.invalidateQueries({ queryKey: ["items"] });
+    qc.invalidateQueries({ queryKey: ["item_branch_stock"] });
   };
 
   const arrow = (diff: number) => {
@@ -205,6 +211,7 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
                   <TableRow>
                     <TableHead className="text-xs">Date</TableHead>
                     <TableHead className="text-xs">Source</TableHead>
+                    <TableHead className="text-xs">Branch</TableHead>
                     <TableHead className="text-xs">PO</TableHead>
                     <TableHead className="text-xs">Supplier</TableHead>
                     <TableHead className="text-xs text-right">Previous</TableHead>
@@ -217,13 +224,14 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableRow><TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="h-24 text-center text-sm text-muted-foreground">Loading...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={10} className="h-24 text-center text-sm text-muted-foreground">No cost changes recorded yet</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="h-24 text-center text-sm text-muted-foreground">No cost changes recorded yet</TableCell></TableRow>
                   ) : filtered.map(r => (
                     <TableRow key={r.id}>
                       <TableCell className="text-sm">{r.created_at.slice(0, 16).replace("T", " ")}</TableCell>
                       <TableCell><Badge variant="outline" className="text-[10px] uppercase">{sourceLabel(r.source)}</Badge></TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{(r as any).branch_id ? branchCode.get((r as any).branch_id) || "?" : "All"}</TableCell>
                       <TableCell className="text-sm tabular-nums">{docNo(r.po_number) || "—"}</TableCell>
                       <TableCell className="text-sm">{r.supplier_name || "—"}</TableCell>
                       <TableCell className="text-sm text-right">{peso(r.previous_cost)}</TableCell>
@@ -244,8 +252,13 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
               <div className="text-sm text-muted-foreground p-4 border rounded-md">Admin role required to override cost.</div>
             ) : (
               <div className="space-y-3 max-w-md">
+                <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  {activeBranch
+                    ? `Sets the cost for ${activeBranch.branch_name} only.`
+                    : "Sets the cost for every branch. Pick a branch at the top of the page to set one branch's cost."}
+                </p>
                 <div className="space-y-1">
-                  <Label className="text-xs">Current cost</Label>
+                  <Label className="text-xs">Current cost{activeBranch ? ` (${activeBranch.branch_code})` : " (all branches, blended)"}</Label>
                   <Input value={item ? peso(Number(item.cost_price || 0)) : ""} disabled className="h-9 text-sm" />
                 </div>
                 <div className="space-y-1">

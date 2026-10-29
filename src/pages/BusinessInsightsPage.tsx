@@ -25,6 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
 import { TodayMovementExport } from "@/components/TodayMovementExport";
+import { costFromRows } from "@/lib/branch-cost";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
@@ -456,7 +457,7 @@ export default function BusinessInsightsPage() {
       // No quantity column here — variations do not hold their own stock, it sits
       // on the parent. Selecting it made PostgREST reject the whole request, so
       // this returned nothing and no variation rows were built at all.
-      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price, factor, type")
+      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, cost_is_manual, selling_price, factor, type")
     ),
   });
 
@@ -467,7 +468,7 @@ export default function BusinessInsightsPage() {
     // every branch's stock made days-left and the stock column read wrong.
     queryKey: ["bi_branch_stock", activeBranchId],
     queryFn: async () => fetchAllRows<any>(() => {
-      let q = supabase.from("item_branch_stock").select("id, item_id, quantity").order("id");
+      let q = supabase.from("item_branch_stock").select("id, item_id, quantity, cost_price").order("id");
       if (activeBranchId) q = q.eq("branch_id", activeBranchId);
       return q;
     }),
@@ -478,6 +479,12 @@ export default function BusinessInsightsPage() {
     for (const r of branchStockRaw as any[]) {
       m.set(r.item_id, (m.get(r.item_id) || 0) + Number(r.quantity || 0));
     }
+    return m;
+  }, [branchStockRaw]);
+  // Each branch's cost: one branch's own, or every branch blended by stock.
+  const costRowsByItem = useMemo(() => {
+    const m = new Map<string, { quantity: number; cost_price: number | null }[]>();
+    for (const r of branchStockRaw as any[]) m.set(r.item_id, [...(m.get(r.item_id) || []), r]);
     return m;
   }, [branchStockRaw]);
 
@@ -545,14 +552,26 @@ export default function BusinessInsightsPage() {
       const base = allowedItemIds
         ? (itemsAllRaw as any[]).filter((i) => allowedItemIds.has(i.id))
         : (itemsAllRaw as any[]);
-      return base.map((i) => ({ ...i, quantity: stockByItem.get(i.id) ?? 0 }));
+      return base.map((i) => ({
+        ...i,
+        quantity: stockByItem.get(i.id) ?? 0,
+        cost_price: costFromRows(Number(i.cost_price || 0), costRowsByItem.get(i.id) || []),
+      }));
     },
-    [itemsAllRaw, allowedItemIds, stockByItem],
+    [itemsAllRaw, allowedItemIds, stockByItem, costRowsByItem],
   );
-  const variationsAll = useMemo(
-    () => (allowedItemIds ? (variationsAllRaw as any[]).filter((v) => allowedItemIds.has(v.item_id)) : (variationsAllRaw as any[])),
-    [variationsAllRaw, allowedItemIds],
-  );
+  const variationsAll = useMemo(() => {
+    const base = allowedItemIds ? (variationsAllRaw as any[]).filter((v) => allowedItemIds.has(v.item_id)) : (variationsAllRaw as any[]);
+    // A variation not costed by hand is its share of the parent's cost — at
+    // this branch, so it follows the parent's branch cost.
+    const parentById = new Map((itemsAll as any[]).map((i) => [i.id, i]));
+    return base.map((v) => {
+      const parent = parentById.get(v.item_id);
+      if (v.cost_is_manual || !parent) return v;
+      const ups = Number(parent.units_per_stock || 1) || 1;
+      return { ...v, cost_price: Number(parent.cost_price || 0) * (Number(v.factor || 1) / ups) };
+    });
+  }, [variationsAllRaw, allowedItemIds, itemsAll]);
   const onlineRows = useMemo(
     () => (allowedItemIds ? (onlineRowsRaw as any[]).filter((r) => r.item_id && allowedItemIds.has(r.item_id)) : (onlineRowsRaw as any[])),
     [onlineRowsRaw, allowedItemIds],
