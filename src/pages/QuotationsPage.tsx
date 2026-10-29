@@ -27,6 +27,8 @@ import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
+
+const todayISO = () => format(new Date(), "yyyy-MM-dd");
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -52,7 +54,7 @@ export default function QuotationsPage() {
   const [viewQ, setViewQ] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" });
+  const [form, setForm] = useState({ customer_id: "", quotation_date: todayISO(), notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" });
   const [agentAutoFilled, setAgentAutoFilled] = useState(false);
   const handleCustomerChange = async (v: string) => {
     setForm((f) => ({ ...f, customer_id: v }));
@@ -215,6 +217,7 @@ export default function QuotationsPage() {
       recipientEmail: q.customers?.email,
       recipientPhone: q.customers?.phone,
       recipientAddress: q.customers?.address,
+      preparedBy: q.sales_agent || undefined,
       extraFields: [
         ...(q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : []),
         ...(q.sales_agent ? [{ label: "Sales Agent", value: q.sales_agent }] : []),
@@ -249,6 +252,7 @@ export default function QuotationsPage() {
     const lineItems = await getQuotationItems(q.id);
     setForm({
       customer_id: q.customer_id || "",
+      quotation_date: q.quotation_date || todayISO(),
       notes: q.notes || "",
       valid_until: q.valid_until || "",
       sales_agent: q.sales_agent || "",
@@ -281,6 +285,7 @@ export default function QuotationsPage() {
     }
     return {
       customer_id: form.customer_id || null,
+      quotation_date: form.quotation_date || todayISO(),
       notes: form.notes,
       valid_until: form.valid_until || null,
       total_amount: total,
@@ -365,7 +370,7 @@ export default function QuotationsPage() {
     });
   }, [selectedIds, quotations]);
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { setForm({ customer_id: "", quotation_date: todayISO(), notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -576,7 +581,19 @@ export default function QuotationsPage() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Quotation Date</Label>
+                <DateField
+                  value={form.quotation_date}
+                  onChange={v => {
+                    // Moving the date moves the due date with it when terms are set.
+                    const days = parseInt(form.payment_terms);
+                    const due = v && !isNaN(days) && days >= 0 ? format(addDays(parseISO(v), days), "yyyy-MM-dd") : form.payment_due_date;
+                    setForm({ ...form, quotation_date: v, payment_due_date: due });
+                  }}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Valid Until</Label>
                 <DateField value={form.valid_until} onChange={v => setForm({ ...form, valid_until: v })} />
@@ -588,8 +605,7 @@ export default function QuotationsPage() {
                   const days = parseInt(v);
                   let due = form.payment_due_date;
                   if (!isNaN(days) && days >= 0) {
-                    const baseStr = editId ? (quotations.find((q: any) => q.id === editId)?.quotation_date) : null;
-                    const base = baseStr ? parseISO(baseStr) : new Date();
+                    const base = form.quotation_date ? parseISO(form.quotation_date) : new Date();
                     due = format(addDays(base, days), "yyyy-MM-dd");
                   }
                   setForm({ ...form, payment_terms: v, payment_due_date: due });
