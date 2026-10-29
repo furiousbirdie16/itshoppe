@@ -28,11 +28,13 @@ export function BranchSwitcher() {
         <SelectTrigger
           className={cn(
             "h-8 w-auto min-w-[140px] gap-1.5 text-xs",
-            combined && "border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-500/60 dark:bg-amber-950/40 dark:text-amber-200",
+            // Combined mode is flagged by the amber icon alone: a filled amber
+            // pill was the loudest thing on every screen.
+            combined && "text-foreground",
           )}
           aria-label="Branch"
         >
-          {combined ? <Layers className="h-3.5 w-3.5 text-amber-600" /> : <Building2 className="h-3.5 w-3.5 text-muted-foreground" />}
+          {combined ? <Layers className="h-3.5 w-3.5 text-warning" /> : <Building2 className="h-3.5 w-3.5 text-muted-foreground" />}
           <SelectValue />
         </SelectTrigger>
         <SelectContent align="end">

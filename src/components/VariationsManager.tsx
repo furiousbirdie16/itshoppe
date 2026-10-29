@@ -325,7 +325,7 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-0.5">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(v)}><Pencil className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteMut.mutate(v.id)}><Trash2 className="h-3 w-3 text-destructive/70" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteMut.mutate(v.id)}><Trash2 className="h-3 w-3 text-muted-foreground" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>

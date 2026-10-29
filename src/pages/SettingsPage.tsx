@@ -62,7 +62,7 @@ export default function SettingsPage() {
           if (!e) return null;
           const preview = docNo(`${e.prefix}-${String(parseInt(e.next_number) || 1).padStart(5, "0")}`);
           return (
-            <div key={id} className="rounded-xl border bg-card p-5 space-y-4">
+            <div key={id} className="rounded-lg border bg-card p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Settings className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-semibold text-foreground">{LABELS[id]}</h3>

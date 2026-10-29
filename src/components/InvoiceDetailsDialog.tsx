@@ -155,27 +155,27 @@ export default function InvoiceDetailsDialog({
               {/* HEADER */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm rounded-lg border bg-muted/30 p-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Invoice #</div>
+                  <div className="text-xs text-muted-foreground">Invoice #</div>
                   <div className="tabular-nums font-semibold">{docNo(inv.invoice_number)}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customer</div>
+                  <div className="text-xs text-muted-foreground">Customer</div>
                   <div className="font-medium truncate">{inv.customers?.name || "—"}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Date</div>
+                  <div className="text-xs text-muted-foreground">Date</div>
                   <div>{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : "—"}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Payment Status</div>
+                  <div className="text-xs text-muted-foreground">Payment Status</div>
                   <Badge variant="outline" className={cn("text-[10px] font-medium", payMeta.className)}>{payMeta.label}</Badge>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Invoice Status</div>
+                  <div className="text-xs text-muted-foreground">Invoice Status</div>
                   <Badge variant="outline" className={cn("text-[10px] font-medium uppercase", invMeta)}>{inv.status}</Badge>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Salesperson</div>
+                  <div className="text-xs text-muted-foreground">Salesperson</div>
                   <div>{inv.sales_agent || "—"}</div>
                 </div>
               </div>

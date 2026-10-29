@@ -155,7 +155,7 @@ export function AppSidebar() {
             {!collapsed && (
               <span className="flex-1 flex items-center justify-between gap-2">
                 <span>{item.title}</span>
-                <span className="text-[10px] uppercase tracking-wider">Soon</span>
+                <span className="text-xs">Soon</span>
               </span>
             )}
           </div>
@@ -170,7 +170,7 @@ export function AppSidebar() {
             end={item.url === "/"}
             onClick={() => setOpenMobile(false)}
             className={itemLinkClass}
-            activeClassName="bg-primary/8 text-primary hover:bg-primary/10 hover:text-primary"
+            activeClassName="bg-accent text-foreground hover:bg-accent hover:text-foreground"
           >
             <item.icon className="h-4 w-4 shrink-0" />
             {!collapsed && <span>{item.title}</span>}
@@ -187,9 +187,9 @@ export function AppSidebar() {
       <SidebarContent className="pt-4 flex flex-col h-full">
         <div className={`px-4 mb-6 ${collapsed ? "px-2" : ""}`}>
           <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
-            <img src="/images/logo.png" alt="IT SHOPPE" className="h-7 w-7 rounded-lg shrink-0 object-contain" />
+            <img src="/images/logo.png" alt="IT SHOPPE" className="h-8 w-8 rounded-md shrink-0 object-contain" />
             {!collapsed && (
-              <span className="text-sm font-semibold tracking-tight text-foreground">IT SHOPPE</span>
+              <span className="text-[15px] font-semibold tracking-tight text-foreground">IT SHOPPE</span>
             )}
           </div>
         </div>
@@ -234,7 +234,7 @@ export function AppSidebar() {
           {!collapsed && (
             <div className="mb-2 px-1">
               <p className="text-xs font-medium text-foreground truncate">{user?.email}</p>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{role || "user"}</p>
+              <p className="text-xs text-muted-foreground capitalize">{role || "user"}</p>
             </div>
           )}
           <Button

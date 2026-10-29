@@ -142,7 +142,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
     <div className="mt-3 rounded-lg border p-3 space-y-3">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-primary" />
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-semibold text-muted-foreground">
           Serial numbers
         </p>
       </div>

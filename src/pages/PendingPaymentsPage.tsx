@@ -498,7 +498,7 @@ export default function PendingPaymentsPage() {
           overdue flag — the two reasons to open this page — scroll out of view. */}
       <div className="md:hidden space-y-2">
         {sortedRows.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state">
               <Receipt className="empty-state-icon" />
               <p className="text-sm">{tab === "invoices" ? "No pending invoices" : "No manual receivables"}</p>

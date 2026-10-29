@@ -6,82 +6,84 @@
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 220 14% 10%;
+    /* Graphite + Teal: grey chrome, one teal accent for data, links and actions */
+    --background: 210 12% 97%;
+    --foreground: 214 17% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 220 14% 10%;
+    --card-foreground: 214 17% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 14% 10%;
-    --primary: 228 76% 52%;
+    --popover-foreground: 214 17% 8%;
+    --primary: 175 77% 26%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 95%;
-    --secondary-foreground: 220 14% 10%;
-    --muted: 220 13% 95%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 13% 93%;
-    --accent-foreground: 220 14% 10%;
-    --destructive: 0 72% 51%;
+    --secondary: 210 12% 94%;
+    --secondary-foreground: 214 17% 8%;
+    --muted: 210 12% 94%;
+    --muted-foreground: 212 8% 39%;
+    --accent: 210 12% 93%;
+    --accent-foreground: 214 17% 8%;
+    --destructive: 357 67% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 228 76% 52%;
-    --radius: 0.625rem;
-    --success: 152 69% 40%;
+    --border: 216 11% 91%;
+    --input: 213 11% 83%;
+    --ring: 175 77% 26%;
+    --radius: 0.5rem;
+    --success: 150 59% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 32 95% 44%;
     --warning-foreground: 0 0% 100%;
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 9% 46%;
-    --sidebar-primary: 228 76% 52%;
+    --sidebar-foreground: 212 8% 39%;
+    --sidebar-primary: 214 17% 8%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 13% 95%;
-    --sidebar-accent-foreground: 220 14% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 228 76% 52%;
-    --chart-1: 228 76% 52%;
-    --chart-2: 152 69% 40%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --sidebar-accent: 210 12% 93%;
+    --sidebar-accent-foreground: 214 17% 8%;
+    --sidebar-border: 216 11% 91%;
+    --sidebar-ring: 175 77% 26%;
+    /* One hue for the main series, grey for the comparison, then quieter steps */
+    --chart-1: 175 77% 26%;
+    --chart-2: 212 10% 62%;
+    --chart-3: 175 45% 55%;
+    --chart-4: 214 14% 30%;
+    --chart-5: 32 95% 44%;
   }
 
   .dark {
-    --background: 224 20% 4%;
-    --foreground: 210 20% 96%;
-    --card: 224 18% 7%;
-    --card-foreground: 210 20% 96%;
-    --popover: 224 18% 7%;
-    --popover-foreground: 210 20% 96%;
-    --primary: 228 76% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 224 14% 12%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 224 14% 12%;
-    --muted-foreground: 220 9% 54%;
-    --accent: 224 14% 14%;
-    --accent-foreground: 210 20% 96%;
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 224 14% 14%;
-    --input: 224 14% 14%;
-    --ring: 228 76% 60%;
-    --success: 152 69% 40%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --sidebar-background: 224 18% 5%;
-    --sidebar-foreground: 220 9% 54%;
-    --sidebar-primary: 228 76% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 224 14% 10%;
-    --sidebar-accent-foreground: 210 20% 96%;
-    --sidebar-border: 224 14% 14%;
-    --sidebar-ring: 228 76% 60%;
-    --chart-1: 228 76% 60%;
-    --chart-2: 152 69% 40%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --background: 220 12% 5%;
+    --foreground: 220 13% 95%;
+    --card: 216 11% 9%;
+    --card-foreground: 220 13% 95%;
+    --popover: 216 11% 9%;
+    --popover-foreground: 220 13% 95%;
+    --primary: 171 54% 50%;
+    --primary-foreground: 220 12% 5%;
+    --secondary: 214 10% 14%;
+    --secondary-foreground: 220 13% 95%;
+    --muted: 214 10% 14%;
+    --muted-foreground: 212 8% 69%;
+    --accent: 214 10% 14%;
+    --accent-foreground: 220 13% 95%;
+    --destructive: 350 73% 62%;
+    --destructive-foreground: 220 12% 5%;
+    --border: 214 9% 15%;
+    --input: 213 9% 25%;
+    --ring: 171 54% 50%;
+    --success: 147 51% 50%;
+    --success-foreground: 220 12% 5%;
+    --warning: 36 89% 65%;
+    --warning-foreground: 220 12% 5%;
+    --sidebar-background: 220 12% 5%;
+    --sidebar-foreground: 212 8% 69%;
+    --sidebar-primary: 220 13% 95%;
+    --sidebar-primary-foreground: 220 12% 5%;
+    --sidebar-accent: 214 10% 14%;
+    --sidebar-accent-foreground: 220 13% 95%;
+    --sidebar-border: 214 9% 15%;
+    --sidebar-ring: 171 54% 50%;
+    --chart-1: 171 54% 50%;
+    --chart-2: 212 8% 50%;
+    --chart-3: 171 35% 35%;
+    --chart-4: 212 8% 75%;
+    --chart-5: 36 89% 65%;
   }
 }
 
@@ -106,7 +108,7 @@
     @apply text-xs sm:text-sm text-muted-foreground mt-1;
   }
   .data-table-wrapper {
-    @apply rounded-xl border bg-card overflow-x-auto;
+    @apply rounded-lg border bg-card overflow-x-auto;
   }
   .empty-state {
     @apply flex flex-col items-center justify-center py-12 sm:py-16 text-muted-foreground;
@@ -115,7 +117,7 @@
     @apply h-10 w-10 mb-3 text-muted-foreground/40;
   }
   .stat-card {
-    @apply rounded-xl border bg-card p-3 sm:p-5 transition-shadow hover:shadow-md min-w-0;
+    @apply rounded-lg border bg-card p-3 sm:p-5 min-w-0;
   }
   /* Page header row that holds title + action buttons. Stacks on mobile, side-by-side on desktop. */
   .page-toolbar {
@@ -131,6 +133,15 @@
   }
   .filter-bar > * {
     @apply w-full sm:w-auto;
+  }
+}
+
+@layer base {
+  /* Delete icons rest in grey with the other row actions and turn red only
+     when their button is hovered or focused. */
+  button:hover > svg.lucide-trash2,
+  button:focus-visible > svg.lucide-trash2 {
+    color: hsl(var(--destructive));
   }
 }
 

@@ -407,7 +407,7 @@ export default function PayablesPage() {
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No payables yet</p></div>
           </div>
         ) : (
@@ -443,7 +443,7 @@ export default function PayablesPage() {
                   )}
                   {isAdmin && (
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   )}
                 </>
@@ -490,7 +490,7 @@ export default function PayablesPage() {
                       <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                     {isAdmin && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                   </div>
                 </TableCell>

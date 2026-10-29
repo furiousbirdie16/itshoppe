@@ -409,15 +409,15 @@ export default function LowStockAlertsPage() {
       {/* Phones: one card per item — the table needs sideways scrolling to reach the quantity. */}
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
-          <div className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">Loading…</div>
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">Loading…</div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
             {group === "now" ? "Nothing needs ordering right now." : group === "ordered" ? "Nothing low is on order." : "Nothing to watch."}
           </div>
         ) : sorted.map((r) => {
           const isOpen = expanded.has(r.item.id);
           return (
-            <div key={r.item.id} className="rounded-xl border bg-card">
+            <div key={r.item.id} className="rounded-lg border bg-card">
               <div className="flex items-start gap-3 p-3">
                 <Checkbox className="mt-0.5" checked={selectedIds.has(r.item.id)} onCheckedChange={() => toggleSelect(r.item.id)} aria-label={`Select ${r.item.name}`} />
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleExpand(r.item.id)} aria-expanded={isOpen}>
@@ -430,25 +430,25 @@ export default function LowStockAlertsPage() {
               </div>
               <div className="grid grid-cols-3 gap-2 border-t px-3 py-2.5 text-sm">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Stock / Min</div>
+                  <div className="text-xs text-muted-foreground">Stock / Min</div>
                   <span className={cn("font-semibold tabular-nums", r.plan.belowMin && "text-destructive")}>{fmtUnits(r.item.quantity)}</span>
                   <span className="text-muted-foreground"> / </span>
                   <MinStockEditor value={r.threshold} onSave={(v) => updateThreshold.mutate({ id: r.item.id, value: v })} />
                   <BranchStockSplit split={stockSplit.get(r.item.id)} />
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{group === "ordered" ? "Arrives" : "Order by"}</div>
+                  <div className="text-xs text-muted-foreground">{group === "ordered" ? "Arrives" : "Order by"}</div>
                   <WhenCell row={r} group={group} today={today} />
                 </div>
                 <div className="text-right">
                   {group === "ordered" ? (
                     <>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">On order</div>
+                      <div className="text-xs text-muted-foreground">On order</div>
                       <div className="font-semibold tabular-nums">{fmtUnits(r.onOrder)}</div>
                     </>
                   ) : (
                     <>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order qty</div>
+                      <div className="text-xs text-muted-foreground">Order qty</div>
                       <div className="font-semibold tabular-nums">{r.plan.suggested > 0 ? r.plan.suggested.toLocaleString() : "—"}</div>
                       {isAdmin && r.plan.suggested > 0 && <div className="text-[10px] text-muted-foreground tabular-nums">{money(r.reorderCost)}</div>}
                     </>
@@ -1222,7 +1222,7 @@ function ItemDetails({
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-3 text-sm">
         <div className="rounded-lg border bg-background p-3 space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Sales ({unit})</div>
+          <div className="text-xs text-muted-foreground mb-1.5 font-medium">Sales ({unit})</div>
           <Detail label="Last 7 days">{fmtUnits(r.q7)}</Detail>
           <Detail label="Last 30 days">{fmtUnits(r.q30)}</Detail>
           <Detail label={`Last ${HISTORY_DAYS} days`}>{fmtUnits(r.q90)}{isAdmin && <span className="text-muted-foreground"> · {money(r.a90)}</span>}</Detail>
@@ -1253,7 +1253,7 @@ function ItemDetails({
         </div>
 
         <div className="rounded-lg border bg-background p-3 space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Lead time</div>
+          <div className="text-xs text-muted-foreground mb-1.5 font-medium">Lead time</div>
           <Detail label="Using">
             <span className="font-medium">{lead.days} days</span>{" "}
             <span className="text-muted-foreground">
@@ -1289,7 +1289,7 @@ function ItemDetails({
         </div>
 
         <div className="rounded-lg border bg-background p-3 space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Supplier & orders</div>
+          <div className="text-xs text-muted-foreground mb-1.5 font-medium">Supplier & orders</div>
           <Detail label="Supplier">{r.supplier ? `${r.supplier.name}${r.supplier.overseas ? " (overseas)" : ""}` : <span className="text-amber-600">None — add one in Inventory → Suppliers</span>}</Detail>
           {isAdmin && link && (
             <Detail label="Latest cost">{currencySymbolForDisplay(link.currency)}{Number(link.latest_cost).toFixed(2)} <span className="text-[10px] text-muted-foreground">{link.currency}</span></Detail>

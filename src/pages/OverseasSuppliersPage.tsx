@@ -151,7 +151,7 @@ export default function OverseasSuppliersPage() {
       </div>
 
       {/* Currency Converter Card */}
-      <div className="border rounded-xl p-4 bg-card">
+      <div className="border rounded-lg p-4 bg-card">
         <div className="flex items-center gap-2 mb-3">
           <ArrowRightLeft className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold">Currency Converter</h3>
@@ -278,7 +278,7 @@ export default function OverseasSuppliersPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(s)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(s.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(s.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
                 </TableCell>
               </TableRow>

@@ -135,27 +135,27 @@ export default function OnlineSaleDetailsDialog({
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm rounded-lg border bg-muted/30 p-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order #</div>
+                  <div className="text-xs text-muted-foreground">Order #</div>
                   <div className="tabular-nums font-semibold">{s.order_number}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channel</div>
+                  <div className="text-xs text-muted-foreground">Channel</div>
                   <div className="font-medium truncate capitalize">{s.sales_channel || "—"}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order Date</div>
+                  <div className="text-xs text-muted-foreground">Order Date</div>
                   <div>{s.order_date ? new Date(s.order_date).toLocaleDateString() : "—"}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Payment Status</div>
+                  <div className="text-xs text-muted-foreground">Payment Status</div>
                   <Badge variant="outline" className={cn("text-[10px] font-medium", payMeta.className)}>{payMeta.label}</Badge>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order Status</div>
+                  <div className="text-xs text-muted-foreground">Order Status</div>
                   <Badge variant="outline" className={cn("text-[10px] font-medium uppercase", statusClass)}>{s.status}</Badge>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Paid At</div>
+                  <div className="text-xs text-muted-foreground">Paid At</div>
                   <div>{s.paid_at ? new Date(s.paid_at).toLocaleDateString() : "—"}</div>
                 </div>
               </div>

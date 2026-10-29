@@ -1621,7 +1621,7 @@ export default function BusinessInsightsPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             {/* Top 5 products */}
-            <div className="min-w-0 rounded-xl border bg-card p-4">
+            <div className="min-w-0 rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold">Top Products</h2>
                 <Button variant="ghost" size="sm" className="h-7 text-xs -mr-2" onClick={() => showProducts("all")}>
@@ -1660,7 +1660,7 @@ export default function BusinessInsightsPage() {
             </div>
 
             {/* Needs attention — each line opens the matching Products list. */}
-            <div className="min-w-0 rounded-xl border bg-card p-4">
+            <div className="min-w-0 rounded-lg border bg-card p-4">
               <h2 className="text-sm font-semibold mb-3">Needs Attention</h2>
               {(() => {
                 const items: { key: string; icon: typeof Clock; tone: string; title: string; detail: string; count: number; onClick?: () => void; to?: string }[] = [
@@ -1863,7 +1863,7 @@ export default function BusinessInsightsPage() {
             </div>
 
             {productRows.length === 0 ? (
-              <div className="rounded-xl border bg-card py-10 text-center text-xs text-muted-foreground">No items.</div>
+              <div className="rounded-lg border bg-card py-10 text-center text-xs text-muted-foreground">No items.</div>
             ) : (
               productRows.slice(0, 500).map(({ p, nested }) => {
                 const kids = p.kind === "parent" ? variationsByParent.get(p.itemId)?.length || 0 : 0;
@@ -1894,7 +1894,7 @@ export default function BusinessInsightsPage() {
             )}
           </div>
 
-          <div className="rounded-xl border bg-card overflow-hidden hidden md:block">
+          <div className="rounded-lg border bg-card overflow-hidden hidden md:block">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -1929,7 +1929,7 @@ export default function BusinessInsightsPage() {
                               {p.kind === "variation" && <span className="text-muted-foreground/60">↳</span>}
                               <span>{nested ? p.variationLabel : p.name}</span>
                               {!visibleCols.has("type") && !nested && p.source === "import" && (
-                                <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-600">Import</span>
+                                <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">Import</span>
                               )}
                             </div>
                             <div className={cn("flex items-center gap-2 tabular-nums text-[10px] text-muted-foreground", nested && "pl-4")}>
@@ -2093,7 +2093,7 @@ export default function BusinessInsightsPage() {
         {/* CUSTOMERS */}
         <TabsContent value="customers" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-sm font-semibold">Online Customers</h2>
@@ -2103,11 +2103,11 @@ export default function BusinessInsightsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channels Ordered</div>
+                  <div className="text-xs text-muted-foreground">Channels Ordered</div>
                   <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
                 </div>
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
+                  <div className="text-xs text-muted-foreground">Avg per Channel</div>
                   <div className="text-xl font-semibold mt-0.5">{money(customerStats.onlineAvg)}</div>
                 </div>
               </div>
@@ -2138,7 +2138,7 @@ export default function BusinessInsightsPage() {
 
             </div>
 
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-sm font-semibold">Invoice Customers</h2>
@@ -2150,11 +2150,11 @@ export default function BusinessInsightsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customers Ordered</div>
+                  <div className="text-xs text-muted-foreground">Customers Ordered</div>
                   <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
                 </div>
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
+                  <div className="text-xs text-muted-foreground">Avg per Customer</div>
                   <div className="text-xl font-semibold mt-0.5">{money(customerStats.invoiceAvg)}</div>
                 </div>
               </div>

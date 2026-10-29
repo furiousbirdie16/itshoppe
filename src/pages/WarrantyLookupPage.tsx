@@ -165,7 +165,7 @@ export default function WarrantyLookupPage() {
               its past, and the claim in front of you may be about either. */}
           {result && result.history.length > 1 && (
             <div className="space-y-1.5 border-t pt-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="text-[11px] font-semibold text-muted-foreground">
                 History
               </p>
               {result.history.map((e) => (

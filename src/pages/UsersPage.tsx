@@ -188,7 +188,7 @@ export default function UsersPage() {
         <ColumnVisibilityMenu columns={orderedColumns} visible={colState.visible} onToggle={toggleCol} onMove={moveCol} onReset={resetCols} />
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-lg border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

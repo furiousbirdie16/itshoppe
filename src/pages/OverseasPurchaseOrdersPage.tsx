@@ -1619,7 +1619,7 @@ export default function OverseasPurchaseOrdersPage() {
                           disabled={payDeleteMut.isPending}
                           onClick={() => payDeleteMut.mutate(pmt.id)}
                         >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
                       </div>
                     ))}
@@ -1762,7 +1762,7 @@ export default function OverseasPurchaseOrdersPage() {
                       ["To come", remaining],
                     ].map(([label, value]) => (
                       <div key={label as string} className="px-2 py-2.5">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                        <div className="text-xs text-muted-foreground">{label}</div>
                         <div className="text-lg font-semibold tabular-nums">{value}</div>
                       </div>
                     ))}
@@ -2126,7 +2126,7 @@ export default function OverseasPurchaseOrdersPage() {
         <div className="rounded-lg border bg-card p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Not Yet Received</p>
+              <p className="text-xs text-muted-foreground">Total Not Yet Received</p>
               <p className="text-xs text-muted-foreground mt-0.5">Value of outstanding items across all overseas POs (PHP equivalent)</p>
             </div>
             <p className="text-2xl font-semibold text-primary tabular-nums">{peso(notReceivedPhpTotal)}</p>
@@ -2350,7 +2350,7 @@ export default function OverseasPurchaseOrdersPage() {
             <div className={cn("grid divide-x rounded-lg border bg-card text-center", isAdmin ? "grid-cols-2 sm:grid-cols-5 [&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(n+3)]:border-t-0" : "grid-cols-4")}>
               {cells.map(([label, value]) => (
                 <div key={label} className={cn("px-2 py-2.5", label === "PHP value" && "col-span-2 sm:col-span-1")}>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                  <div className="text-xs text-muted-foreground">{label}</div>
                   <div className={cn("text-lg font-semibold tabular-nums", label === "PHP value" && "text-primary")}>{value}</div>
                 </div>
               ))}
@@ -2394,7 +2394,7 @@ export default function OverseasPurchaseOrdersPage() {
                 {sortedIncomingRows.length === 0 ? empty : sortedIncomingRows.map((row) => {
                   const e = eta(row);
                   return (
-                    <div key={row.id} className={cn("rounded-xl border bg-card p-3 space-y-2", e.late && "border-destructive/40")}>
+                    <div key={row.id} className={cn("rounded-lg border bg-card p-3 space-y-2", e.late && "border-destructive/40")}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-semibold leading-snug">{row.item_name}</div>
@@ -2511,12 +2511,12 @@ export default function OverseasPurchaseOrdersPage() {
                 two dates this tab exists to show. */}
             <div className="md:hidden space-y-2">
               {trackingRows.length === 0 ? (
-                <div className="rounded-xl border bg-card">
+                <div className="rounded-lg border bg-card">
                   <div className="empty-state"><Truck className="empty-state-icon" /><p className="text-sm">No shipments tracked yet</p></div>
                 </div>
               ) : (
                 trackingRows.map(({ shipment: s, po_number, supplier }) => (
-                  <div key={s.id} className="rounded-xl border bg-card p-3">
+                  <div key={s.id} className="rounded-lg border bg-card p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="truncate tabular-nums text-xs font-semibold">{s.tracking_number || "—"}</div>
@@ -2545,7 +2545,7 @@ export default function OverseasPurchaseOrdersPage() {
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => trackDeleteMut.mutate(s.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                          <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
                       </div>
                     </div>
@@ -2589,7 +2589,7 @@ export default function OverseasPurchaseOrdersPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-0.5">
                           <Button variant="ghost" size="icon" onClick={() => openTrackEdit(s)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => trackDeleteMut.mutate(s.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => trackDeleteMut.mutate(s.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>

@@ -40,7 +40,7 @@ export default function AuthPage() {
           <p className="text-sm text-muted-foreground mt-1">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border bg-card p-6">
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border bg-card p-6">
           <div>
             <Label className="text-xs text-muted-foreground">Email</Label>
             <Input

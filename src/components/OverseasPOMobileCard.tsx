@@ -35,7 +35,7 @@ export function OverseasPOMobileCard({
   po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions, balanceLeft, onOpen,
 }: Props) {
   return (
-    <div className={cn("rounded-xl border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
+    <div className={cn("rounded-lg border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
       <div className="flex items-start gap-2.5">
         {isAdmin && <Checkbox checked={selected} onCheckedChange={onToggleSelect} className="mt-0.5 shrink-0" />}
 

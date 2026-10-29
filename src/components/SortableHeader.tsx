@@ -21,13 +21,14 @@ export function SortableHeader({ sortKey, label, sort, onToggle, align = "left",
         type="button"
         onClick={() => onToggle(sortKey)}
         className={cn(
-          "inline-flex items-center gap-1 hover:text-foreground transition-colors",
+          "group inline-flex items-center gap-1 hover:text-foreground transition-colors",
           align === "right" && "ml-auto flex-row-reverse",
           active ? "text-foreground font-semibold" : "text-muted-foreground",
         )}
       >
         <span>{label}</span>
-        <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-50")} />
+        {/* Only the sorted column shows its arrow; the others reveal theirs on hover. */}
+        <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-0 group-hover:opacity-50 group-focus-visible:opacity-50")} />
       </button>
     </TableHead>
   );

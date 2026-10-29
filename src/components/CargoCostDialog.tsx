@@ -438,7 +438,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                       onClick={() => setBoxes((bs) => bs.filter((x) => x.id !== b.id))}
                       title="Remove box"
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">

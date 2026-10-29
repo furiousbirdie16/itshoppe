@@ -74,7 +74,7 @@ export function CustomerPricesList({ customerId }: { customerId: string }) {
   return (
     <div className="mt-4 border-t pt-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="text-[11px] font-semibold text-muted-foreground">
           Their prices{rows.length ? ` · ${rows.length}` : ""}
         </p>
         <div className="flex items-center gap-1">

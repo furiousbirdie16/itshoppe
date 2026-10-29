@@ -1376,7 +1376,7 @@ export default function OnlineSalesPage() {
       {isAdmin && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
             <p className="text-xs text-muted-foreground mt-0.5">Sum of completed sales in current view</p>
           </div>
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
@@ -1903,7 +1903,7 @@ export default function OnlineSalesPage() {
                               </>
                             )}
                             {!editingSale && form.lines.length > 1 && (
-                              <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                             )}
                           </div>
                         </div>

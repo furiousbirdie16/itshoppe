@@ -169,9 +169,9 @@ export default function MarketplaceReceivablesPage() {
           payout and the ageing off the right edge. */}
       <div className="md:hidden space-y-2">
         {isLoading ? (
-          <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">Loading...</div>
+          <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">Loading...</div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">
             No pending marketplace receivables
           </div>
         ) : (

@@ -41,7 +41,7 @@ export function DocumentLogoCard() {
   };
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
+    <div className="rounded-lg border bg-card p-5 space-y-4">
       <div className="flex items-center gap-2">
         <ImageIcon className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold text-foreground">Document logo</h3>

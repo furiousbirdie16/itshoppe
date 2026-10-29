@@ -772,7 +772,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                         <ArrowLeftRight className="h-3 w-3 text-muted-foreground" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleAccountDelete(a)} className="h-6 w-6 rounded-md" title="Delete">
-                        <Trash2 className="h-3 w-3 text-destructive/70" />
+                        <Trash2 className="h-3 w-3 text-muted-foreground" />
                       </Button>
                     </div>
                   </div>
@@ -1036,7 +1036,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div>
           </div>
         ) : (
@@ -1080,7 +1080,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                     <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </>
               }
@@ -1122,8 +1122,9 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                   )}
                   {renderInvoiceLink(t)}
                 </TableCell>
-                <TableCell className="text-sm text-right text-emerald-600">{t.direction === "in" ? amountWithEdit(t) : "—"}</TableCell>
-                <TableCell className="text-sm text-right text-destructive/80">{t.direction === "out" ? amountWithEdit(t) : "—"}</TableCell>
+                {/* Money in is green; money out stays in ink — spending is not bad news. An empty side is a grey dash. */}
+                <TableCell className="text-sm text-right tabular-nums text-success">{t.direction === "in" ? amountWithEdit(t) : <span className="text-muted-foreground/60">—</span>}</TableCell>
+                <TableCell className="text-sm text-right tabular-nums">{t.direction === "out" ? amountWithEdit(t) : <span className="text-muted-foreground/60">—</span>}</TableCell>
                 {hasForeign && (
                   <TableCell className="text-sm text-right text-muted-foreground">
                     {accountById[t.account_id] && isForeign(accountById[t.account_id])
@@ -1147,7 +1148,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
                 </TableCell>
               </TableRow>

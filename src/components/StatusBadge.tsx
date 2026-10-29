@@ -10,7 +10,7 @@ const statusStyles: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   sent: "bg-primary/10 text-primary",
   shipped: "bg-primary/10 text-primary",
-  paid_not_shipped: "bg-blue-500/10 text-blue-600",
+  paid_not_shipped: "bg-primary/10 text-primary",
   shipped_not_paid: "bg-destructive/10 text-destructive",
   partially_received: "bg-warning/10 text-warning",
   received: "bg-success/10 text-success",
@@ -68,17 +68,20 @@ export function StatusBadge({ status, className, context = "default" }: StatusBa
               ? "paid_not_shipped" // paid but pending shipment → blue
               : status;
 
+  // Sentence case: uppercase pills were louder than the invoice numbers beside them.
+  const text = label.charAt(0).toUpperCase() + label.slice(1);
+
   return (
     <span
       className={cn(
         // whitespace-nowrap: the longer labels ("shipped, not paid") were
         // wrapping to three lines in a narrow column and rendering as a blob.
-        "inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider",
+        "inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium",
         statusStyles[styleKey] || "bg-muted text-muted-foreground",
         className
       )}
     >
-      {label}
+      {text}
     </span>
   );
 }

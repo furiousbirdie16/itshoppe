@@ -334,7 +334,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
   const reorderCost = reorder.reduce((s, r) => s + r.cost, 0);
 
   if (isLoading) {
-    return <div className="rounded-xl border bg-card py-16 text-center text-sm text-muted-foreground">Building forecast…</div>;
+    return <div className="rounded-lg border bg-card py-16 text-center text-sm text-muted-foreground">Building forecast…</div>;
   }
 
   const revenueChange = demand.lastPeriodRevenue > 0 ? (demand.revenue - demand.lastPeriodRevenue) / demand.lastPeriodRevenue : null;
@@ -400,7 +400,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
               title="Net Cash Due"
               value={money(net)}
               icon={Wallet}
-              tone={net >= 0 ? "asset" : "liability"}
+              tone={net < 0 ? "negative" : "asset"}
               description={`${money(cashRows.dueIn)} in · ${money(cashRows.dueOut)} out`}
               formula={<p>Unpaid invoices due (including overdue) minus supplier balances and bills due in the same window. Marketplace payouts are not dated, so they are listed separately below.</p>}
             />
@@ -416,7 +416,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
 
       {isAdmin && (
         <div className="grid gap-4 lg:grid-cols-5">
-          <div className="min-w-0 rounded-xl border bg-card p-4 lg:col-span-3">
+          <div className="min-w-0 rounded-lg border bg-card p-4 lg:col-span-3">
             <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
               <div>
                 <h2 className="text-sm font-semibold">Revenue: actual and projected</h2>
@@ -451,7 +451,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
             </ChartContainer>
           </div>
 
-          <div className="min-w-0 rounded-xl border bg-card p-4 lg:col-span-2">
+          <div className="min-w-0 rounded-lg border bg-card p-4 lg:col-span-2">
             <h2 className="text-sm font-semibold">Money in vs money out</h2>
             <p className="text-xs text-muted-foreground mb-3">Customer balances against what is owed to suppliers and bills.</p>
             <div className="rounded-md border">
@@ -484,7 +484,7 @@ export function InsightsForecastTab({ branchId, isAdmin, money, items, variation
         </div>
       )}
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-lg border bg-card overflow-hidden">
         <div className="p-4 pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Reorder planner</h2>

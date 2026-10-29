@@ -9,8 +9,13 @@ interface StatCardProps {
   icon: LucideIcon;
   description?: string;
   variant?: "default" | "warning" | "success";
-  /** Colours the figure: green for what we own, red for what we owe. */
-  tone?: "asset" | "liability";
+  /**
+   * What the figure is. Assets and liabilities stay in ink — owning and owing
+   * are not good or bad news by themselves, and colouring every card left the
+   * one figure that needed attention looking like all the others. "negative"
+   * is that figure: a shortfall, an overrun, a loss.
+   */
+  tone?: "asset" | "liability" | "negative";
   /**
    * How this figure is arrived at, shown on hover.
    *
@@ -37,24 +42,23 @@ export function StatCard({ title, value, icon: Icon, description, variant = "def
   const bad = hasDelta && (deltaInverse ? delta! > 0 : delta! < 0);
   const card = (
     <div className={cn("stat-card", formula && "cursor-help")}>
-      <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
-        <span className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-muted-foreground leading-tight inline-flex items-center gap-1 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
+        <span className="text-xs sm:text-[13px] font-medium text-muted-foreground leading-tight inline-flex items-center gap-1 min-w-0">
           <span className="truncate">{title}</span>
-          {formula && <Info className="h-3 w-3 shrink-0 opacity-50" />}
+          {formula && <Info className="h-3 w-3 shrink-0 opacity-60" />}
         </span>
-        <div className={cn(
-          "h-7 w-7 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center shrink-0",
-          variant === "warning" && "bg-warning/10 text-warning",
-          variant === "success" && "bg-success/10 text-success",
-          variant === "default" && "bg-primary/10 text-primary"
-        )}>
-          <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-        </div>
+        <Icon
+          className={cn(
+            "hidden sm:block h-4 w-4 shrink-0 text-muted-foreground/70",
+            variant === "warning" && "text-warning",
+          )}
+          strokeWidth={1.75}
+          aria-hidden
+        />
       </div>
       <div className={cn(
-        "text-lg sm:text-2xl font-semibold tracking-tight truncate",
-        tone === "asset" && "text-emerald-600 dark:text-emerald-500",
-        tone === "liability" && "text-red-600 dark:text-red-500",
+        "text-lg sm:text-2xl font-semibold tracking-tight tabular-nums truncate",
+        tone === "negative" && "text-destructive",
       )}>{value}</div>
       {(description || hasDelta) && (
         <div className="mt-1 flex items-center gap-1.5 min-w-0">
@@ -62,8 +66,8 @@ export function StatCard({ title, value, icon: Icon, description, variant = "def
             <span
               className={cn(
                 "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] sm:text-[11px] font-medium tabular-nums",
-                good && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500",
-                bad && "bg-red-500/10 text-red-600 dark:text-red-500",
+                good && "bg-success/10 text-success",
+                bad && "bg-destructive/10 text-destructive",
                 !good && !bad && "bg-muted text-muted-foreground",
               )}
             >

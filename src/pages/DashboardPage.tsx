@@ -97,7 +97,7 @@ export default function DashboardPage() {
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {isAdmin && (
           <StatCard
-            title="Sales Today"
+            title="Sales today"
             value={peso(stats?.salesToday || 0)}
             icon={ShoppingCart}
             variant="success"
@@ -113,7 +113,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Sales This Month"
+            title="Sales this month"
             value={peso(stats?.salesThisMonth || 0)}
             icon={TrendingUp}
             variant="success"
@@ -128,7 +128,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Gross Profit"
+            title="Gross profit"
             value={peso(stats?.grossProfitMonth || 0)}
             icon={Coins}
             variant="success"
@@ -143,7 +143,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Inventory Value"
+            title="Inventory value"
             value={peso(inventoryValue)}
             icon={DollarSign}
             tone="asset"
@@ -160,7 +160,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && reservedStock > 0 && (
           <StatCard
-            title="Reserved Stock"
+            title="Reserved stock"
             value={peso(reservedStock)}
             icon={BookmarkPlus}
             tone="asset"
@@ -174,7 +174,7 @@ export default function DashboardPage() {
           />
         )}
         <StatCard
-          title="Purchase Orders"
+          title="Purchase orders"
           value={stats?.openPurchaseOrders || 0}
           icon={Receipt}
           description="Open local + overseas"
@@ -187,7 +187,7 @@ export default function DashboardPage() {
         />
         {isAdmin && (
           <StatCard
-            title="Total Cash Available"
+            title="Total cash available"
             value={peso(finance.totalCashAvailable)}
             icon={Wallet}
             tone="asset"
@@ -223,7 +223,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Incoming Assets"
+            title="Incoming assets"
             value={peso(incomingAssets)}
             icon={TruckIcon}
             tone="asset"
@@ -240,7 +240,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Payables — Supplier POs"
+            title="Supplier POs owed"
             value={peso(supplierPOs)}
             icon={Banknote}
             tone="liability"
@@ -255,7 +255,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Payables — Bills & Checks"
+            title="Bills & checks owed"
             value={peso(billsTotal)}
             icon={Receipt}
             tone="liability"
@@ -278,7 +278,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Loans Outstanding"
+            title="Loans outstanding"
             value={peso(finance.loansOutstanding)}
             icon={PiggyBank}
             tone="liability"
@@ -294,10 +294,10 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Cash Available for Purchase"
+            title="Free to spend"
             value={peso(cashForPurchasing)}
             icon={Wallet}
-            tone={cashForPurchasing >= 0 ? "asset" : "liability"}
+            tone={cashForPurchasing < 0 ? "negative" : "asset"}
             description={
               cashForPurchasing >= 0
                 ? "Cash less supplier POs and bills"
@@ -320,10 +320,10 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Net Asset Value"
+            title="Net asset value"
             value={peso(netAssetValue)}
             icon={Scale}
-            variant={netAssetValue >= 0 ? "success" : "warning"}
+            tone={netAssetValue < 0 ? "negative" : "asset"}
             description={`${peso(assetsTotal)} assets − ${peso(liabilitiesTotal)} liabilities`}
             formula={
               <div className="space-y-1">

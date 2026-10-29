@@ -476,7 +476,7 @@ export default function PurchaseOrdersPage() {
                         <div className="flex items-center gap-0.5">
                           <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                         </div>
                       </div>
                     </div>
@@ -683,7 +683,7 @@ export default function PurchaseOrdersPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewPO(po.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(po)} title="Edit" className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => { setReceiveOpen(po.id); setReceiveBranchId(po.branch_id || activeBranchId || ""); setReceiveQtys({}); setReceiveLocations({}); setUndoQtys({}); }} title={po.status === "received" ? "Undo Receipt" : "Receive / Undo"} className="h-7 w-7 rounded-md"><PackageCheck className="h-3.5 w-3.5 text-success" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(po.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -770,7 +770,7 @@ export default function PurchaseOrdersPage() {
                         <div className="flex items-center gap-0.5">
                           <Button variant="ghost" size="icon" onClick={() => setEditLines(moveItem(editLines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => setEditLines(moveItem(editLines, idx, idx + 1))} disabled={idx === editLines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => removeEditLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeEditLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                         </div>
                       </div>
                     </div>

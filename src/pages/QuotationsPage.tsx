@@ -515,7 +515,7 @@ export default function QuotationsPage() {
       {isAdmin && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
             <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
           </div>
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
@@ -649,7 +649,7 @@ export default function QuotationsPage() {
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                           </div>
                         </div>
                       </div>
@@ -805,7 +805,7 @@ export default function QuotationsPage() {
                       <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
                     {!blocked && (
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                   </div>
                 </TableCell>

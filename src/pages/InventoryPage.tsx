@@ -104,7 +104,7 @@ const FILTER_STORAGE_KEY = "inventory:filters:v1";
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="text-[11px] font-semibold text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -1218,7 +1218,7 @@ export default function InventoryPage() {
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sortedFiltered.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state">
               <Package className="empty-state-icon" />
               <p className="text-sm">No items match your filters</p>
@@ -1266,7 +1266,7 @@ export default function InventoryPage() {
         )}
       </div>
 
-      <HorizontalScrollSync className="hidden md:block rounded-xl border bg-card">
+      <HorizontalScrollSync className="hidden md:block rounded-lg border bg-card">
 
         <Table>
           <TableHeader>

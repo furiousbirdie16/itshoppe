@@ -17,7 +17,7 @@ function HeaderBar() {
   }, [darkMode]);
 
   return (
-    <header className="h-14 flex items-center justify-between border-b px-4 md:px-6 bg-card/80 backdrop-blur-md sticky top-0 z-10">
+    <header className="h-14 flex items-center justify-between border-b px-4 md:px-6 bg-card sticky top-0 z-10">
       <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-8 w-8 rounded-lg">
         <Menu className="h-5 w-5" />
       </Button>

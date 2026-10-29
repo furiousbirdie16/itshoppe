@@ -9,6 +9,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { niceTicks } from "@/lib/chart-ticks";
 import { toast } from "sonner";
 
 type Range = "30d" | "90d" | "12m" | "all";
@@ -130,6 +131,7 @@ export default function NetAssetValueChart() {
       loans: Number(s.loans_outstanding_value ?? 0),
     }));
   }, [snapshots]);
+  const navTicks = niceTicks(Math.min(0, ...series.map((d) => d.value)), Math.max(0, ...series.map((d) => d.value)));
 
   const last = series[series.length - 1];
   const first = series[0];
@@ -200,12 +202,6 @@ export default function NetAssetValueChart() {
             className="h-[260px] w-full"
           >
             <AreaChart data={series} margin={{ left: 4, right: 12, top: 8, bottom: 0 }}>
-              <defs>
-                <linearGradient id="fillNav" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.04} />
-                </linearGradient>
-              </defs>
               <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.7} />
               <XAxis
                 dataKey="label"
@@ -219,6 +215,8 @@ export default function NetAssetValueChart() {
                 tickLine={false}
                 axisLine={false}
                 width={62}
+                ticks={navTicks}
+                domain={[navTicks[0], navTicks[navTicks.length - 1]]}
                 tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                 tickFormatter={(v) =>
                   Math.abs(v) >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`
@@ -230,9 +228,10 @@ export default function NetAssetValueChart() {
               />
               <Area
                 dataKey="value"
-                type="monotone"
+                type="linear"
                 stroke="hsl(var(--primary))"
-                fill="url(#fillNav)"
+                fill="hsl(var(--primary))"
+                fillOpacity={0.1}
                 strokeWidth={2}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
               />

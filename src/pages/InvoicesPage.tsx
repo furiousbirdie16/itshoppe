@@ -863,59 +863,59 @@ export default function InvoicesPage() {
     const busy = busyInvoices.has(inv.id);
     return (
       <>
-                    <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => openPreview(inv)} title="Preview & Download PDF" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><FileDown className="h-3.5 w-3.5" /></Button>
                     {(!locked || isAdmin) && (
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => openEdit(inv)}
                         title={locked ? "Locked — admins can still edit costs" : "Edit"}
-                        className="h-7 w-7 rounded-md"
+                        className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
                       >
-                        <Pencil className={`h-3.5 w-3.5 ${locked ? "text-amber-500" : "text-muted-foreground"}`} />
+                        <Pencil className={`h-3.5 w-3.5 ${locked ? "text-amber-500" : ""}`} />
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Eye className="h-3.5 w-3.5" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md"><BookmarkPlus className="h-3.5 w-3.5 text-amber-600" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay", inv.branch_id)) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><BookmarkPlus className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Truck className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay", inv.branch_id)) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><DollarSign className="h-3.5 w-3.5" /></Button>
                       </>
                     )}
                     {inv.status === "reserved" && (
                       <>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => { if (window.confirm("Recall this reserved order? It will return to Draft and allocated stock will be restored to inventory.")) revertMut.mutate(inv.id); }} title="Recall reservation (return to draft, restore stock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory and the order will be marked Cancelled.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md"><XCircle className="h-3.5 w-3.5 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => convertMut.mutate(inv.id)} title="Convert to open sales order" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><ArrowRightCircle className="h-3.5 w-3.5 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Truck className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><DollarSign className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => { if (window.confirm("Recall this reserved order? It will return to Draft and allocated stock will be restored to inventory.")) revertMut.mutate(inv.id); }} title="Recall reservation (return to draft, restore stock)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Undo2 className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => { if (window.confirm("Cancel this reserved order? Allocated stock will be returned to inventory and the order will be marked Cancelled.")) cancelMut.mutate(inv.id); }} title="Cancel reservation & restore stock" className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"><XCircle className="h-3.5 w-3.5" /></Button>
                       </>
                     )}
                     {inv.status === "confirmed" && (
                       <>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><DollarSign className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Undo2 className="h-3.5 w-3.5" /></Button>
                       </>
                     )}
                     {inv.status === "shipped" && (
                       <>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid (auto-completes order)" className="h-7 w-7 rounded-md"><DollarSign className="h-3.5 w-3.5 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => openPayDialog(inv.id)} title="Mark as Paid (auto-completes order)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><DollarSign className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Undo2 className="h-3.5 w-3.5" /></Button>
                       </>
                     )}
                     {inv.status === "paid" && (
                       <>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up (auto-completes order)" className="h-7 w-7 rounded-md"><Truck className="h-3.5 w-3.5 text-success" /></Button>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => shipMut.mutate(inv.id)} title="Mark as Shipped / Picked Up (auto-completes order)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Truck className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Undo2 className="h-3.5 w-3.5" /></Button>
                       </>
                     )}
                     {(inv.status === "unpaid" || inv.status === "completed" || inv.status === "cancelled") && (
-                      <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+                      <Button variant="ghost" size="icon" disabled={busy} onClick={() => revertMut.mutate(inv.id)} title="Revert to Draft (unlock)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Undo2 className="h-3.5 w-3.5" /></Button>
                     )}
 
                     {isAdmin && !locked && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(inv.id)} title="Delete (admin only) — restores stock if previously deducted" className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></Button>
                     )}
       </>
     );
@@ -1036,7 +1036,8 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 rounded-lg border bg-card p-0.5">
+      {/* One row that scrolls sideways on a phone, instead of wrapping into three. */}
+      <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-0.5 sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {([
           { key: "all", label: `All (${filtered.length})` },
           { key: "reserved", label: `Reserved (${bucketCounts.reserved})` },
@@ -1050,9 +1051,9 @@ export default function InvoicesPage() {
             key={b.key}
             type="button"
             onClick={() => setQuickFilter(b.key as any)}
-            className={`px-3 h-8 text-xs font-medium rounded-md transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-3 h-8 text-xs font-medium rounded-md transition-colors ${
               quickFilter === b.key
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted"
             }`}
           >
@@ -1170,9 +1171,9 @@ export default function InvoicesPage() {
       )}
 
       {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-card">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
             <p className="text-xs text-muted-foreground mt-0.5">Excludes reserved &amp; cancelled. Counts shipped, paid, completed.</p>
           </div>
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
@@ -1323,7 +1324,7 @@ export default function InvoicesPage() {
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                           </div>
                         </div>
                       </div>
@@ -1463,7 +1464,7 @@ export default function InvoicesPage() {
           {viewInv && <InvoiceSerialsPanel invoiceId={viewInv} />}
           {isAdmin && invFinancial && (
             <div className="mt-3 rounded-lg border bg-primary/5 p-3 space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial Summary (Admin only)</p>
+              <p className="text-xs font-semibold text-muted-foreground">Financial Summary (Admin only)</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-muted-foreground">Total Sales</div>
                 <div className="text-right font-medium tabular-nums">{peso(Number(invFinancial.total_sales))}</div>
@@ -1505,7 +1506,7 @@ export default function InvoicesPage() {
           scrolling on a narrow screen, which buries status and total. */}
       <div className="md:hidden space-y-2">
         {sortedInvoices.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div>
           </div>
         ) : (
@@ -1647,7 +1648,7 @@ export default function InvoicesPage() {
                   )}
                 </TableCell>
                 <TableCell className="text-sm">{inv.sales_agent || "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{inv.invoice_date}</TableCell>
+                <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">{inv.invoice_date}</TableCell>
                 <TableCell><StatusBadge status={inv.status} context="invoice" /></TableCell>
                 <TableCell className="text-right text-sm font-medium">
                   <div className="flex flex-col items-end gap-0.5">
