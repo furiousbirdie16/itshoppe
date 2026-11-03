@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { LucideIcon, Info, ArrowUp, ArrowDown } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,16 +32,32 @@ interface StatCardProps {
   delta?: number | null;
   /** Set when a rise is bad news (e.g. outstanding balances), flipping the colours. */
   deltaInverse?: boolean;
+  /** Makes the card open something, such as what moved the figure. */
+  onClick?: () => void;
+  /** A second small line under the description. */
+  footnote?: ReactNode;
 }
 
-export function StatCard({ title, value, icon: Icon, description, variant = "default", tone, formula, delta, deltaInverse }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, description, variant = "default", tone, formula, delta, deltaInverse, onClick, footnote }: StatCardProps) {
   const hasDelta = delta != null && Number.isFinite(delta);
   // Under half a percent reads as "0%" — colour and arrow it as flat, not a rise.
   if (hasDelta && Math.abs(delta!) < 0.005) delta = 0;
   const good = hasDelta && (deltaInverse ? delta! < 0 : delta! > 0);
   const bad = hasDelta && (deltaInverse ? delta! > 0 : delta! < 0);
   const card = (
-    <div className={cn("stat-card", formula && "cursor-help")}>
+    <div
+      className={cn("stat-card", formula && "cursor-help", onClick && "cursor-pointer transition-colors hover:border-primary/40")}
+      {...(onClick
+        ? {
+            role: "button",
+            tabIndex: 0,
+            onClick,
+            onKeyDown: (e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+            },
+          }
+        : {})}
+    >
       <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
         <span className="text-xs sm:text-[13px] font-medium text-muted-foreground leading-tight inline-flex items-center gap-1 min-w-0">
           <span className="truncate">{title}</span>
@@ -78,6 +94,7 @@ export function StatCard({ title, value, icon: Icon, description, variant = "def
           {description && <p className="text-[11px] sm:text-xs text-muted-foreground truncate">{description}</p>}
         </div>
       )}
+      {footnote && <div className="mt-1 text-[11px] sm:text-xs truncate">{footnote}</div>}
     </div>
   );
 

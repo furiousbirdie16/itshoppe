@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { format, parseISO } from "date-fns";
 import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +9,9 @@ import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, 
 import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { useBranch } from "@/contexts/BranchContext";
+import { FinanceChangeDialog } from "@/components/FinanceChangeDialog";
+import { getFinanceSnapshots } from "@/lib/finance-snapshots";
+import { metricValue, snapshotForDaysAgo, type FinanceFigures, type FinanceMetric } from "@/lib/finance-compare";
 
 export default function DashboardPage() {
   const { role } = useAuth();
@@ -76,6 +81,41 @@ export default function DashboardPage() {
   // committed to suppliers and bills. Can go negative, which is the point —
   // that means commitments already exceed the cash to cover them.
   const cashForPurchasing = finance.totalCashAvailable - coSupplierPOs - finance.billsDueSoon;
+
+  // What moved these two: today's figures against the saved nightly ones, opened
+  // from the cards so the dashboard itself stays as it is.
+  const [changeMetric, setChangeMetric] = useState<FinanceMetric | null>(null);
+  const { data: financeSnapshots = [] } = useQuery({
+    queryKey: ["finance-snapshots"],
+    queryFn: getFinanceSnapshots,
+    enabled: isAdmin,
+  });
+  const nowFigures: FinanceFigures = {
+    inventory: coInventory,
+    reserved: coReserved,
+    receivables: finance.receivables,
+    incoming: coIncoming,
+    cash: finance.totalCashAvailable,
+    supplierPos: coSupplierPOs,
+    billsOwedNow: finance.billsAndChecks,
+    billsDueSoon: finance.billsDueSoon,
+    dueToOwner: finance.dueToOwner,
+    loans: finance.loansOutstanding,
+  };
+  // The card's line only ever uses exact records. The older ones were worked
+  // out differently and would show a false jump.
+  const cardBase = snapshotForDaysAgo(financeSnapshots.filter((s) => !s.approximate), format(new Date(), "yyyy-MM-dd"), 7);
+  const cardFootnote = (metric: FinanceMetric) => {
+    // Until the company-wide figures have loaded, a comparison would be false.
+    if (!cardBase || !allBranches) return <span className="text-muted-foreground">See what changed</span>;
+    const change = metricValue(metric, nowFigures) - metricValue(metric, cardBase);
+    if (Math.abs(change) < 0.5) return <span className="text-muted-foreground">No change since {format(parseISO(cardBase.date), "MMM d")}</span>;
+    return (
+      <span className={change > 0 ? "text-success" : "text-destructive"}>
+        {change > 0 ? "↑" : "↓"} {peso(Math.abs(change))} since {format(parseISO(cardBase.date), "MMM d")}
+      </span>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -295,6 +335,8 @@ export default function DashboardPage() {
         {isAdmin && (
           <StatCard
             title="Free to spend"
+            onClick={() => setChangeMetric("free")}
+            footnote={cardFootnote("free")}
             value={peso(cashForPurchasing)}
             icon={Wallet}
             tone={cashForPurchasing < 0 ? "negative" : "asset"}
@@ -321,6 +363,8 @@ export default function DashboardPage() {
         {isAdmin && (
           <StatCard
             title="Net asset value"
+            onClick={() => setChangeMetric("nav")}
+            footnote={cardFootnote("nav")}
             value={peso(netAssetValue)}
             icon={Scale}
             tone={netAssetValue < 0 ? "negative" : "asset"}
@@ -349,6 +393,14 @@ export default function DashboardPage() {
 
       {/* Analytics: charts (admin only) */}
       {isAdmin && <DashboardAnalytics />}
+
+      <FinanceChangeDialog
+        metric={changeMetric}
+        onClose={() => setChangeMetric(null)}
+        now={nowFigures}
+        snapshots={financeSnapshots}
+        defaultDate={cardBase?.date ?? null}
+      />
 
 
 
