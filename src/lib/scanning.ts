@@ -6,7 +6,11 @@
  * the scan button simply does not appear rather than opening a camera that
  * cannot read anything.
  */
-interface DetectedBarcode { rawValue: string }
+interface DetectedBarcode {
+  rawValue: string;
+  /** Where it sits in the frame. The loaded reader crops first, so omits it. */
+  boundingBox?: { x: number; y: number; width: number; height: number };
+}
 export interface BarcodeDetectorLike { detect(source: CanvasImageSource): Promise<DetectedBarcode[]> }
 export type BarcodeDetectorCtor = new (opts?: { formats?: string[] }) => BarcodeDetectorLike;
 
@@ -56,6 +60,37 @@ export async function loadDetector(formats: string[]): Promise<LoadedDetector | 
 }
 
 /**
+ * The part of the frame that counts, as a fraction of it from each edge.
+ *
+ * The scanner draws this box and only codes inside it are read. A box holds
+ * several codes (MAC, serial, model), and with the wider view the rest of the
+ * label, and whatever is on the desk, is in shot too.
+ */
+export const AIM_MARGIN = 0.12;
+
+/** The code to read this frame: the one nearest the middle of the aiming box. */
+export function pickAimed(found: DetectedBarcode[], frameW: number, frameH: number): DetectedBarcode | null {
+  let best: DetectedBarcode | null = null;
+  let bestDistance = Infinity;
+  for (const code of found) {
+    const box = code.boundingBox;
+    if (!box) {
+      if (!best) best = code;
+      continue;
+    }
+    const x = (box.x + box.width / 2) / frameW;
+    const y = (box.y + box.height / 2) / frameH;
+    if (x < AIM_MARGIN || x > 1 - AIM_MARGIN || y < AIM_MARGIN || y > 1 - AIM_MARGIN) continue;
+    const distance = Math.hypot(x - 0.5, y - 0.5);
+    if (distance < bestDistance) {
+      best = code;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
  * Decides when a camera reading is real enough to act on.
  *
  * Two things go wrong with a naive "fire on first decode". A code only half
@@ -63,40 +98,45 @@ export async function loadDetector(formats: string[]): Promise<LoadedDetector | 
  * has to hold steady across several frames, and for long enough that it is not
  * one lucky frame, before the rest of the label has had a chance to arrive.
  * And a label sits in front of the lens for hundreds of frames, so once
- * accepted it must not fire again until it has left the view or a cooldown has
- * passed.
+ * accepted it must not fire again until it has left the view.
  *
  * Kept apart from the camera so the rules can be exercised without one.
  */
 export interface ScanGateOptions {
   requiredReads?: number;
   requiredMs?: number;
-  repeatCooldownMs?: number;
   goneAfterMisses?: number;
+  /** How long after the first frame nothing is read at all, to allow aiming. */
+  armDelayMs?: number;
 }
 
 export function createScanGate(options: ScanGateOptions = {}) {
   const requiredReads = options.requiredReads ?? 4;
   const requiredMs = options.requiredMs ?? 250;
-  const repeatCooldownMs = options.repeatCooldownMs ?? 4000;
   const goneAfterMisses = options.goneAfterMisses ?? 5;
+  const armDelayMs = options.armDelayMs ?? 0;
 
+  let startedAt: number | null = null;
   let candidate = "";
   let reads = 0;
   let firstSeenAt = 0;
   let accepted = "";
-  let acceptedAt = 0;
   let misses = 0;
 
   /** One frame's reading. Returns the value to act on, or null. */
   return function feed(value: string | null | undefined, now: number): string | null {
+    if (startedAt === null) startedAt = now;
+    // Whatever the lens lands on while the scanner opens was not chosen, so it
+    // does not even begin to count towards the hold below.
+    if (now - startedAt < armDelayMs) return null;
+
     const seen = (value || "").trim();
 
     if (!seen) {
       misses += 1;
       if (misses >= goneAfterMisses) {
         // Out of view: start afresh, so the same unit can be scanned again on
-        // purpose without waiting out the cooldown.
+        // purpose.
         candidate = "";
         reads = 0;
         accepted = "";
@@ -114,11 +154,9 @@ export function createScanGate(options: ScanGateOptions = {}) {
     }
 
     const settled = reads >= requiredReads && now - firstSeenAt >= requiredMs;
-    const repeat = seen === accepted && now - acceptedAt < repeatCooldownMs;
-    if (!settled || repeat) return null;
+    if (!settled || seen === accepted) return null;
 
     accepted = seen;
-    acceptedAt = now;
     reads = 0;
     return seen;
   };

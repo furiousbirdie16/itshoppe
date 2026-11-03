@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment , SoldUnit, SerialEvent } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
-import { shortfallFor, serialTrackingApplies, SERIAL_TRACKING_SINCE, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
+import { shortfallFor, lineForUnits, serialTrackingApplies, SERIAL_TRACKING_SINCE, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
@@ -3188,8 +3188,11 @@ export const releaseSoldUnit = async (unitId: string, notes = "") => {
   const email = await currentUserEmail();
   const { data, error } = await from("sold_units").update({
     status: "released", notes, updated_at: new Date().toISOString(),
-  }).eq("id", unitId).select().single();
+  }).eq("id", unitId).select().maybeSingle();
   if (error) throw error;
+  // A blocked update is not an error to Postgres, just no rows changed. With
+  // single() that surfaced as "Cannot coerce the result to a single JSON object".
+  if (!data) throw new Error("This serial could not be removed: the database did not allow the change.");
   await from("serial_events").insert({
     sold_unit_id: unitId, serial: data.serial, event: "released",
     invoice_id: data.invoice_id, actor_email: email, notes,
@@ -3248,32 +3251,64 @@ export const getSerialShortfall = async (invoiceId: string): Promise<SerialShort
  * out of step with a quantity that was edited after the sale.
  */
 export const getInvoicesMissingSerials = async (): Promise<Record<string, number>> => {
-  const { data: lines, error } = await from("invoice_items")
-    .select("id, invoice_id, quantity, items!inner(track_serials), invoices!inner(created_at)")
-    .eq("items.track_serials", true)
-    // Only invoices raised once serials were being asked for. Without this the
-    // whole sales history reported missing serials and buried the real ones.
-    .gte("invoices.created_at", SERIAL_TRACKING_SINCE);
-  if (error) throw error;
-  const rows = (lines as { id: string; invoice_id: string; quantity: number }[]) || [];
+  const rows = await fetchAllRows<{ id: string; invoice_id: string; item_id: string | null; quantity: number }>(() =>
+    from("invoice_items")
+      .select("id, invoice_id, item_id, quantity, items!inner(track_serials), invoices!inner(created_at)")
+      .eq("items.track_serials", true)
+      // Only invoices raised once serials were being asked for. Without this the
+      // whole sales history reported missing serials and buried the real ones.
+      .gte("invoices.created_at", SERIAL_TRACKING_SINCE)
+      .order("id"),
+  );
   if (!rows.length) return {};
 
-  const { data: units, error: unitErr } = await from("sold_units")
-    .select("invoice_item_id")
-    .eq("status", "active");
-  if (unitErr) throw unitErr;
-  const counted = new Map<string, number>();
-  for (const u of (units as { invoice_item_id: string | null }[]) || []) {
-    if (u.invoice_item_id) counted.set(u.invoice_item_id, (counted.get(u.invoice_item_id) || 0) + 1);
+  const units = await fetchAllRows<{ id: string; invoice_id: string | null; item_id: string | null; invoice_item_id: string | null }>(() =>
+    from("sold_units")
+      .select("id, invoice_id, item_id, invoice_item_id")
+      .eq("status", "active")
+      .order("id"),
+  );
+
+  const linesByInvoice = new Map<string, typeof rows>();
+  for (const l of rows) {
+    const group = linesByInvoice.get(l.invoice_id);
+    if (group) group.push(l);
+    else linesByInvoice.set(l.invoice_id, [l]);
+  }
+  const unitsByInvoice = new Map<string, typeof units>();
+  for (const u of units) {
+    if (!u.invoice_id) continue;
+    const group = unitsByInvoice.get(u.invoice_id);
+    if (group) group.push(u);
+    else unitsByInvoice.set(u.invoice_id, [u]);
   }
 
   const out: Record<string, number> = {};
-  for (const l of rows) {
-    const short = (Number(l.quantity) || 0) - (counted.get(l.id) || 0);
-    if (short > 0) out[l.invoice_id] = (out[l.invoice_id] || 0) + short;
+  for (const [invoiceId, lines] of linesByInvoice) {
+    const held = unitsByInvoice.get(invoiceId) || [];
+    const lineOf = lineForUnits(lines, held);
+    const counted = new Map<string, number>();
+    for (const u of held) {
+      const lineId = lineOf.get(u.id);
+      if (lineId) counted.set(lineId, (counted.get(lineId) || 0) + 1);
+    }
+    for (const l of lines) {
+      const short = (Number(l.quantity) || 0) - (counted.get(l.id) || 0);
+      if (short > 0) out[invoiceId] = (out[invoiceId] || 0) + short;
+    }
   }
   return out;
 };
+
+/** Every serial currently out with a customer, newest first — the lookup page's list. */
+export const getActiveSoldUnits = async (): Promise<SoldUnit[]> =>
+  fetchAllRows<SoldUnit>(() =>
+    from("sold_units")
+      .select("*, items(*), invoices(*, customers(*))")
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .order("id"),
+  );
 
 /** Units sold to one customer, newest first — the warranty side of their history. */
 export const getSoldUnitsForCustomer = async (customerId: string): Promise<SoldUnit[]> => {

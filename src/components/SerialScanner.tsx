@@ -2,7 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Camera, CameraOff } from "lucide-react";
-import { loadDetector, createScanGate } from "@/lib/scanning";
+import { loadDetector, createScanGate, pickAimed, AIM_MARGIN } from "@/lib/scanning";
+
+/** Time to aim after the camera opens, before anything can be read. */
+const ARM_DELAY_MS = 1500;
+/** How long a code must stay in the box. Long enough that passing over one does not record it. */
+const HOLD_MS = 700;
+
+/**
+ * Asks the lens for its widest setting. Phones often open a little zoomed in,
+ * which is what forced stepping back from a label to fit it in. Not every
+ * camera offers this, and one that does not simply stays as it is.
+ */
+async function zoomAllTheWayOut(stream: MediaStream) {
+  const track = stream.getVideoTracks()[0];
+  const caps = track?.getCapabilities?.() as { zoom?: { min: number } } | undefined;
+  if (!caps?.zoom) return;
+  try {
+    await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min } as MediaTrackConstraintSet] });
+  } catch {
+    // Scanning at the default zoom still works.
+  }
+}
 
 interface Props {
   open: boolean;
@@ -17,6 +38,11 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
   const [error, setError] = useState("");
   const [lastValue, setLastValue] = useState("");
   const [ready, setReady] = useState(false);
+  const [armed, setArmed] = useState(false);
+  // The camera's real shape, so the preview shows the whole of what is being
+  // read. Cropping it to a fixed shape made the view look zoomed in, and codes
+  // out of sight could still be read.
+  const [aspect, setAspect] = useState(4 / 3);
   // Shown in small print. When a scanner reads nothing there is no way to tell
   // a dead loop from a loop that is running and finding nothing, and these two
   // numbers separate them at a glance.
@@ -38,9 +64,10 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
 
     // The rules for when a reading is real live in lib/scanning, where they can
     // be exercised without a camera.
-    const gate = createScanGate();
+    const gate = createScanGate({ armDelayMs: ARM_DELAY_MS, requiredMs: HOLD_MS });
     let detector: Awaited<ReturnType<typeof loadDetector>> = null;
     let framesRead = 0;
+    let armTimer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
       if (stopped) return;
@@ -57,6 +84,7 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
           if (stopped) return;
 
           framesRead += 1;
+          if (framesRead === 1) armTimer = setTimeout(() => setArmed(true), ARM_DELAY_MS);
           if (framesRead % 10 === 0 && videoRef.current) {
             setDiagnostics(
               `${detector?.kind === "loaded" ? "Loaded reader" : "Built-in reader"} · ` +
@@ -64,7 +92,8 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
             );
           }
 
-          const settled = gate(found[0]?.rawValue, Date.now());
+          const aimed = pickAimed(found, video.videoWidth, video.videoHeight);
+          const settled = gate(aimed?.rawValue, Date.now());
           if (settled) {
             setLastValue(settled);
             onScanRef.current(settled);
@@ -92,16 +121,21 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
         }
 
         // A higher resolution than the default: the bars on a Code 39 label are
-        // narrow, and a low-resolution frame cannot resolve them.
+        // narrow, and a low-resolution frame cannot resolve them. 4:3 because
+        // that is the sensor's own shape; a 16:9 stream is cut from it, which
+        // narrows the view and reads as being zoomed in.
         const s = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "environment",
             width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            height: { ideal: 1440 },
+            aspectRatio: { ideal: 4 / 3 },
           },
         });
         if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
         stream = s;
+        await zoomAllTheWayOut(s);
+        if (stopped) return;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
           void videoRef.current.play();
@@ -116,12 +150,20 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
     return () => {
       stopped = true;
       setReady(false);
+      setArmed(false);
+      setLastValue("");
       setDiagnostics("");
+      if (armTimer) clearTimeout(armTimer);
       cancelAnimationFrame(frame);
       // Leaving the track running keeps the phone's camera light on.
       stream?.getTracks().forEach((t) => t.stop());
     };
   }, [open]);
+
+  const syncAspect = () => {
+    const video = videoRef.current;
+    if (video?.videoWidth && video.videoHeight) setAspect(video.videoWidth / video.videoHeight);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -134,17 +176,31 @@ export function SerialScanner({ open, onOpenChange, onScan, title = "Scan a seri
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="relative overflow-hidden rounded-lg border bg-black">
-              <video ref={videoRef} playsInline muted autoPlay className="w-full aspect-[4/3] object-cover" />
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="h-32 w-48 rounded-lg border-2 border-white/70" />
-              </div>
+            <div
+              className="relative mx-auto overflow-hidden rounded-lg border bg-black"
+              style={{ aspectRatio: aspect, width: `min(100%, calc(60vh * ${aspect}))` }}
+            >
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                autoPlay
+                className="absolute inset-0 h-full w-full object-contain"
+                onLoadedMetadata={syncAspect}
+                onResize={syncAspect}
+              />
+              <div
+                className={`pointer-events-none absolute rounded-lg border-2 ${armed ? "border-white" : "border-white/40"}`}
+                style={{ inset: `${AIM_MARGIN * 100}%` }}
+              />
             </div>
             <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
               <Camera className="h-3 w-3" />
-              {ready
-                ? "Point at the code. It keeps scanning, so hold up each unit in turn."
-                : "Starting the camera…"}
+              {!ready
+                ? "Starting the camera…"
+                : !armed
+                  ? "Get ready. Line up the code inside the box."
+                  : "Scanning. Hold the code inside the box for a moment."}
             </p>
             {lastValue && (
               <p className="font-mono text-xs">Last read: {lastValue}</p>
