@@ -9,7 +9,7 @@ import {
   NotFoundException,
   RGBLuminanceSource,
 } from "@zxing/library";
-import type { BarcodeDetectorLike } from "@/lib/scanning";
+import { AIM_MARGIN, type BarcodeDetectorLike } from "@/lib/scanning";
 
 /**
  * A barcode reader for browsers that have none of their own.
@@ -59,12 +59,18 @@ export function createFallbackDetector(): BarcodeDetectorLike {
       const sh = video.videoHeight || 0;
       if (!ctx || !sw || !sh) return [];
 
-      const scale = Math.min(1, MAX_WIDTH / sw);
-      const w = Math.round(sw * scale);
-      const h = Math.round(sh * scale);
+      // Only the aiming box is decoded. This reader stops at the first code it
+      // finds, so one elsewhere in the frame could otherwise hide the one aimed at.
+      const cropX = sw * AIM_MARGIN;
+      const cropY = sh * AIM_MARGIN;
+      const cropW = sw - cropX * 2;
+      const cropH = sh - cropY * 2;
+      const scale = Math.min(1, MAX_WIDTH / cropW);
+      const w = Math.round(cropW * scale);
+      const h = Math.round(cropH * scale);
       canvas.width = w;
       canvas.height = h;
-      ctx.drawImage(video, 0, 0, w, h);
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, w, h);
 
       const { data } = ctx.getImageData(0, 0, w, h);
       // Green-favouring average, the same cheap luminance zxing uses itself.

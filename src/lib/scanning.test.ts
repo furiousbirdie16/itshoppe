@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScanGate } from "./scanning";
+import { createScanGate, pickAimed } from "./scanning";
 
 /** Feeds one reading repeatedly, a frame every 100ms, returning what it accepted. */
 function hold(
@@ -40,7 +40,7 @@ describe("createScanGate", () => {
 
   it("accepts a label once, however long it sits in front of the lens", () => {
     const gate = createScanGate();
-    expect(hold(gate, "SN-AAA", 20)).toEqual(["SN-AAA"]);
+    expect(hold(gate, "SN-AAA", 200)).toEqual(["SN-AAA"]);
   });
 
   it("takes the next unit straight away", () => {
@@ -50,7 +50,7 @@ describe("createScanGate", () => {
   });
 
   // Holding the same unit up again on purpose has to work, so blank frames
-  // clear the memory rather than making the operator wait out the cooldown.
+  // clear the memory.
   it("allows the same label again once it has left the view", () => {
     const gate = createScanGate();
     expect(hold(gate, "SN-AAA", 5)).toEqual(["SN-AAA"]);
@@ -64,5 +64,34 @@ describe("createScanGate", () => {
     // Two blank frames is a flicker, not the label leaving.
     hold(gate, null, 2, 400);
     expect(hold(gate, "SN-AAA", 10, 600)).toEqual([]);
+  });
+
+  // The failure that prompted this: opening the scanner with a code already in
+  // view recorded it before there was any chance to aim.
+  it("reads nothing while the scanner is still opening", () => {
+    const gate = createScanGate({ armDelayMs: 1500 });
+    expect(hold(gate, "SN-AAA", 15)).toEqual([]);
+    // The hold starts only once armed, so it still takes the full four frames.
+    expect(hold(gate, "SN-AAA", 3, 1500)).toEqual([]);
+    expect(hold(gate, "SN-AAA", 2, 1800)).toEqual(["SN-AAA"]);
+  });
+});
+
+describe("pickAimed", () => {
+  const at = (rawValue: string, x: number, y: number) => ({
+    rawValue, boundingBox: { x, y, width: 10, height: 10 },
+  });
+
+  it("ignores a code outside the aiming box", () => {
+    expect(pickAimed([at("EDGE", 5, 5)], 1000, 1000)).toBeNull();
+  });
+
+  it("takes the code nearest the middle when several are in the box", () => {
+    const picked = pickAimed([at("OFF", 200, 200), at("MID", 490, 490)], 1000, 1000);
+    expect(picked?.rawValue).toBe("MID");
+  });
+
+  it("accepts a code with no position, which the loaded reader has cropped to", () => {
+    expect(pickAimed([{ rawValue: "SN-1" }], 1000, 1000)?.rawValue).toBe("SN-1");
   });
 });
