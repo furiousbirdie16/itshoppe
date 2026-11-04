@@ -9,14 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOverseasPOItems } from "@/lib/api";
-import { applyLandedCosts, getMarginTarget, getPoCargo, getTotalStock, savePoCargo } from "@/lib/landed-cost-api";
+import { applyLandedCosts, getMarginTarget, getPoCargo, getStockAndCost, savePoCargo } from "@/lib/landed-cost-api";
 import { allocateCargo, buildCostReview, type CargoBox } from "@/lib/landed-cost";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  po: { id: string; po_number: string; currency: string; exchange_rate: number } | null;
+  po: { id: string; po_number: string; currency: string; exchange_rate: number; branch_id?: string | null } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -48,9 +48,12 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     enabled: open && !!poId,
   });
   const itemIds = useMemo(() => [...new Set(lines.map((l: any) => l.item_id).filter(Boolean))] as string[], [lines]);
+  // The shipment's own branch: its stock is what the new cost averages with,
+  // and its cost is the one that changes.
+  const poBranch = po?.branch_id ?? null;
   const { data: stock = {} } = useQuery({
-    queryKey: ["total-stock", itemIds],
-    queryFn: () => getTotalStock(itemIds),
+    queryKey: ["stock-and-cost", itemIds, poBranch],
+    queryFn: () => getStockAndCost(itemIds, poBranch),
     enabled: open && itemIds.length > 0,
   });
   const { data: marginTarget = 20 } = useQuery({ queryKey: ["margin-target"], queryFn: getMarginTarget, enabled: open });
@@ -68,6 +71,8 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
   const [boxCbmText, setBoxCbmText] = useState<Record<string, string>>({});
   /** Non-item lines the admin has said are not a cost of these goods. */
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  /** Non-item lines that are a cost of some items only; absent = all items. */
+  const [feeTargets, setFeeTargets] = useState<Record<string, string[]>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [initFor, setInitFor] = useState<string | null>(null);
 
@@ -82,6 +87,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       setLineCbm(Object.fromEntries(Object.entries(saved.line_cbm).map(([k, v]) => [k, String(v)])));
       setBoxes(saved.boxes);
       setExcluded(new Set(saved.excluded_lines));
+      setFeeTargets(saved.fee_targets || {});
     } else {
       const prefill: Record<string, string> = {};
       for (const l of lines as any[]) {
@@ -93,6 +99,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       setLineCbm(prefill);
       setBoxes([]);
       setExcluded(new Set());
+      setFeeTargets({});
     }
     setBoxCbmText({});
     setInitFor(poId);
@@ -107,10 +114,19 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
   const itemLines = useMemo(() => (lines as any[]).filter((l) => l.item_id), [lines]);
   const feeLines = useMemo(() => (lines as any[]).filter((l) => !l.item_id), [lines]);
   const feeValue = (l: any) => Number(l.quantity || 0) * Number(l.unit_cost || 0) * Number(po?.exchange_rate || 1);
+  /** Lines chosen for a fee that are still on the PO; empty means all items. */
+  const targetsOf = (feeId: string) => (feeTargets[feeId] || []).filter((id) => itemLines.some((l) => l.id === id));
   const poFees = useMemo(
-    () => feeLines.filter((l) => !excluded.has(l.id)).reduce((s, l) => s + feeValue(l), 0),
+    () => feeLines.filter((l) => !excluded.has(l.id) && targetsOf(l.id).length === 0).reduce((s, l) => s + feeValue(l), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [feeLines, excluded, po?.exchange_rate],
+    [feeLines, excluded, feeTargets, itemLines, po?.exchange_rate],
+  );
+  const targetedCharges = useMemo(
+    () => feeLines
+      .filter((l) => !excluded.has(l.id) && targetsOf(l.id).length > 0)
+      .map((l) => ({ amount: feeValue(l), lineIds: targetsOf(l.id) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feeLines, excluded, feeTargets, itemLines, po?.exchange_rate],
   );
 
   const cargoLines = useMemo(
@@ -121,11 +137,12 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     () => allocateCargo(cargoLines, {
       cargoAmount: n(cargoAmount),
       otherCharges: n(otherCharges) + poFees,
+      targetedCharges,
       lineCbm: Object.fromEntries(Object.entries(lineCbm).map(([k, v]) => [k, n(v)])),
       boxes,
       exchangeRate: Number(po?.exchange_rate || 1),
     }),
-    [cargoLines, cargoAmount, otherCharges, poFees, lineCbm, boxes, po?.exchange_rate],
+    [cargoLines, cargoAmount, otherCharges, poFees, targetedCharges, lineCbm, boxes, po?.exchange_rate],
   );
 
   const review = useMemo(() => {
@@ -134,9 +151,9 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       if (!l.item_id || !l.items) continue;
       items[l.item_id] = {
         itemId: l.item_id,
-        currentCost: Number(l.items.cost_price || 0),
+        currentCost: Number((stock as any)[l.item_id]?.cost ?? l.items.cost_price ?? 0),
         sellingPrice: Number(l.items.selling_price || 0),
-        stockNow: Number((stock as Record<string, number>)[l.item_id] || 0),
+        stockNow: Number((stock as any)[l.item_id]?.qty || 0),
       };
     }
     return buildCostReview(
@@ -161,8 +178,14 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     line_cbm: Object.fromEntries(Object.entries(lineCbm).filter(([, v]) => n(v) > 0).map(([k, v]) => [k, n(v)])),
     boxes: boxes.filter((b) => n(b.cbm) > 0 && b.lineIds.length > 0),
     excluded_lines: [...excluded].filter((id) => feeLines.some((l) => l.id === id)),
+    fee_targets: Object.fromEntries(
+      Object.entries(feeTargets)
+        .filter(([fee]) => feeLines.some((l) => l.id === fee))
+        .map(([fee, ids]) => [fee, ids.filter((id) => itemLines.some((l) => l.id === id))])
+        .filter(([, ids]) => (ids as string[]).length > 0),
+    ),
     notes: "",
-  }, (saved?.excluded_lines.length ?? 0) > 0);
+  }, (saved?.excluded_lines.length ?? 0) > 0, Object.keys(saved?.fee_targets ?? {}).length > 0);
 
   const saveMut = useMutation({
     mutationFn: persist,
@@ -192,6 +215,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", poId] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["items-with-stock"] });
+      queryClient.invalidateQueries({ queryKey: ["item_branch_stock"] });
       queryClient.invalidateQueries({ queryKey: ["item_cost_history"] });
       toast.success(`Costs updated for ${count} item${count === 1 ? "" : "s"}`);
       onOpenChange(false);
@@ -210,7 +234,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     return l?.items?.name || l?.item_name || "—";
   };
 
-  const totalCharges = n(cargoAmount) + n(otherCharges) + poFees;
+  const totalCharges = n(cargoAmount) + n(otherCharges) + poFees + targetedCharges.reduce((s, t) => s + t.amount, 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -222,7 +246,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
           <DialogDescription className="text-xs">
             {step === "cargo"
               ? "Enter the cargo bill and the CBM each item took. The bill is split by CBM."
-              : `New cost averages the stock you already hold with this shipment. Margin is flagged below ${marginTarget}%.`}
+              : `New cost averages the stock ${poBranch ? "this PO's branch" : "you"} already hold${poBranch ? "s" : ""} with this shipment, and changes that branch's cost only. Margin is flagged below ${marginTarget}%.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -255,11 +279,12 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                 <p className="text-sm font-medium">Other lines on this PO</p>
                 <p className="text-[11px] text-muted-foreground">
                   Ticked lines are a cost of getting these goods here (a delivery fee) and are spread over the items
-                  with the cargo bill. Untick anything that is not — office supplies, a sample. Don't also add a ticked
-                  line to Other charges.
+                  with the cargo bill — over all of them, or only the ones picked under it. Untick anything that is not
+                  — office supplies, a sample. Don't also add a ticked line to Other charges.
                 </p>
                 {feeLines.map((l) => (
-                  <label key={l.id} className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                  <div key={l.id} className="space-y-1.5">
+                  <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2">
                       <Checkbox
                         checked={!excluded.has(l.id)}
@@ -275,6 +300,44 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                       {peso(feeValue(l))}
                     </span>
                   </label>
+                  {!excluded.has(l.id) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pl-7">
+                      <span className="text-[11px] text-muted-foreground">Applies to:</span>
+                      <button
+                        type="button"
+                        onClick={() => setFeeTargets((m) => { const next = { ...m }; delete next[l.id]; return next; })}
+                        className={cn(
+                          "rounded-full border px-2.5 py-0.5 text-[11px]",
+                          targetsOf(l.id).length === 0 ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
+                        )}
+                      >
+                        All items
+                      </button>
+                      {itemLines.map((it) => {
+                        const on = targetsOf(l.id).includes(it.id);
+                        return (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={() => setFeeTargets((m) => {
+                              const cur = (m[l.id] || []).filter((id) => itemLines.some((x) => x.id === id));
+                              const next = on ? cur.filter((id) => id !== it.id) : [...cur, it.id];
+                              const out = { ...m, [l.id]: next };
+                              if (next.length === 0) delete out[l.id];
+                              return out;
+                            })}
+                            className={cn(
+                              "rounded-full border px-2.5 py-0.5 text-[11px]",
+                              on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
+                            )}
+                          >
+                            {it.items?.name || it.item_name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  </div>
                 ))}
               </div>
             )}
@@ -375,7 +438,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                       onClick={() => setBoxes((bs) => bs.filter((x) => x.id !== b.id))}
                       title="Remove box"
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">

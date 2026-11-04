@@ -1,13 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Item, ItemVariation, Supplier, Customer, PurchaseOrder, PurchaseOrderItem, Quotation, QuotationItem, Invoice, InvoiceItem, InventoryMovement, OverseasSupplier, OverseasPurchaseOrder, OverseasPurchaseOrderItem, ShipmentTracking, OnlineSale, Loan, CashAccount, CashTransaction, Payable, LoanPayment, OverseasPoPayment , SoldUnit, SerialEvent } from "@/types/database";
 import { logActivity } from "@/lib/activity-log";
-import { shortfallFor, serialTrackingApplies, SERIAL_TRACKING_SINCE, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
+import { shortfallFor, lineForUnits, serialTrackingApplies, SERIAL_TRACKING_SINCE, type Shortfall, type ShortfallLine } from "@/lib/serial-shortfall";
 import { applyVariationDelta } from "@/lib/variations";
 import { recordMovement } from "@/lib/inventoryLog";
 import { payablePosting } from "@/lib/payable-posting";
 import { isForeign, fxPosition } from "@/lib/fx";
 import { fetchAllRows } from "@/lib/paginate";
 import { pickLastOverseasCosts, type LastCost } from "@/lib/last-overseas-cost";
+import { costFromRows } from "@/lib/branch-cost";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,7 +18,7 @@ const _from = (table: string) => _sb.from(table);
 /** Read the branch-scoped stock row (returns zeros if missing). */
 export async function getBranchStock(itemId: string, branchId: string) {
   const { data } = await _from("item_branch_stock")
-    .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+    .select("warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock, cost_price")
     .eq("item_id", itemId)
     .eq("branch_id", branchId)
     .maybeSingle();
@@ -28,6 +29,8 @@ export async function getBranchStock(itemId: string, branchId: string) {
     quantity: Number(r.quantity || 0),
     open_roll_remaining: Number(r.open_roll_remaining || 0),
     units_per_stock: Number(r.units_per_stock || 1),
+    /** This branch's own cost; null when it has none yet (the company cost applies). */
+    cost_price: r.cost_price == null ? null : Number(r.cost_price),
   };
 }
 
@@ -359,11 +362,13 @@ export const getItemsWithStock = async (branchId?: string | null): Promise<Item[
   // here — and a short read would understate stock on hand, not just a total.
   const stock = await fetchAllRows<any>(() => {
     let stockQ = from("item_branch_stock")
-      .select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining")
+      .select("item_id, quantity, warehouse_quantity, store_quantity, open_roll_remaining, cost_price")
       .order("id");
     if (branchId) stockQ = stockQ.eq("branch_id", branchId);
     return stockQ;
   });
+  const costRows: Record<string, { quantity: number; cost_price: number | null }[]> = {};
+  for (const r of (stock as any[]) || []) (costRows[r.item_id] ||= []).push(r);
 
   const byItem: Record<string, { quantity: number; warehouse: number; store: number; open: number }> = {};
   for (const r of (stock as any[]) || []) {
@@ -382,6 +387,8 @@ export const getItemsWithStock = async (branchId?: string | null): Promise<Item[
       warehouse_quantity: s?.warehouse ?? 0,
       store_quantity: s?.store ?? 0,
       open_roll_remaining: s?.open ?? 0,
+      // The branch's own cost, or every branch blended by stock (lib/branch-cost).
+      cost_price: costFromRows(Number(i.cost_price || 0), costRows[i.id] || []),
     };
   });
 };
@@ -1400,9 +1407,9 @@ export const getDashboardStats = async (branchId?: string | null) => {
   // Paged, because this table holds one row per item per branch — a few hundred
   // items across three branches already passes the 1000-row cap, and the
   // shortfall would show up as a quietly smaller Inventory Value.
-  const branchStock = await fetchAllRows<{ item_id: string; quantity: number; branch_id: string }>(() => {
+  const branchStock = await fetchAllRows<{ item_id: string; quantity: number; branch_id: string; cost_price: number | null }>(() => {
     let stockQ = from("item_branch_stock")
-      .select("item_id, quantity, branch_id")
+      .select("item_id, quantity, branch_id, cost_price")
       .order("id", { ascending: true });
     if (branchId) stockQ = stockQ.eq("branch_id", branchId);
     return stockQ;
@@ -1524,7 +1531,15 @@ export const getDashboardStats = async (branchId?: string | null) => {
 
 
   const itemsList = ((items as any[]) || []).map((i: any) => ({ ...i, quantity: qtyByItem[i.id] ?? 0 }));
-  const totalValue = itemsList.reduce((sum: number, i: any) => sum + (i.quantity * i.cost_price), 0);
+  // Each branch's stock at that branch's own cost.
+  const itemCost = new Map(((items as any[]) || []).map((i: any) => [i.id, Number(i.cost_price || 0)]));
+  // Only items in the list, as before (the list leaves out archived ones).
+  const totalValue = ((branchStock as any[]) || [])
+    .filter((r: any) => itemCost.has(r.item_id))
+    .reduce(
+      (sum: number, r: any) => sum + Number(r.quantity || 0) * (r.cost_price == null ? itemCost.get(r.item_id)! : Number(r.cost_price)),
+      0,
+    );
 
   // Reserving an invoice takes the stock out of item_branch_stock, so it has
   // already left totalValue above. It is still ours until the sale completes,
@@ -1804,7 +1819,7 @@ const OVERSEAS_PAID_STATUSES = new Set([
  * used to pay it agree. Set only on payment: it records what the order cost,
  * and later purchases at other rates must not rewrite history.
  */
-const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
+const syncOverseasPoPayment = async (po: OverseasPurchaseOrder, opts: { keepRate?: boolean } = {}) => {
   const accountId = (po as any).paid_from_account_id as string | null;
 
   const { data: existing } = await from("cash_transactions")
@@ -1817,7 +1832,21 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
   const { data: downRows } = await from("overseas_po_payments")
     .select("amount").eq("po_id", po.id);
   const downPaid = ((downRows as any[]) || []).reduce((s, r) => s + Number(r.amount || 0), 0);
-  const amount = Math.max(Number(po.total_amount || 0) - downPaid, 0);
+  const balance = Math.max(Number(po.total_amount || 0) - downPaid, 0);
+
+  // In the account's own money: RMB out of Alipay for an RMB order, pesos out
+  // of a peso bank at the order's rate. A peso bank used to have the RMB figure
+  // taken out as if it were pesos — ¥3,900 left as ₱3,900.
+  const { data: account } = accountId
+    ? await from("cash_accounts").select("*").eq("id", accountId).maybeSingle()
+    : { data: null };
+  const foreign = !!account && isForeign(account as CashAccount);
+  if (paid && foreign && (account as any).currency !== (po as any).currency) {
+    throw new Error(`A ${(po as any).currency} order cannot be paid from a ${(account as any).currency} account. Use a ${(po as any).currency} or peso account.`);
+  }
+  const amount = foreign
+    ? balance
+    : Math.round(balance * Number((po as any).exchange_rate || 1) * 100) / 100;
 
   if (!paid || !accountId || amount <= 0) {
     // Un-paid again, no account named, or deposits already cover it all.
@@ -1836,7 +1865,6 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
     return;
   }
 
-  const { data: account } = await from("cash_accounts").select("*").eq("id", accountId).maybeSingle();
   const actor = await currentActor();
 
   const { data: supplier } = await from("overseas_suppliers")
@@ -1860,7 +1888,8 @@ const syncOverseasPoPayment = async (po: OverseasPurchaseOrder) => {
   // Value the order at what the currency actually cost. Read after the
   // withdrawal, though an outflow is consumed at the average and leaves it
   // unchanged — so this is the same rate the payment was valued at.
-  if (account && isForeign(account as CashAccount)) {
+  // Unless the rate was chosen when it was marked paid.
+  if (foreign && !opts.keepRate) {
     const txns = await getCashTransactions([accountId]);
     const { averageRate } = fxPosition(txns);
     if (averageRate > 0) {
@@ -1982,7 +2011,12 @@ export const deleteOverseasPoPayment = async (id: string) => {
   }
 };
 
-export const updateOverseasPurchaseOrder = async (id: string, po: Partial<OverseasPurchaseOrder>) => {
+export const updateOverseasPurchaseOrder = async (
+  id: string,
+  po: Partial<OverseasPurchaseOrder>,
+  /** keepRate: the exchange rate was chosen by hand; do not replace it with the account's average. */
+  opts: { keepRate?: boolean } = {},
+) => {
   // Detect a status transition into a "shipped" state so we can auto-create a shipment.
   const shippedStatuses = new Set(["shipped", "shipped_not_paid", "sent"]);
   let prevStatus: string | null = null;
@@ -2022,9 +2056,11 @@ export const updateOverseasPurchaseOrder = async (id: string, po: Partial<Overse
   // Never let a ledger problem block the PO update itself, but do not hide it
   // either: a payment that silently failed to post is how a balance goes wrong.
   try {
-    await syncOverseasPoPayment(updatedPo);
+    await syncOverseasPoPayment(updatedPo, opts);
   } catch (e) {
     console.warn("Overseas PO updated, but posting the payment failed:", e);
+    // Paying from an account in the wrong currency is something to say, not log.
+    if (String((e as any)?.message || "").includes("cannot be paid from")) throw e;
   }
 
   return updatedPo;
@@ -2756,6 +2792,8 @@ export const updateCashTransaction = async (id: string, t: Partial<CashTransacti
     .eq("id", id).select().single();
   if (error) throw error;
   await logActivity("updated_cash_transaction", "cash_transaction", id);
+  // Said out loud, like a new entry: what it was and what it is now.
+  notify("notify-cash", { transaction_id: id, edited: true });
   return data as CashTransaction;
 };
 
@@ -2821,13 +2859,15 @@ export const createCashTransfer = async (args: {
 // them is a transfer like any other. The table remains as a backup of the
 // records copied across in 20260825000000_owner_as_cash_account.sql.
 
-export const getPayables = async (): Promise<Payable[]> => {
-  const { data, error } = await from("payables")
-    .select("*, suppliers(*)")
-    .order("due_date", { ascending: true, nullsFirst: false });
-  if (error) throw error;
-  return data;
-};
+// Paged: a book of post-dated checks passes the 1000-row cap quickly, and a
+// short read would hide payables and let the upload re-enter a check.
+export const getPayables = async (): Promise<Payable[]> =>
+  fetchAllRows<Payable>(() =>
+    from("payables")
+      .select("*, suppliers(*)")
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("id"),
+  );
 
 /**
  * Keeps the cash/bank side of a payable in step with its status.
@@ -3083,7 +3123,7 @@ export const findUnitBySerial = async (serial: string): Promise<SoldUnit | null>
   const trimmed = serial.trim();
   if (!trimmed) return null;
   const { data, error } = await from("sold_units")
-    .select("*, items(*), invoices(*, customers(*))")
+    .select("*, items(*), invoices(*, customers(*)), online_sales(id, order_number, order_date, sales_channel, status)")
     .eq("serial", trimmed)
     // Newest first: a serial that was returned and resold has history, and the
     // current owner is the one being asked about.
@@ -3099,7 +3139,7 @@ export const findActiveUnitBySerial = async (serial: string): Promise<SoldUnit |
   const trimmed = serial.trim();
   if (!trimmed) return null;
   const { data, error } = await from("sold_units")
-    .select("*, invoices(*, customers(*))")
+    .select("*, invoices(*, customers(*)), online_sales(id, order_number, order_date, sales_channel, status)")
     .eq("serial", trimmed)
     .eq("status", "active")
     .maybeSingle();
@@ -3110,8 +3150,10 @@ export const findActiveUnitBySerial = async (serial: string): Promise<SoldUnit |
 export const recordSoldUnit = async (args: {
   serial: string;
   item_id: string | null;
-  invoice_id: string;
-  invoice_item_id: string | null;
+  /** One of invoice_id or online_sale_id — the sale the unit left on. */
+  invoice_id?: string | null;
+  invoice_item_id?: string | null;
+  online_sale_id?: string | null;
   warranty_months: number;
   /** Set once the invoice ships; null while it is only paid. */
   warranty_starts_at?: string | null;
@@ -3121,8 +3163,9 @@ export const recordSoldUnit = async (args: {
   const { data, error } = await from("sold_units").insert({
     serial,
     item_id: args.item_id,
-    invoice_id: args.invoice_id,
-    invoice_item_id: args.invoice_item_id,
+    invoice_id: args.invoice_id ?? null,
+    invoice_item_id: args.invoice_item_id ?? null,
+    online_sale_id: args.online_sale_id ?? null,
     warranty_months: args.warranty_months,
     warranty_starts_at: args.warranty_starts_at ?? null,
     scanned_by_email: email,
@@ -3133,7 +3176,7 @@ export const recordSoldUnit = async (args: {
   if (error) throw error;
   await from("serial_events").insert({
     sold_unit_id: data.id, serial, event: "assigned",
-    invoice_id: args.invoice_id, actor_email: email,
+    invoice_id: args.invoice_id ?? null, online_sale_id: args.online_sale_id ?? null, actor_email: email,
   });
   await logActivity("recorded_serial", "sold_unit", data.id, { serial });
   return data;
@@ -3148,11 +3191,14 @@ export const releaseSoldUnit = async (unitId: string, notes = "") => {
   const email = await currentUserEmail();
   const { data, error } = await from("sold_units").update({
     status: "released", notes, updated_at: new Date().toISOString(),
-  }).eq("id", unitId).select().single();
+  }).eq("id", unitId).select().maybeSingle();
   if (error) throw error;
+  // A blocked update is not an error to Postgres, just no rows changed. With
+  // single() that surfaced as "Cannot coerce the result to a single JSON object".
+  if (!data) throw new Error("This serial could not be removed: the database did not allow the change.");
   await from("serial_events").insert({
     sold_unit_id: unitId, serial: data.serial, event: "released",
-    invoice_id: data.invoice_id, actor_email: email, notes,
+    invoice_id: data.invoice_id, online_sale_id: data.online_sale_id ?? null, actor_email: email, notes,
   });
   await logActivity("released_serial", "sold_unit", unitId, { serial: data.serial });
 };
@@ -3208,32 +3254,112 @@ export const getSerialShortfall = async (invoiceId: string): Promise<SerialShort
  * out of step with a quantity that was edited after the sale.
  */
 export const getInvoicesMissingSerials = async (): Promise<Record<string, number>> => {
-  const { data: lines, error } = await from("invoice_items")
-    .select("id, invoice_id, quantity, items!inner(track_serials), invoices!inner(created_at)")
-    .eq("items.track_serials", true)
-    // Only invoices raised once serials were being asked for. Without this the
-    // whole sales history reported missing serials and buried the real ones.
-    .gte("invoices.created_at", SERIAL_TRACKING_SINCE);
-  if (error) throw error;
-  const rows = (lines as { id: string; invoice_id: string; quantity: number }[]) || [];
+  const rows = await fetchAllRows<{ id: string; invoice_id: string; item_id: string | null; quantity: number }>(() =>
+    from("invoice_items")
+      .select("id, invoice_id, item_id, quantity, items!inner(track_serials), invoices!inner(created_at)")
+      .eq("items.track_serials", true)
+      // Only invoices raised once serials were being asked for. Without this the
+      // whole sales history reported missing serials and buried the real ones.
+      .gte("invoices.created_at", SERIAL_TRACKING_SINCE)
+      .order("id"),
+  );
   if (!rows.length) return {};
 
-  const { data: units, error: unitErr } = await from("sold_units")
-    .select("invoice_item_id")
-    .eq("status", "active");
-  if (unitErr) throw unitErr;
-  const counted = new Map<string, number>();
-  for (const u of (units as { invoice_item_id: string | null }[]) || []) {
-    if (u.invoice_item_id) counted.set(u.invoice_item_id, (counted.get(u.invoice_item_id) || 0) + 1);
+  const units = await fetchAllRows<{ id: string; invoice_id: string | null; item_id: string | null; invoice_item_id: string | null }>(() =>
+    from("sold_units")
+      .select("id, invoice_id, item_id, invoice_item_id")
+      .eq("status", "active")
+      .order("id"),
+  );
+
+  const linesByInvoice = new Map<string, typeof rows>();
+  for (const l of rows) {
+    const group = linesByInvoice.get(l.invoice_id);
+    if (group) group.push(l);
+    else linesByInvoice.set(l.invoice_id, [l]);
+  }
+  const unitsByInvoice = new Map<string, typeof units>();
+  for (const u of units) {
+    if (!u.invoice_id) continue;
+    const group = unitsByInvoice.get(u.invoice_id);
+    if (group) group.push(u);
+    else unitsByInvoice.set(u.invoice_id, [u]);
   }
 
   const out: Record<string, number> = {};
-  for (const l of rows) {
-    const short = (Number(l.quantity) || 0) - (counted.get(l.id) || 0);
-    if (short > 0) out[l.invoice_id] = (out[l.invoice_id] || 0) + short;
+  for (const [invoiceId, lines] of linesByInvoice) {
+    const held = unitsByInvoice.get(invoiceId) || [];
+    const lineOf = lineForUnits(lines, held);
+    const counted = new Map<string, number>();
+    for (const u of held) {
+      const lineId = lineOf.get(u.id);
+      if (lineId) counted.set(lineId, (counted.get(lineId) || 0) + 1);
+    }
+    for (const l of lines) {
+      const short = (Number(l.quantity) || 0) - (counted.get(l.id) || 0);
+      if (short > 0) out[invoiceId] = (out[invoiceId] || 0) + short;
+    }
   }
   return out;
 };
+
+// ---------------------------------------------------------------------------
+// Serials on online sales. One online_sales row is one product line of an
+// order; an order is the rows sharing an order number.
+// ---------------------------------------------------------------------------
+
+/** Every line of one online order, as the serials panel and the scan box need it. */
+export const getOnlineOrderLines = async (orderNumber: string): Promise<OnlineSale[]> => {
+  const key = orderNumber.trim();
+  if (!key) return [];
+  const { data, error } = await from("online_sales")
+    .select("*, items(*), item_variations(*)")
+    .eq("order_number", key)
+    .order("created_at", { ascending: true })
+    .order("id");
+  if (error) throw error;
+  return (data as OnlineSale[]) || [];
+};
+
+/** The serials currently held by these online sale lines. */
+export const getSoldUnitsForOnlineSales = async (saleIds: string[]): Promise<SoldUnit[]> => {
+  if (!saleIds.length) return [];
+  const { data, error } = await from("sold_units")
+    .select("*")
+    .in("online_sale_id", saleIds)
+    .eq("status", "active")
+    .order("scanned_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * How many serials each online sale line holds, keyed by sale id. The page
+ * already has the lines and their products, so this is all it needs to tell
+ * which orders are short.
+ */
+export const getOnlineSaleSerialCounts = async (): Promise<Record<string, number>> => {
+  const rows = await fetchAllRows<{ id: string; online_sale_id: string | null }>(() =>
+    from("sold_units")
+      .select("id, online_sale_id")
+      .not("online_sale_id", "is", null)
+      .eq("status", "active")
+      .order("id"),
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows) if (r.online_sale_id) out[r.online_sale_id] = (out[r.online_sale_id] || 0) + 1;
+  return out;
+};
+
+/** Every serial currently out with a customer, newest first — the lookup page's list. */
+export const getActiveSoldUnits = async (): Promise<SoldUnit[]> =>
+  fetchAllRows<SoldUnit>(() =>
+    from("sold_units")
+      .select("*, items(*), invoices(*, customers(*)), online_sales(id, order_number, order_date, sales_channel, status)")
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .order("id"),
+  );
 
 /** Units sold to one customer, newest first — the warranty side of their history. */
 export const getSoldUnitsForCustomer = async (customerId: string): Promise<SoldUnit[]> => {

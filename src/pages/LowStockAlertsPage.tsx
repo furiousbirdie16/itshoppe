@@ -18,6 +18,7 @@ import { useInsightsPurchases } from "@/hooks/use-insights-purchases";
 import { useRestockInputs } from "@/hooks/use-restock-inputs";
 import { useStockSplit } from "@/hooks/use-stock-split";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
+import { useBranch } from "@/contexts/BranchContext";
 import { peso } from "@/lib/currency";
 import { fmtUnits } from "@/lib/insights";
 import {
@@ -44,6 +45,7 @@ import { ShoppingCart, Search, ChevronRight, ChevronDown, History, DollarSign, B
 import { cn } from "@/lib/utils";
 import type { Item } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 type Group = Exclude<ReorderGroup, "ok">;
 
@@ -101,12 +103,15 @@ export default function LowStockAlertsPage() {
   const [poRows, setPoRows] = useState<ReturnType<typeof buildRow>[] | null>(null);
   const [recentlyCreatedPoItems, setRecentlyCreatedPoItems] = useState<Set<string>>(new Set());
   const today = useMemo(() => startOfDay(new Date()), []);
+  // The branch picked in the toolbar: its stock, its sales, its orders. "All
+  // branches" is the whole business added together.
+  const { activeBranchId, activeBranch } = useBranch();
 
   // items.quantity is frozen at the per-branch migration; item_branch_stock is
   // the live figure. Reading the old column made every alert here wrong.
   const { data: items = [], isLoading } = useQuery<Item[]>({
-    queryKey: ["lowstock-items-with-stock"],
-    queryFn: () => getItemsWithStock(),
+    queryKey: ["lowstock-items-with-stock", activeBranchId],
+    queryFn: () => getItemsWithStock(activeBranchId),
   });
 
   const { data: variations = [] } = useQuery({
@@ -123,29 +128,33 @@ export default function LowStockAlertsPage() {
   // days-left figure on this page came out far too optimistic.
   const since = useMemo(() => format(subDays(today, HISTORY_DAYS), "yyyy-MM-dd"), [today]);
   const { data: salesRows = [] } = useQuery<SaleRow[]>({
-    queryKey: ["lowstock-sales", since, items.length, variations.length],
+    queryKey: ["lowstock-sales", since, items.length, variations.length, activeBranchId],
     enabled: items.length > 0,
     queryFn: async () => {
       const [invRows, onlRows] = await Promise.all([
-        fetchAllRows<any>(() =>
-          supabase
+        fetchAllRows<any>(() => {
+          let q = supabase
             .from("invoice_items")
-            .select("id, item_id, variation_id, quantity, unit_price, invoices!inner(invoice_number, invoice_date, status)")
+            .select("id, item_id, variation_id, quantity, unit_price, invoices!inner(invoice_number, invoice_date, status, branch_id)")
             .gte("invoices.invoice_date", since)
             // Cancelled orders never sold, and reserved ones have not sold yet —
             // counting either as demand shortens days-left and triggers early
             // reorders. A reserved order is counted once it becomes a real sale.
             .not("invoices.status", "in", "(draft,cancelled,reserved)")
-            .order("id"),
-        ),
-        fetchAllRows<any>(() =>
-          supabase
+            .order("id");
+          if (activeBranchId) q = q.eq("invoices.branch_id", activeBranchId);
+          return q;
+        }),
+        fetchAllRows<any>(() => {
+          let q = supabase
             .from("online_sales")
             .select("id, order_number, item_id, variation_id, quantity, deal_price, order_date, status")
             .gte("order_date", since)
             .eq("status", "completed")
-            .order("id"),
-        ),
+            .order("id");
+          if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+          return q;
+        }),
       ]);
       const itemsById = new Map(items.map((i) => [i.id, i]));
       const variationById = new Map(variations.map((v) => [v.id, v]));
@@ -166,13 +175,18 @@ export default function LowStockAlertsPage() {
 
   // Open orders and what past deliveries say about each supplier — shared with
   // Business Insights, so both pages agree.
-  const { orders, onOrderByItem, leadTimeBySupplier } = useInsightsPurchases(null);
-  // Ordering is for the whole business, so stock here is every branch added
-  // together — always shown split so a count at one branch can be checked.
-  const stockSplit = useStockSplit();
-  // Receipts and stock corrections to rebuild each day's stock, and the big
-  // orders chosen to count anyway — shared with the Forecast tab.
-  const { adjustmentsByItem, receiptsByItem, includeIds, toggleInclude } = useRestockInputs(orders, today);
+  // Orders for the branch picked; how long a supplier takes is a fact about
+  // the supplier, so lead times are learned from every branch's deliveries.
+  const { orders, onOrderByItem } = useInsightsPurchases(activeBranchId);
+  const { leadTimeBySupplier } = useInsightsPurchases(null);
+  // With "All branches", stock is every branch added together, shown split so
+  // a count at one branch can be checked. One branch needs no split.
+  const allSplit = useStockSplit();
+  const stockSplit = useMemo(() => (activeBranchId ? new Map<string, never>() : allSplit), [activeBranchId, allSplit]);
+  // Receipts, stock corrections and (for one branch) transfers to rebuild each
+  // day's stock, and the big orders chosen to count anyway — shared with the
+  // Forecast tab.
+  const { adjustmentsByItem, receiptsByItem, includeIds, toggleInclude } = useRestockInputs(orders, today, activeBranchId);
 
   // Latest cost change per item
   const { data: lastCostMap = {} } = useQuery<Record<string, { date: string; cost: number; supplier: string | null; po: string | null }>>({
@@ -253,7 +267,7 @@ export default function LowStockAlertsPage() {
     let out = listed;
     if (search) {
       const q = search.toLowerCase();
-      out = out.filter((r) => r.item.name.toLowerCase().includes(q) || (r.item.sku || "").toLowerCase().includes(q));
+      out = out.filter((r) => searchMatches(q, r.item.name, r.item.sku, (r.item as any).brand, (r.item as any).category));
     }
     if (sourceFilter !== "all") out = out.filter((r) => (r.item.source || "local") === sourceFilter);
     if (supplierFilter !== "all") out = out.filter((r) => r.supplier?.name === supplierFilter);
@@ -330,7 +344,7 @@ export default function LowStockAlertsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Reorder List</h1>
-          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times. Stock is all branches together.</p>
+          <p className="text-sm text-muted-foreground mt-1">What to order, how many, and by when — from the last {HISTORY_DAYS} days of sales and your suppliers' lead times. {activeBranch ? `Stock, sales and orders for ${activeBranch.branch_name} only.` : "Stock, sales and orders are all branches together."}</p>
         </div>
         <Button disabled={selectedRows.length === 0} onClick={() => setPoRows(selectedRows)} className="shrink-0">
           <ShoppingCart className="h-4 w-4 mr-1.5" />
@@ -395,15 +409,15 @@ export default function LowStockAlertsPage() {
       {/* Phones: one card per item — the table needs sideways scrolling to reach the quantity. */}
       <div className="md:hidden space-y-2.5">
         {isLoading ? (
-          <div className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">Loading…</div>
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">Loading…</div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
             {group === "now" ? "Nothing needs ordering right now." : group === "ordered" ? "Nothing low is on order." : "Nothing to watch."}
           </div>
         ) : sorted.map((r) => {
           const isOpen = expanded.has(r.item.id);
           return (
-            <div key={r.item.id} className="rounded-xl border bg-card">
+            <div key={r.item.id} className="rounded-lg border bg-card">
               <div className="flex items-start gap-3 p-3">
                 <Checkbox className="mt-0.5" checked={selectedIds.has(r.item.id)} onCheckedChange={() => toggleSelect(r.item.id)} aria-label={`Select ${r.item.name}`} />
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleExpand(r.item.id)} aria-expanded={isOpen}>
@@ -416,25 +430,25 @@ export default function LowStockAlertsPage() {
               </div>
               <div className="grid grid-cols-3 gap-2 border-t px-3 py-2.5 text-sm">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Stock / Min</div>
+                  <div className="text-xs text-muted-foreground">Stock / Min</div>
                   <span className={cn("font-semibold tabular-nums", r.plan.belowMin && "text-destructive")}>{fmtUnits(r.item.quantity)}</span>
                   <span className="text-muted-foreground"> / </span>
                   <MinStockEditor value={r.threshold} onSave={(v) => updateThreshold.mutate({ id: r.item.id, value: v })} />
                   <BranchStockSplit split={stockSplit.get(r.item.id)} />
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{group === "ordered" ? "Arrives" : "Order by"}</div>
+                  <div className="text-xs text-muted-foreground">{group === "ordered" ? "Arrives" : "Order by"}</div>
                   <WhenCell row={r} group={group} today={today} />
                 </div>
                 <div className="text-right">
                   {group === "ordered" ? (
                     <>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">On order</div>
+                      <div className="text-xs text-muted-foreground">On order</div>
                       <div className="font-semibold tabular-nums">{fmtUnits(r.onOrder)}</div>
                     </>
                   ) : (
                     <>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Order qty</div>
+                      <div className="text-xs text-muted-foreground">Order qty</div>
                       <div className="font-semibold tabular-nums">{r.plan.suggested > 0 ? r.plan.suggested.toLocaleString() : "—"}</div>
                       {isAdmin && r.plan.suggested > 0 && <div className="text-[10px] text-muted-foreground tabular-nums">{money(r.reorderCost)}</div>}
                     </>
@@ -578,6 +592,7 @@ export default function LowStockAlertsPage() {
         onOpenChange={(o) => !o && setPoRows(null)}
         rows={dialogRows}
         money={money}
+        branchId={activeBranchId}
         onCreated={(ids) => {
           setRecentlyCreatedPoItems((prev) => new Set([...prev, ...ids]));
           setSelectedIds(new Set());
@@ -651,6 +666,12 @@ function buildRow(
     coverDays: COVER_DAYS,
     minStock: threshold,
     moq: link?.moq,
+    // Each open order from the day it is due, so stock that is not here yet is
+    // not treated as on the shelf. Late or undated orders count as arriving now.
+    incoming: ctx.openPos.map((po) => ({
+      qty: po.remaining,
+      inDays: po.expected ? Math.max(0, differenceInCalendarDays(parseISO(po.expected), ctx.today)) : 0,
+    })),
   });
   return {
     item: it,
@@ -787,12 +808,15 @@ function BulkPODialog({
   rows,
   money,
   onCreated,
+  branchId,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   rows: BulkPORow[];
   money: (n: number) => string;
   onCreated: (itemIds: string[]) => void;
+  /** The branch being looked at; its POs are for it. */
+  branchId: string | null;
 }) {
   const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -914,6 +938,7 @@ function BulkPODialog({
             order_date: new Date().toISOString().split("T")[0],
             notes: "Auto-created from the Reorder List",
             total_amount: total,
+            ...(branchId ? { branch_id: branchId } : {}),
             currency: g.currency as any,
             exchange_rate,
           } as any);
@@ -940,6 +965,7 @@ function BulkPODialog({
             order_date: new Date().toISOString().split("T")[0],
             notes: "Auto-created from the Reorder List",
             total_amount: total,
+            ...(branchId ? { branch_id: branchId } : {}),
           } as any);
           const lineItems = g.rows.map((r) => {
             const e = edits[r.item.id];
@@ -1196,7 +1222,7 @@ function ItemDetails({
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-3 text-sm">
         <div className="rounded-lg border bg-background p-3 space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Sales ({unit})</div>
+          <div className="text-xs text-muted-foreground mb-1.5 font-medium">Sales ({unit})</div>
           <Detail label="Last 7 days">{fmtUnits(r.q7)}</Detail>
           <Detail label="Last 30 days">{fmtUnits(r.q30)}</Detail>
           <Detail label={`Last ${HISTORY_DAYS} days`}>{fmtUnits(r.q90)}{isAdmin && <span className="text-muted-foreground"> · {money(r.a90)}</span>}</Detail>
@@ -1227,7 +1253,7 @@ function ItemDetails({
         </div>
 
         <div className="rounded-lg border bg-background p-3 space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Lead time</div>
+          <div className="text-xs text-muted-foreground mb-1.5 font-medium">Lead time</div>
           <Detail label="Using">
             <span className="font-medium">{lead.days} days</span>{" "}
             <span className="text-muted-foreground">
@@ -1263,7 +1289,7 @@ function ItemDetails({
         </div>
 
         <div className="rounded-lg border bg-background p-3 space-y-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">Supplier & orders</div>
+          <div className="text-xs text-muted-foreground mb-1.5 font-medium">Supplier & orders</div>
           <Detail label="Supplier">{r.supplier ? `${r.supplier.name}${r.supplier.overseas ? " (overseas)" : ""}` : <span className="text-amber-600">None — add one in Inventory → Suppliers</span>}</Detail>
           {isAdmin && link && (
             <Detail label="Latest cost">{currencySymbolForDisplay(link.currency)}{Number(link.latest_cost).toFixed(2)} <span className="text-[10px] text-muted-foreground">{link.currency}</span></Detail>

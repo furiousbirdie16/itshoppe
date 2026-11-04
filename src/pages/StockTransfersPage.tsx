@@ -34,6 +34,7 @@ import {
   type StockTransfer,
   type StockTransferStatus,
 } from "@/lib/stockTransfers";
+import { searchMatches } from "@/lib/search";
 
 interface LineDraft {
   id: string;
@@ -88,8 +89,7 @@ export default function StockTransfersPage() {
     return transfers.filter((t) => {
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (search) {
-        const s = search.toLowerCase();
-        if (!t.transfer_number.toLowerCase().includes(s) && !(t.notes || "").toLowerCase().includes(s)) return false;
+        if (!searchMatches(search, t.transfer_number, t.notes)) return false;
       }
       return true;
     });

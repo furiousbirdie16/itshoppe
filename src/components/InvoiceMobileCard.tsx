@@ -28,7 +28,7 @@ interface Props {
  */
 export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSelect, actions, missingSerials = 0, resellerName }: Props) {
   return (
-    <div className={cn("rounded-xl border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
+    <div className={cn("rounded-lg border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
       <div className="flex items-start gap-2.5">
         <Checkbox checked={selected} onCheckedChange={onToggleSelect} className="mt-0.5 shrink-0" />
 
@@ -49,7 +49,7 @@ export function InvoiceMobileCard({ invoice: inv, locked, selected, onToggleSele
             {resellerName && <span className="text-[11px] text-amber-700 dark:text-amber-400"> · via {resellerName}</span>}
           </div>
 
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <StatusBadge status={inv.status} context="invoice" />
             <span>{inv.invoice_date}</span>
             {inv.sales_agent && <span className="truncate">· {inv.sales_agent}</span>}

@@ -24,6 +24,8 @@ import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, Chevr
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
+import { TodayMovementExport } from "@/components/TodayMovementExport";
+import { costFromRows } from "@/lib/branch-cost";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
@@ -37,6 +39,7 @@ import type { ProductAction, ProductMetric, SaleTxn } from "@/types/insights";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 type RangePreset = "today" | "7d" | "30d" | "60d" | "90d" | "month" | "all" | "custom";
 type SourceFilter = "all" | "online" | "invoice";
@@ -454,7 +457,7 @@ export default function BusinessInsightsPage() {
       // No quantity column here — variations do not hold their own stock, it sits
       // on the parent. Selecting it made PostgREST reject the whole request, so
       // this returned nothing and no variation rows were built at all.
-      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, selling_price, factor, type")
+      supabase.from("item_variations").select("id, item_id, name, sku, cost_price, cost_is_manual, selling_price, factor, type")
     ),
   });
 
@@ -465,7 +468,7 @@ export default function BusinessInsightsPage() {
     // every branch's stock made days-left and the stock column read wrong.
     queryKey: ["bi_branch_stock", activeBranchId],
     queryFn: async () => fetchAllRows<any>(() => {
-      let q = supabase.from("item_branch_stock").select("id, item_id, quantity").order("id");
+      let q = supabase.from("item_branch_stock").select("id, item_id, quantity, cost_price").order("id");
       if (activeBranchId) q = q.eq("branch_id", activeBranchId);
       return q;
     }),
@@ -476,6 +479,12 @@ export default function BusinessInsightsPage() {
     for (const r of branchStockRaw as any[]) {
       m.set(r.item_id, (m.get(r.item_id) || 0) + Number(r.quantity || 0));
     }
+    return m;
+  }, [branchStockRaw]);
+  // Each branch's cost: one branch's own, or every branch blended by stock.
+  const costRowsByItem = useMemo(() => {
+    const m = new Map<string, { quantity: number; cost_price: number | null }[]>();
+    for (const r of branchStockRaw as any[]) m.set(r.item_id, [...(m.get(r.item_id) || []), r]);
     return m;
   }, [branchStockRaw]);
 
@@ -543,14 +552,26 @@ export default function BusinessInsightsPage() {
       const base = allowedItemIds
         ? (itemsAllRaw as any[]).filter((i) => allowedItemIds.has(i.id))
         : (itemsAllRaw as any[]);
-      return base.map((i) => ({ ...i, quantity: stockByItem.get(i.id) ?? 0 }));
+      return base.map((i) => ({
+        ...i,
+        quantity: stockByItem.get(i.id) ?? 0,
+        cost_price: costFromRows(Number(i.cost_price || 0), costRowsByItem.get(i.id) || []),
+      }));
     },
-    [itemsAllRaw, allowedItemIds, stockByItem],
+    [itemsAllRaw, allowedItemIds, stockByItem, costRowsByItem],
   );
-  const variationsAll = useMemo(
-    () => (allowedItemIds ? (variationsAllRaw as any[]).filter((v) => allowedItemIds.has(v.item_id)) : (variationsAllRaw as any[])),
-    [variationsAllRaw, allowedItemIds],
-  );
+  const variationsAll = useMemo(() => {
+    const base = allowedItemIds ? (variationsAllRaw as any[]).filter((v) => allowedItemIds.has(v.item_id)) : (variationsAllRaw as any[]);
+    // A variation not costed by hand is its share of the parent's cost — at
+    // this branch, so it follows the parent's branch cost.
+    const parentById = new Map((itemsAll as any[]).map((i) => [i.id, i]));
+    return base.map((v) => {
+      const parent = parentById.get(v.item_id);
+      if (v.cost_is_manual || !parent) return v;
+      const ups = Number(parent.units_per_stock || 1) || 1;
+      return { ...v, cost_price: Number(parent.cost_price || 0) * (Number(v.factor || 1) / ups) };
+    });
+  }, [variationsAllRaw, allowedItemIds, itemsAll]);
   const onlineRows = useMemo(
     () => (allowedItemIds ? (onlineRowsRaw as any[]).filter((r) => r.item_id && allowedItemIds.has(r.item_id)) : (onlineRowsRaw as any[])),
     [onlineRowsRaw, allowedItemIds],
@@ -903,7 +924,7 @@ export default function BusinessInsightsPage() {
 
     // === Sheet 2: Sales Summary (per-unit sold in range) ===
     const q = search.trim().toLowerCase();
-    const salesRows = q ? sorted.filter((r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q)) : sorted;
+    const salesRows = q ? sorted.filter((r) => searchMatches(q, r.name, r.sku)) : sorted;
     const summaryRows = salesRows.map((r) => {
       const base: Record<string, unknown> = {
         Item: r.name,
@@ -1202,7 +1223,7 @@ export default function BusinessInsightsPage() {
   const filteredProducts = useMemo(() => {
     let list = productMetrics;
     if (productSource !== "all") list = list.filter((p) => (p.source || "local") === productSource);
-    if (productSearch) list = list.filter((p) => p.name.toLowerCase().includes(productSearch) || p.sku.toLowerCase().includes(productSearch));
+    if (productSearch) list = list.filter((p) => searchMatches(productSearch, p.name, p.sku));
     if (actionFilter !== "all") list = list.filter((p) => p.action === actionFilter);
     return list;
   }, [productMetrics, productSource, productSearch, actionFilter]);
@@ -1439,6 +1460,7 @@ export default function BusinessInsightsPage() {
           <p className="page-description">Sales, profit and stock performance across online orders and invoices.</p>
         </div>
         <div className="flex items-center gap-2">
+          <TodayMovementExport />
           <Select value={preset} onValueChange={(v) => setPreset(v as RangePreset)}>
             <SelectTrigger className="h-9 flex-1 text-sm md:w-[170px] md:flex-none" aria-label="Date range">
               <CalendarIcon className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
@@ -1599,7 +1621,7 @@ export default function BusinessInsightsPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             {/* Top 5 products */}
-            <div className="min-w-0 rounded-xl border bg-card p-4">
+            <div className="min-w-0 rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold">Top Products</h2>
                 <Button variant="ghost" size="sm" className="h-7 text-xs -mr-2" onClick={() => showProducts("all")}>
@@ -1638,7 +1660,7 @@ export default function BusinessInsightsPage() {
             </div>
 
             {/* Needs attention — each line opens the matching Products list. */}
-            <div className="min-w-0 rounded-xl border bg-card p-4">
+            <div className="min-w-0 rounded-lg border bg-card p-4">
               <h2 className="text-sm font-semibold mb-3">Needs Attention</h2>
               {(() => {
                 const items: { key: string; icon: typeof Clock; tone: string; title: string; detail: string; count: number; onClick?: () => void; to?: string }[] = [
@@ -1841,7 +1863,7 @@ export default function BusinessInsightsPage() {
             </div>
 
             {productRows.length === 0 ? (
-              <div className="rounded-xl border bg-card py-10 text-center text-xs text-muted-foreground">No items.</div>
+              <div className="rounded-lg border bg-card py-10 text-center text-xs text-muted-foreground">No items.</div>
             ) : (
               productRows.slice(0, 500).map(({ p, nested }) => {
                 const kids = p.kind === "parent" ? variationsByParent.get(p.itemId)?.length || 0 : 0;
@@ -1872,7 +1894,7 @@ export default function BusinessInsightsPage() {
             )}
           </div>
 
-          <div className="rounded-xl border bg-card overflow-hidden hidden md:block">
+          <div className="rounded-lg border bg-card overflow-hidden hidden md:block">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -1907,7 +1929,7 @@ export default function BusinessInsightsPage() {
                               {p.kind === "variation" && <span className="text-muted-foreground/60">↳</span>}
                               <span>{nested ? p.variationLabel : p.name}</span>
                               {!visibleCols.has("type") && !nested && p.source === "import" && (
-                                <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-600">Import</span>
+                                <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">Import</span>
                               )}
                             </div>
                             <div className={cn("flex items-center gap-2 tabular-nums text-[10px] text-muted-foreground", nested && "pl-4")}>
@@ -2071,7 +2093,7 @@ export default function BusinessInsightsPage() {
         {/* CUSTOMERS */}
         <TabsContent value="customers" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-sm font-semibold">Online Customers</h2>
@@ -2081,11 +2103,11 @@ export default function BusinessInsightsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Channels Ordered</div>
+                  <div className="text-xs text-muted-foreground">Channels Ordered</div>
                   <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
                 </div>
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Channel</div>
+                  <div className="text-xs text-muted-foreground">Avg per Channel</div>
                   <div className="text-xl font-semibold mt-0.5">{money(customerStats.onlineAvg)}</div>
                 </div>
               </div>
@@ -2116,7 +2138,7 @@ export default function BusinessInsightsPage() {
 
             </div>
 
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-sm font-semibold">Invoice Customers</h2>
@@ -2128,11 +2150,11 @@ export default function BusinessInsightsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Customers Ordered</div>
+                  <div className="text-xs text-muted-foreground">Customers Ordered</div>
                   <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
                 </div>
                 <div className="rounded-lg border bg-background p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg per Customer</div>
+                  <div className="text-xs text-muted-foreground">Avg per Customer</div>
                   <div className="text-xl font-semibold mt-0.5">{money(customerStats.invoiceAvg)}</div>
                 </div>
               </div>

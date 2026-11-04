@@ -21,6 +21,7 @@ import { peso } from "@/lib/currency";
 import type { Loan, LoanPayment } from "@/types/database";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { searchMatches } from "@/lib/search";
 
 const emptyForm = { lender: "", principal_amount: "", interest_rate: "", due_date: "", notes: "" };
 
@@ -116,7 +117,7 @@ export default function LoansPage() {
   const filtered = loans.filter((loan) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [loan.lender, loan.notes].some((value) => (value || "").toLowerCase().includes(q));
+    return searchMatches(q, ...[loan.lender, loan.notes]);
   });
 
   const { sort, toggle, sorted: sortedLoans } = useSort<Loan>(filtered, {
@@ -273,7 +274,7 @@ export default function LoansPage() {
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sortedLoans.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state"><PiggyBank className="empty-state-icon" /><p className="text-sm">No loans yet</p></div>
           </div>
         ) : (
@@ -299,7 +300,7 @@ export default function LoansPage() {
                     <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(l.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </>
               }
@@ -340,7 +341,7 @@ export default function LoansPage() {
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openPayDialog(l)} className="h-7 w-7 rounded-md" title="Record interest payment"><Percent className="h-3.5 w-3.5 text-primary" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(l)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(l.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(l.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -416,7 +417,7 @@ export default function LoansPage() {
                         aria-label="Remove payment"
                         onClick={() => payDeleteMut.mutate(p.id)}
                       >
-                        <Trash2 className="h-3 w-3 text-destructive/70" />
+                        <Trash2 className="h-3 w-3 text-muted-foreground" />
                       </Button>
                     </div>
                   ))}

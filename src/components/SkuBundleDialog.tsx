@@ -128,7 +128,7 @@ export function SkuBundleDialog({ open, onOpenChange, bundle, initialSku, items,
                   })}
                   title="Remove"
                 >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </div>
             ))}

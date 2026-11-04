@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import type { Supplier } from "@/types/database";
+import { searchMatches, searchRank } from "@/lib/search";
 
 interface SupplierSearchProps {
   suppliers: Supplier[];
@@ -24,11 +25,10 @@ export function SupplierSearch({ suppliers, value, onChange, placeholder = "Sear
   };
 
   const filtered = query.trim()
-    ? suppliers.filter(s =>
-        s.name.toLowerCase().includes(query.toLowerCase()) ||
-        (s.contact_person || "").toLowerCase().includes(query.toLowerCase()) ||
-        (s.email || "").toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 20)
+    ? suppliers
+        .filter(s => searchMatches(query, s.name, s.contact_person, s.email))
+        .sort((a, b) => searchRank(query, a.name) - searchRank(query, b.name))
+        .slice(0, 20)
     : suppliers.slice(0, 20);
 
   useEffect(() => {

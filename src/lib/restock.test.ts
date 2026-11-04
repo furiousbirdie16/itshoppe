@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_LEAD_DAYS, itemDemand, median, planReorder, resolveLeadTime, stockUnitsSold, weightedDailyRate, type DemandSale } from "./restock";
+import { DEFAULT_LEAD_DAYS, itemDemand, median, planReorder, projectStock, resolveLeadTime, stockUnitsSold, weightedDailyRate, type DemandSale } from "./restock";
 
 describe("stockUnitsSold", () => {
   it("counts a plain sale one for one", () => {
@@ -123,5 +123,43 @@ describe("itemDemand", () => {
     // Only the days since the delivery had stock.
     expect(d.usedDays).toBe(9);
     expect(d.rate).toBeCloseTo(3, 0);
+  });
+});
+
+describe("incoming stock counted from its arrival", () => {
+  // Data Cabinet 9u: out of stock, 20 due in 19 days, 0.52 sold a day, 37-day lead.
+  const cabinet = { stock: 0, onOrder: 20, rate: 0.52, leadDays: 37, coverDays: 30 };
+
+  it("runs out 38 days after the order lands, not 38 days from today", () => {
+    const p = projectStock(0, 0.52, [{ qty: 20, inDays: 19 }], 37);
+    expect(p.runOutDay).toBeCloseTo(19 + 20 / 0.52);
+    expect(p.waitingDays).toBe(19);
+  });
+
+  it("is On order with time to spare, not Order now", () => {
+    const counted = planReorder({ ...cabinet, incoming: [{ qty: 20, inDays: 19 }] });
+    expect(counted.group).toBe("ordered");
+    // run out ≈ day 57.5; less 37 lead and 7 safety → order within 13 days
+    expect(counted.orderByDays).toBe(13);
+    // 0.52 × (37 + 7 + 30 − 19 days waiting) − 20 ≈ 8.6 → 9
+    expect(counted.suggested).toBe(9);
+
+    // The old reading, as if the 20 were already here.
+    const asOnHand = planReorder(cabinet);
+    expect(asOnHand.group).toBe("now");
+    expect(asOnHand.orderByDays).toBe(-6);
+  });
+
+  it("changes nothing when stock on hand lasts until the order lands", () => {
+    const base = { stock: 100, onOrder: 50, rate: 2, leadDays: 20, coverDays: 30 };
+    const timed = planReorder({ ...base, incoming: [{ qty: 50, inDays: 10 }] });
+    const plain = planReorder(base);
+    expect(timed.orderByDays).toBe(plain.orderByDays);
+    expect(timed.suggested).toBe(plain.suggested);
+  });
+
+  it("treats a late or undated order as arriving now", () => {
+    const p = planReorder({ ...cabinet, incoming: [{ qty: 20, inDays: -5 }] });
+    expect(p.orderByDays).toBe(planReorder(cabinet).orderByDays);
   });
 });

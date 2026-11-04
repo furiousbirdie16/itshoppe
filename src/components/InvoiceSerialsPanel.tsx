@@ -11,7 +11,8 @@ import { canScan } from "@/lib/scanning";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { InvoiceItem, SoldUnit } from "@/types/database";
-import { docNo } from "@/lib/doc-number";
+import { describeHolder } from "@/lib/serial-holder";
+import { lineForUnits } from "@/lib/serial-shortfall";
 
 interface Props {
   invoiceId: string;
@@ -57,15 +58,56 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
   );
 
   const unitsByLine = useMemo(() => {
+    const lineOf = lineForUnits(
+      tracked.map((l) => ({ id: l.id, quantity: Number(l.quantity), item_id: l.item_id })),
+      units,
+    );
     const out: Record<string, SoldUnit[]> = {};
     for (const u of units) {
-      const key = u.invoice_item_id || "";
+      const key = lineOf.get(u.id) || "";
       (out[key] ||= []).push(u);
     }
     return out;
-  }, [units]);
+  }, [units, tracked]);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["sold-units", invoiceId] });
+  // Serials whose product is no longer on the invoice. Still shown, because they
+  // still count as sold and this is the only place to free them.
+  const stranded = unitsByLine[""] || [];
+
+  const refresh = () => {
+    // Every list that counts or shows serials, not only this panel. Leaving out
+    // the missing-serials count is why the warning outlived the scan until a
+    // page refresh.
+    queryClient.invalidateQueries({ queryKey: ["sold-units"] });
+    queryClient.invalidateQueries({ queryKey: ["invoices-missing-serials"] });
+    queryClient.invalidateQueries({ queryKey: ["customer-sold-units"] });
+    // A reassign can take a serial off an online order.
+    queryClient.invalidateQueries({ queryKey: ["online_sales", "serial-counts"] });
+  };
+
+  /** One serial with its remove button. */
+  const serialChip = (u: SoldUnit) => (
+    <span
+      key={u.id}
+      className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 font-mono text-[11px]"
+    >
+      {u.serial}
+      <button
+        type="button"
+        onClick={() => releaseMut.mutate(u.id)}
+        className="text-muted-foreground hover:text-destructive"
+        aria-label={`Remove ${u.serial}`}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+
+  /** The scanner has nothing left to do once a line has all its serials. */
+  const closeScannerIfFull = (line: InvoiceItem) => {
+    const have = (unitsByLine[line.id] || []).length + 1;
+    if (have >= (Number(line.quantity) || 0)) setScanningLine(null);
+  };
 
   const addMut = useMutation({
     mutationFn: (args: { serial: string; line: InvoiceItem }) =>
@@ -79,6 +121,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
     onSuccess: (_d, args) => {
       setDrafts((p) => ({ ...p, [args.line.id]: "" }));
       refresh();
+      closeScannerIfFull(args.line);
       toast.success("Serial recorded");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -86,7 +129,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
 
   const releaseMut = useMutation({
     mutationFn: (unitId: string) => releaseSoldUnit(unitId),
-    onSuccess: () => { refresh(); toast.success("Serial released"); },
+    onSuccess: () => { refresh(); toast.success("Serial removed"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -104,7 +147,10 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
       });
     },
     onSuccess: () => {
-      if (conflict) setDrafts((p) => ({ ...p, [conflict.line.id]: "" }));
+      if (conflict) {
+        setDrafts((p) => ({ ...p, [conflict.line.id]: "" }));
+        closeScannerIfFull(conflict.line);
+      }
       setConflict(null);
       refresh();
       toast.success("Serial reassigned");
@@ -117,6 +163,10 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
     if (!serial) return;
     const here = (unitsByLine[line.id] || []).some((u) => u.serial === serial);
     if (here) { toast.error("Already scanned on this line"); return; }
+    if ((unitsByLine[line.id] || []).length >= (Number(line.quantity) || 0)) {
+      toast.error("This line already has all its serials. Remove one to change it.");
+      return;
+    }
     // A duplicate is a real error, not incomplete data, so this one stops and
     // asks rather than warning: letting it through would point two customers'
     // warranties at one unit.
@@ -136,13 +186,13 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
     );
   }
 
-  if (tracked.length === 0) return null;
+  if (tracked.length === 0 && stranded.length === 0) return null;
 
   return (
     <div className="mt-3 rounded-lg border p-3 space-y-3">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-primary" />
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-semibold text-muted-foreground">
           Serial numbers
         </p>
       </div>
@@ -179,22 +229,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
 
             {mine.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {mine.map((u) => (
-                  <span
-                    key={u.id}
-                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 font-mono text-[11px]"
-                  >
-                    {u.serial}
-                    <button
-                      type="button"
-                      onClick={() => releaseMut.mutate(u.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={`Release ${u.serial}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
+                {mine.map(serialChip)}
               </div>
             )}
 
@@ -231,6 +266,15 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
         );
       })}
 
+      {stranded.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            No longer on this invoice's lines. Remove these to free the serials.
+          </p>
+          <div className="flex flex-wrap gap-1.5">{stranded.map(serialChip)}</div>
+        </div>
+      )}
+
       <SerialScanner
         open={!!scanningLine}
         onOpenChange={(o) => !o && setScanningLine(null)}
@@ -245,16 +289,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
             <div className="space-y-2 text-sm">
               <p className="font-mono text-xs">{conflict.serial}</p>
               <p className="text-muted-foreground">
-                This serial is already on invoice{" "}
-                <span className="font-medium text-foreground">
-                  {docNo(conflict.held.invoices?.invoice_number) || "another sale"}
-                </span>
-                {conflict.held.invoices?.customers?.name
-                  ? <> for <span className="font-medium text-foreground">{conflict.held.invoices.customers.name}</span></>
-                  : null}
-                {conflict.held.invoices?.invoice_date
-                  ? <> on {conflict.held.invoices.invoice_date}</>
-                  : null}.
+                This serial is already on <span className="font-medium text-foreground">{describeHolder(conflict.held)}</span>.
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Reassign only if the unit came back and is being sold again. Your name is recorded either way.

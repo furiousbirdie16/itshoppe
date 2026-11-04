@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { SkuBundleDialog } from "@/components/SkuBundleDialog";
 import { deleteSkuBundle, getSkuBundles, type SkuBundle } from "@/lib/sku-bundles";
 import type { Item } from "@/types/database";
+import { searchMatches } from "@/lib/search";
 
 interface Props {
   open: boolean;
@@ -27,7 +28,7 @@ export function SkuBundlesManager({ open, onOpenChange, items }: Props) {
     const q = search.trim().toLowerCase();
     if (!q) return bundles;
     return bundles.filter((b) =>
-      [b.sku, ...b.lines.map((l) => `${l.item_name ?? ""} ${l.variation_name ?? ""}`)].join(" ").toLowerCase().includes(q),
+      searchMatches(q, b.sku, ...b.lines.map((l) => `${l.item_name ?? ""} ${l.variation_name ?? ""}`)),
     );
   }, [bundles, search]);
 
@@ -87,7 +88,7 @@ export function SkuBundlesManager({ open, onOpenChange, items }: Props) {
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7" title="Remove" onClick={() => remove(b)}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   </div>
                 </div>

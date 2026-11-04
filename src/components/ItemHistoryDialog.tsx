@@ -17,6 +17,7 @@ import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
 import { useBranch } from "@/contexts/BranchContext";
 import { walkBalances } from "@/lib/ledger-balances";
 import { docNo } from "@/lib/doc-number";
+import { searchMatches } from "@/lib/search";
 
 interface Props {
   item: Item | null;
@@ -368,7 +369,7 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
     if (to && day > to) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
-      if (!r.reference_no.toLowerCase().includes(q) && !r.notes.toLowerCase().includes(q) && !r.label.toLowerCase().includes(q)) return false;
+      if (!searchMatches(q, r.reference_no, r.notes, r.label)) return false;
     }
     return true;
   }), [ledger, categoryFilter, from, to, search]);

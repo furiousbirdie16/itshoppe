@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { getItemVariations } from "@/lib/api";
 import type { Item, ItemVariation } from "@/types/database";
+import { searchMatches, searchRank } from "@/lib/search";
 
 interface ItemSearchProps {
   items: Item[];
@@ -55,13 +56,11 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
     return query;
   };
 
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
   // Build a flat result list: each parent + (optionally) its matching variations.
   type Row =
     | { kind: 'item'; item: Item }
     | { kind: 'variation'; item: Item; variation: ItemVariation };
-
-  const matches = (text: string) => !q || text.toLowerCase().includes(q);
 
   // Every keystroke re-runs this over the whole catalogue and its variations,
   // and every line on an invoice holds one of these boxes. Without memoising,
@@ -77,19 +76,34 @@ export function ItemSearch({ items: itemsRaw, value, customName, variationId, on
     return m;
   }, [allVariations, showVariations]);
 
+  // Word by word, in any order, across the item's fields (see lib/search):
+  // "HDMI 1.5m" finds "HDMI cable 1.5m". A variation matches on its own
+  // fields together with its item's, so "cat6 100m" finds the 100m cut of
+  // CAT6. Best matches first.
   const filtered: Row[] = useMemo(() => {
-    const rows: Row[] = [];
+    const ranked: { item: Item; vars: ItemVariation[]; rank: number }[] = [];
     for (const item of items) {
-      const itemMatches = matches(item.sku) || matches(item.name);
+      const itemFields = [item.sku, item.name, (item as any).brand, (item as any).category, (item as any).barcode, (item as any).supplier_sku];
       const itemVars = varsByItem.get(item.id) || [];
-      const matchingVars = itemVars.filter(v => matches(v.name) || (v.sku && matches(v.sku)));
-      const showItem = itemMatches || matchingVars.length > 0 || (!q && itemVars.length > 0);
-      if (showItem) {
-        rows.push({ kind: 'item', item });
-        // If user typed something matching variations OR no query and item has variations, list them.
-        const varsToShow = q ? matchingVars : itemVars;
-        for (const v of varsToShow) rows.push({ kind: 'variation', item, variation: v });
+      if (!q) {
+        ranked.push({ item, vars: itemVars, rank: 0 });
+        continue;
       }
+      const itemMatches = searchMatches(q, ...itemFields);
+      const matchingVars = itemVars.filter(v => searchMatches(q, v.name, v.sku, item.name, item.sku));
+      if (!itemMatches && matchingVars.length === 0) continue;
+      const rank = Math.min(
+        itemMatches ? searchRank(q, item.name, item.sku) : Infinity,
+        ...matchingVars.map(v => searchRank(q, `${item.name} ${v.name}`, v.sku)),
+      );
+      ranked.push({ item, vars: matchingVars, rank });
+    }
+    if (q) ranked.sort((a, b) => a.rank - b.rank);
+
+    const rows: Row[] = [];
+    for (const r of ranked) {
+      rows.push({ kind: 'item', item: r.item });
+      for (const v of r.vars) rows.push({ kind: 'variation', item: r.item, variation: v });
       if (rows.length >= 30) break;
     }
     return rows;

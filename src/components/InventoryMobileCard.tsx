@@ -48,7 +48,7 @@ interface Props {
 function Field({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`text-sm font-medium truncate ${className || ""}`}>{value}</div>
     </div>
   );
@@ -62,9 +62,10 @@ function IconAction({ icon: Icon, label, onClick, danger, primary }: { icon: any
       onClick={onClick}
       title={label}
       aria-label={label}
-      className="h-9 w-9 shrink-0 rounded-md border bg-background"
+      // Grey at rest; colour only on hover, red for the destructive one.
+      className={`h-9 w-9 shrink-0 rounded-md text-muted-foreground ${danger ? "hover:bg-destructive/10 hover:text-destructive" : primary ? "hover:bg-accent hover:text-primary" : "hover:bg-accent hover:text-foreground"}`}
     >
-      <Icon className={`h-4 w-4 ${danger ? "text-destructive/80" : primary ? "text-primary" : "text-muted-foreground"}`} />
+      <Icon className="h-4 w-4" />
     </Button>
   );
 }
@@ -86,7 +87,7 @@ export function InventoryMobileCard({
   const reserved = Number(item.reserved_quantity ?? 0);
 
   return (
-    <div className={`rounded-xl border bg-card p-3 space-y-3 ${selected ? "ring-1 ring-primary" : ""}`}>
+    <div className={`rounded-lg border bg-card p-3 space-y-3 ${selected ? "ring-1 ring-primary" : ""}`}>
       <div className="flex items-start gap-2.5">
         <Checkbox
           checked={selected}
@@ -98,14 +99,14 @@ export function InventoryMobileCard({
           <div className="text-base font-semibold leading-snug break-words">{item.name}</div>
           <div className="mt-0.5 tabular-nums text-xs text-muted-foreground break-all">{item.sku}</div>
         </div>
-        <Badge variant="outline" className={`shrink-0 text-[10px] ${status.className}`}>{status.label}</Badge>
+        <Badge variant="outline" className={`shrink-0 text-xs font-medium ${status.className}`}>{status.label}</Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" className="text-[10px] uppercase">{branchLabel}</Badge>
-        <Badge variant={source === "import" ? "secondary" : "outline"} className="text-[10px] uppercase">{source}</Badge>
+        <Badge variant="outline" className="text-xs font-medium">{branchLabel}</Badge>
+        <Badge variant={source === "import" ? "secondary" : "outline"} className="text-xs font-medium capitalize">{source}</Badge>
         {item.status && item.status !== "active" && (
-          <Badge variant="outline" className="text-[10px] uppercase">{item.status}</Badge>
+          <Badge variant="outline" className="text-xs font-medium capitalize">{item.status}</Badge>
         )}
       </div>
 
@@ -128,7 +129,7 @@ export function InventoryMobileCard({
         <Field
           label="Incoming"
           value={incoming > 0 ? <>{incoming} <span className="text-xs font-normal text-muted-foreground">on order</span></> : "—"}
-          className={incoming > 0 ? "text-blue-600" : "text-muted-foreground"}
+          className={incoming > 0 ? "text-primary" : "text-muted-foreground"}
         />
         <Field
           label="Reserved"
@@ -140,7 +141,7 @@ export function InventoryMobileCard({
         <Field label="Selling Price" value={peso(Number(item.selling_price || 0))} />
       </div>
 
-      <div className="flex items-center gap-1.5 overflow-x-auto border-t pt-2.5">
+      <div className="flex items-center gap-1 overflow-x-auto border-t pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {!viewArchived && (
           <>
             <IconAction icon={ArrowLeftRight} label="Transfer stock" onClick={onTransfer} />

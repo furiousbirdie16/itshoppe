@@ -9,7 +9,7 @@ import { ACTION_CLASS, fmtDays, fmtUnits } from "@/lib/insights";
 function Metric({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={cn("truncate text-sm font-medium tabular-nums", className)}>{value}</div>
     </div>
   );
@@ -33,7 +33,7 @@ interface Props {
  */
 export function InsightsProductCard({ product: p, stockSplit, txns, isAdmin, money, isOpen, onToggle }: Props) {
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-lg border bg-card">
       <button
         type="button"
         onClick={onToggle}

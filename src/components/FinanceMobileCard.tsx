@@ -39,7 +39,7 @@ export function FinanceMobileCard({
   className,
 }: Props) {
   return (
-    <div className={cn("rounded-xl border bg-card p-3", className)}>
+    <div className={cn("rounded-lg border bg-card p-3", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{title}</div>

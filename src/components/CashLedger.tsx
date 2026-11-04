@@ -26,6 +26,8 @@ import { toast } from "sonner";
 import { format, parse, isValid, subDays, startOfDay } from "date-fns";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
+import { cn } from "@/lib/utils";
+import { getCashEdits, previousAmount, describeEdit, type CashEdit } from "@/lib/cash-edits";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
 import { useSort } from "@/hooks/use-sort";
@@ -324,11 +326,47 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
 
   /** Amounts render in the account's own currency. */
-  const amountLabel = (t: CashTransaction) => {
+  const amountLabel = (t: CashTransaction, value: number = Number(t.amount)) => {
     const account = allAccounts.find((a) => a.id === t.account_id);
     return account && isForeign(account)
-      ? foreignAmount(Number(t.amount), account.currency)
-      : peso(Number(t.amount));
+      ? foreignAmount(value, account.currency)
+      : peso(value);
+  };
+
+  /**
+   * Edits to each line. An edited amount shows its old figure struck through
+   * beside the new one, and the line carries an "Edited" tag saying what
+   * changed, by whom and when — a corrected entry used to look untouched.
+   */
+  const { data: editsByTxn = new Map<string, CashEdit[]>() } = useQuery({ queryKey: ["cash-edits"], queryFn: getCashEdits });
+  const amountWithEdit = (t: CashTransaction) => {
+    const prev = previousAmount(editsByTxn.get(t.id));
+    if (prev === null || prev === Number(t.amount)) return amountLabel(t);
+    return (
+      <>
+        <span className="mr-1.5 font-normal text-muted-foreground line-through">{amountLabel(t, prev)}</span>
+        {amountLabel(t)}
+      </>
+    );
+  };
+  const editedTag = (t: CashTransaction, className?: string) => {
+    const edits = editsByTxn.get(t.id);
+    if (!edits?.length) return null;
+    const accountName = (id: string) => allAccounts.find((a) => a.id === id)?.name || "another account";
+    const detail = edits
+      .map((e) => [
+        `${format(new Date(e.edited_at), "MMM d, yyyy h:mm a")}${e.edited_by_email ? ` · ${shortUser(e.edited_by_email)}` : ""}`,
+        ...describeEdit(e, { amount: (n) => amountLabel(t, n), account: accountName }).map((l) => `  ${l}`),
+      ].join("\n"))
+      .join("\n\n");
+    return (
+      <span
+        title={detail}
+        className={cn("inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400", className)}
+      >
+        <Pencil className="h-2.5 w-2.5" /> Edited{edits.length > 1 ? ` ×${edits.length}` : ""}
+      </span>
+    );
   };
   const accountById = useMemo(
     () => Object.fromEntries(allAccounts.map((a) => [a.id, a])),
@@ -441,6 +479,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["cash-transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["cash-edits"] });
     queryClient.invalidateQueries({ queryKey: ["cash-accounts"] });
   };
 
@@ -733,7 +772,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                         <ArrowLeftRight className="h-3 w-3 text-muted-foreground" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleAccountDelete(a)} className="h-6 w-6 rounded-md" title="Delete">
-                        <Trash2 className="h-3 w-3 text-destructive/70" />
+                        <Trash2 className="h-3 w-3 text-muted-foreground" />
                       </Button>
                     </div>
                   </div>
@@ -997,7 +1036,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div>
           </div>
         ) : (
@@ -1021,7 +1060,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               // Direction is a signed, coloured amount here — the table carries it
               // by which of two columns the figure lands in, which needs both.
               tone={t.direction === "in" ? "in" : "out"}
-              amount={`${t.direction === "in" ? "+" : "−"}${amountLabel(t)}`}
+              amount={<>{t.direction === "in" ? "+" : "−"}{amountWithEdit(t)}</>}
               // Returns undefined when there is nothing to show. A fragment
               // would not do: it is always truthy, so an empty one still
               // renders a blank sub-line under every amount.
@@ -1030,9 +1069,9 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                 <>
                   <span>{formatDate(t.txn_date)}</span>
                   {t.created_by_email && <span title={t.created_by_email}>· {shortUser(t.created_by_email)}</span>}
-                  {t.updated_by_email && t.updated_by_email !== t.created_by_email && (
+                  {editedTag(t) ?? (t.updated_by_email && t.updated_by_email !== t.created_by_email && (
                     <span title={`Last edited by ${t.updated_by_email}`}>· edited by {shortUser(t.updated_by_email)}</span>
-                  )}
+                  ))}
                 </>
               }
               actions={
@@ -1041,7 +1080,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                     <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                    <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </>
               }
@@ -1083,8 +1122,9 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                   )}
                   {renderInvoiceLink(t)}
                 </TableCell>
-                <TableCell className="text-sm text-right text-emerald-600">{t.direction === "in" ? amountLabel(t) : "—"}</TableCell>
-                <TableCell className="text-sm text-right text-destructive/80">{t.direction === "out" ? amountLabel(t) : "—"}</TableCell>
+                {/* Money in is green; money out stays in ink — spending is not bad news. An empty side is a grey dash. */}
+                <TableCell className="text-sm text-right tabular-nums text-success">{t.direction === "in" ? amountWithEdit(t) : <span className="text-muted-foreground/60">—</span>}</TableCell>
+                <TableCell className="text-sm text-right tabular-nums">{t.direction === "out" ? amountWithEdit(t) : <span className="text-muted-foreground/60">—</span>}</TableCell>
                 {hasForeign && (
                   <TableCell className="text-sm text-right text-muted-foreground">
                     {accountById[t.account_id] && isForeign(accountById[t.account_id])
@@ -1099,16 +1139,16 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                   {t.created_by_email ? (
                     <span title={t.created_by_email}>{shortUser(t.created_by_email)}</span>
                   ) : "—"}
-                  {t.updated_by_email && t.updated_by_email !== t.created_by_email && (
+                  {editedTag(t, "mt-0.5") ?? (t.updated_by_email && t.updated_by_email !== t.created_by_email && (
                     <span className="block text-[10px]" title={`Last edited by ${t.updated_by_email}`}>
                       edited by {shortUser(t.updated_by_email)}
                     </span>
-                  )}
+                  ))}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
                 </TableCell>
               </TableRow>

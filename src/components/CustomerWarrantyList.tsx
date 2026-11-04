@@ -22,7 +22,7 @@ export function CustomerWarrantyList({ customerId }: { customerId: string }) {
 
   return (
     <div className="mt-4 border-t pt-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <p className="text-[11px] font-semibold text-muted-foreground">
         Serialised units · {units.length}
       </p>
       {units.map((u) => {

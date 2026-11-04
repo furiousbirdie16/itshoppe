@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPayables, createPayable, updatePayable, deletePayable, getSuppliers, getCashAccounts } from "@/lib/api";
+import { PayablesBulkUpload } from "@/components/PayablesBulkUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
-import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle , Upload } from "lucide-react";
 import { toast } from "sonner";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
 import { peso } from "@/lib/currency";
@@ -22,6 +23,7 @@ import type { Payable } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
+import { searchMatches } from "@/lib/search";
 
 const NO_SUPPLIER = "none";
 // Radix Select cannot hold an empty string, so "settles no account" needs a sentinel.
@@ -93,6 +95,7 @@ export default function PayablesPage() {
   // Active accounts only — a payable should not be settled from a closed one.
   const { data: allAccounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   const accounts = allAccounts.filter((a) => a.is_active);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   // Settled payables leave the working list entirely — they are not money the
   // business still owes — and collect in their own tab.
@@ -115,8 +118,7 @@ export default function PayablesPage() {
   const filtered = scoped.filter((p) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return [p.payee, p.check_number, p.check_bank, p.category, p.notes]
-      .some((v) => (v || "").toLowerCase().includes(q));
+    return searchMatches(q, ...[p.payee, p.check_number, p.check_bank, p.category, p.notes]);
   });
 
   const { sort, toggle, sorted } = useSort<Payable>(filtered, {
@@ -229,6 +231,9 @@ export default function PayablesPage() {
           <p className="page-description">Post-dated checks and company payables</p>
         </div>
         <div className="toolbar-actions">
+          <Button variant="outline" onClick={() => setBulkOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Upload className="h-4 w-4 mr-1.5" /> Upload
+          </Button>
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Payable
           </Button>
@@ -402,7 +407,7 @@ export default function PayablesPage() {
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sorted.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No payables yet</p></div>
           </div>
         ) : (
@@ -438,7 +443,7 @@ export default function PayablesPage() {
                   )}
                   {isAdmin && (
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive/70" />
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   )}
                 </>
@@ -485,7 +490,7 @@ export default function PayablesPage() {
                       <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                     {isAdmin && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                   </div>
                 </TableCell>
@@ -494,6 +499,7 @@ export default function PayablesPage() {
           </TableBody>
         </Table>
       </div>
+      <PayablesBulkUpload open={bulkOpen} onOpenChange={setBulkOpen} accounts={accounts} payables={payables} />
     </div>
   );
 }

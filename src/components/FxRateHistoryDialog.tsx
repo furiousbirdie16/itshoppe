@@ -133,7 +133,7 @@ export function FxRateHistoryDialog({ account, transactions, open, onOpenChange 
                 <ChartTooltip content={<RateTooltip />} />
                 <Line
                   dataKey="rate"
-                  type="monotone"
+                  type="linear"
                   stroke="hsl(var(--muted-foreground))"
                   strokeWidth={1.5}
                   strokeDasharray="4 3"
@@ -142,7 +142,7 @@ export function FxRateHistoryDialog({ account, transactions, open, onOpenChange 
                 />
                 <Line
                   dataKey="average"
-                  type="monotone"
+                  type="linear"
                   stroke="hsl(var(--primary))"
                   strokeWidth={2}
                   dot={false}

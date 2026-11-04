@@ -27,6 +27,8 @@ import { useNavigate } from "react-router-dom";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
+
+const todayISO = () => format(new Date(), "yyyy-MM-dd");
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -52,7 +54,7 @@ export default function QuotationsPage() {
   const [viewQ, setViewQ] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" });
+  const [form, setForm] = useState({ customer_id: "", quotation_date: todayISO(), notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" });
   const [agentAutoFilled, setAgentAutoFilled] = useState(false);
   const handleCustomerChange = async (v: string) => {
     setForm((f) => ({ ...f, customer_id: v }));
@@ -215,6 +217,7 @@ export default function QuotationsPage() {
       recipientEmail: q.customers?.email,
       recipientPhone: q.customers?.phone,
       recipientAddress: q.customers?.address,
+      preparedBy: q.sales_agent || undefined,
       extraFields: [
         ...(q.valid_until ? [{ label: "Valid Until", value: q.valid_until }] : []),
         ...(q.sales_agent ? [{ label: "Sales Agent", value: q.sales_agent }] : []),
@@ -249,6 +252,7 @@ export default function QuotationsPage() {
     const lineItems = await getQuotationItems(q.id);
     setForm({
       customer_id: q.customer_id || "",
+      quotation_date: q.quotation_date || todayISO(),
       notes: q.notes || "",
       valid_until: q.valid_until || "",
       sales_agent: q.sales_agent || "",
@@ -281,6 +285,7 @@ export default function QuotationsPage() {
     }
     return {
       customer_id: form.customer_id || null,
+      quotation_date: form.quotation_date || todayISO(),
       notes: form.notes,
       valid_until: form.valid_until || null,
       total_amount: total,
@@ -365,7 +370,7 @@ export default function QuotationsPage() {
     });
   }, [selectedIds, quotations]);
 
-  const resetForm = () => { setForm({ customer_id: "", notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
+  const resetForm = () => { setForm({ customer_id: "", quotation_date: todayISO(), notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
@@ -515,7 +520,7 @@ export default function QuotationsPage() {
       {isAdmin && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
             <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
           </div>
           <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
@@ -576,7 +581,19 @@ export default function QuotationsPage() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Quotation Date</Label>
+                <DateField
+                  value={form.quotation_date}
+                  onChange={v => {
+                    // Moving the date moves the due date with it when terms are set.
+                    const days = parseInt(form.payment_terms);
+                    const due = v && !isNaN(days) && days >= 0 ? format(addDays(parseISO(v), days), "yyyy-MM-dd") : form.payment_due_date;
+                    setForm({ ...form, quotation_date: v, payment_due_date: due });
+                  }}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Valid Until</Label>
                 <DateField value={form.valid_until} onChange={v => setForm({ ...form, valid_until: v })} />
@@ -588,8 +605,7 @@ export default function QuotationsPage() {
                   const days = parseInt(v);
                   let due = form.payment_due_date;
                   if (!isNaN(days) && days >= 0) {
-                    const baseStr = editId ? (quotations.find((q: any) => q.id === editId)?.quotation_date) : null;
-                    const base = baseStr ? parseISO(baseStr) : new Date();
+                    const base = form.quotation_date ? parseISO(form.quotation_date) : new Date();
                     due = format(addDays(base, days), "yyyy-MM-dd");
                   }
                   setForm({ ...form, payment_terms: v, payment_due_date: due });
@@ -649,7 +665,7 @@ export default function QuotationsPage() {
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => removeLine(idx)} className="h-9 w-7" title="Remove line"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                           </div>
                         </div>
                       </div>
@@ -805,7 +821,7 @@ export default function QuotationsPage() {
                       <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
                     )}
                     {!blocked && (
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-destructive/70" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                   </div>
                 </TableCell>

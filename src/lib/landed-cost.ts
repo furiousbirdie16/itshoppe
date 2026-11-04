@@ -37,6 +37,12 @@ export interface CargoInput {
   boxes: CargoBox[];
   /** Pesos per unit of the order's currency. */
   exchangeRate: number;
+  /**
+   * Charges for some lines only (a wooden pallet for the cabinets, not the
+   * patch panel), each split among its own lines by their CBM — by value if
+   * none of them has CBM yet.
+   */
+  targetedCharges?: { amount: number; lineIds: string[] }[];
 }
 
 export interface LineAllocation {
@@ -87,12 +93,26 @@ export function allocateCargo(lines: CargoLine[], input: CargoInput): Allocation
   const totalValue = lines.reduce((s, l) => s + value(l), 0);
   const basis: Allocation["basis"] = totalCbm > 0 ? "cbm" : "value";
 
+  // Charges for chosen lines, split among those lines alone.
+  const targeted: Record<string, number> = {};
+  for (const t of input.targetedCharges ?? []) {
+    const amount = Math.max(num(t.amount), 0);
+    const among = lines.filter((l) => t.lineIds.includes(l.id));
+    if (amount === 0 || among.length === 0) continue;
+    const c = among.reduce((s, l) => s + cbm[l.id], 0);
+    const v = among.reduce((s, l) => s + value(l), 0);
+    for (const l of among) {
+      const w = c > 0 ? cbm[l.id] / c : v > 0 ? value(l) / v : 1 / among.length;
+      targeted[l.id] = (targeted[l.id] || 0) + amount * w;
+    }
+  }
+
   const out: Record<string, LineAllocation> = {};
   for (const l of lines) {
     const share = basis === "cbm"
       ? cbm[l.id] / totalCbm
       : totalValue > 0 ? value(l) / totalValue : 0;
-    const cargo = charges * share;
+    const cargo = charges * share + (targeted[l.id] || 0);
     const qty = Math.max(num(l.qty), 0);
     const cargoPerUnit = qty > 0 ? cargo / qty : 0;
     const goodsPerUnit = Math.max(num(l.unitCost), 0) * rate;

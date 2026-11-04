@@ -5,6 +5,7 @@ import { peso } from "@/lib/currency";
 import { SkuBundlesManager } from "@/components/SkuBundlesManager";
 import { getMarginTarget } from "@/lib/landed-cost-api";
 import { marginOf } from "@/lib/landed-cost";
+import { costFromRows } from "@/lib/branch-cost";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,14 +18,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal , Download } from "lucide-react";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
 import { VariationsManager } from "@/components/VariationsManager";
 import TransferStockDialog from "@/components/TransferStockDialog";
 import AdjustStockDialog from "@/components/AdjustStockDialog";
-import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import BulkUploadDialog from "@/components/BulkUploadDialog";
@@ -42,6 +42,7 @@ import InventoryMobileCard from "@/components/InventoryMobileCard";
 import { AllBranchesNotice } from "@/components/AllBranchesNotice";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
 import { useStockSplit } from "@/hooks/use-stock-split";
+import { searchMatches } from "@/lib/search";
 
 
 // Branch is off by default: it is the same on every row (the branch being
@@ -103,7 +104,7 @@ const FILTER_STORAGE_KEY = "inventory:filters:v1";
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="text-[11px] font-semibold text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -173,6 +174,8 @@ export default function InventoryPage() {
   // cannot be reached without throwing the form away.
   const [formBranchId, setFormBranchId] = useState("");
   const qtyBranchId = activeBranchId || formBranchId;
+  /** The cost the form opened with (the branch's, once loaded), to tell whether it was changed. */
+  const editingCostRef = useRef(0);
   /**
    * The chosen branch's own stock for the item being edited, as loaded.
    *
@@ -217,7 +220,7 @@ export default function InventoryPage() {
       return fetchAllRows<any>(() => {
         let q = (supabase as any)
           .from("item_branch_stock")
-          .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock")
+          .select("item_id, branch_id, warehouse_quantity, store_quantity, quantity, open_roll_remaining, units_per_stock, cost_price")
           .order("id");
         if (activeBranchId) q = q.eq("branch_id", activeBranchId);
         return q;
@@ -243,6 +246,15 @@ export default function InventoryPage() {
     }
     return m;
   }, [branchStockRows]);
+
+  // Each branch's cost per item: the picked branch's own, or on "All branches"
+  // every branch blended by stock, with each branch's figure kept for the hover.
+  const costRowsByItem = useMemo(() => {
+    const m = new Map<string, { quantity: number; cost_price: number | null; branch_id: string }[]>();
+    for (const r of branchStockRows) m.set(r.item_id, [...(m.get(r.item_id) || []), r]);
+    return m;
+  }, [branchStockRows]);
+  const branchCodeById = useMemo(() => new Map(branches.map((b) => [b.id, b.branch_code])), [branches]);
 
   // Reserved quantity — invoice line quantities on invoices currently in "reserved" status
   // for the active branch (or across all visible branches when admin picks "All").
@@ -322,9 +334,17 @@ export default function InventoryPage() {
         units_per_stock: s && s.ups ? s.ups : it.units_per_stock,
         reserved_quantity: reservedMap.get(it.id) || 0,
         incoming_quantity: incomingMap.get(it.id) || 0,
+        cost_price: costFromRows(Number(it.cost_price || 0), costRowsByItem.get(it.id) || []),
+        /** Every branch's own cost, for "All branches" — "MNL ₱100.00 · GSN ₱120.00". */
+        branch_costs: activeBranchId
+          ? null
+          : (costRowsByItem.get(it.id) || [])
+              .filter((r) => r.cost_price != null)
+              .map((r) => `${branchCodeById.get(r.branch_id) || "?"} ${peso(Number(r.cost_price))}`)
+              .join(" · "),
       };
     });
-  }, [rawItems, branchStockMap, reservedMap, incomingMap]);
+  }, [rawItems, branchStockMap, reservedMap, incomingMap, costRowsByItem, activeBranchId, branchCodeById]);
 
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: getSuppliers });
 
@@ -378,7 +398,21 @@ export default function InventoryPage() {
   const updateMut = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Item> }) => {
       const { rest, wh, st } = splitQty(data);
+      // Cost is per branch: set for the branch the form is about, or for every
+      // branch on "All branches" with none picked — with a cost-history entry
+      // either way, rather than written straight onto the item.
+      const newCost = (rest as any).cost_price;
+      delete (rest as any).cost_price;
       const res = await updateItem(id, rest);
+      if (newCost !== undefined && Number.isFinite(Number(newCost)) && Math.abs(Number(newCost) - Number(editingCostRef.current)) >= 0.005) {
+        const { error } = await (supabase as any).rpc("set_item_cost", {
+          _item_id: id,
+          _new_cost: Number(newCost),
+          _reason: "Item form",
+          _branch_id: qtyBranchId || null,
+        });
+        if (error) throw error;
+      }
       if (wh !== undefined || st !== undefined) {
         if (!qtyBranchId) throw new Error("Pick which branch these quantities are for.");
         const moved = await setBranchQuantities({ itemId: id, branchId: qtyBranchId, warehouse: wh ?? null, store: st ?? null, notes: "Manual item edit" });
@@ -422,6 +456,7 @@ export default function InventoryPage() {
     setOpen(true);
   };
   const openEdit = (item: Item) => {
+    editingCostRef.current = Number(item.cost_price || 0);
     setEditing(item);
     setForm({
       name: item.name, sku: item.sku, description: item.description,
@@ -453,7 +488,10 @@ export default function InventoryPage() {
       .then((cur) => {
         if (cancelled) return;
         setBranchQty({ wh: cur.warehouse_quantity, st: cur.store_quantity });
-        setForm((f) => ({ ...f, warehouse_quantity: String(cur.warehouse_quantity), store_quantity: String(cur.store_quantity) }));
+        // That branch's own cost, so it is the one being edited.
+        const branchCost = cur.cost_price ?? Number(editingCostRef.current);
+        editingCostRef.current = branchCost;
+        setForm((f) => ({ ...f, warehouse_quantity: String(cur.warehouse_quantity), store_quantity: String(cur.store_quantity), cost_price: String(branchCost) }));
       })
       .catch(() => { if (!cancelled) toast.error("Could not load this branch's stock"); })
       .finally(() => { if (!cancelled) setBranchQtyLoading(false); });
@@ -512,11 +550,10 @@ export default function InventoryPage() {
 
       // Search across many fields
       if (q) {
-        const hay = [
+        if (!searchMatches(q,
           i.name, i.sku, i.description,
           (i as any).barcode, (i as any).supplier_sku, (i as any).brand, (i as any).category,
-        ].filter(Boolean).map(v => String(v).toLowerCase());
-        if (!hay.some(h => h.includes(q))) return false;
+        )) return false;
       }
 
       if (lowMarginOnly && !isLowMargin(i)) return false;
@@ -679,59 +716,11 @@ export default function InventoryPage() {
             </Button>
           )}
 
-          <ExportButton
-            data={items}
-            columns={{
-              "Name": (r: any) => r.name,
-              "SKU": (r: any) => r.sku,
-              "Source": (r: any) => r.source || "local",
-              "Category": (r: any) => r.category || "",
-              "Brand": (r: any) => r.brand || "",
-              "Barcode": (r: any) => r.barcode || "",
-              "Supplier SKU": (r: any) => r.supplier_sku || "",
-              "Status": (r: any) => r.status || "active",
-              "Description": (r: any) => r.description || "",
-              "Base Unit": (r: any) => r.base_unit || "",
-              "Units Per Stock": (r: any) => r.units_per_stock || 1,
-              "Open Roll Remaining": (r: any) => r.open_roll_remaining || 0,
-              "Quantity": (r: any) => r.quantity,
-              "Warehouse Qty": (r: any) => r.warehouse_quantity ?? 0,
-              "Store Qty": (r: any) => r.store_quantity ?? 0,
-              "Low Stock Threshold": (r: any) => r.low_stock_threshold ?? "",
-              ...(isAdmin
-                ? { "Cost Price": (r: any) => r.cost_price }
-                : { "Cost Price": (r: any) => ((r.source ?? "local") === "local" ? r.cost_price : "") }),
-              "Selling Price": (r: any) => r.selling_price,
-              "Archived At": (r: any) => r.archived_at || "",
-              "Archived By": (r: any) => r.archived_by_email || "",
-              "Created": (r: any) => r.created_at || "",
-              "Updated": (r: any) => r.updated_at || "",
-            }}
-            childItems={{
-              table: "item_variations",
-              foreignKey: "item_id",
-              select: "*",
-              columns: {
-                "Variation Name": (v: any) => v.name || "",
-                "Variation SKU": (v: any) => v.sku || "",
-                "Variation Type": (v: any) => v.type || "",
-                "Variation Factor": (v: any) => Number(v.factor || 1),
-                "Variation Unit": (v: any, p: any) =>
-                  v.type === "cut" ? (p.base_unit || "m") : "pack",
-                "Variation Stock Available": (v: any, p: any) => {
-                  const factor = Number(v.factor || 1) || 1;
-                  const ups = Number(p.units_per_stock || 1) || 1;
-                  const qty = Number(p.quantity || 0);
-                  const open = Number(p.open_roll_remaining || 0);
-                  const totalBase = v.type === "cut" ? qty * ups + open : qty * ups;
-                  return Math.floor(totalBase / factor);
-                },
-                "Variation Selling Price": (v: any) => Number(v.selling_price || 0),
-              },
-            }}
-            dateField={(r: any) => r.created_at?.split("T")[0] || ""}
-            fileName={viewArchived ? "Inventory-Archived" : "Inventory"}
-          />
+          {/* Opens the download-and-update sheet: one place to take the
+              inventory out to Excel and bring the edits back. */}
+          <Button variant="outline" onClick={() => setBulkEditOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Download className="h-4 w-4 mr-1.5" /> Export
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-lg h-9 px-3 text-sm font-medium">
@@ -740,7 +729,6 @@ export default function InventoryPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => setBulkOpen(true)}><Upload className="mr-2 h-4 w-4" /> Add items from a file</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setBulkEditOpen(true)}><Pencil className="mr-2 h-4 w-4" /> Update items from a file</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setBundlesOpen(true)}><Layers className="mr-2 h-4 w-4" /> Bundle SKUs</DropdownMenuItem>
               {!viewArchived && (
                 <>
@@ -1027,7 +1015,10 @@ export default function InventoryPage() {
                   <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
                 </Field>
                 {canEditCost && (
-                  <Field label="Cost (₱)">
+                  <Field
+                    label="Cost (₱)"
+                    hint={editing ? (qtyBranchId ? `For ${branches.find((b) => b.id === qtyBranchId)?.branch_name ?? "this branch"} only` : "For every branch — pick a branch above to set one branch's cost") : undefined}
+                  >
                     <Input type="number" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} className="h-9" />
                     {isAdmin && editing && (editing as any).landed_cost_latest != null && (
                       <p className="text-[10px] text-muted-foreground">latest landed {peso(Number((editing as any).landed_cost_latest))}</p>
@@ -1227,7 +1218,7 @@ export default function InventoryPage() {
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sortedFiltered.length === 0 ? (
-          <div className="rounded-xl border bg-card">
+          <div className="rounded-lg border bg-card">
             <div className="empty-state">
               <Package className="empty-state-icon" />
               <p className="text-sm">No items match your filters</p>
@@ -1275,7 +1266,7 @@ export default function InventoryPage() {
         )}
       </div>
 
-      <HorizontalScrollSync className="hidden md:block rounded-xl border bg-card">
+      <HorizontalScrollSync className="hidden md:block rounded-lg border bg-card">
 
         <Table>
           <TableHeader>
@@ -1402,7 +1393,10 @@ export default function InventoryPage() {
                           key="c-cost"
                           className="whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground"
                           // Hover only: the averaged cost is the one that counts.
-                          title={isAdmin && (item as any).landed_cost_latest ? `Latest landed ${peso(Number((item as any).landed_cost_latest))}` : undefined}
+                          title={[
+                            (item as any).branch_costs ? `By branch: ${(item as any).branch_costs}` : "",
+                            isAdmin && (item as any).landed_cost_latest ? `Latest landed ${peso(Number((item as any).landed_cost_latest))}` : "",
+                          ].filter(Boolean).join("\n") || undefined}
                         >
                           {(isAdmin || (((item as any).source as string) || 'local') === 'local') ? peso(Number(item.cost_price)) : '—'}
                         </TableCell>

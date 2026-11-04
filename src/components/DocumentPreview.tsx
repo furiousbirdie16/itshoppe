@@ -5,6 +5,7 @@ import { Download, ExternalLink } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { DocumentData, getPDFBlobURL, downloadPDF } from "@/lib/pdf";
 import { getDocumentLogo } from "@/lib/document-logo";
+import { getCompanyContact } from "@/lib/company-contact";
 
 interface DocumentPreviewProps {
   open: boolean;
@@ -22,11 +23,17 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
     enabled: open,
     staleTime: 5 * 60 * 1000,
   });
+  const { data: contact, isFetched: contactReady } = useQuery({
+    queryKey: ["company-contact"],
+    queryFn: getCompanyContact,
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
-    if (open && data && logoReady) {
+    if (open && data && logoReady && contactReady) {
       try {
-        const url = getPDFBlobURL(data, logo);
+        const url = getPDFBlobURL(data, logo, contact);
         setPdfUrl(url);
         // Freed a minute later rather than at once: a tab opened from it may
         // still be loading when the preview closes.
@@ -37,7 +44,7 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
     } else {
       setPdfUrl(null);
     }
-  }, [open, data, logo, logoReady]);
+  }, [open, data, logo, logoReady, contact, contactReady]);
 
   if (!data) return null;
 
@@ -61,7 +68,7 @@ export function DocumentPreview({ open, onClose, data }: DocumentPreviewProps) {
             )}
             <Button
               size="sm"
-              onClick={() => downloadPDF(data, logo)}
+              onClick={() => downloadPDF(data, logo, contact)}
               className="rounded-lg h-8 px-2 sm:px-3 text-xs font-medium"
             >
               <Download className="h-3.5 w-3.5 sm:mr-1.5" />

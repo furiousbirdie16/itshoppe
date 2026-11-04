@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarIcon, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { niceTicks } from "@/lib/chart-ticks";
 import { peso } from "@/lib/currency";
 import { getSalesTrend } from "@/lib/api";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -72,6 +73,7 @@ export function DashboardAnalytics() {
   const totalForRange = filled.reduce((s, d) => s + d.total, 0);
   const invoiceForRange = filled.reduce((s, d) => s + d.invoice, 0);
   const onlineForRange = filled.reduce((s, d) => s + d.online, 0);
+  const salesTicks = niceTicks(0, Math.max(0, ...filled.map((d) => d.total)));
   const bestDay = filled.reduce((best, d) => (d.total > (best?.total ?? -1) ? d : best), filled[0]);
   const halfIdx = Math.floor(filled.length / 2);
   const firstHalf = filled.slice(0, halfIdx).reduce((s, d) => s + d.total, 0);
@@ -152,7 +154,7 @@ export function DashboardAnalytics() {
                 <span className="text-xs font-medium tabular-nums">{peso(invoiceForRange)}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: "hsl(var(--success))" }} />
+                <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: "hsl(var(--chart-2))" }} />
                 <span className="text-xs text-muted-foreground">Online</span>
                 <span className="text-xs font-medium tabular-nums">{peso(onlineForRange)}</span>
               </div>
@@ -177,21 +179,11 @@ export function DashboardAnalytics() {
               <ChartContainer
                 config={{
                   invoice: { label: "Invoice", color: "hsl(var(--primary))" },
-                  online: { label: "Online", color: "hsl(var(--success))" },
+                  online: { label: "Online", color: "hsl(var(--chart-2))" },
                 }}
                 className="h-[260px] w-full"
               >
                 <AreaChart data={filled} margin={{ left: 4, right: 12, top: 8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="fillInvoice" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.45} />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.04} />
-                    </linearGradient>
-                    <linearGradient id="fillOnline" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.45} />
-                      <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.04} />
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.7} />
                   <XAxis
                     dataKey="label"
@@ -205,6 +197,8 @@ export function DashboardAnalytics() {
                     tickLine={false}
                     axisLine={false}
                     width={52}
+                    ticks={salesTicks}
+                    domain={[salesTicks[0], salesTicks[salesTicks.length - 1]]}
                     tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                     tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
                   />
@@ -219,22 +213,24 @@ export function DashboardAnalytics() {
                       />
                     }
                   />
-                  {/* 2px strokes, and a surface-coloured seam between the stacked fills. */}
+                  {/* Straight segments: a smoothed curve invents sales between the days. Flat pale fills, teal for invoices and grey for online. */}
                   <Area
                     dataKey="invoice"
                     stackId="a"
-                    type="monotone"
+                    type="linear"
                     stroke="hsl(var(--primary))"
-                    fill="url(#fillInvoice)"
+                    fill="hsl(var(--primary))"
+                    fillOpacity={0.12}
                     strokeWidth={2}
                     activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
                   />
                   <Area
                     dataKey="online"
                     stackId="a"
-                    type="monotone"
-                    stroke="hsl(var(--success))"
-                    fill="url(#fillOnline)"
+                    type="linear"
+                    stroke="hsl(var(--chart-2))"
+                    fill="hsl(var(--chart-2))"
+                    fillOpacity={0.1}
                     strokeWidth={2}
                     activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
                   />

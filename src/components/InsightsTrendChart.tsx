@@ -38,7 +38,7 @@ export function InsightsTrendChart({ data, bucket, isAdmin, money }: Props) {
     : [{ key: "units", label: "Units sold", color: "hsl(var(--primary))" }];
 
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div>
           <h2 className="text-sm font-semibold">{isAdmin ? "Revenue & gross profit" : "Units sold"}</h2>

@@ -17,6 +17,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { format } from "date-fns";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { searchMatches } from "@/lib/search";
 
 /**
  * What a customer pays for a product.
@@ -123,7 +124,7 @@ export default function CustomerPricingPage() {
       if (filterCustomer !== "all" && r.customer_id !== filterCustomer) return false;
       if (filterItem !== "all" && r.item_id !== filterItem) return false;
       if (!q) return true;
-      return `${r.customer_name} ${r.item_name} ${r.item_sku}`.toLowerCase().includes(q);
+      return searchMatches(q, r.customer_name, r.item_name, r.item_sku);
     });
   }, [rows, filterCustomer, filterItem, search]);
 
@@ -231,12 +232,12 @@ export default function CustomerPricingPage() {
           would hide the price, which is the only reason to open this page. */}
       <div className="md:hidden space-y-2">
         {groups.length === 0 ? (
-          <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">
             {isLoading ? "Loading…" : "No customer prices yet."}
           </div>
         ) : (
           groups.map((g) => (
-            <div key={g.customer_id} className="rounded-xl border bg-card">
+            <div key={g.customer_id} className="rounded-lg border bg-card">
               <button
                 type="button"
                 onClick={() => toggleCustomer(g.customer_id)}

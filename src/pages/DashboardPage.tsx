@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { format, parseISO } from "date-fns";
 import { getDashboardStats } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +9,9 @@ import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, 
 import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { useBranch } from "@/contexts/BranchContext";
+import { FinanceChangeDialog } from "@/components/FinanceChangeDialog";
+import { getFinanceSnapshots } from "@/lib/finance-snapshots";
+import { metricValue, snapshotForDaysAgo, type FinanceFigures, type FinanceMetric } from "@/lib/finance-compare";
 
 export default function DashboardPage() {
   const { role } = useAuth();
@@ -75,7 +80,42 @@ export default function DashboardPage() {
   // What is genuinely free to spend: cash on hand less everything already
   // committed to suppliers and bills. Can go negative, which is the point —
   // that means commitments already exceed the cash to cover them.
-  const cashForPurchasing = finance.totalCashAvailable - coSupplierPOs - finance.billsAndChecks;
+  const cashForPurchasing = finance.totalCashAvailable - coSupplierPOs - finance.billsDueSoon;
+
+  // What moved these two: today's figures against the saved nightly ones, opened
+  // from the cards so the dashboard itself stays as it is.
+  const [changeMetric, setChangeMetric] = useState<FinanceMetric | null>(null);
+  const { data: financeSnapshots = [] } = useQuery({
+    queryKey: ["finance-snapshots"],
+    queryFn: getFinanceSnapshots,
+    enabled: isAdmin,
+  });
+  const nowFigures: FinanceFigures = {
+    inventory: coInventory,
+    reserved: coReserved,
+    receivables: finance.receivables,
+    incoming: coIncoming,
+    cash: finance.totalCashAvailable,
+    supplierPos: coSupplierPOs,
+    billsOwedNow: finance.billsAndChecks,
+    billsDueSoon: finance.billsDueSoon,
+    dueToOwner: finance.dueToOwner,
+    loans: finance.loansOutstanding,
+  };
+  // The card's line only ever uses exact records. The older ones were worked
+  // out differently and would show a false jump.
+  const cardBase = snapshotForDaysAgo(financeSnapshots.filter((s) => !s.approximate), format(new Date(), "yyyy-MM-dd"), 7);
+  const cardFootnote = (metric: FinanceMetric) => {
+    // Until the company-wide figures have loaded, a comparison would be false.
+    if (!cardBase || !allBranches) return <span className="text-muted-foreground">See what changed</span>;
+    const change = metricValue(metric, nowFigures) - metricValue(metric, cardBase);
+    if (Math.abs(change) < 0.5) return <span className="text-muted-foreground">No change since {format(parseISO(cardBase.date), "MMM d")}</span>;
+    return (
+      <span className={change > 0 ? "text-success" : "text-destructive"}>
+        {change > 0 ? "↑" : "↓"} {peso(Math.abs(change))} since {format(parseISO(cardBase.date), "MMM d")}
+      </span>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -97,7 +137,7 @@ export default function DashboardPage() {
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {isAdmin && (
           <StatCard
-            title="Sales Today"
+            title="Sales today"
             value={peso(stats?.salesToday || 0)}
             icon={ShoppingCart}
             variant="success"
@@ -113,7 +153,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Sales This Month"
+            title="Sales this month"
             value={peso(stats?.salesThisMonth || 0)}
             icon={TrendingUp}
             variant="success"
@@ -128,7 +168,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Gross Profit"
+            title="Gross profit"
             value={peso(stats?.grossProfitMonth || 0)}
             icon={Coins}
             variant="success"
@@ -143,7 +183,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Inventory Value"
+            title="Inventory value"
             value={peso(inventoryValue)}
             icon={DollarSign}
             tone="asset"
@@ -160,7 +200,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && reservedStock > 0 && (
           <StatCard
-            title="Reserved Stock"
+            title="Reserved stock"
             value={peso(reservedStock)}
             icon={BookmarkPlus}
             tone="asset"
@@ -174,7 +214,7 @@ export default function DashboardPage() {
           />
         )}
         <StatCard
-          title="Purchase Orders"
+          title="Purchase orders"
           value={stats?.openPurchaseOrders || 0}
           icon={Receipt}
           description="Open local + overseas"
@@ -187,7 +227,7 @@ export default function DashboardPage() {
         />
         {isAdmin && (
           <StatCard
-            title="Total Cash Available"
+            title="Total cash available"
             value={peso(finance.totalCashAvailable)}
             icon={Wallet}
             tone="asset"
@@ -223,7 +263,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Incoming Assets"
+            title="Incoming assets"
             value={peso(incomingAssets)}
             icon={TruckIcon}
             tone="asset"
@@ -240,7 +280,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Payables — Supplier POs"
+            title="Supplier POs owed"
             value={peso(supplierPOs)}
             icon={Banknote}
             tone="liability"
@@ -255,14 +295,21 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Payables — Bills & Checks"
+            title="Bills & checks owed"
             value={peso(billsTotal)}
             icon={Receipt}
             tone="liability"
-            description={companyOwesOwner > 0 ? "Payables page + owed to owner" : "From the Payables page"}
+            description={
+              finance.billsLater > 0
+                ? `${peso(finance.billsLater)} ${finance.deferredCategories.join(", ").toLowerCase()} dated later, not yet counted`
+                : companyOwesOwner > 0 ? "Payables page + owed to owner" : "From the Payables page"
+            }
             formula={
               <div className="space-y-1">
-                <FormulaRow label="Bills & checks not settled" value={peso(finance.billsAndChecks)} />
+                <FormulaRow label="Bills & checks owed now" value={peso(finance.billsAndChecks)} />
+                {finance.billsLater > 0 && (
+                  <FormulaRow label={`${finance.deferredCategories.join(", ")} dated after this month`} value={`${peso(finance.billsLater)} not counted`} muted />
+                )}
                 {companyOwesOwner > 0 && <FormulaRow label="Company owes the owner" value={peso(companyOwesOwner)} />}
                 <p className="text-muted-foreground pt-1">The owner's account counts here when the owner has paid for more than they have been repaid.</p>
               </div>
@@ -271,7 +318,7 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Loans Outstanding"
+            title="Loans outstanding"
             value={peso(finance.loansOutstanding)}
             icon={PiggyBank}
             tone="liability"
@@ -287,10 +334,12 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Cash Available for Purchase"
+            title="Free to spend"
+            onClick={() => setChangeMetric("free")}
+            footnote={cardFootnote("free")}
             value={peso(cashForPurchasing)}
             icon={Wallet}
-            tone={cashForPurchasing >= 0 ? "asset" : "liability"}
+            tone={cashForPurchasing < 0 ? "negative" : "asset"}
             description={
               cashForPurchasing >= 0
                 ? "Cash less supplier POs and bills"
@@ -300,7 +349,7 @@ export default function DashboardPage() {
               <div className="space-y-1">
                 <FormulaRow label="Total cash available" value={peso(finance.totalCashAvailable)} />
                 <FormulaRow label="Less supplier POs" value={`\u2212 ${peso(coSupplierPOs)}`} />
-                <FormulaRow label="Less bills & checks" value={`\u2212 ${peso(finance.billsAndChecks)}`} />
+                <FormulaRow label="Less bills & checks due soon" value={`\u2212 ${peso(finance.billsDueSoon)}`} />
                 <div className="border-t my-1" />
                 <FormulaRow label="Free to spend" value={peso(cashForPurchasing)} />
                 <p className="text-muted-foreground pt-1">Goes negative when what you have committed already exceeds the cash to cover it.</p>
@@ -313,10 +362,12 @@ export default function DashboardPage() {
         )}
         {isAdmin && (
           <StatCard
-            title="Net Asset Value"
+            title="Net asset value"
+            onClick={() => setChangeMetric("nav")}
+            footnote={cardFootnote("nav")}
             value={peso(netAssetValue)}
             icon={Scale}
-            variant={netAssetValue >= 0 ? "success" : "warning"}
+            tone={netAssetValue < 0 ? "negative" : "asset"}
             description={`${peso(assetsTotal)} assets − ${peso(liabilitiesTotal)} liabilities`}
             formula={
               <div className="space-y-1">
@@ -342,6 +393,14 @@ export default function DashboardPage() {
 
       {/* Analytics: charts (admin only) */}
       {isAdmin && <DashboardAnalytics />}
+
+      <FinanceChangeDialog
+        metric={changeMetric}
+        onClose={() => setChangeMetric(null)}
+        now={nowFigures}
+        snapshots={financeSnapshots}
+        defaultDate={cardBase?.date ?? null}
+      />
 
 
 

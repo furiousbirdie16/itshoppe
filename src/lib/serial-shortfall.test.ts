@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shortfallFor, serialTrackingApplies } from "./serial-shortfall";
+import { shortfallFor, lineForUnits, serialTrackingApplies } from "./serial-shortfall";
 
 const poe = (id: string, quantity: number) => ({
   id, quantity, items: { name: "POE Injector", track_serials: true },
@@ -73,5 +73,41 @@ describe("serialTrackingApplies", () => {
     expect(serialTrackingApplies(null)).toBe(false);
     expect(serialTrackingApplies(undefined)).toBe(false);
     expect(serialTrackingApplies("")).toBe(false);
+  });
+});
+
+// The failure that prompted this: editing an invoice rewrites its lines, which
+// blanked the link on recorded serials. They vanished from the invoice, could
+// not be removed, and the invoice read as missing them.
+describe("lineForUnits", () => {
+  const line = (id: string, item_id: string, quantity = 1) => ({ id, item_id, quantity });
+  const unit = (id: string, item_id: string | null, invoice_item_id: string | null = null) => ({ id, item_id, invoice_item_id });
+
+  it("keeps a unit on the line it is linked to", () => {
+    const out = lineForUnits([line("a", "poe"), line("b", "poe")], [unit("u1", "poe", "b")]);
+    expect(out.get("u1")).toBe("b");
+  });
+
+  it("matches a unit that lost its line back by product", () => {
+    const out = lineForUnits([line("new", "poe")], [unit("u1", "poe")]);
+    expect(out.get("u1")).toBe("new");
+  });
+
+  it("fills lines of the same product in turn rather than overfilling one", () => {
+    const out = lineForUnits(
+      [line("a", "poe"), line("b", "poe")],
+      [unit("u1", "poe", "a"), unit("u2", "poe")],
+    );
+    expect(out.get("u2")).toBe("b");
+  });
+
+  it("leaves a unit unmatched when its product is no longer on the invoice", () => {
+    const out = lineForUnits([line("a", "poe")], [unit("u1", "router")]);
+    expect(out.get("u1")).toBeNull();
+  });
+
+  it("stops an edited invoice reading as short of serials", () => {
+    const lines = [{ id: "new", item_id: "poe", quantity: 1, items: { track_serials: true } }];
+    expect(shortfallFor(lines, [unit("u1", "poe")])).toEqual([]);
   });
 });

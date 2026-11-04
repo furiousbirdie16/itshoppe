@@ -114,7 +114,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
   const lateCount = open.filter((o) => o.expected && o.expected < today).length;
 
   if (isLoading) {
-    return <div className="rounded-xl border bg-card py-16 text-center text-sm text-muted-foreground">Loading purchase orders…</div>;
+    return <div className="rounded-lg border bg-card py-16 text-center text-sm text-muted-foreground">Loading purchase orders…</div>;
   }
 
   const series = isAdmin
@@ -164,7 +164,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
         )}
       </div>
 
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div>
             <h2 className="text-sm font-semibold">{isAdmin ? "Purchase spend" : "Units ordered"}</h2>
@@ -210,7 +210,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
         )}
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-lg border bg-card overflow-hidden">
         <div className="p-4 pb-3">
           <h2 className="text-sm font-semibold">Suppliers</h2>
           <p className="text-xs text-muted-foreground">Orders placed in this range. Lead time is the typical (median) time from order to goods received, over every delivery; overseas orders with a ship date are split into production and transit.</p>
@@ -265,7 +265,7 @@ export function InsightsPurchasesTab({ fromStr, toStr, dateFrom, effectiveTo, al
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-lg border bg-card overflow-hidden">
         <div className="p-4 pb-3 flex flex-wrap items-start justify-between gap-2">
           <div>
             <h2 className="text-sm font-semibold">Incoming orders</h2>
