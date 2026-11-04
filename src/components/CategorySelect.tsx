@@ -60,7 +60,10 @@ export function CategorySelect({ value, onChange, className, placeholder = "Pick
   );
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
+    // Modal, so the list scrolls inside a dialog: otherwise the dialog's
+    // scroll lock swallows the wheel and the list cannot be scrolled past the
+    // first screenful.
+    <Popover modal open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" type="button" className={cn("h-9 w-full justify-between font-normal", className)}>
           <span className={cn("truncate", !value && "text-muted-foreground")}>{value || placeholder}</span>
@@ -70,7 +73,7 @@ export function CategorySelect({ value, onChange, className, placeholder = "Pick
       <PopoverContent className="w-64 p-0" align="start">
         <Command>
           <CommandInput placeholder="Search or add…" value={search} onValueChange={setSearch} className="h-9" />
-          <CommandList>
+          <CommandList className="max-h-72 overflow-y-auto overscroll-contain" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
             <CommandEmpty>{typed ? "Not on the list" : "No categories"}</CommandEmpty>
             {!exists && (
               <CommandGroup>
