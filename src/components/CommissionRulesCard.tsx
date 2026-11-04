@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { getCashAccounts } from "@/lib/api";
 import { ALL_CODES, CATEGORY_CODES, CODE_LABELS, categoryKey, monthKey, type CommissionCode } from "@/lib/commission";
+import { DateField } from "@/components/DateField";
 import {
   addCommissionCategory, deleteCommissionCategory, getCommissionAgents, getCommissionCategories,
   getCommissionRates, getLoginOptions, rateOn, setCommissionRate, updateCommissionAgent,
@@ -150,7 +151,7 @@ export function CommissionRulesCard() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Changed rates start on</Label>
-            <Input type="date" value={rateFrom} onChange={(e) => setRateFrom(e.target.value)} className="h-8 w-44 text-sm" />
+            <DateField value={rateFrom} onChange={setRateFrom} className="w-44" />
           </div>
           <Button size="sm" className="h-8 text-xs" onClick={saveRates} disabled={!Object.keys(rateEdits).length}>
             <Save className="h-3 w-3 mr-1.5" /> Save rates

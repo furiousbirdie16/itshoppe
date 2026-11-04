@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getInvoices, getCustomers, getInvoiceItems, getCashAccountOptions, markManualReceivablePaid, unmarkManualReceivablePaid } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBranch } from "@/contexts/BranchContext";
 import { docNo } from "@/lib/doc-number";
 import { searchMatches } from "@/lib/search";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface ManualForm {
   customer_id: string;
@@ -43,7 +44,6 @@ export default function PendingPaymentsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const { activeBranchId } = useBranch();
-  const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [viewInv, setViewInv] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DocumentData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -376,25 +376,13 @@ export default function PendingPaymentsPage() {
 
       {showFilters && (
         <div className="filter-bar">
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date From</Label>
-            <Input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => {
-                setFilterDateFrom(e.target.value);
-                if (!e.target.value) return;
-                requestAnimationFrame(() => {
-                  filterDateToRef.current?.focus();
-                  filterDateToRef.current?.showPicker?.();
-                });
-              }}
-              className="h-9 sm:h-8 sm:w-36 text-sm"
+          <div className="space-y-1 sm:w-64">
+            <Label className="text-xs font-medium">Date</Label>
+            <DateRangeFilter
+              from={filterDateFrom}
+              to={filterDateTo}
+              onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t); }}
             />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date To</Label>
-            <Input ref={filterDateToRef} type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>

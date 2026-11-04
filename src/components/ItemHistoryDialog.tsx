@@ -18,6 +18,7 @@ import { useBranch } from "@/contexts/BranchContext";
 import { walkBalances } from "@/lib/ledger-balances";
 import { docNo } from "@/lib/doc-number";
 import { searchMatches } from "@/lib/search";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface Props {
   item: Item | null;
@@ -578,12 +579,8 @@ export default function ItemHistoryDialog({ item, open, onOpenChange }: Props) {
             </SelectContent>
           </Select>
           <div>
-            <Label className="text-[10px] text-muted-foreground">From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 text-sm" />
-          </div>
-          <div>
-            <Label className="text-[10px] text-muted-foreground">To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 text-sm" />
+            <Label className="text-[10px] text-muted-foreground">Date</Label>
+            <DateRangeFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
           </div>
         </div>
 

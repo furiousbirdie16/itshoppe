@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
 import { CODE_LABELS, PROBLEM_LABELS, agentMonthStats, monthKey, productBreakdown, round2, summarizeByCode, type CommissionCode } from "@/lib/commission";
+import { MonthField } from "@/components/MonthField";
 import {
   addCommissionAdjustment, closeCommissionMonth, deleteCommissionAdjustment, getCommissionAdjustments,
   getCommissionAgents, getCommissionClosing, getMyCommissionAgent, getCommissionLines, getUnassignedInvoices, reopenCommissionMonth,
@@ -171,11 +172,9 @@ export default function CommissionPage() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Month</Label>
-            <Input
-              type="month"
+            <MonthField
               value={month.slice(0, 7)}
-              onChange={(e) => { if (e.target.value) { setMonth(`${e.target.value}-01`); setOpenCode(null); } }}
-              className="h-9 w-40"
+              onChange={(v) => { if (v) { setMonth(`${v}-01`); setOpenCode(null); } }}
             />
           </div>
           {isAdmin && <div className="space-y-1">

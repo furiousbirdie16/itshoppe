@@ -12,7 +12,6 @@ import { StatCard } from "@/components/StatCard";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
-import { DateField } from "@/components/DateField";
 import ExportButton from "@/components/ExportButton";
 import { CircleDollarSign, Store, ShoppingBag, Boxes, Filter, Search, X } from "lucide-react";
 import {
@@ -23,6 +22,7 @@ import {
   DEFAULT_MARKETPLACE_FEE_PCT,
 } from "@/lib/marketplaceReceivables";
 import { searchMatches } from "@/lib/search";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 export default function MarketplaceReceivablesPage() {
   const { activeBranchId } = useBranch();
@@ -144,12 +144,8 @@ export default function MarketplaceReceivablesPage() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Order date from</Label>
-            <DateField value={dateFrom} onChange={setDateFrom} />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Order date to</Label>
-            <DateField value={dateTo} onChange={setDateTo} />
+            <Label className="text-xs font-medium">Order date</Label>
+            <DateRangeFilter from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
           </div>
           <div className="flex items-end">
             <Button

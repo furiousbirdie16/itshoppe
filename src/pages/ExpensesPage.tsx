@@ -32,6 +32,7 @@ import { isForeign } from "@/lib/fx";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { CashAccount } from "@/types/database";
+import { MonthField } from "@/components/MonthField";
 
 /** Months shown side by side, ending with the one picked. */
 const MONTHS_SHOWN = 6;
@@ -122,12 +123,7 @@ export default function ExpensesPage() {
           <p className="page-description">Money out under expense categories, from every bank, cash account and the owner</p>
         </div>
         <div className="toolbar-actions flex flex-wrap gap-2">
-          <Input
-            type="month"
-            value={period}
-            onChange={(e) => e.target.value && setPeriod(e.target.value)}
-            className="h-9 w-[150px]"
-          />
+          <MonthField value={period} onChange={(v) => v && setPeriod(v)} />
           <Button variant="outline" className="h-9" onClick={() => setRecurringOpen(true)}>
             <Repeat className="h-4 w-4 mr-1.5" /> Recurring bills
           </Button>

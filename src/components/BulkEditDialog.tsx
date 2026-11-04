@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
+import { DateField } from "@/components/DateField";
 
 export type BulkFieldType = "text" | "number" | "date" | "textarea" | "select";
 
@@ -132,7 +133,7 @@ export function BulkEditDialog({ selectedIds, fields, updateOne, onSuccess, enti
                       <Input type="number" value={values[f.key] ?? ""} onChange={e => setVal(f.key, e.target.value)} placeholder={f.placeholder} className="h-9" />
                     )}
                     {f.type === "date" && (
-                      <Input type="date" value={values[f.key] ?? ""} onChange={e => setVal(f.key, e.target.value)} className="h-9" />
+                      <DateField value={values[f.key] ?? ""} onChange={v => setVal(f.key, v)} clearable placeholder="Leave as is" />
                     )}
                     {f.type === "textarea" && (
                       <Textarea value={values[f.key] ?? ""} onChange={e => setVal(f.key, e.target.value)} placeholder={f.placeholder} rows={2} className="resize-none" />

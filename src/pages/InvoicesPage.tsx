@@ -46,6 +46,7 @@ import { paymentReferenceUrls } from "@/lib/payment-references";
 import { docNo } from "@/lib/doc-number";
 import { dealerPriceOf, dp2Of, priceBand } from "@/lib/commission";
 import { searchMatches } from "@/lib/search";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
 
@@ -54,7 +55,6 @@ export default function InvoicesPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const { activeBranchId, activeBranch, branches } = useBranch();
-  const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewInv, setViewInv] = useState<string | null>(null);
@@ -1076,25 +1076,13 @@ export default function InvoicesPage() {
 
       {showFilters && (
         <div className="filter-bar">
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date From</Label>
-            <Input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => {
-                setFilterDateFrom(e.target.value);
-                if (!e.target.value) return;
-                requestAnimationFrame(() => {
-                  filterDateToRef.current?.focus();
-                  filterDateToRef.current?.showPicker?.();
-                });
-              }}
-              className="h-9 sm:h-8 sm:w-36 text-sm"
+          <div className="space-y-1 sm:w-64">
+            <Label className="text-xs font-medium">Date</Label>
+            <DateRangeFilter
+              from={filterDateFrom}
+              to={filterDateTo}
+              onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t); }}
             />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date To</Label>
-            <Input ref={filterDateToRef} type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>

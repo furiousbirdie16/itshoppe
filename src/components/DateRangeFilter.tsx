@@ -16,6 +16,9 @@ interface DateRangeFilterProps {
   onChange: (from: string, to: string) => void;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
+  /** Offer the ✕ and Clear. Off where a range is always required. */
+  clearable?: boolean;
 }
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
@@ -54,7 +57,7 @@ function describe(from?: Date, to?: Date): string | null {
 }
 
 /** One button for a date range, with quick presets and a two-month calendar. */
-export function DateRangeFilter({ from, to, onChange, placeholder = "Any date", className }: DateRangeFilterProps) {
+export function DateRangeFilter({ from, to, onChange, placeholder = "Any date", className, disabled, clearable = true }: DateRangeFilterProps) {
   const [open, setOpen] = React.useState(false);
   const fromDate = fromIso(from);
   const toDate = fromIso(to);
@@ -72,13 +75,14 @@ export function DateRangeFilter({ from, to, onChange, placeholder = "Any date", 
           <Button
             type="button"
             variant="outline"
-            className={cn("h-9 w-full justify-start gap-2 pr-8 text-left font-normal", !label && "text-muted-foreground")}
+            disabled={disabled}
+            className={cn("h-9 w-full justify-start gap-2 text-left font-normal", clearable && label && "pr-8", !label && "text-muted-foreground")}
           >
             <CalendarIcon className="h-4 w-4 shrink-0 opacity-60" />
             <span className="truncate">{label ?? placeholder}</span>
           </Button>
         </PopoverTrigger>
-        {label && (
+        {clearable && label && !disabled && (
           <button
             type="button"
             aria-label="Clear dates"
@@ -119,7 +123,7 @@ export function DateRangeFilter({ from, to, onChange, placeholder = "Any date", 
             <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
               <span className="text-xs text-muted-foreground">{label ?? "Pick a start and end date"}</span>
               <div className="flex gap-1.5">
-                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onChange("", "")}>Clear</Button>
+                {clearable && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onChange("", "")}>Clear</Button>}
                 <Button type="button" size="sm" className="h-7 text-xs" onClick={() => setOpen(false)}>Done</Button>
               </div>
             </div>

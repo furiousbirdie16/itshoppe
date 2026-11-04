@@ -1976,7 +1976,7 @@ export default function OverseasPurchaseOrdersPage() {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Estimated arrival</Label>
-              <Input type="date" value={shipEta} onChange={(e) => setShipEta(e.target.value)} className="h-9" />
+              <DateField value={shipEta} onChange={setShipEta} />
               <p className="text-[11px] text-muted-foreground">
                 Starts a month out — change it to whatever the supplier says. Drives the
                 ETA column and the incoming-stock view, and can be corrected later from

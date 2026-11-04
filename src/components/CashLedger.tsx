@@ -34,6 +34,7 @@ import { useSort } from "@/hooks/use-sort";
 import ExportButton from "@/components/ExportButton";
 import { SortableHeader } from "@/components/SortableHeader";
 import { CategorySelect } from "@/components/CategorySelect";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const emptyForm = () => ({
@@ -822,11 +823,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         </Select>
 
         {rangePreset === "custom" && (
-          <div className="flex items-center gap-1.5">
-            <DateField value={rangeFrom} onChange={setRangeFrom} placeholder="From" />
-            <span className="text-xs text-muted-foreground">to</span>
-            <DateField value={rangeTo} onChange={setRangeTo} placeholder="To" />
-          </div>
+          <DateRangeFilter className="w-64" from={rangeFrom} to={rangeTo} onChange={(f, t) => { setRangeFrom(f); setRangeTo(t); }} />
         )}
       </div>
 
