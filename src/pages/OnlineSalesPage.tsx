@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
 import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
 import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
+import { fixSheetRange, isLazadaStatement, parseLazadaStatement } from "@/lib/lazada-statement";
 import { expandBundle, getSkuBundles, skuKey, type SkuBundle } from "@/lib/sku-bundles";
 import { SkuBundleDialog } from "@/components/SkuBundleDialog";
 import { OnlineOrderSerialsPanel } from "@/components/OnlineOrderSerialsPanel";
@@ -964,9 +965,51 @@ export default function OnlineSalesPage() {
       try {
         const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
         const ws = wb.Sheets[wb.SheetNames[0]];
+        // Lazada's export understates its own size; read every filled column.
+        fixSheetRange(ws as any);
         const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
           .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
         if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        // Lazada's account statement export: one row per fee per unit, added
+        // up per Order Number. An order paid here already is updated only if
+        // the file holds its whole payout (its Item Price Credit) and the
+        // figure differs; one with only late fees in the file is not applied.
+        if (isLazadaStatement(sheetRows)) {
+          const { orders, shopCharges, notReleased, statementTotals } = parseLazadaStatement(sheetRows);
+          type PayRow = (typeof bulkPayRows)[number];
+          const parsedLazada: PayRow[] = orders.map((o): PayRow => {
+            const matches = payMatchPool.filter((s: any) => s.order_number === o.orderId);
+            const base = { order_id: o.orderId, amount_paid: o.amount, matched_ids: [] as string[], expected: 0, valid: false, duplicate: false };
+            if (matches.length === 0) {
+              return { ...base, missing: o.complete, error: o.complete ? "Not in the ERP — upload this order first" : `Not in the ERP — only late fees (${peso(o.amount)}) in this file` };
+            }
+            const matched = { ...base, matched_ids: matches.map((s: any) => s.id), expected: expectedForGroup(matches) };
+            const allPaid = matches.every((s: any) => s.payment_status === "paid");
+            if (!o.complete) {
+              return allPaid
+                ? { ...matched, duplicate: true, error: `Already paid — late fees of ${peso(o.amount)} in this file not applied` }
+                : { ...matched, error: "Only late fees in this file — export by order date to get the full payout" };
+            }
+            const returned = matches.find((s: any) => s.status === "returned" || s.status === "cancelled");
+            const orderStatus = returned?.status ?? (o.returned ? "returned" : undefined);
+            if (allPaid) {
+              const already = matches.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
+              if (Math.abs(already - o.amount) < 0.01) return { ...matched, duplicate: true, error: "Already paid — skipped" };
+              return { ...matched, valid: true, adjustment: true, loss: o.amount < 0, orderStatus };
+            }
+            return { ...matched, valid: true, loss: o.amount < 0, orderStatus };
+          });
+          parsedLazada.sort((a, b) => Number(!!b.missing) - Number(!!a.missing));
+          const shopTotal = shopCharges.reduce((sum, c) => sum + c.amount, 0);
+          setBulkPayNote([
+            `Lazada statement recognised — ${Object.keys(statementTotals).length} statements, rows added up per Order Number`,
+            shopCharges.length ? `${shopCharges.length} shop charges with no order (${peso(shopTotal)}) not applied to orders` : "",
+            notReleased ? `${notReleased} rows not yet released left out` : "",
+          ].filter(Boolean).join(" · "));
+          setBulkPayRows(parsedLazada);
+          return;
+        }
 
         // Shopee's balance transaction report, as downloaded. Only rows with
         // an Order ID are used; an order already paid here is left alone; one
