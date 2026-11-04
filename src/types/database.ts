@@ -383,6 +383,9 @@ export interface CashTransaction {
   transfer_group_id: string | null;
   fx_rate: number | null;
   source_invoice_id: string | null;
+  /** Set when this withdrawal paid a recurring bill, with the month ("YYYY-MM") it paid. */
+  recurring_expense_id?: string | null;
+  recurring_period?: string | null;
   created_by: string | null;
   created_by_email: string;
   updated_by: string | null;

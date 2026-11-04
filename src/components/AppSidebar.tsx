@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck, BadgePercent } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck, BadgePercent, Coins } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -79,6 +79,7 @@ const navGroups: NavGroup[] = [
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
       // Staff can record and edit payables; only admins can settle one.
       { title: "Payables", url: "/payables", icon: Wallet },
+      { title: "Expenses", url: "/expenses", icon: Coins, adminOnly: true },
       { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
     ],
   },

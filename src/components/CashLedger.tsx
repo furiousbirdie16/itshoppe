@@ -33,6 +33,7 @@ import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } 
 import { useSort } from "@/hooks/use-sort";
 import ExportButton from "@/components/ExportButton";
 import { SortableHeader } from "@/components/SortableHeader";
+import { CategorySelect } from "@/components/CategorySelect";
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const emptyForm = () => ({
@@ -881,7 +882,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Category</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9" placeholder="e.g. Supplies, Fuel" />
+                <CategorySelect value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

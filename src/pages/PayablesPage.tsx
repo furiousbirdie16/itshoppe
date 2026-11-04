@@ -15,7 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { FinanceMobileCard } from "@/components/FinanceMobileCard";
-import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle , Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Wallet, CalendarClock, AlertTriangle , Upload, CircleCheck } from "lucide-react";
+import { CategorySelect } from "@/components/CategorySelect";
 import { toast } from "sonner";
 import { format, parse, isValid, differenceInCalendarDays } from "date-fns";
 import { peso } from "@/lib/currency";
@@ -161,6 +162,37 @@ export default function PayablesPage() {
     mutationFn: deletePayable,
     onSuccess: () => { invalidate(); toast.success("Payable deleted"); },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  // ---- Mark as paid, without opening the whole edit form ----
+  const [paying, setPaying] = useState<Payable | null>(null);
+  const [payForm, setPayForm] = useState({ account_id: "", amount: "", date: "", category: "" });
+  const openPay = (p: Payable) => {
+    setPaying(p);
+    setPayForm({
+      account_id: p.cash_account_id || accounts.find((a) => a.account_type === "bank")?.id || NO_ACCOUNT,
+      amount: String(p.amount ?? ""),
+      date: format(new Date(), "yyyy-MM-dd"),
+      category: p.category || "",
+    });
+  };
+  const payMut = useMutation({
+    mutationFn: async () => {
+      if (!paying) return;
+      const amount = Number(payForm.amount);
+      if (!amount || amount <= 0) throw new Error("Enter the amount paid");
+      if (!payForm.date) throw new Error("Pick the date it was paid");
+      const accountId = payForm.account_id === NO_ACCOUNT ? null : payForm.account_id;
+      await updatePayable(paying.id, {
+        status: "paid",
+        amount,
+        amount_paid: amount,
+        cash_account_id: accountId,
+        category: payForm.category.trim(),
+      }, { paidOn: payForm.date });
+    },
+    onSuccess: () => { invalidate(); toast.success(`${paying?.payee || "Payable"} marked paid`); setPaying(null); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const openCreate = () => { setEditing(null); setForm({ ...emptyForm(), is_check: tab === "checks" }); setOpen(true); };
@@ -383,7 +415,7 @@ export default function PayablesPage() {
             )}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Category</Label>
-              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9" placeholder="e.g. Rent, Utilities" />
+              <CategorySelect value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
@@ -436,6 +468,11 @@ export default function PayablesPage() {
               meta={<span>Due {formatDate(p.due_date)}</span>}
               actions={
                 <>
+                  {isAdmin && !SETTLED.includes(p.status) && (
+                    <Button variant="ghost" size="icon" onClick={() => openPay(p)} className="h-8 w-8 rounded-md" aria-label="Mark as paid">
+                      <CircleCheck className="h-3.5 w-3.5 text-success" />
+                    </Button>
+                  )}
                   {canEdit(p) && (
                     <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-8 w-8 rounded-md" aria-label="Edit">
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
@@ -463,7 +500,7 @@ export default function PayablesPage() {
               <TableHead className="text-xs text-right">Outstanding</TableHead>
               <SortableHeader sortKey="due_date" label="Due Date" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="status" label="Status" sort={sort} onToggle={toggle} />
-              <TableHead className="text-xs text-right w-24">Actions</TableHead>
+              <TableHead className="text-xs text-right w-28">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -486,6 +523,9 @@ export default function PayablesPage() {
                 <TableCell><Badge variant={STATUS_VARIANT[p.status]} className="text-xs font-normal">{STATUS_LABELS[p.status]}</Badge></TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
+                    {isAdmin && !SETTLED.includes(p.status) && (
+                      <Button variant="ghost" size="icon" onClick={() => openPay(p)} className="h-7 w-7 rounded-md" title="Mark as paid"><CircleCheck className="h-3.5 w-3.5 text-success" /></Button>
+                    )}
                     {canEdit(p) && (
                       <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
@@ -499,6 +539,81 @@ export default function PayablesPage() {
           </TableBody>
         </Table>
       </div>
+      <Dialog open={!!paying} onOpenChange={(o) => { if (!o) setPaying(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Mark {paying?.payee} as paid</DialogTitle>
+          </DialogHeader>
+          {paying && (() => {
+            const amount = Number(payForm.amount) || 0;
+            const changed = amount > 0 && amount !== Number(paying.amount);
+            const account = accounts.find((a) => a.id === payForm.account_id);
+            return (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                  Amount due: <span className="font-semibold tabular-nums">{peso(Number(paying.amount))}</span>
+                  {paying.is_check && (
+                    <span className="block text-[11px] text-muted-foreground">
+                      Check {paying.check_number || "—"}{paying.check_bank ? ` · ${paying.check_bank}` : ""}
+                      {paying.due_date ? ` · dated ${formatDate(paying.due_date)}` : ""}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Paid from</Label>
+                  <Select value={payForm.account_id} onValueChange={(v) => setPayForm({ ...payForm, account_id: v })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.account_type === "owner" ? "Owner (paid personally)" : a.name}{a.account_type === "petty_cash" ? " (cash)" : ""}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={NO_ACCOUNT}>No account — don't touch balances</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Amount paid</Label>
+                    <Input type="number" min={0} step="0.01" inputMode="decimal" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Date paid</Label>
+                    <DateField value={payForm.date} onChange={(v) => setPayForm({ ...payForm, date: v })} />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Category</Label>
+                  <CategorySelect value={payForm.category} onChange={(v) => setPayForm({ ...payForm, category: v })} />
+                </div>
+
+                <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground space-y-1">
+                  {payForm.account_id === NO_ACCOUNT || !account ? (
+                    <p>No account balance changes.</p>
+                  ) : (
+                    <p>
+                      Withdraws <span className="font-medium text-foreground">{peso(amount)}</span> from{" "}
+                      <span className="font-medium text-foreground">{account.account_type === "owner" ? "the owner" : account.name}</span>{" "}
+                      on {formatDate(payForm.date)}.
+                    </p>
+                  )}
+                  {changed && <p>The payable's amount becomes {peso(amount)}.</p>}
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaying(null)}>Cancel</Button>
+            <Button onClick={() => payMut.mutate()} disabled={payMut.isPending}>
+              {payMut.isPending ? "Saving…" : "Mark as paid"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PayablesBulkUpload open={bulkOpen} onOpenChange={setBulkOpen} accounts={accounts} payables={payables} />
     </div>
   );
