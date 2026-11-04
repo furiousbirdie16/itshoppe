@@ -17,6 +17,8 @@ export interface BulkField {
   type: BulkFieldType;
   options?: { value: string; label: string }[];
   placeholder?: string;
+  /** For a text field: values offered as you type, e.g. the categories in use. */
+  suggestions?: string[];
   /** Optional transform from input string -> value sent to update fn */
   transform?: (raw: string) => unknown;
 }
@@ -117,7 +119,14 @@ export function BulkEditDialog({ selectedIds, fields, updateOne, onSuccess, enti
                 {enabled[f.key] && (
                   <div>
                     {f.type === "text" && (
-                      <Input value={values[f.key] ?? ""} onChange={e => setVal(f.key, e.target.value)} placeholder={f.placeholder} className="h-9" />
+                      <>
+                        <Input value={values[f.key] ?? ""} onChange={e => setVal(f.key, e.target.value)} placeholder={f.placeholder} className="h-9" list={f.suggestions?.length ? `bulk-${f.key}-list` : undefined} />
+                        {!!f.suggestions?.length && (
+                          <datalist id={`bulk-${f.key}-list`}>
+                            {f.suggestions.map(o => <option key={o} value={o} />)}
+                          </datalist>
+                        )}
+                      </>
                     )}
                     {f.type === "number" && (
                       <Input type="number" value={values[f.key] ?? ""} onChange={e => setVal(f.key, e.target.value)} placeholder={f.placeholder} className="h-9" />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck, BadgePercent } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,6 +64,7 @@ const navGroups: NavGroup[] = [
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Online Sales", url: "/online-sales", icon: Store },
       { title: "Warranty Lookup", url: "/warranty", icon: ShieldCheck },
+      { title: "Commission", url: "/commission", icon: BadgePercent, adminOnly: true },
     ],
   },
   {

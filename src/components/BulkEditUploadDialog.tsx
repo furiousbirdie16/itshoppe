@@ -21,8 +21,8 @@ interface BulkEditUploadDialogProps {
   onSuccess: () => void;
 }
 
-type ItemField = "name" | "sku" | "description" | "warehouse_quantity" | "store_quantity" | "cost_price" | "cost_price_rmb" | "selling_price" | "low_stock_threshold" | "source";
-type VarField = "name" | "sku" | "type" | "factor" | "selling_price" | "cost_price";
+type ItemField = "name" | "sku" | "description" | "category" | "warehouse_quantity" | "store_quantity" | "cost_price" | "cost_price_rmb" | "selling_price" | "dealer_price" | "low_stock_threshold" | "source";
+type VarField = "name" | "sku" | "type" | "factor" | "selling_price" | "cost_price" | "dealer_price";
 
 interface DiffRow {
   kind: "item" | "variation";
@@ -41,6 +41,8 @@ const ITEM_HEADER_MAP: Record<string, ItemField> = {
   "name": "name", "item": "name", "item name": "name", "product": "name", "product name": "name",
   "sku": "sku", "code": "sku", "barcode": "sku",
   "description": "description", "desc": "description",
+  "category": "category",
+  "dp": "dealer_price", "dealer price": "dealer_price", "dealer_price": "dealer_price",
   "warehouse": "warehouse_quantity", "warehouse qty": "warehouse_quantity", "warehouse quantity": "warehouse_quantity", "wh qty": "warehouse_quantity", "wh": "warehouse_quantity", "warehouse_quantity": "warehouse_quantity",
   "store": "store_quantity", "store qty": "store_quantity", "store quantity": "store_quantity", "shop qty": "store_quantity", "store_quantity": "store_quantity",
   "cost": "cost_price", "cost price": "cost_price", "cost_price": "cost_price", "buying": "cost_price",
@@ -57,6 +59,7 @@ const VAR_HEADER_MAP: Record<string, VarField> = {
   "variation type": "type", "type": "type",
   "factor": "factor", "pieces per pack": "factor", "meters per cut": "factor",
   "variation selling price": "selling_price", "selling price": "selling_price", "price": "selling_price",
+  "variation dp": "dealer_price", "variation dealer price": "dealer_price", "dp": "dealer_price", "dealer price": "dealer_price",
   "variation cost price": "cost_price", "variation cost": "cost_price", "cost price": "cost_price", "cost": "cost_price", "cost_price": "cost_price",
 };
 
@@ -101,12 +104,14 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         "SKU": i.sku,
         "Name": i.name,
         "Description": i.description || "",
+        "Category": i.category || "",
         "Warehouse Qty": (i as any).warehouse_quantity ?? 0,
         "Store Qty": (i as any).store_quantity ?? 0,
         "Total Qty": i.quantity ?? 0,
         ...(showCost ? { "Cost Price": Number(i.cost_price) } : { "Cost Price": "" }),
         ...(isAdmin ? { "Cost RMB": Number((i as any).cost_price_rmb ?? 0) } : {}),
         "Selling Price": Number(i.selling_price),
+        ...(isAdmin ? { "DP": i.dealer_price == null ? "" : Number(i.dealer_price) } : {}),
         ...(isAdmin ? { "Threshold": i.low_stock_threshold } : {}),
         "Source": (i as any).source || "local",
       };
@@ -125,6 +130,8 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
         "Factor": Number(v.factor),
         "Variation Selling Price": Number(v.selling_price),
         ...(isAdmin ? { "Variation Cost Price": v.cost_price === null || v.cost_price === undefined ? "" : Number(v.cost_price) } : {}),
+        // Blank = worked out from the item's DP.
+        ...(isAdmin ? { "Variation DP": v.dealer_price == null ? "" : Number(v.dealer_price) } : {}),
         "Parent Warehouse Qty": (parent as any)?.warehouse_quantity ?? 0,
         "Parent Store Qty": (parent as any)?.store_quantity ?? 0,
         "Total Available (parent)": parent?.quantity ?? 0,
@@ -194,6 +201,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
 
                 for (const [col, field] of Object.entries(colToField)) {
                   if (!isAdmin) {
+                    if (field === "dealer_price") continue;
                     if (field === "low_stock_threshold") continue;
                     if (field === "source") continue;
                     if (field === "cost_price_rmb") continue;
@@ -202,7 +210,17 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
                   const raw = row[col];
                   const oldVal = (existing as any)[field];
 
-                  if (["warehouse_quantity", "store_quantity", "cost_price", "cost_price_rmb", "selling_price", "low_stock_threshold"].includes(field)) {
+                  if (field === "dealer_price") {
+                    // Blank clears the DP, the way it reads in the sheet.
+                    const isBlank = String(raw ?? "").trim() === "";
+                    const newVal = isBlank ? null : numOrNull(raw);
+                    if (!isBlank && (newVal === null || newVal < 0)) continue;
+                    const oldNum = oldVal === null || oldVal === undefined ? null : Number(oldVal);
+                    if (newVal !== oldNum) {
+                      changes.push({ field, from: oldVal, to: newVal });
+                      patch[field] = newVal;
+                    }
+                  } else if (["warehouse_quantity", "store_quantity", "cost_price", "cost_price_rmb", "selling_price", "low_stock_threshold"].includes(field)) {
                     const newNum = numOrNull(raw);
                     if (newNum === null) continue;
                     if (Number(newNum) !== Number(oldVal)) {
@@ -298,7 +316,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
               const patch: Record<string, unknown> = {};
 
               for (const [col, field] of Object.entries(colToField)) {
-                if (!isAdmin && field === "cost_price") continue;
+                if (!isAdmin && (field === "cost_price" || field === "dealer_price")) continue;
                 const raw = row[col];
                 const oldVal = (existing as any)[field];
                 if (field === "factor" || field === "selling_price") {
@@ -318,6 +336,15 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
                     patch[field] = newVal;
                     // Blank = auto (proportional from parent); a value = manual override.
                     patch["cost_is_manual"] = newVal !== null;
+                  }
+                } else if (field === "dealer_price") {
+                  const isBlank = String(raw ?? "").trim() === "";
+                  const newVal = isBlank ? null : numOrNull(raw);
+                  if (!isBlank && (newVal === null || newVal < 0)) continue;
+                  const oldNum = oldVal === null || oldVal === undefined ? null : Number(oldVal);
+                  if (newVal !== oldNum) {
+                    changes.push({ field, from: oldVal, to: newVal });
+                    patch[field] = newVal;
                   }
                 } else if (field === "type") {
                   const v = normalize(raw);
@@ -434,7 +461,7 @@ export default function BulkEditUploadDialog({ open, onOpenChange, items, isAdmi
 
   const fmtVal = (field: string, v: unknown) => {
     if (v === null || v === undefined || v === "") return "—";
-    if (field === "cost_price" || field === "selling_price") return peso(Number(v));
+    if (field === "cost_price" || field === "selling_price" || field === "dealer_price") return peso(Number(v));
     if (field === "cost_price_rmb") return `¥${Number(v)}`;
     return String(v);
   };

@@ -32,6 +32,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
 import BusinessInsightsPage from "@/pages/BusinessInsightsPage";
+import CommissionPage from "@/pages/CommissionPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -90,6 +91,7 @@ function ProtectedRoutes() {
           <Route path="/payables" element={<PayablesPage />} />
           <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
+          <Route path="/commission" element={<AdminRoute><CommissionPage /></AdminRoute>} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
           <Route path="/business-insights" element={<BusinessInsightsPage />} />

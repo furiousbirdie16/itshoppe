@@ -6,6 +6,7 @@ import { SkuBundlesManager } from "@/components/SkuBundlesManager";
 import { getMarginTarget } from "@/lib/landed-cost-api";
 import { marginOf } from "@/lib/landed-cost";
 import { costFromRows } from "@/lib/branch-cost";
+import { dp2Of } from "@/lib/commission";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -57,13 +58,14 @@ const INVENTORY_COLUMNS: ColumnDef[] = [
   { key: "store_quantity", label: "Store", defaultVisible: false },
   { key: "cost_price", label: "Cost", defaultVisible: true },
   { key: "selling_price", label: "Price", defaultVisible: true },
+  { key: "dealer_price", label: "DP", defaultVisible: false },
   { key: "low_stock_threshold", label: "Alert at", defaultVisible: true },
   { key: "source", label: "Source", defaultVisible: false },
   { key: "branch", label: "Branch", defaultVisible: false },
 ];
 
 /** Columns that hold a short value: kept as narrow as their contents. */
-const NARROW_COLUMNS = new Set(["quantity", "reserved_quantity", "incoming_quantity", "warehouse_quantity", "store_quantity", "cost_price", "selling_price", "low_stock_threshold", "source", "branch"]);
+const NARROW_COLUMNS = new Set(["quantity", "reserved_quantity", "incoming_quantity", "warehouse_quantity", "store_quantity", "cost_price", "selling_price", "dealer_price", "low_stock_threshold", "source", "branch"]);
 
 type StockStatusFilter = "all" | "in_stock" | "low_stock" | "out_of_stock" | "overstocked";
 type QtyOp = "any" | "eq" | "gt" | "lt" | "range";
@@ -143,7 +145,7 @@ export default function InventoryPage() {
   const [form, setForm] = useState({
     name: "", sku: "", description: "",
     warehouse_quantity: "0", store_quantity: "0",
-    cost_price: "0", cost_price_rmb: "0", selling_price: "0",
+    cost_price: "0", cost_price_rmb: "0", selling_price: "0", dealer_price: "",
     low_stock_threshold: "10", source: "local" as "local" | "import",
     category: "", brand: "", barcode: "", supplier_sku: "",
     track_serials: false, warranty_months: "0",
@@ -452,7 +454,7 @@ export default function InventoryPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", low_stock_threshold: "10", source: "local", category: "", brand: "", barcode: "", supplier_sku: "", track_serials: false, warranty_months: "0", status: "active" });
+    setForm({ name: "", sku: "", description: "", warehouse_quantity: "0", store_quantity: "0", cost_price: "0", cost_price_rmb: "0", selling_price: "0", dealer_price: "", low_stock_threshold: "10", source: "local", category: "", brand: "", barcode: "", supplier_sku: "", track_serials: false, warranty_months: "0", status: "active" });
     setOpen(true);
   };
   const openEdit = (item: Item) => {
@@ -465,6 +467,7 @@ export default function InventoryPage() {
       cost_price: String(item.cost_price),
       cost_price_rmb: String((item as any).cost_price_rmb ?? 0),
       selling_price: String(item.selling_price),
+      dealer_price: item.dealer_price == null ? "" : String(item.dealer_price),
       low_stock_threshold: String(item.low_stock_threshold),
       source: ((item.source as "local" | "import") || "local"),
       category: item.category || "",
@@ -517,7 +520,12 @@ export default function InventoryPage() {
       track_serials: form.track_serials,
       warranty_months: parseInt(form.warranty_months) || 0,
     };
-    if (isAdmin) base.status = form.status;
+    if (isAdmin) {
+      base.status = form.status;
+      // Blank = no DP. Admins only: the DP decides an agent's commission.
+      const dp = form.dealer_price.trim();
+      base.dealer_price = dp === "" ? null : Math.max(0, parseFloat(dp) || 0);
+    }
     if (!editing) {
       base.low_stock_threshold = parseInt(form.low_stock_threshold);
       base.source = isAdmin ? form.source : "local";
@@ -625,6 +633,7 @@ export default function InventoryPage() {
     store_quantity: (r: any) => Number(r.store_quantity ?? 0),
     cost_price: (r) => Number(r.cost_price),
     selling_price: (r) => Number(r.selling_price),
+    dealer_price: (r) => (r.dealer_price == null ? -1 : Number(r.dealer_price)),
     low_stock_threshold: (r) => Number(r.low_stock_threshold ?? 0),
   });
 
@@ -1010,9 +1019,18 @@ export default function InventoryPage() {
             </FormSection>
 
             <FormSection title="Pricing">
-              <div className={`grid gap-3 ${isAdmin ? "grid-cols-1 sm:grid-cols-3" : canEditCost ? "grid-cols-2" : "grid-cols-1"}`}>
+              <div className={`grid gap-3 ${isAdmin ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
                 <Field label="Selling price (₱)">
                   <Input type="number" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} className="h-9" />
+                </Field>
+                {/* Staff see it but cannot change it: it decides commission. */}
+                <Field
+                  label="Dealer price, DP (₱)"
+                  hint={Number(form.dealer_price) > 0
+                    ? `DP2 ${peso(dp2Of(Number(form.dealer_price)))}. Sold below DP is BD1, below DP2 is BD2.`
+                    : isAdmin ? "Leave blank if this item has no dealer price." : undefined}
+                >
+                  <Input type="number" min={0} value={form.dealer_price} onChange={e => setForm({ ...form, dealer_price: e.target.value })} className="h-9" placeholder="No DP" disabled={!isAdmin} />
                 </Field>
                 {canEditCost && (
                   <Field
@@ -1137,7 +1155,7 @@ export default function InventoryPage() {
                   { key: "name", label: "Name", type: "text" },
                   { key: "sku", label: "SKU", type: "text" },
                   { key: "description", label: "Description", type: "textarea" },
-                  { key: "category", label: "Category", type: "text" },
+                  { key: "category", label: "Category", type: "text", suggestions: categoryOptions },
                   { key: "brand", label: "Brand", type: "text" },
                   { key: "barcode", label: "Barcode", type: "text" },
                   { key: "supplier_sku", label: "Supplier SKU", type: "text" },
@@ -1162,6 +1180,7 @@ export default function InventoryPage() {
                   ] : []),
                   { key: "selling_price", label: "Selling Price", type: "number", transform: (v) => parseFloat(v) || 0 },
                   ...(isAdmin ? [
+                    { key: "dealer_price", label: "Dealer Price (DP) — blank clears it", type: "number", transform: (v) => (v.trim() === "" ? null : Math.max(0, parseFloat(v) || 0)) },
                     { key: "low_stock_threshold", label: "Low Stock Threshold", type: "number", transform: (v) => parseInt(v) || 0 },
                   ] : []),
                 ]) as BulkField[]}
@@ -1419,6 +1438,16 @@ export default function InventoryPage() {
                         </TableCell>
                       );
                     }
+                    case "dealer_price":
+                      return (
+                        <TableCell
+                          key="c-dp"
+                          className="whitespace-nowrap text-right text-sm tabular-nums"
+                          title={item.dealer_price != null ? `DP2 ${peso(dp2Of(Number(item.dealer_price)))}` : undefined}
+                        >
+                          {item.dealer_price != null ? peso(Number(item.dealer_price)) : <span className="text-muted-foreground/60">—</span>}
+                        </TableCell>
+                      );
                     case "low_stock_threshold":
                       return (
                         <TableCell key="c-th" className="text-right text-sm tabular-nums">

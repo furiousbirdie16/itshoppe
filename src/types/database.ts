@@ -10,6 +10,8 @@ export interface Item {
   cost_price: number;
   cost_price_rmb?: number;
   selling_price: number;
+  /** Dealer price. Sold below it counts as BD1 for commission; below 95% of it, BD2. */
+  dealer_price?: number | null;
   low_stock_threshold: number;
   source: 'local' | 'import';
   base_unit: string;
@@ -41,6 +43,8 @@ export interface ItemVariation {
   cost_price: number | null;
   /** True when a user typed an explicit cost that must not be auto-recalculated. */
   cost_is_manual?: boolean;
+  /** Own dealer price. Null = parent's DP × factor / units_per_stock. */
+  dealer_price?: number | null;
   created_at: string;
   updated_at: string;
   items?: Item;

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,7 @@ import { PaymentVarianceNote } from "@/components/PaymentVarianceNote";
 import { PaymentVarianceChip } from "@/components/PaymentVarianceChip";
 import { paymentReferenceUrls } from "@/lib/payment-references";
 import { docNo } from "@/lib/doc-number";
+import { dealerPriceOf, dp2Of, priceBand } from "@/lib/commission";
 import { searchMatches } from "@/lib/search";
 
 interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
@@ -121,6 +122,9 @@ export default function InvoicesPage() {
   // Names-only list, so staff (who cannot read bank accounts) still get them as
   // payment options.
   const { data: cashAccounts = [] } = useQuery({ queryKey: ["cash-account-options"], queryFn: getCashAccountOptions });
+  // Shared with the item picker's own query, so this costs no extra read. Only
+  // for the below-DP warning on a variation's line.
+  const { data: allVariations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations(), staleTime: 30_000 });
   // Payment options come from the Cash and Bank pages so the three stay in step.
   const cashPaymentOptions = cashAccounts.filter((a) => a.account_type === "petty_cash");
   const bankPaymentOptions = cashAccounts.filter((a) => a.account_type === "bank");
@@ -671,7 +675,14 @@ export default function InvoicesPage() {
     method === "Cash" || cashPaymentOptions.some((a) => a.name === method);
 
   const openPayDialog = (id: string) => {
-    setPayMethod(cashPaymentOptions[0]?.name || "Cash");
+    // The agent's own petty cash first: their cash sales go to the drawer they
+    // answer for, not whichever petty cash happens to be listed first.
+    const agentName = ((invoices as any[]).find((i) => i.id === id)?.sales_agent || "").trim().toLowerCase();
+    const agentCash = agentName
+      ? (salesAgents as any[]).find((a) => (a.name || "").trim().toLowerCase() === agentName)?.petty_cash_account_id
+      : null;
+    const own = agentCash ? cashPaymentOptions.find((a) => a.id === agentCash) : null;
+    setPayMethod(own?.name || cashPaymentOptions[0]?.name || "Cash");
     setPayReference("");
     setPayRefFiles([]);
     const total = Number((invoices as any[]).find((i) => i.id === id)?.total_amount || 0);
@@ -1336,6 +1347,19 @@ export default function InvoicesPage() {
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {selectedItem && Number(line.unit_price) > 0 && (() => {
+                        const variation = line.variation_id ? (allVariations as any[]).find((v) => v.id === line.variation_id) : null;
+                        const dp = dealerPriceOf(selectedItem, variation);
+                        const band = priceBand(Number(line.unit_price), dp);
+                        if (!dp || band === "N" || !band) return null;
+                        return (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">
+                            ⚠ {band === "BD2"
+                              ? `Below DP2 ${peso(dp2Of(dp))} (DP ${peso(dp)})`
+                              : `Below DP ${peso(dp)}`}
+                          </p>
+                        );
+                      })()}
                       {(line.item_id || line.item_name) && (line.unit_price === "" || Number(line.unit_price) <= 0) && (
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
                       )}

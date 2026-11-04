@@ -13,6 +13,8 @@ import { getItemVariations, createItemVariation, updateItemVariation, deleteItem
 import type { Item, ItemVariation } from "@/types/database";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { dealerPriceOf } from "@/lib/commission";
 
 interface Props {
   /** Which branch's open roll is being edited; null when viewing all. */
@@ -24,6 +26,8 @@ interface Props {
 
 export function VariationsManager({ item, open, onOpenChange, branchId }: Props) {
   const qc = useQueryClient();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const { data: variations = [] } = useQuery({
     queryKey: ["item_variations", item.id],
     queryFn: () => getItemVariations(item.id),
@@ -31,7 +35,7 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
   });
 
   const [editing, setEditing] = useState<ItemVariation | null>(null);
-  const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0", cost_price: "" });
+  const [form, setForm] = useState({ name: "", sku: "", type: "pack" as "pack" | "cut", factor: "1", selling_price: "0", cost_price: "", dealer_price: "" });
   const [showForm, setShowForm] = useState(false);
 
   /** Proportional cost from parent: parent.cost_price × (factor / units_per_stock). */
@@ -82,7 +86,7 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
     onError: (e: any) => toast.error(e.message),
   });
 
-  const resetForm = () => { setForm({ name: "", sku: "", type: "pack", factor: "1", selling_price: "0", cost_price: "" }); setEditing(null); setShowForm(false); };
+  const resetForm = () => { setForm({ name: "", sku: "", type: "pack", factor: "1", selling_price: "0", cost_price: "", dealer_price: "" }); setEditing(null); setShowForm(false); };
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -97,6 +101,8 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
         // Blank cost = auto (proportional from parent). A typed value = manual override.
         cost_price: trimmedCost === "" ? null : parseFloat(trimmedCost),
         cost_is_manual: trimmedCost !== "",
+        // Blank = the item's DP scaled by the factor. Admins only: it decides commission.
+        ...(isAdmin ? { dealer_price: form.dealer_price.trim() === "" ? null : Math.max(0, parseFloat(form.dealer_price) || 0) } : {}),
       };
       if (editing) await updateItemVariation(editing.id, payload as any);
       else await createItemVariation(payload as any);
@@ -139,7 +145,7 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
 
   const startEdit = (v: ItemVariation) => {
     setEditing(v);
-    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_is_manual && v.cost_price != null ? String(v.cost_price) : "" });
+    setForm({ name: v.name, sku: v.sku || "", type: v.type, factor: String(v.factor), selling_price: String(v.selling_price), cost_price: v.cost_is_manual && v.cost_price != null ? String(v.cost_price) : "", dealer_price: v.dealer_price == null ? "" : String(v.dealer_price) });
     setShowForm(true);
   };
 
@@ -266,6 +272,18 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
                   </p>
                 </div>
               </div>
+              {(() => {
+                const autoDp = dealerPriceOf({ dealer_price: item.dealer_price, units_per_stock: item.units_per_stock }, { factor: parseFloat(form.factor) || 1 });
+                return (
+                  <div className="space-y-1 sm:w-1/2">
+                    <Label className="text-[10px] uppercase">Dealer Price (DP)</Label>
+                    <Input type="number" min={0} value={form.dealer_price} onChange={e => setForm({ ...form, dealer_price: e.target.value })} placeholder={autoDp != null ? `Auto: ${autoDp.toFixed(2)}` : "No DP"} className="h-8 text-sm" disabled={!isAdmin} />
+                    <p className="text-[10px] text-muted-foreground">
+                      {autoDp != null ? `Blank = the item's DP ${peso(Number(item.dealer_price))} × ${form.factor || 0} / ${item.units_per_stock ?? 1}.` : "The item has no DP, so this variation has none unless you type one."}
+                    </p>
+                  </div>
+                );
+              })()}
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={resetForm} className="h-7 text-xs">Cancel</Button>
                 <Button size="sm" onClick={() => saveMut.mutate()} disabled={!form.name.trim() || saveMut.isPending} className="h-7 text-xs">
@@ -284,12 +302,13 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
                   <TableHead className="text-xs text-right">Factor</TableHead>
                   <TableHead className="text-xs text-right">Price</TableHead>
                   <TableHead className="text-xs text-right">Cost</TableHead>
+                  <TableHead className="text-xs text-right">DP</TableHead>
                   <TableHead className="text-xs text-right w-20"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {variations.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">No variations yet</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-4">No variations yet</TableCell></TableRow>
                 ) : variations.map(v => {
                   const hasCost = v.cost_price != null;
                   const margin = hasCost && Number(v.selling_price) > 0
@@ -321,6 +340,18 @@ export function VariationsManager({ item, open, onOpenChange, branchId }: Props)
                       ) : (
                         <span className="text-amber-600 dark:text-amber-400 text-xs">— set parent cost</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {(() => {
+                        const dp = dealerPriceOf(item, v);
+                        if (dp == null) return <span className="text-muted-foreground/60">—</span>;
+                        return (
+                          <div>
+                            <div>{peso(dp)}</div>
+                            <div className="text-[10px] text-muted-foreground">{v.dealer_price != null ? "own" : "auto"}</div>
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-0.5">
