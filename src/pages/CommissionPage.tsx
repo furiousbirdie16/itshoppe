@@ -12,12 +12,13 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
-import { CODE_LABELS, PROBLEM_LABELS, monthKey, round2, summarizeByCode, type CommissionCode } from "@/lib/commission";
+import { CODE_LABELS, PROBLEM_LABELS, agentMonthStats, monthKey, productBreakdown, round2, summarizeByCode, type CommissionCode } from "@/lib/commission";
 import {
   addCommissionAdjustment, closeCommissionMonth, deleteCommissionAdjustment, getCommissionAdjustments,
-  getCommissionAgents, getCommissionClosing, getCommissionLines, getUnassignedInvoices, reopenCommissionMonth,
+  getCommissionAgents, getCommissionClosing, getMyCommissionAgent, getCommissionLines, getUnassignedInvoices, reopenCommissionMonth,
   type CommissionLine,
 } from "@/lib/commission-api";
 
@@ -52,12 +53,23 @@ export default function CommissionPage() {
   const [confirm, setConfirm] = useState<"close" | "reopen" | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const { data: agents = [] } = useQuery({ queryKey: ["commission-agents"], queryFn: getCommissionAgents });
+  const { role, user } = useAuth();
+  const isAdmin = role === "admin";
+
+  // An admin picks any agent who earns commission. Anyone else sees only the
+  // agent their login is tied to (the database refuses anyone else's).
+  const { data: agents = [] } = useQuery({ queryKey: ["commission-agents"], queryFn: getCommissionAgents, enabled: isAdmin });
+  const { data: me, isPending: mePending } = useQuery({
+    queryKey: ["my-commission-agent", user?.id],
+    queryFn: () => getMyCommissionAgent(user!.id),
+    enabled: !isAdmin && !!user,
+  });
   const earners = useMemo(() => agents.filter((a) => a.earns_commission), [agents]);
   useEffect(() => {
-    if (!agentId && earners.length) setAgentId(earners[0].id);
-  }, [earners, agentId]);
-  const agent = agents.find((a) => a.id === agentId);
+    if (isAdmin && !agentId && earners.length) setAgentId(earners[0].id);
+    if (!isAdmin && me && agentId !== me.id) setAgentId(me.id);
+  }, [isAdmin, earners, agentId, me]);
+  const agent = isAdmin ? agents.find((a) => a.id === agentId) : me ?? undefined;
 
   const enabled = !!agentId;
   const { data: liveLines = [], isPending: linesPending, error: linesError } = useQuery({
@@ -78,6 +90,7 @@ export default function CommissionPage() {
   const { data: unassigned = [] } = useQuery({
     queryKey: ["commission-unassigned", month],
     queryFn: () => getUnassignedInvoices(month),
+    enabled: isAdmin,
   });
 
   // A closed month shows what was saved, not today's figures.
@@ -87,7 +100,9 @@ export default function CommissionPage() {
   const adjTotal = round2(adjLines.reduce((t, a) => t + a.amount, 0));
   const total = round2(summary.commission + adjTotal);
   const problems = useMemo(() => groupProblems(lines), [lines]);
-  const invoiceCount = useMemo(() => new Set(lines.map((l) => l.invoice_id)).size, [lines]);
+  const stats = useMemo(() => agentMonthStats(lines), [lines]);
+  const invoiceCount = stats.orders;
+  const products = useMemo(() => productBreakdown(lines), [lines]);
 
   // Closed, but the invoices no longer say the same: worth knowing before paying.
   const liveSummary = useMemo(() => summarizeByCode(liveLines), [liveLines]);
@@ -142,13 +157,16 @@ export default function CommissionPage() {
   };
 
   const problemCount = [...problems.values()].reduce((t, l) => t + l.length, 0) + unassigned.length;
+  const avgOrder = stats.orders ? stats.sales / stats.orders : 0;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Commission</h1>
-          <p className="text-sm text-muted-foreground mt-1">Worked out from the invoices each agent was paid for in the month.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isAdmin ? "Worked out from the invoices each agent was paid for in the month." : "Your sales and commission, from the invoices paid in the month."}
+          </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
@@ -160,7 +178,7 @@ export default function CommissionPage() {
               className="h-9 w-40"
             />
           </div>
-          <div className="space-y-1">
+          {isAdmin && <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Agent</Label>
             <Select value={agentId} onValueChange={(v) => { setAgentId(v); setOpenCode(null); }}>
               <SelectTrigger className="h-9 w-44"><SelectValue placeholder="Pick an agent" /></SelectTrigger>
@@ -168,11 +186,15 @@ export default function CommissionPage() {
                 {earners.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
+          </div>}
         </div>
       </div>
 
-      {earners.length === 0 ? (
+      {!isAdmin && !mePending && !me ? (
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+          Your login is not tied to a sales agent yet. Ask an admin to set it in Settings, under Agent commission.
+        </div>
+      ) : isAdmin && earners.length === 0 ? (
         <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
           No agent earns commission yet. Turn it on for them in Settings, under Agent commission.
         </div>
@@ -191,13 +213,13 @@ export default function CommissionPage() {
               {closing ? (
                 <span>
                   <span className="font-medium">Closed</span> on {new Date(closing.closed_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}
-                  {closing.closed_by_email ? ` by ${closing.closed_by_email}` : ""}. These are the saved figures.
+                  {isAdmin && closing.closed_by_email ? ` by ${closing.closed_by_email}` : ""}. These are the saved figures.
                 </span>
               ) : (
                 <span><span className="font-medium">Open.</span> Changes as invoices are paid, edited or reverted.</span>
               )}
             </div>
-            {closing ? (
+            {!isAdmin ? null : closing ? (
               <Button variant="outline" size="sm" className="h-8" onClick={() => setConfirm("reopen")}>Reopen month</Button>
             ) : (
               <Button size="sm" className="h-8" onClick={() => setConfirm("close")} disabled={linesPending || !!linesError}>
@@ -206,7 +228,7 @@ export default function CommissionPage() {
             )}
           </div>
 
-          {drifted && (
+          {isAdmin && drifted && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
@@ -216,7 +238,23 @@ export default function CommissionPage() {
             </div>
           )}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+          {/* The month at a glance */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Customers", value: String(stats.customers), note: stats.walkInOrders ? `+ ${stats.walkInOrders} walk-in order${stats.walkInOrders === 1 ? "" : "s"}` : undefined },
+              { label: "Orders", value: String(stats.orders), note: "Paid invoices" },
+              { label: "Sales", value: peso(stats.sales), note: stats.orders ? `${peso(avgOrder)} per order` : undefined },
+              { label: "Commission", value: peso(total), note: adjTotal ? `${peso(summary.commission)} before deductions` : undefined },
+            ].map((c) => (
+              <div key={c.label} className="rounded-lg border bg-card px-4 py-3">
+                <div className="text-xs text-muted-foreground">{c.label}</div>
+                <div className="mt-1 text-lg font-semibold tabular-nums">{c.value}</div>
+                {c.note && <div className="mt-0.5 text-[11px] text-muted-foreground">{c.note}</div>}
+              </div>
+            ))}
+          </div>
+
+          <div className={isAdmin ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]" : "grid gap-6"}>
             {/* Summary, like the sheet's Commission tab */}
             <div className="rounded-lg border bg-card">
               <div className="flex items-baseline justify-between gap-2 border-b px-4 py-3">
@@ -292,8 +330,9 @@ export default function CommissionPage() {
               </div>
             </div>
 
-            {/* Deductions and warnings */}
-            <div className="space-y-6">
+            {/* Deductions and warnings: admins only. Agents see their
+                deductions in the summary's footer. */}
+            {isAdmin && <div className="space-y-6">
               <div className="rounded-lg border bg-card p-4 space-y-3">
                 <h2 className="text-sm font-semibold">Deductions and additions</h2>
                 {!closing && adjustments.length > 0 && (
@@ -376,7 +415,7 @@ export default function CommissionPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
           </div>
 
           {/* The lines behind a code */}
@@ -423,6 +462,52 @@ export default function CommissionPage() {
                       </TableRow>
                     ))}
                   </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {/* Every product sold this month, without opening each code */}
+          {products.length > 0 && (
+            <div className="rounded-lg border bg-card">
+              <div className="flex items-baseline justify-between gap-2 border-b px-4 py-3">
+                <h2 className="text-sm font-semibold">Products sold</h2>
+                <span className="text-xs text-muted-foreground">{products.length} product{products.length === 1 ? "" : "s"}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Product</TableHead>
+                      <TableHead className="text-xs">Code</TableHead>
+                      <TableHead className="text-xs text-right">Qty</TableHead>
+                      <TableHead className="text-xs text-right">Orders</TableHead>
+                      <TableHead className="text-xs text-right">Sales</TableHead>
+                      <TableHead className="text-xs text-right">Commission</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((r) => (
+                      <TableRow key={r.key}>
+                        <TableCell className="max-w-[20rem] text-sm"><div className="truncate">{r.name}</div></TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {r.codes.join(", ")}
+                          {r.uncounted && <span className="text-amber-700 dark:text-amber-400">{r.codes.length ? ", " : ""}not counted</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{qtyFmt(r.quantity)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{r.orders}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{peso(r.sales)}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{peso(r.commission)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-sm font-medium">Total</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums font-medium">{peso(stats.sales)}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums font-medium">{peso(summary.commission)}</TableCell>
+                    </TableRow>
+                  </TableFooter>
                 </Table>
               </div>
             </div>

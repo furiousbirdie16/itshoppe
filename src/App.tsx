@@ -91,7 +91,7 @@ function ProtectedRoutes() {
           <Route path="/payables" element={<PayablesPage />} />
           <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
-          <Route path="/commission" element={<AdminRoute><CommissionPage /></AdminRoute>} />
+          <Route path="/commission" element={<CommissionPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
           <Route path="/business-insights" element={<BusinessInsightsPage />} />

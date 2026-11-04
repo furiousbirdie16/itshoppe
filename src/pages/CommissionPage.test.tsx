@@ -5,6 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import type { CommissionLine } from "@/lib/commission-api";
 
 vi.mock("@/components/InvoiceDetailsDialog", () => ({ default: () => null }));
+let role: "admin" | "user" = "admin";
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ role, user: { id: "u-ger" } }) }));
 
 const line = (over: Partial<CommissionLine>): CommissionLine => ({
   invoice_id: "inv1", invoice_number: "INV--01320", invoice_date: "2026-10-30", paid_on: "2026-11-02",
@@ -14,6 +16,7 @@ const line = (over: Partial<CommissionLine>): CommissionLine => ({
 });
 
 let closing: unknown = null;
+let myAgent: unknown = { id: "g", name: "Geraldine", earns_commission: true, petty_cash_account_id: null, user_id: "u-ger" };
 const lines: CommissionLine[] = [
   line({ code: "N", sales: 200, quantity: 2, commission: 10 }),
   line({ code: "BD2", unit_price: 94, sales: 94, rate: 2, commission: 1.88, item_name: "Cheap shelf" }),
@@ -23,9 +26,10 @@ const lines: CommissionLine[] = [
 
 vi.mock("@/lib/commission-api", () => ({
   getCommissionAgents: async () => [
-    { id: "g", name: "Geraldine", earns_commission: true, petty_cash_account_id: null },
-    { id: "j", name: "Jomar", earns_commission: false, petty_cash_account_id: null },
+    { id: "g", name: "Geraldine", earns_commission: true, petty_cash_account_id: null, user_id: "u-ger" },
+    { id: "j", name: "Jomar", earns_commission: false, petty_cash_account_id: null, user_id: null },
   ],
+  getMyCommissionAgent: async () => (myAgent),
   getCommissionLines: async () => lines,
   getCommissionAdjustments: async () => [
     { id: "a1", agent_id: "g", month: "2026-11-01", label: "Jason ticket 2x", amount: -5, created_at: "" },
@@ -46,7 +50,11 @@ const renderPage = () =>
   );
 
 describe("CommissionPage", () => {
-  beforeEach(() => { closing = null; });
+  beforeEach(() => {
+    closing = null;
+    role = "admin";
+    myAgent = { id: "g", name: "Geraldine", earns_commission: true, petty_cash_account_id: null, user_id: "u-ger" };
+  });
 
   it("adds up the month by code, takes off deductions, and flags what was not counted", async () => {
     renderPage();
@@ -54,7 +62,7 @@ describe("CommissionPage", () => {
     const total = await screen.findByText("This month's commission");
     // 10 + 1.88 + 5 = 16.88 commission, less 5 = 11.88.
     expect(within(total.closest("tr")!).getByText("₱11.88")).toBeTruthy();
-    expect(screen.getByText("₱16.88")).toBeTruthy();
+    expect(screen.getAllByText("₱16.88").length).toBeGreaterThan(0);
     expect(screen.getByText("Not counted")).toBeTruthy();
     expect(screen.getAllByText(/No DP and no commission category/).length).toBe(1);
     // Only agents who earn commission are offered.
@@ -63,8 +71,8 @@ describe("CommissionPage", () => {
 
   it("shows the lines behind a code when it is clicked", async () => {
     renderPage();
-    fireEvent.click(await screen.findByText("BD2"));
-    expect(await screen.findByText("Cheap shelf")).toBeTruthy();
+    fireEvent.click((await screen.findAllByText("BD2"))[0]);
+    expect((await screen.findAllByText("Cheap shelf")).length).toBe(2);
     expect(screen.getAllByText("INV-01320").length).toBeGreaterThan(0);
   });
 
@@ -78,5 +86,34 @@ describe("CommissionPage", () => {
     expect(screen.getByText("Reopen month")).toBeTruthy();
     // Live invoices (16.88) no longer match what was saved (5.00).
     expect(await screen.findByText(/The invoices have changed since this month was closed/)).toBeTruthy();
+  });
+
+  it("sums up customers and orders, and lists every product sold", async () => {
+    renderPage();
+    const orders = await screen.findByText("Orders");
+    expect(within(orders.parentElement!).getByText("1")).toBeTruthy();
+    expect(screen.getByText("Products sold")).toBeTruthy();
+    // Shelf, Cheap shelf, the cam and the coupler.
+    expect(screen.getByText("4 products")).toBeTruthy();
+    expect(screen.getByText("not counted")).toBeTruthy();
+  });
+
+  it("shows an agent their own month, read-only, with no agent picker", async () => {
+    role = "user";
+    renderPage();
+    expect(await screen.findByText(/^Geraldine · /)).toBeTruthy();
+    expect(screen.queryByText("Close month")).toBeNull();
+    expect(screen.queryByText("Deductions and additions")).toBeNull();
+    expect(screen.queryByText("Needs a look")).toBeNull();
+    expect(screen.queryByText("Agent")).toBeNull();
+    // Their deductions still show in the total.
+    expect(await screen.findByText("Jason ticket 2x")).toBeTruthy();
+  });
+
+  it("tells an agent whose login is not tied to anyone", async () => {
+    role = "user";
+    myAgent = null;
+    renderPage();
+    expect(await screen.findByText(/Your login is not tied to a sales agent yet/)).toBeTruthy();
   });
 });

@@ -13,7 +13,7 @@ import { getCashAccounts } from "@/lib/api";
 import { ALL_CODES, CATEGORY_CODES, CODE_LABELS, categoryKey, monthKey, type CommissionCode } from "@/lib/commission";
 import {
   addCommissionCategory, deleteCommissionCategory, getCommissionAgents, getCommissionCategories,
-  getCommissionRates, rateOn, setCommissionRate, updateCommissionAgent,
+  getCommissionRates, getLoginOptions, rateOn, setCommissionRate, updateCommissionAgent,
 } from "@/lib/commission-api";
 
 const todayKey = () => {
@@ -27,6 +27,7 @@ export function CommissionRulesCard() {
   const { data: rates = [] } = useQuery({ queryKey: ["commission-rates"], queryFn: getCommissionRates });
   const { data: categories = [] } = useQuery({ queryKey: ["commission-categories"], queryFn: getCommissionCategories });
   const { data: agents = [] } = useQuery({ queryKey: ["commission-agents"], queryFn: getCommissionAgents });
+  const { data: logins = [] } = useQuery({ queryKey: ["admin-users"], queryFn: getLoginOptions });
   const { data: accounts = [] } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
   // Every category in use, so a code is given to one that exists, spelled as it is.
   const { data: itemCategories = [] } = useQuery({
@@ -233,12 +234,29 @@ export function CommissionRulesCard() {
                     {pettyCash.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <Select
+                  value={a.user_id ?? "none"}
+                  onValueChange={(v) => setAgent(a.id, { user_id: v === "none" ? null : v })}
+                >
+                  <SelectTrigger className="h-8 w-full text-xs sm:w-56"><SelectValue placeholder="Their login" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No login</SelectItem>
+                    {logins
+                      .filter((l) => l.id === a.user_id || !agents.some((x) => x.user_id === l.id))
+                      .map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.display_name && l.display_name !== l.email ? `${l.display_name} · ${l.email}` : l.email}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
             ))}
           </div>
         )}
         <p className="text-[11px] text-muted-foreground">
           An agent's petty cash is picked first when their invoice is marked paid, and the Commission page flags cash paid into anyone else's.
+          With their login set, an agent can open the Commission page and see their own sales and commission, and no one else's.
         </p>
       </section>
     </div>

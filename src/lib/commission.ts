@@ -117,3 +117,69 @@ export const PROBLEM_LABELS: Record<string, string> = {
   no_account: "Paid, but no cash or bank account recorded",
   other_petty_cash: "Cash went into another person's petty cash",
 };
+
+export interface SoldLine extends CodedLine {
+  invoice_id: string;
+  customer_id?: string | null;
+  customer: string | null;
+  item_id: string | null;
+  item_name: string | null;
+  quantity: number;
+}
+
+/**
+ * The month at a glance. Customers are counted by id, falling back to the
+ * name for months saved before the id was kept; a sale with no customer is a
+ * walk-in, counted apart rather than as one customer.
+ */
+export function agentMonthStats(lines: SoldLine[]) {
+  const orders = new Set<string>();
+  const customers = new Set<string>();
+  const walkIns = new Set<string>();
+  let sales = 0;
+  for (const l of lines) {
+    orders.add(l.invoice_id);
+    sales += l.sales;
+    const key = l.customer_id || (l.customer ? `name:${l.customer.trim().toLowerCase()}` : "");
+    if (key) customers.add(key);
+    else walkIns.add(l.invoice_id);
+  }
+  return { orders: orders.size, customers: customers.size, walkInOrders: walkIns.size, sales };
+}
+
+export interface ProductRow {
+  key: string;
+  name: string;
+  codes: CommissionCode[];
+  quantity: number;
+  sales: number;
+  commission: number;
+  orders: number;
+  /** Some of it earned nothing: no DP and no commission category. */
+  uncounted: boolean;
+}
+
+/** Every product sold in the month, most sales first. */
+export function productBreakdown(lines: SoldLine[]): ProductRow[] {
+  const by = new Map<string, ProductRow & { invoices: Set<string> }>();
+  for (const l of lines) {
+    const name = (l.item_name || "—").trim();
+    const key = `${l.item_id ?? ""}|${name.toLowerCase()}`;
+    const r = by.get(key) ?? { key, name, codes: [], quantity: 0, sales: 0, commission: 0, orders: 0, uncounted: false, invoices: new Set<string>() };
+    r.quantity += l.quantity;
+    r.sales += l.sales;
+    r.commission += l.code && l.rate != null ? l.commission : 0;
+    if (l.code && !r.codes.includes(l.code)) r.codes.push(l.code);
+    if (!l.code || l.rate == null) r.uncounted = true;
+    r.invoices.add(l.invoice_id);
+    by.set(key, r);
+  }
+  return [...by.values()]
+    .map(({ invoices, ...r }) => ({
+      ...r,
+      orders: invoices.size,
+      commission: round2(r.commission),
+      codes: ALL_CODES.filter((c) => r.codes.includes(c)),
+    }))
+    .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name));
+}

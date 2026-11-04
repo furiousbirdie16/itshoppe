@@ -81,3 +81,33 @@ describe("summarizeByCode", () => {
     expect(s.codes[0].rates).toEqual([4, 5]);
   });
 });
+
+describe("agentMonthStats / productBreakdown", () => {
+  const l = (o: Partial<import("./commission").SoldLine>) => ({
+    invoice_id: "i1", customer_id: "c1", customer: "Ana", item_id: "a", item_name: "Shelf",
+    quantity: 1, code: "N" as const, rate: 5, sales: 100, commission: 5, ...o,
+  });
+  it("counts orders, customers by id, and walk-ins apart", async () => {
+    const { agentMonthStats } = await import("./commission");
+    const s = agentMonthStats([
+      l({}), l({ item_name: "Cam" }),
+      l({ invoice_id: "i2", customer_id: "c2", customer: "Ana" }),
+      l({ invoice_id: "i3", customer_id: null, customer: null }),
+      l({ invoice_id: "i4", customer_id: undefined, customer: "Ben" }),
+    ]);
+    expect(s).toEqual({ orders: 4, customers: 3, walkInOrders: 1, sales: 500 });
+  });
+  it("adds up each product across invoices and codes", async () => {
+    const { productBreakdown } = await import("./commission");
+    const rows = productBreakdown([
+      l({ quantity: 2, sales: 200, commission: 10 }),
+      l({ invoice_id: "i2", code: "BD1", rate: 3, sales: 99, commission: 2.97 }),
+      l({ item_id: "b", item_name: "Cam", sales: 1000, code: "B", rate: 0.5, commission: 5 }),
+      l({ item_id: null, item_name: "Labour", code: null, rate: null, sales: 300, commission: 0 }),
+    ]);
+    expect(rows.map((r) => r.name)).toEqual(["Cam", "Labour", "Shelf"]);
+    const shelf = rows[2];
+    expect(shelf).toMatchObject({ quantity: 3, sales: 299, commission: 12.97, orders: 2, codes: ["BD1", "N"], uncounted: false });
+    expect(rows[1].uncounted).toBe(true);
+  });
+});

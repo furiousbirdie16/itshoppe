@@ -23,6 +23,15 @@ export interface CommissionAgent {
   name: string;
   earns_commission: boolean;
   petty_cash_account_id: string | null;
+  /** The login this agent signs in with: they see their own commission. */
+  user_id: string | null;
+}
+
+export interface LoginOption {
+  id: string;
+  email: string;
+  display_name: string;
+  role: "admin" | "user";
 }
 
 /** One invoice line an agent was paid for, as commission_lines() returns it. */
@@ -31,6 +40,8 @@ export interface CommissionLine {
   invoice_number: string;
   invoice_date: string | null;
   paid_on: string;
+  /** Missing on months closed before customers were counted by id. */
+  customer_id?: string | null;
   customer: string | null;
   payment_method: string | null;
   payment_account: string | null;
@@ -128,14 +139,32 @@ export async function deleteCommissionCategory(id: string) {
 }
 
 export async function getCommissionAgents(): Promise<CommissionAgent[]> {
-  const { data, error } = await db.from("sales_agents").select("id, name, earns_commission, petty_cash_account_id").order("name");
+  const { data, error } = await db.from("sales_agents").select("id, name, earns_commission, petty_cash_account_id, user_id").order("name");
   if (error) throw error;
   return data || [];
 }
 
-export async function updateCommissionAgent(id: string, patch: Partial<Pick<CommissionAgent, "earns_commission" | "petty_cash_account_id">>) {
+export async function updateCommissionAgent(id: string, patch: Partial<Pick<CommissionAgent, "earns_commission" | "petty_cash_account_id" | "user_id">>) {
   const { error } = await db.from("sales_agents").update(patch).eq("id", id);
+  if (error) {
+    if (error.code === "23505") throw new Error("That login is already tied to another agent.");
+    throw error;
+  }
+}
+
+/** The agent the signed-in person is, if their login is tied to one. */
+export async function getMyCommissionAgent(userId: string): Promise<CommissionAgent | null> {
+  const { data, error } = await db.from("sales_agents")
+    .select("id, name, earns_commission, petty_cash_account_id, user_id").eq("user_id", userId).maybeSingle();
   if (error) throw error;
+  return data ?? null;
+}
+
+/** Every login, for tying an agent to theirs. Admins only (the admin-users function checks). */
+export async function getLoginOptions(): Promise<LoginOption[]> {
+  const res = await supabase.functions.invoke("admin-users", { body: { action: "list" } });
+  if (res.error) throw new Error(res.error.message);
+  return (res.data || []) as LoginOption[];
 }
 
 export async function getCommissionLines(agentId: string, month: string): Promise<CommissionLine[]> {

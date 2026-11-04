@@ -64,7 +64,8 @@ const navGroups: NavGroup[] = [
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Online Sales", url: "/online-sales", icon: Store },
       { title: "Warranty Lookup", url: "/warranty", icon: ShieldCheck },
-      { title: "Commission", url: "/commission", icon: BadgePercent, adminOnly: true },
+      // Staff see only their own, once their login is tied to an agent.
+      { title: "Commission", url: "/commission", icon: BadgePercent },
     ],
   },
   {
