@@ -12,6 +12,7 @@ import { warrantyStatus } from "@/lib/warranty";
 import { cn } from "@/lib/utils";
 import type { SoldUnit, SerialEvent } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
+import { onlineOrderLabel } from "@/lib/online-serials";
 
 /**
  * The counter screen: a customer is standing there with a unit, and the only
@@ -45,7 +46,7 @@ export default function WarrantyLookupPage() {
     const q = serial.trim().toLowerCase();
     if (!q) return allUnits;
     return allUnits.filter((u) =>
-      [u.serial, u.items?.name, u.invoices?.customers?.name, docNo(u.invoices?.invoice_number)]
+      [u.serial, u.items?.name, u.invoices?.customers?.name, docNo(u.invoices?.invoice_number), u.online_sales?.order_number]
         .some((field) => (field || "").toLowerCase().includes(q)),
     );
   }, [allUnits, serial]);
@@ -80,7 +81,7 @@ export default function WarrantyLookupPage() {
             value={serial}
             onChange={(e) => { setSerial(e.target.value); setResult(null); }}
             onKeyDown={(e) => { if (e.key === "Enter") run(); }}
-            placeholder="Serial, item, customer or invoice"
+            placeholder="Serial, item, customer, invoice or order ID"
             className="pl-9 font-mono"
           />
         </div>
@@ -148,14 +149,27 @@ export default function WarrantyLookupPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <div className="text-muted-foreground">Customer</div>
-            <div className="font-medium">{unit.invoices?.customers?.name || "—"}</div>
-            <div className="text-muted-foreground">Invoice</div>
-            <div className="font-medium">{docNo(unit.invoices?.invoice_number) || "—"}</div>
-            <div className="text-muted-foreground">Collected</div>
-            <div className="font-medium">
-              {startsAt ? format(startsAt, "MMMM d, yyyy") : "not yet marked shipped"}
-            </div>
+            {unit.online_sales ? (
+              <>
+                <div className="text-muted-foreground">Online order</div>
+                <div className="font-medium">{onlineOrderLabel(unit.online_sales)}</div>
+                <div className="text-muted-foreground">Ordered</div>
+                <div className="font-medium">
+                  {startsAt ? format(startsAt, "MMMM d, yyyy") : unit.online_sales.order_date || "—"}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-muted-foreground">Customer</div>
+                <div className="font-medium">{unit.invoices?.customers?.name || "—"}</div>
+                <div className="text-muted-foreground">Invoice</div>
+                <div className="font-medium">{docNo(unit.invoices?.invoice_number) || "—"}</div>
+                <div className="text-muted-foreground">Collected</div>
+                <div className="font-medium">
+                  {startsAt ? format(startsAt, "MMMM d, yyyy") : "not yet marked shipped"}
+                </div>
+              </>
+            )}
             <div className="text-muted-foreground">Warranty</div>
             <div className="font-medium">
               {unit.warranty_months ? `${unit.warranty_months} month${unit.warranty_months === 1 ? "" : "s"}` : "none"}
@@ -238,6 +252,7 @@ export default function WarrantyLookupPage() {
                       <span className="font-mono">{u.serial}</span>
                       {u.invoices?.customers?.name ? ` · ${u.invoices.customers.name}` : ""}
                       {u.invoices?.invoice_number ? ` · ${docNo(u.invoices.invoice_number)}` : ""}
+                      {u.online_sales ? ` · ${onlineOrderLabel(u.online_sales)}` : ""}
                     </p>
                   </div>
                   <Badge

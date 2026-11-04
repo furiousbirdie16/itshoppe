@@ -3123,7 +3123,7 @@ export const findUnitBySerial = async (serial: string): Promise<SoldUnit | null>
   const trimmed = serial.trim();
   if (!trimmed) return null;
   const { data, error } = await from("sold_units")
-    .select("*, items(*), invoices(*, customers(*))")
+    .select("*, items(*), invoices(*, customers(*)), online_sales(id, order_number, order_date, sales_channel, status)")
     .eq("serial", trimmed)
     // Newest first: a serial that was returned and resold has history, and the
     // current owner is the one being asked about.
@@ -3139,7 +3139,7 @@ export const findActiveUnitBySerial = async (serial: string): Promise<SoldUnit |
   const trimmed = serial.trim();
   if (!trimmed) return null;
   const { data, error } = await from("sold_units")
-    .select("*, invoices(*, customers(*))")
+    .select("*, invoices(*, customers(*)), online_sales(id, order_number, order_date, sales_channel, status)")
     .eq("serial", trimmed)
     .eq("status", "active")
     .maybeSingle();
@@ -3150,8 +3150,10 @@ export const findActiveUnitBySerial = async (serial: string): Promise<SoldUnit |
 export const recordSoldUnit = async (args: {
   serial: string;
   item_id: string | null;
-  invoice_id: string;
-  invoice_item_id: string | null;
+  /** One of invoice_id or online_sale_id — the sale the unit left on. */
+  invoice_id?: string | null;
+  invoice_item_id?: string | null;
+  online_sale_id?: string | null;
   warranty_months: number;
   /** Set once the invoice ships; null while it is only paid. */
   warranty_starts_at?: string | null;
@@ -3161,8 +3163,9 @@ export const recordSoldUnit = async (args: {
   const { data, error } = await from("sold_units").insert({
     serial,
     item_id: args.item_id,
-    invoice_id: args.invoice_id,
-    invoice_item_id: args.invoice_item_id,
+    invoice_id: args.invoice_id ?? null,
+    invoice_item_id: args.invoice_item_id ?? null,
+    online_sale_id: args.online_sale_id ?? null,
     warranty_months: args.warranty_months,
     warranty_starts_at: args.warranty_starts_at ?? null,
     scanned_by_email: email,
@@ -3173,7 +3176,7 @@ export const recordSoldUnit = async (args: {
   if (error) throw error;
   await from("serial_events").insert({
     sold_unit_id: data.id, serial, event: "assigned",
-    invoice_id: args.invoice_id, actor_email: email,
+    invoice_id: args.invoice_id ?? null, online_sale_id: args.online_sale_id ?? null, actor_email: email,
   });
   await logActivity("recorded_serial", "sold_unit", data.id, { serial });
   return data;
@@ -3195,7 +3198,7 @@ export const releaseSoldUnit = async (unitId: string, notes = "") => {
   if (!data) throw new Error("This serial could not be removed: the database did not allow the change.");
   await from("serial_events").insert({
     sold_unit_id: unitId, serial: data.serial, event: "released",
-    invoice_id: data.invoice_id, actor_email: email, notes,
+    invoice_id: data.invoice_id, online_sale_id: data.online_sale_id ?? null, actor_email: email, notes,
   });
   await logActivity("released_serial", "sold_unit", unitId, { serial: data.serial });
 };
@@ -3300,11 +3303,59 @@ export const getInvoicesMissingSerials = async (): Promise<Record<string, number
   return out;
 };
 
+// ---------------------------------------------------------------------------
+// Serials on online sales. One online_sales row is one product line of an
+// order; an order is the rows sharing an order number.
+// ---------------------------------------------------------------------------
+
+/** Every line of one online order, as the serials panel and the scan box need it. */
+export const getOnlineOrderLines = async (orderNumber: string): Promise<OnlineSale[]> => {
+  const key = orderNumber.trim();
+  if (!key) return [];
+  const { data, error } = await from("online_sales")
+    .select("*, items(*), item_variations(*)")
+    .eq("order_number", key)
+    .order("created_at", { ascending: true })
+    .order("id");
+  if (error) throw error;
+  return (data as OnlineSale[]) || [];
+};
+
+/** The serials currently held by these online sale lines. */
+export const getSoldUnitsForOnlineSales = async (saleIds: string[]): Promise<SoldUnit[]> => {
+  if (!saleIds.length) return [];
+  const { data, error } = await from("sold_units")
+    .select("*")
+    .in("online_sale_id", saleIds)
+    .eq("status", "active")
+    .order("scanned_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * How many serials each online sale line holds, keyed by sale id. The page
+ * already has the lines and their products, so this is all it needs to tell
+ * which orders are short.
+ */
+export const getOnlineSaleSerialCounts = async (): Promise<Record<string, number>> => {
+  const rows = await fetchAllRows<{ id: string; online_sale_id: string | null }>(() =>
+    from("sold_units")
+      .select("id, online_sale_id")
+      .not("online_sale_id", "is", null)
+      .eq("status", "active")
+      .order("id"),
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows) if (r.online_sale_id) out[r.online_sale_id] = (out[r.online_sale_id] || 0) + 1;
+  return out;
+};
+
 /** Every serial currently out with a customer, newest first — the lookup page's list. */
 export const getActiveSoldUnits = async (): Promise<SoldUnit[]> =>
   fetchAllRows<SoldUnit>(() =>
     from("sold_units")
-      .select("*, items(*), invoices(*, customers(*))")
+      .select("*, items(*), invoices(*, customers(*)), online_sales(id, order_number, order_date, sales_channel, status)")
       .eq("status", "active")
       .order("created_at", { ascending: false })
       .order("id"),

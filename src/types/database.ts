@@ -184,6 +184,8 @@ export interface SoldUnit {
   item_id: string | null;
   invoice_id: string | null;
   invoice_item_id: string | null;
+  /** Set instead of invoice_id when the unit went out on a Shopee/Lazada order line. */
+  online_sale_id?: string | null;
   /** Collection date, not payment date. Null until the invoice ships. */
   warranty_starts_at: string | null;
   warranty_months: number;
@@ -195,6 +197,7 @@ export interface SoldUnit {
   updated_at: string;
   items?: Item;
   invoices?: Invoice;
+  online_sales?: Pick<OnlineSale, 'id' | 'order_number' | 'order_date' | 'sales_channel' | 'status'> | null;
 }
 
 export interface SerialEvent {
@@ -203,6 +206,7 @@ export interface SerialEvent {
   serial: string;
   event: 'assigned' | 'released' | 'replaced';
   invoice_id: string | null;
+  online_sale_id?: string | null;
   actor_email: string;
   notes: string;
   created_at: string;

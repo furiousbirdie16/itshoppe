@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getExistingOnlineSaleKeys, getItems, getItemsWithStock, getItemVariations } from "@/lib/api";
+import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getExistingOnlineSaleKeys, getItems, getItemsWithStock, getItemVariations, getOnlineSaleSerialCounts } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download, ShieldCheck, ScanLine } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import { DragHandle } from "@/components/DragHandle";
@@ -22,6 +22,9 @@ import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport
 import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
 import { expandBundle, getSkuBundles, skuKey, type SkuBundle } from "@/lib/sku-bundles";
 import { SkuBundleDialog } from "@/components/SkuBundleDialog";
+import { OnlineOrderSerialsPanel } from "@/components/OnlineOrderSerialsPanel";
+import { OnlineOrderScanDialog } from "@/components/OnlineOrderScanDialog";
+import { ordersMissingSerials, serialProgress } from "@/lib/online-serials";
 import type { OnlineSale } from "@/types/database";
 import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
@@ -172,6 +175,14 @@ export default function OnlineSalesPage() {
   const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales", activeBranchId], queryFn: () => getOnlineSales(activeBranchId) });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
+  // Serials held per sale line. Under the "online_sales" key so returning,
+  // cancelling or deleting a sale (which frees its serials) refreshes it too.
+  const { data: serialCounts = {} } = useQuery({ queryKey: ["online_sales", "serial-counts"], queryFn: getOnlineSaleSerialCounts });
+  const missingSerials = useMemo(() => ordersMissingSerials(sales as any[], serialCounts), [sales, serialCounts]);
+  const missingSerialOrders = Object.keys(missingSerials).length;
+  const [serialsOnly, setSerialsOnly] = useState(false);
+  const [serialsOrder, setSerialsOrder] = useState<string | null>(null);
+  const [scanBoxOpen, setScanBoxOpen] = useState(false);
 
   // Admin-only: cost snapshots & gross profit per online sale (mirrors invoice financials).
   const { data: onlineFinancials = [] } = useQuery({
@@ -441,7 +452,8 @@ export default function OnlineSalesPage() {
     return true;
   };
 
-  const baseFiltered = sales.filter(matchTabSearchDateQtyPrice);
+  const baseFiltered = sales.filter((s: any) =>
+    matchTabSearchDateQtyPrice(s) && (!serialsOnly || !!missingSerials[s.order_number]));
 
   // Available options exclude only their own filter to keep the others authoritative.
   const availableChannels = useMemo(() => {
@@ -1155,6 +1167,25 @@ export default function OnlineSalesPage() {
   const statusColor = (s: string) => s === 'returned' ? 'bg-yellow-100 text-yellow-700' : s === 'cancelled' ? 'bg-red-100 text-red-700' : '';
   const statusLabel = (s: string) => s === 'returned' ? 'Returned' : s === 'cancelled' ? 'Cancelled' : 'Completed';
 
+  /** The Serials button for an order, when anything in it asks for serials. */
+  const serialsButton = (rows: any[], orderNumber: string) => {
+    if (!orderNumber) return null;
+    const { recorded, needed } = serialProgress(rows, serialCounts);
+    if (!needed) return null;
+    const full = recorded >= needed;
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn("h-7 px-1.5 gap-1 text-[11px] tabular-nums", full ? "text-success" : "text-warning")}
+        onClick={() => setSerialsOrder(orderNumber)}
+        title={full ? "Serials recorded" : "Record serial numbers"}
+      >
+        <ShieldCheck className="h-3 w-3" /> {recorded}/{needed}
+      </Button>
+    );
+  };
+
   const completedCount = sales.filter((s: any) => (s.status || 'completed') === 'completed').length;
   const returnsCount = sales.filter((s: any) => s.status === 'returned' || s.status === 'cancelled').length;
 
@@ -1164,6 +1195,19 @@ export default function OnlineSalesPage() {
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Online Sales</h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">Record Shopee, Lazada & other orders</p>
+          {(missingSerialOrders > 0 || serialsOnly) && (
+            <button
+              type="button"
+              onClick={() => { setSerialsOnly((v) => !v); setPage(1); }}
+              className={cn(
+                "mt-0.5 text-xs underline underline-offset-2",
+                serialsOnly ? "font-medium text-warning" : "text-warning hover:opacity-80",
+              )}
+            >
+              {missingSerialOrders} order{missingSerialOrders !== 1 ? "s" : ""} missing serial numbers
+              {serialsOnly ? " \u00b7 showing only these" : " \u00b7 show them"}
+            </button>
+          )}
         </div>
         <div className="toolbar-actions">
           {selected.size > 0 && (
@@ -1209,6 +1253,9 @@ export default function OnlineSalesPage() {
               </Button>
             </>
           )}
+          <Button variant="outline" size="sm" onClick={() => setScanBoxOpen(true)} className="rounded-lg h-9 px-3 text-sm">
+            <ScanLine className="h-4 w-4 mr-1.5" /> Scan serials
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
@@ -1505,6 +1552,7 @@ export default function OnlineSalesPage() {
                             ) : (
                               <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" onClick={() => openPayDialog([s.id], s.order_number, expected, paid)} title="Mark as paid"><CircleDollarSign className="h-3 w-3" /></Button>
                             )}
+                            {serialsButton([s], s.order_number)}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit"><Pencil className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" onClick={() => handleReturn(s.id, 'returned')} title="Return"><Undo2 className="h-3 w-3" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleReturn(s.id, 'cancelled')} title="Cancel"><XCircle className="h-3 w-3" /></Button>
@@ -1601,6 +1649,7 @@ export default function OnlineSalesPage() {
                             ) : (
                               <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Mark order as paid" onClick={() => openPayDialog(groupIds, group.orderNumber, totalAmount, totalPaid)}><CircleDollarSign className="h-3 w-3" /></Button>
                             )}
+                            {serialsButton(group.items, group.orderNumber)}
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-yellow-600" title="Return all items in this order" onClick={async () => {
                               for (const x of group.items) { try { await returnMut.mutateAsync({ id: x.id, status: 'returned' }); } catch {} }
                               toast.success(`Order ${group.orderNumber}: ${group.items.length} items returned`);
@@ -2226,6 +2275,13 @@ export default function OnlineSalesPage() {
           </DialogContent>
         </Dialog>
       )}
+      <Dialog open={!!serialsOrder} onOpenChange={(o) => !o && setSerialsOrder(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5" /> Serial numbers</DialogTitle></DialogHeader>
+          {serialsOrder && <OnlineOrderSerialsPanel key={serialsOrder} orderNumber={serialsOrder} />}
+        </DialogContent>
+      </Dialog>
+      <OnlineOrderScanDialog open={scanBoxOpen} onOpenChange={setScanBoxOpen} />
     </div>
   );
 }

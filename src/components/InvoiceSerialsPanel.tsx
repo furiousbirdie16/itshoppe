@@ -11,7 +11,7 @@ import { canScan } from "@/lib/scanning";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { InvoiceItem, SoldUnit } from "@/types/database";
-import { docNo } from "@/lib/doc-number";
+import { describeHolder } from "@/lib/serial-holder";
 import { lineForUnits } from "@/lib/serial-shortfall";
 
 interface Props {
@@ -81,6 +81,8 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
     queryClient.invalidateQueries({ queryKey: ["sold-units"] });
     queryClient.invalidateQueries({ queryKey: ["invoices-missing-serials"] });
     queryClient.invalidateQueries({ queryKey: ["customer-sold-units"] });
+    // A reassign can take a serial off an online order.
+    queryClient.invalidateQueries({ queryKey: ["online_sales", "serial-counts"] });
   };
 
   /** One serial with its remove button. */
@@ -287,16 +289,7 @@ export function InvoiceSerialsPanel({ invoiceId }: Props) {
             <div className="space-y-2 text-sm">
               <p className="font-mono text-xs">{conflict.serial}</p>
               <p className="text-muted-foreground">
-                This serial is already on invoice{" "}
-                <span className="font-medium text-foreground">
-                  {docNo(conflict.held.invoices?.invoice_number) || "another sale"}
-                </span>
-                {conflict.held.invoices?.customers?.name
-                  ? <> for <span className="font-medium text-foreground">{conflict.held.invoices.customers.name}</span></>
-                  : null}
-                {conflict.held.invoices?.invoice_date
-                  ? <> on {conflict.held.invoices.invoice_date}</>
-                  : null}.
+                This serial is already on <span className="font-medium text-foreground">{describeHolder(conflict.held)}</span>.
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Reassign only if the unit came back and is being sold again. Your name is recorded either way.
