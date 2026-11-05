@@ -78,3 +78,12 @@ describe("months and due dates", () => {
     expect(changePct(200, 250)).toBe(25);
   });
 });
+
+describe("categorySource", () => {
+  it("tells the starting list, added and typed-before categories apart", async () => {
+    const { categorySource } = await import("./expenses");
+    expect(categorySource({ sort_order: 40 })).toBe("standard");
+    expect(categorySource({ sort_order: 800 })).toBe("added");
+    expect(categorySource({ sort_order: 900 })).toBe("typed");
+  });
+});

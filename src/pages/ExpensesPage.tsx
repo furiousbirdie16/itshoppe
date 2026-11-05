@@ -17,10 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { DateField } from "@/components/DateField";
 import { CategorySelect } from "@/components/CategorySelect";
+import { ExpenseCategoriesDialog } from "@/components/ExpenseCategoriesDialog";
 import { getCashAccounts } from "@/lib/api";
 import {
-  EXPENSE_CATEGORIES_KEY, getExpenseCategories, createExpenseCategory, updateExpenseCategory,
-  renameExpenseCategory, mergeExpenseCategory, getOutflows, getRecurringExpenses, saveRecurringExpense,
+  EXPENSE_CATEGORIES_KEY, getExpenseCategories, updateExpenseCategory, getOutflows, getRecurringExpenses, saveRecurringExpense,
   deleteRecurringExpense, getRecurringSkips, skipRecurring, unskipRecurring, payRecurring,
   getRecurringPayments, setTransactionCategory, type ExpenseRow, type RecurringExpense,
 } from "@/lib/expenses-api";
@@ -342,7 +342,7 @@ export default function ExpensesPage() {
       )}
 
       <DrillDialog drill={drill} onClose={() => setDrill(null)} onRefiled={() => { refreshAll(); setDrill(null); }} />
-      <CategoriesDialog open={categoriesOpen} onOpenChange={setCategoriesOpen} categories={categories} onChanged={refreshAll} />
+      <ExpenseCategoriesDialog open={categoriesOpen} onOpenChange={setCategoriesOpen} categories={categories} onChanged={refreshAll} />
       <RecurringDialog open={recurringOpen} onOpenChange={setRecurringOpen} recurring={recurring} accounts={activeAccounts} onChanged={refreshAll} />
       <PayBillDialog bill={paying} period={period} accounts={activeAccounts} onClose={() => setPaying(null)} onPaid={() => { setPaying(null); refreshAll(); }} />
     </div>
@@ -406,96 +406,6 @@ function DrillDialog({ drill, onClose, onRefiled }: {
             <Button onClick={save} disabled={saving}>{saving ? "Saving…" : `Save ${pending.length} change${pending.length === 1 ? "" : "s"}`}</Button>
           )}
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Managing the list.
-// ---------------------------------------------------------------------------
-function CategoriesDialog({ open, onOpenChange, categories, onChanged }: {
-  open: boolean; onOpenChange: (o: boolean) => void; categories: ExpenseCategory[]; onChanged: () => void;
-}) {
-  const [newName, setNewName] = useState("");
-  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
-  const [merging, setMerging] = useState<ExpenseCategory | null>(null);
-  const [mergeInto, setMergeInto] = useState("");
-
-  const run = async (fn: () => Promise<unknown>, ok: string) => {
-    try { await fn(); onChanged(); toast.success(ok); } catch (e) { toast.error((e as Error).message); }
-  };
-
-  const sorted = [...categories].sort((a, b) => Number(b.is_expense) - Number(a.is_expense) || a.sort_order - b.sort_order || a.name.localeCompare(b.name));
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="text-base">Categories</DialogTitle></DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          Money out under a category marked <span className="font-medium text-foreground">Expense</span> counts on this page.
-          Renaming or merging updates every bank, cash and payable entry that uses it.
-        </p>
-        <div className="flex gap-2">
-          <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New category" className="h-9" />
-          <Button className="h-9 shrink-0" disabled={!newName.trim()} onClick={() => run(async () => { await createExpenseCategory(newName, true); setNewName(""); }, "Category added")}>
-            <Plus className="h-4 w-4 mr-1" /> Add
-          </Button>
-        </div>
-        <div className="divide-y rounded-lg border">
-          {sorted.map((c) => (
-            <div key={c.id} className={cn("flex items-center gap-2 px-3 py-2", !c.is_active && "opacity-60")}>
-              {renaming?.id === c.id ? (
-                <Input
-                  autoFocus
-                  value={renaming.name}
-                  onChange={(e) => setRenaming({ id: c.id, name: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") run(() => renameExpenseCategory(c.id, renaming.name), "Renamed").then(() => setRenaming(null));
-                    if (e.key === "Escape") setRenaming(null);
-                  }}
-                  onBlur={() => setRenaming(null)}
-                  className="h-8 flex-1"
-                />
-              ) : (
-                <span className="flex-1 text-sm truncate">{c.name}</span>
-              )}
-              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Switch checked={c.is_expense} onCheckedChange={(v) => run(() => updateExpenseCategory(c.id, { is_expense: v }), v ? `${c.name} counts as an expense` : `${c.name} no longer counts`)} />
-                Expense
-              </label>
-              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Switch checked={c.is_active} onCheckedChange={(v) => run(() => updateExpenseCategory(c.id, { is_active: v }), v ? "Shown in the dropdown" : "Hidden from the dropdown")} />
-                Shown
-              </label>
-              <Button size="icon" variant="ghost" className="h-7 w-7" title="Rename" onClick={() => setRenaming({ id: c.id, name: c.name })}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="sm" variant="ghost" className="h-7 text-[11px] px-2" onClick={() => { setMerging(c); setMergeInto(""); }}>
-                Merge
-              </Button>
-            </div>
-          ))}
-        </div>
-
-        <Dialog open={!!merging} onOpenChange={(o) => !o && setMerging(null)}>
-          <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle className="text-base">Merge {merging?.name}</DialogTitle></DialogHeader>
-            <p className="text-xs text-muted-foreground">Every entry under {merging?.name} moves to the category you pick, and {merging?.name} is removed.</p>
-            <Select value={mergeInto} onValueChange={setMergeInto}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Merge into…" /></SelectTrigger>
-              <SelectContent>
-                {sorted.filter((c) => c.id !== merging?.id).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setMerging(null)}>Cancel</Button>
-              <Button disabled={!mergeInto} onClick={() => merging && run(() => mergeExpenseCategory(merging.id, mergeInto), "Merged").then(() => setMerging(null))}>
-                Merge
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </DialogContent>
     </Dialog>
   );

@@ -879,7 +879,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Category</Label>
-                <CategorySelect value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
+                <CategorySelect expensesOnly placeholder="No category" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

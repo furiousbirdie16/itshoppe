@@ -14,6 +14,12 @@ interface Props {
   onChange: (name: string) => void;
   className?: string;
   placeholder?: string;
+  /**
+   * Offer expense categories only. Bank and cash entries use this: money out
+   * that is not an expense (stock, transfers, repayments) is simply left
+   * without a category.
+   */
+  expensesOnly?: boolean;
 }
 
 /**
@@ -23,7 +29,7 @@ interface Props {
  * counted as an expense; an admin can change that on the Expenses page. An
  * older entry whose category is no longer on the list still shows its name.
  */
-export function CategorySelect({ value, onChange, className, placeholder = "Pick a category" }: Props) {
+export function CategorySelect({ value, onChange, className, placeholder = "Pick a category", expensesOnly = false }: Props) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -32,9 +38,11 @@ export function CategorySelect({ value, onChange, className, placeholder = "Pick
 
   const active = useMemo(() => categories.filter((c) => c.is_active), [categories]);
   const expenses = active.filter((c) => c.is_expense);
-  const others = active.filter((c) => !c.is_expense);
+  const others = expensesOnly ? [] : active.filter((c) => !c.is_expense);
   const typed = search.trim();
   const exists = !typed || categories.some((c) => categoryKey(c.name) === categoryKey(typed));
+  // A name that is on the list as not-an-expense, typed where only expenses are offered.
+  const notExpense = expensesOnly && !!typed && categories.some((c) => !c.is_expense && categoryKey(c.name) === categoryKey(typed));
 
   const pick = (name: string) => { onChange(name); setOpen(false); setSearch(""); };
 
@@ -74,7 +82,7 @@ export function CategorySelect({ value, onChange, className, placeholder = "Pick
         <Command>
           <CommandInput placeholder="Search or add…" value={search} onValueChange={setSearch} className="h-9" />
           <CommandList className="max-h-72 overflow-y-auto overscroll-contain" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
-            <CommandEmpty>{typed ? "Not on the list" : "No categories"}</CommandEmpty>
+            <CommandEmpty>{notExpense ? `"${typed}" is not an expense — leave it with no category` : typed ? "Not on the list" : "No categories"}</CommandEmpty>
             {!exists && (
               <CommandGroup>
                 <CommandItem value={`__add__ ${typed}`} onSelect={add} disabled={adding}>
@@ -89,7 +97,7 @@ export function CategorySelect({ value, onChange, className, placeholder = "Pick
                 </CommandItem>
               </CommandGroup>
             )}
-            {expenses.length > 0 && <CommandGroup heading="Expenses">{expenses.map((c) => item(c.name))}</CommandGroup>}
+            {expenses.length > 0 && <CommandGroup heading={expensesOnly ? undefined : "Expenses"}>{expenses.map((c) => item(c.name))}</CommandGroup>}
             {others.length > 0 && <CommandGroup heading="Not an expense">{others.map((c) => item(c.name))}</CommandGroup>}
           </CommandList>
         </Command>

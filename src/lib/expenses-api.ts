@@ -55,6 +55,27 @@ export const mergeExpenseCategory = async (fromId: string, intoId: string) => {
   if (error) throw error;
 };
 
+/** Several categories into one, in a single all-or-nothing step. */
+export const mergeExpenseCategories = async (fromIds: string[], intoId: string) => {
+  const { error } = await db.rpc("merge_expense_categories", { p_from: fromIds, p_into: intoId });
+  if (error) throw error;
+};
+
+/** Removes a category nothing uses. The database refuses one that is still in use. */
+export const deleteExpenseCategory = async (id: string) => {
+  const { error } = await db.rpc("delete_expense_category", { p_id: id });
+  if (error) throw error;
+};
+
+/** Entries per category, keyed as categoryKey() keys them. */
+export const getExpenseCategoryUsage = async (): Promise<Record<string, number>> => {
+  const { data, error } = await db.rpc("expense_category_usage");
+  if (error) throw error;
+  const out: Record<string, number> = {};
+  for (const r of (data as { category_key: string; entries: number }[]) || []) out[r.category_key] = Number(r.entries) || 0;
+  return out;
+};
+
 // ---------------------------------------------------------------------------
 // Spending
 // ---------------------------------------------------------------------------

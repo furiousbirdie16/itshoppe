@@ -140,3 +140,15 @@ export function recurringState(args: {
   if (args.skipped) return "skipped";
   return dueDateIn(args.dayOfMonth, args.period) <= args.today ? "due" : "upcoming";
 }
+
+/**
+ * Where a category came from, read off its sort order: the starting list sits
+ * below 800, ones added since at 800, and names typed before the list existed
+ * (imported by the migration) at 900.
+ */
+export type CategorySource = "standard" | "added" | "typed";
+export function categorySource(c: Pick<ExpenseCategory, "sort_order">): CategorySource {
+  if (c.sort_order >= 900) return "typed";
+  if (c.sort_order >= 800) return "added";
+  return "standard";
+}
