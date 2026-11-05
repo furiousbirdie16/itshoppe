@@ -15,11 +15,7 @@ import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { runningBalances } from "@/lib/running-balance";
 import { matchesTransactionSearch } from "@/lib/txn-search";
 import { FxRateHistoryDialog } from "@/components/FxRateHistoryDialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark, ExternalLink, ListChecks, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,16 +32,13 @@ import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } 
 import { useSort } from "@/hooks/use-sort";
 import ExportButton from "@/components/ExportButton";
 import { SortableHeader } from "@/components/SortableHeader";
+import { TransactionDialog, TransferDialog, AccountDialog } from "@/components/CashLedgerDialogs";
+import {
+  emptyTxnForm, txnFormFrom, emptyAccountForm, accountFormFrom, type TxnForm, type AccountForm,
+} from "@/lib/cash-ledger-forms";
 import { CategorySelect } from "@/components/CategorySelect";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 
-const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({
-  account_id: "", txn_date: today(), direction: "out" as "in" | "out",
-  amount: "", category: "", payee: "", reference: "", notes: "", fx_rate: "",
-});
-const emptyTransfer = () => ({ from_account_id: "", to_account_id: "", amount: "", amount_to: "", txn_date: today(), notes: "" });
-const emptyAccount = () => ({ name: "", account_number: "", opening_balance: "", notes: "", currency: BASE_CURRENCY });
 
 /** Emails are long in a narrow column — show the name part, full address on hover. */
 function shortUser(email: string) {
@@ -108,8 +101,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   const [open, setOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [editing, setEditing] = useState<CashTransaction | null>(null);
-  const [form, setForm] = useState(emptyForm());
-  const [transfer, setTransfer] = useState(emptyTransfer());
+  const [formInitial, setFormInitial] = useState<TxnForm>(() => emptyTxnForm());
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
@@ -118,7 +110,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   const [rangeTo, setRangeTo] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CashAccount | null>(null);
-  const [accountForm, setAccountForm] = useState(emptyAccount());
+  const [accountInitial, setAccountInitial] = useState<AccountForm>(emptyAccountForm);
   const [rateHistoryAccount, setRateHistoryAccount] = useState<CashAccount | null>(null);
 
   const { data: allAccounts = [], isPending: accountsPending } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
@@ -428,8 +420,6 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     () => Object.fromEntries(allAccounts.map((a) => [a.id, a])),
     [allAccounts],
   );
-  const formAccount = accountById[form.account_id];
-  const formIsForeign = formAccount ? isForeign(formAccount) : false;
 
   /**
    * Columns for the spreadsheet export.
@@ -628,22 +618,15 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     onError: (e: any) => toast.error(e.message),
   });
 
-  const openAccountCreate = () => { setEditingAccount(null); setAccountForm(emptyAccount()); setAccountOpen(true); };
+  const openAccountCreate = () => { setEditingAccount(null); setAccountInitial(emptyAccountForm()); setAccountOpen(true); };
 
   const openAccountEdit = (a: CashAccount) => {
     setEditingAccount(a);
-    setAccountForm({
-      name: a.name,
-      account_number: a.account_number || "",
-      opening_balance: String(a.opening_balance ?? ""),
-      notes: a.notes || "",
-      currency: a.currency || BASE_CURRENCY,
-    });
+    setAccountInitial(accountFormFrom(a));
     setAccountOpen(true);
   };
 
-  const handleAccountSubmit = () => {
-    if (!accountForm.name.trim()) { toast.error("Account name is required"); return; }
+  const handleAccountSubmit = (accountForm: AccountForm) => {
     accountMut.mutate({
       name: accountForm.name.trim(),
       account_type: accountType,
@@ -678,90 +661,14 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm(), account_id: accountFilter !== "all" ? accountFilter : accounts[0]?.id || "" });
+    setFormInitial(emptyTxnForm(accountFilter !== "all" ? accountFilter : accounts[0]?.id || ""));
     setOpen(true);
   };
 
   const openEdit = (t: CashTransaction) => {
     setEditing(t);
-    setForm({
-      account_id: t.account_id,
-      txn_date: t.txn_date,
-      direction: t.direction,
-      amount: String(t.amount ?? ""),
-      fx_rate: t.fx_rate == null ? "" : String(t.fx_rate),
-      category: t.category || "",
-      payee: t.payee || "",
-      reference: t.reference || "",
-      notes: t.notes || "",
-    });
+    setFormInitial(txnFormFrom(t));
     setOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (!form.account_id) { toast.error("Select an account"); return; }
-    const amount = Number(form.amount);
-    if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
-    const needsRate = formIsForeign && form.direction === "in";
-    const rate = Number(form.fx_rate);
-    if (needsRate && (!rate || rate <= 0)) {
-      toast.error(`Enter the PHP rate paid per 1 ${formAccount?.currency}`);
-      return;
-    }
-    const data: Partial<CashTransaction> = {
-      account_id: form.account_id,
-      txn_date: form.txn_date,
-      direction: form.direction,
-      amount,
-      fx_rate: needsRate ? rate : null,
-      category: form.category.trim(),
-      payee: form.payee.trim(),
-      reference: form.reference.trim(),
-      notes: form.notes,
-    };
-    if (editing) updateMut.mutate({ id: editing.id, data });
-    else createMut.mutate(data);
-  };
-
-  const targetById = useMemo(
-    () => Object.fromEntries(transferTargets.map((a) => [a.id, a])),
-    [transferTargets],
-  );
-  const transferFrom = accountById[transfer.from_account_id] || targetById[transfer.from_account_id];
-  const transferTo = accountById[transfer.to_account_id] || targetById[transfer.to_account_id];
-  const transferCurrenciesDiffer =
-    !!transferFrom && !!transferTo &&
-    (transferFrom.currency || BASE_CURRENCY) !== (transferTo.currency || BASE_CURRENCY);
-
-  /**
-   * A transfer leg names the account at the other end in `payee`, and which end
-   * that is comes from the direction. Rendered as a route so either row says
-   * where the money actually went, rather than only which account it touched.
-   */
-  const handleTransfer = () => {
-    const amount = Number(transfer.amount);
-    if (!transfer.from_account_id || !transfer.to_account_id) { toast.error("Pick both accounts"); return; }
-    if (transfer.from_account_id === transfer.to_account_id) { toast.error("Pick two different accounts"); return; }
-    // Without it the ledger shows money moving with no explanation, which is
-    // the thing this pair of rows is least able to reconstruct later.
-    if (!transfer.notes.trim()) { toast.error("Say what the transfer is for"); return; }
-    if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
-
-    if (!transferCurrenciesDiffer) {
-      transferMut.mutate({ ...transfer, amount, amount_to: amount, fx_rate: null });
-      return;
-    }
-    // An exchange: both sides differ, and the implied rate is what was really paid.
-    const amountTo = Number(transfer.amount_to);
-    if (!amountTo || amountTo <= 0) { toast.error(`Enter the ${transferTo?.currency} amount received`); return; }
-    const toIsForeign = isForeign(transferTo as any);
-    transferMut.mutate({
-      ...transfer,
-      amount,
-      amount_to: amountTo,
-      // Rate only means anything when the destination is the foreign side.
-      fx_rate: toIsForeign ? amount / amountTo : null,
-    });
   };
 
   return (
@@ -783,7 +690,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               : `${(accountById[accountFilter]?.name || "account").replace(/[^A-Za-z0-9]+/g, "_").toLowerCase()}_transactions`}
           />
           {showAccountFilter && (
-            <Button variant="outline" onClick={() => { setTransfer(emptyTransfer()); setTransferOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Button variant="outline" onClick={() => setTransferOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
               <ArrowLeftRight className="h-4 w-4 mr-1.5" /> Transfer
             </Button>
           )}
@@ -922,204 +829,35 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         </Button>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Transaction" : "New Transaction"}</DialogTitle></DialogHeader>
-          <div className="grid gap-4 pt-2">
-            {accounts.length > 1 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Account *</Label>
-                <Select value={form.account_id} onValueChange={(v) => setForm({ ...form, account_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Select account" /></SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Type *</Label>
-                <Select value={form.direction} onValueChange={(v) => setForm({ ...form, direction: v as "in" | "out" })}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="in">Inflow (money in)</SelectItem>
-                    <SelectItem value="out">Outflow (money out)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">
-                  Amount *{formIsForeign && ` (${formAccount?.currency})`}
-                </Label>
-                <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            {formIsForeign && form.direction === "in" && (
-              <div className="space-y-1.5 rounded-lg border p-3">
-                <Label className="text-xs font-medium">PHP per 1 {formAccount?.currency} *</Label>
-                <Input type="number" step="0.0001" min="0" value={form.fx_rate} onChange={(e) => setForm({ ...form, fx_rate: e.target.value })} className="h-9" placeholder="e.g. 9.05" />
-                <p className="text-[11px] text-muted-foreground">
-                  {Number(form.amount) > 0 && Number(form.fx_rate) > 0
-                    ? `Costs ${peso(Number(form.amount) * Number(form.fx_rate))}. `
-                    : ""}
-                  Outflows are valued automatically at the running average.
-                </p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Date *</Label>
-                <DateField value={form.txn_date} onChange={(v) => setForm({ ...form, txn_date: v })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Category</Label>
-                <CategorySelect expensesOnly placeholder="No category" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Payee / Source</Label>
-                <Input value={form.payee} onChange={(e) => setForm({ ...form, payee: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Reference</Label>
-                <Input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="h-9" placeholder="OR / slip no." />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="resize-none" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="rounded-lg h-9">
-              {editing ? "Save Changes" : "Add Transaction"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransactionDialog
+        open={open}
+        onOpenChange={setOpen}
+        editing={!!editing}
+        initial={formInitial}
+        accounts={accounts}
+        accountById={accountById}
+        pending={createMut.isPending || updateMut.isPending}
+        onSubmit={(data) => (editing ? updateMut.mutate({ id: editing.id, data }) : createMut.mutate(data))}
+      />
 
-      <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">{editingAccount ? "Edit Account" : "New Account"}</DialogTitle></DialogHeader>
-          <div className="grid gap-4 pt-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Account Name *</Label>
-              <Input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} className="h-9" placeholder={accountType === "bank" ? "e.g. GCash, BDO, Metrobank" : "e.g. Petty Cash, Geraldine Cash"} />
-              <p className="text-[11px] text-muted-foreground">This name appears as a payment option when marking invoices paid.</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Currency</Label>
-              <Input
-                value={accountForm.currency}
-                onChange={(e) => setAccountForm({ ...accountForm, currency: e.target.value.toUpperCase() })}
-                className="h-9"
-                placeholder="PHP"
-                disabled={!!editingAccount}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {editingAccount
-                  ? "Currency cannot be changed once the account has history."
-                  : "Use PHP unless this holds a foreign currency, e.g. RMB. Foreign accounts are valued in PHP at a weighted-average rate."}
-              </p>
-            </div>
-            <div className={accountType === "bank" ? "grid grid-cols-2 gap-3" : ""}>
-              {accountType === "bank" && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Account Number</Label>
-                  <Input value={accountForm.account_number} onChange={(e) => setAccountForm({ ...accountForm, account_number: e.target.value })} className="h-9" />
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Opening Balance</Label>
-                <Input type="number" step="0.01" value={accountForm.opening_balance} onChange={(e) => setAccountForm({ ...accountForm, opening_balance: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={accountForm.notes} onChange={(e) => setAccountForm({ ...accountForm, notes: e.target.value })} className="resize-none" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAccountOpen(false)}>Cancel</Button>
-            <Button onClick={handleAccountSubmit} disabled={accountMut.isPending} className="rounded-lg h-9">
-              {editingAccount ? "Save Changes" : "Add Account"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AccountDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        editing={!!editingAccount}
+        initial={accountInitial}
+        accountType={accountType}
+        pending={accountMut.isPending}
+        onSubmit={handleAccountSubmit}
+      />
 
-      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">Transfer Between Accounts</DialogTitle></DialogHeader>
-          <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">From *</Label>
-                <Select value={transfer.from_account_id} onValueChange={(v) => setTransfer({ ...transfer, from_account_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Account" /></SelectTrigger>
-                  <SelectContent>
-                    {transferTargets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">To *</Label>
-                <Select value={transfer.to_account_id} onValueChange={(v) => setTransfer({ ...transfer, to_account_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Account" /></SelectTrigger>
-                  <SelectContent>
-                    {transferTargets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">
-                  Amount Sent *{transferFrom ? ` (${transferFrom.currency || BASE_CURRENCY})` : ""}
-                </Label>
-                <Input type="number" step="0.01" min="0" value={transfer.amount} onChange={(e) => setTransfer({ ...transfer, amount: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Date *</Label>
-                <DateField value={transfer.txn_date} onChange={(v) => setTransfer({ ...transfer, txn_date: v })} />
-              </div>
-            </div>
-            {transferCurrenciesDiffer && (
-              <div className="space-y-1.5 rounded-lg border p-3">
-                <Label className="text-xs font-medium">
-                  Amount Received * ({transferTo?.currency})
-                </Label>
-                <Input type="number" step="0.01" min="0" value={transfer.amount_to} onChange={(e) => setTransfer({ ...transfer, amount_to: e.target.value })} className="h-9" />
-                <p className="text-[11px] text-muted-foreground">
-                  {Number(transfer.amount) > 0 && Number(transfer.amount_to) > 0
-                    ? `Rate: ${(Number(transfer.amount) / Number(transfer.amount_to)).toFixed(4)} ${transferFrom?.currency || BASE_CURRENCY} per 1 ${transferTo?.currency}`
-                    : "An exchange — enter what actually landed in the destination."}
-                </p>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Reason *</Label>
-              <Textarea
-                value={transfer.notes}
-                onChange={(e) => setTransfer({ ...transfer, notes: e.target.value })}
-                className="resize-none"
-                rows={2}
-                placeholder="e.g. Fund payroll, top up for supplier payment"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Shown on both sides of the transfer in the ledger.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
-            <Button onClick={handleTransfer} disabled={transferMut.isPending} className="rounded-lg h-9">Record Transfer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        targets={transferTargets}
+        accountById={accountById}
+        pending={transferMut.isPending}
+        onSubmit={(data) => transferMut.mutate(data)}
+      />
 
       {/* Phones get stacked cards; the table runs to nine columns with accounts
           and a PHP-value column, which pushes the amount off-screen. */}
