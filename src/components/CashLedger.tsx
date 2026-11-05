@@ -23,13 +23,14 @@ import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
 import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark, ExternalLink, ListChecks, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { setTransactionCategory } from "@/lib/expenses-api";
 import { toast } from "sonner";
 import { format, parse, isValid, subDays, startOfDay } from "date-fns";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
 import { cn } from "@/lib/utils";
-import { getCashEdits, previousAmount, describeEdit, type CashEdit } from "@/lib/cash-edits";
+import { getCashEdits, previousAmount, editChanges, type CashEdit } from "@/lib/cash-edits";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
 import { useSort } from "@/hooks/use-sort";
@@ -373,19 +374,54 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     const edits = editsByTxn.get(t.id);
     if (!edits?.length) return null;
     const accountName = (id: string) => allAccounts.find((a) => a.id === id)?.name || "another account";
-    const detail = edits
-      .map((e) => [
-        `${format(new Date(e.edited_at), "MMM d, yyyy h:mm a")}${e.edited_by_email ? ` · ${shortUser(e.edited_by_email)}` : ""}`,
-        ...describeEdit(e, { amount: (n) => amountLabel(t, n), account: accountName }).map((l) => `  ${l}`),
-      ].join("\n"))
-      .join("\n\n");
     return (
-      <span
-        title={detail}
-        className={cn("inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400", className)}
-      >
-        <Pencil className="h-2.5 w-2.5" /> Edited{edits.length > 1 ? ` ×${edits.length}` : ""}
-      </span>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25",
+              className,
+            )}
+            aria-label="Show what was edited"
+          >
+            <Pencil className="h-2.5 w-2.5" /> Edited{edits.length > 1 ? ` \u00d7${edits.length}` : ""}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 p-0" onClick={(e) => e.stopPropagation()}>
+          <div className="border-b px-3 py-2">
+            <p className="text-xs font-semibold">
+              Edited {edits.length} time{edits.length === 1 ? "" : "s"}
+            </p>
+            {t.created_by_email && (
+              <p className="text-[11px] text-muted-foreground">
+                Recorded by {shortUser(t.created_by_email)} on {format(new Date(t.created_at), "MMM d, yyyy h:mm a")}
+              </p>
+            )}
+          </div>
+          <ol className="max-h-72 overflow-y-auto divide-y">
+            {edits.map((e) => (
+              <li key={e.id} className="px-3 py-2 space-y-1">
+                <p className="text-[11px] text-muted-foreground">
+                  {format(new Date(e.edited_at), "MMM d, yyyy h:mm a")}
+                  {e.edited_by_email ? <> · <span className="text-foreground">{shortUser(e.edited_by_email)}</span></> : null}
+                </p>
+                <ul className="space-y-0.5">
+                  {editChanges(e, { amount: (n) => amountLabel(t, n), account: accountName }).map((c) => (
+                    <li key={c.label} className="text-xs">
+                      <span className="text-muted-foreground">{c.label}: </span>
+                      <span className="line-through text-muted-foreground">{c.from}</span>
+                      <span className="mx-1 text-muted-foreground">{"\u2192"}</span>
+                      <span className="font-medium">{c.to}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        </PopoverContent>
+      </Popover>
     );
   };
   const accountById = useMemo(

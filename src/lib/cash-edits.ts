@@ -54,11 +54,11 @@ const LABELS: Record<string, string> = {
   fx_rate: "Rate",
 };
 
-/** One line per changed field, e.g. "Amount: 100 → 90". */
-export function describeEdit(
+/** Each changed field with its old and new value, ready to show. */
+export function editChanges(
   edit: CashEdit,
   fmt: { amount: (n: number) => string; account: (id: string) => string },
-): string[] {
+): { label: string; from: string; to: string }[] {
   return Object.entries(edit.changes || {}).map(([field, { from, to }]) => {
     const show = (v: unknown) => {
       if (v === null || v === undefined || v === "") return "—";
@@ -66,6 +66,14 @@ export function describeEdit(
       if (field === "account_id") return fmt.account(String(v));
       return String(v);
     };
-    return `${LABELS[field] || field}: ${show(from)} → ${show(to)}`;
+    return { label: LABELS[field] || field, from: show(from), to: show(to) };
   });
+}
+
+/** One line per changed field, e.g. "Amount: 100 → 90". */
+export function describeEdit(
+  edit: CashEdit,
+  fmt: { amount: (n: number) => string; account: (id: string) => string },
+): string[] {
+  return editChanges(edit, fmt).map((c) => `${c.label}: ${c.from} → ${c.to}`);
 }
