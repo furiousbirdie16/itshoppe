@@ -42,6 +42,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { usePermissions } from "@/lib/permissions";
 import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { CargoCostDialog } from "@/components/CargoCostDialog";
@@ -1190,7 +1191,7 @@ export default function OverseasPurchaseOrdersPage() {
     <div className="space-y-6">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas PO</h1>
-          <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
+          <p className="page-description"><BranchScope /> · {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
           {/* What the currency on hand actually cost, not a market rate — it is
               the figure an order should be valued at. */}
           {isAdmin && fxHoldings.length > 0 && (

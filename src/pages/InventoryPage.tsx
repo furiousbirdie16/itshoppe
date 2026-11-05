@@ -38,6 +38,7 @@ import { fetchAllRows } from "@/lib/paginate";
 import { supabase } from "@/integrations/supabase/client";
 import { useColumnPrefs, ColumnVisibilityMenu, type ColumnDef } from "@/components/ColumnVisibility";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { HorizontalScrollSync } from "@/components/HorizontalScrollSync";
 import InventoryMobileCard from "@/components/InventoryMobileCard";
 import { AllBranchesNotice } from "@/components/AllBranchesNotice";
@@ -710,7 +711,7 @@ export default function InventoryPage() {
         <div className="page-header mb-0">
           <h1 className="page-title">Inventory</h1>
           <p className="page-description">
-            {viewArchived ? `${items.length} archived` : `${items.length} items`}
+            <BranchScope /> · {viewArchived ? `${items.length} archived` : `${items.length} items`}
           </p>
         </div>
         <div className="toolbar-actions">

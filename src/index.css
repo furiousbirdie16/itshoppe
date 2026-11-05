@@ -7,7 +7,7 @@
 @layer base {
   :root {
     /* Graphite + Teal: grey chrome, one teal accent for data, links and actions */
-    --background: 210 12% 97%;
+    --background: 180 14% 96%; /* a breath of teal in the grey */
     --foreground: 214 17% 8%;
     --card: 0 0% 100%;
     --card-foreground: 214 17% 8%;

@@ -25,6 +25,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { docNo } from "@/lib/doc-number";
 import { searchMatches } from "@/lib/search";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -315,7 +316,7 @@ export default function PendingPaymentsPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Receivables</h1>
-          <p className="page-description">{totalCount} pending · Total: {peso(totalPending)}</p>
+          <p className="page-description"><BranchScope /> · {totalCount} pending · Total: {peso(totalPending)}</p>
         </div>
         <div className="toolbar-actions">
           <Button size="sm" onClick={openCreate} className="rounded-lg h-9 px-3 text-sm">

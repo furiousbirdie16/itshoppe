@@ -36,6 +36,7 @@ import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
 
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import { DragHandle } from "@/components/DragHandle";
@@ -937,7 +938,7 @@ export default function InvoicesPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Invoices</h1>
-          <p className="page-description">{filtered.length} invoice{filtered.length !== 1 ? "s" : ""}{filtered.length !== invoices.length ? ` (filtered from ${invoices.length})` : ""}</p>
+          <p className="page-description"><BranchScope /> · {filtered.length} invoice{filtered.length !== 1 ? "s" : ""}{filtered.length !== invoices.length ? ` (filtered from ${invoices.length})` : ""}</p>
           {/* The flag has to sit where people look, or the gap is only found on
               the day a customer is standing there with a faulty unit. */}
           {(Object.keys(missingSerials).length > 0 || serialsOnly) && (

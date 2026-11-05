@@ -24,6 +24,7 @@ import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, Chevr
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { TodayMovementExport } from "@/components/TodayMovementExport";
 import { costFromRows } from "@/lib/branch-cost";
 import { FilterCombobox } from "@/components/FilterCombobox";
@@ -1457,7 +1458,7 @@ export default function BusinessInsightsPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="page-header !mb-0">
           <h1 className="page-title">Business Insights</h1>
-          <p className="page-description">Sales, profit and stock performance across online orders and invoices.</p>
+          <p className="page-description"><BranchScope /> · Sales, profit and stock performance across online orders and invoices.</p>
         </div>
         <div className="flex items-center gap-2">
           <TodayMovementExport />

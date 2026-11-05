@@ -38,6 +38,7 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { docNo } from "@/lib/doc-number";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 
@@ -394,7 +395,7 @@ export default function QuotationsPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
-          <p className="page-description">{filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
+          <p className="page-description"><BranchScope /> · {filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
