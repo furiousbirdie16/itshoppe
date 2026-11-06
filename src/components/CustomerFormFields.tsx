@@ -1,13 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
+import { ChevronRight, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AddressSelector, emptyAddress, type AddressValue } from "@/components/AddressSelector";
 import { TagsInput, normalizeTag, tagKey } from "@/components/TagsInput";
 import { SuggestInput } from "@/components/SuggestInput";
 import { DuplicateCustomerWarning } from "@/components/DuplicateCustomerWarning";
 import { ResellerSelect } from "@/components/ResellerSelect";
-import { CLASSIFICATIONS, type ClassificationValue } from "@/lib/followUps";
+import type { ClassificationValue } from "@/lib/followUps";
+import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/database";
 
 export interface CustomerFormValue {
@@ -103,6 +105,18 @@ interface Props {
  * an invoice used to keep a copy each, and the copies drifted apart.
  */
 export function CustomerFormFields({ form, setForm, address, setAddress, customers, editingId, onUseExisting }: Props) {
+  // Unticking Reseller goes back to what the customer was before (wholesale,
+  // say) rather than flattening everyone to retail.
+  const nonResellerClass = useRef<ClassificationValue>("retail");
+  if (form.classification !== "reseller") nonResellerClass.current = form.classification;
+  const isReseller = form.classification === "reseller";
+
+  // Folded away until wanted: most walk-ins never get one. The closed row
+  // still shows the address, so nothing is hidden on edit.
+  const addressSummary = [address.full_address, address.barangay_village, address.city_municipality, address.province_state]
+    .filter(Boolean).join(", ");
+  const [addressOpen, setAddressOpen] = useState(false);
+
   const channelOptions = useMemo(() => customers.map((c) => c.channel || ""), [customers]);
 
   const tagOptions = useMemo(() => {
@@ -156,31 +170,27 @@ export function CustomerFormFields({ form, setForm, address, setAddress, custome
           <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9" />
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Channel</Label>
-          <SuggestInput
-            value={form.channel}
-            onChange={(channel) => setForm({ ...form, channel })}
-            options={channelOptions}
-            placeholder="e.g. Viber, Messenger, Walk-in"
-            className="h-9"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Classification</Label>
-          <Select value={form.classification} onValueChange={(v) => setForm({ ...form, classification: v as ClassificationValue })}>
-            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CLASSIFICATIONS.map((c) => (
-                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium">Channel</Label>
+        <SuggestInput
+          value={form.channel}
+          onChange={(channel) => setForm({ ...form, channel })}
+          options={channelOptions}
+          placeholder="e.g. Viber, Messenger, Walk-in"
+          className="h-9"
+        />
       </div>
 
-      {form.classification !== "reseller" && (
+      <label className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer hover:bg-muted/40">
+        <Checkbox
+          checked={isReseller}
+          onCheckedChange={(v) => setForm({ ...form, classification: v === true ? "reseller" : nonResellerClass.current })}
+        />
+        <span className="text-sm font-medium">Reseller</span>
+        <span className="text-xs text-muted-foreground">Buys from us to sell on to their own customers</span>
+      </label>
+
+      {!isReseller && (
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Came through reseller</Label>
           <ResellerSelect
@@ -191,15 +201,31 @@ export function CustomerFormFields({ form, setForm, address, setAddress, custome
           />
           {resellers.length === 0 && (
             <p className="text-[10px] text-muted-foreground">
-              No resellers yet. To add one, set a customer's Classification to Reseller.
+              No resellers yet. To add one, tick Reseller on a customer.
             </p>
           )}
         </div>
       )}
 
-      <div className="space-y-1.5">
-        <Label className="text-xs font-medium">Address</Label>
-        <AddressSelector value={address} onChange={setAddress} />
+      <div className="rounded-lg border">
+        <button
+          type="button"
+          onClick={() => setAddressOpen((o) => !o)}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/40 rounded-lg"
+          aria-expanded={addressOpen}
+        >
+          <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="text-sm font-medium">Address</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {addressSummary || "Optional"}
+          </span>
+          <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", addressOpen && "rotate-90")} />
+        </button>
+        {addressOpen && (
+          <div className="border-t p-3">
+            <AddressSelector value={address} onChange={setAddress} />
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">
