@@ -85,6 +85,8 @@ function leadLabel(lead: LeadTime) {
   return `${lead.days}d lead (default)`;
 }
 
+const SOURCE_FILTER_KEY = "reorder-list-source";
+
 export default function LowStockAlertsPage() {
   const { role } = useAuth();
   const queryClient = useQueryClient();
@@ -93,7 +95,17 @@ export default function LowStockAlertsPage() {
 
   const [group, setGroup] = useState<Group>("now");
   const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">("all");
+  // Remembered on this device, so someone who only reorders imports picks it once.
+  const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "import">(() => {
+    try {
+      const v = localStorage.getItem(SOURCE_FILTER_KEY);
+      if (v === "local" || v === "import") return v;
+    } catch { /* storage blocked: start on all */ }
+    return "all";
+  });
+  useEffect(() => {
+    try { localStorage.setItem(SOURCE_FILTER_KEY, sourceFilter); } catch { /* ignore */ }
+  }, [sourceFilter]);
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
