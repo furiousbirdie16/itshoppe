@@ -929,6 +929,9 @@ export default function CustomersPage() {
                         <Button variant="ghost" size="icon" onClick={() => setFollowDialog({ customer: c, notes: "" })} className="h-7 w-7 rounded-md" title="Mark as followed up">
                           <BellRing className="h-3.5 w-3.5 text-primary" />
                         </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setOrdersDialog(c)} className="h-7 w-7 rounded-md" title="Order history">
+                          <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
                         <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-md" title="Their prices">
                           <Link to={`/customer-pricing?customer=${c.id}`}><Tag className="h-3.5 w-3.5 text-muted-foreground" /></Link>
                         </Button>
@@ -1033,8 +1036,11 @@ export default function CustomersPage() {
                           <Tag className="h-4 w-4 mr-2 text-muted-foreground" /> Prices
                         </Link>
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setOrdersDialog(c)}>
+                        <Receipt className="h-4 w-4 mr-2 text-muted-foreground" /> Order history
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setHistoryDialog(c)}>
-                        <History className="h-4 w-4 mr-2 text-muted-foreground" /> History
+                        <History className="h-4 w-4 mr-2 text-muted-foreground" /> Follow-up history
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(c)}>
                         <Pencil className="h-4 w-4 mr-2 text-muted-foreground" /> Edit
