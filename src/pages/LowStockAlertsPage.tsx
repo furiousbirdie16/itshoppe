@@ -1243,6 +1243,7 @@ function ItemDetails({
             {r.demand.usedDays > 0 && (
               <div className="text-[11px] text-muted-foreground">
                 {fmtUnits(r.demand.usedUnits)} sales over {r.demand.usedDays} day{r.demand.usedDays === 1 ? "" : "s"} with stock
+                {r.demand.spreadDays ? ` — too few to go on, so spread over ${r.demand.spreadDays} days` : ""}
               </div>
             )}
           </Detail>
