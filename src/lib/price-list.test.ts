@@ -6,7 +6,10 @@ import {
   parsePriceCell,
   parsePriceListWorkbook,
   quoteLineName,
+  keepSheets,
   roundUpToTen,
+  sheetDefaults,
+  sortByPrice,
   splitDescription,
   visiblePriceKeys,
   type PriceGroup,
@@ -225,5 +228,51 @@ describe("splitDescription", () => {
   });
   it("leaves a plain description whole", () => {
     expect(splitDescription("8-ch camera input, 1 SATA")).toEqual({ headline: "8-ch camera input, 1 SATA", parts: [] });
+  });
+});
+
+describe("choosing sheets", () => {
+  const list = parsePriceListWorkbook(book({
+    colorVu: [["Model", "SDP"], ["DS-2CE10DF3T-PF", 1269.27]],
+    NVR: [["Model", "SDP"], ["DS-7608NI", 4783.32]],
+    Cable: [["Model", "SDP"], ["CAT6", 100]],
+  }));
+
+  it("lists each priced sheet with its rows", () => {
+    expect(list.sheets.map((s) => [s.name, s.rows.length])).toEqual([["colorVu", 1], ["NVR", 1], ["Cable", 1]]);
+  });
+
+  it("leaves out unticked sheets and their categories", () => {
+    const kept = keepSheets(list, new Set(["Cable"]));
+    expect(kept.rows.map((r) => r.model)).toEqual(["DS-2CE10DF3T-PF", "DS-7608NI"]);
+    expect(kept.categories).toEqual(["colorVu", "NVR"]);
+    expect(keepSheets(list, new Set())).toBe(list);
+  });
+
+  it("starts from last upload's choice and flags new sheets", () => {
+    const d = sheetDefaults(["colorVu", "NVR", "Cable", "Dashcam"], { sheets: ["colorVu", "nvr"], skipped_sheets: ["Cable"] });
+    expect([...d.excluded]).toEqual(["Cable"]);
+    expect([...d.isNew]).toEqual(["Dashcam"]);
+  });
+
+  it("ticks everything when there is no earlier choice", () => {
+    expect(sheetDefaults(["colorVu"], null)).toEqual({ excluded: new Set(), isNew: new Set() });
+    expect(sheetDefaults(["colorVu"], { sheets: [], skipped_sheets: [] }).isNew.size).toBe(0);
+  });
+});
+
+describe("sortByPrice", () => {
+  const rows = [
+    { m: "A", p: 300 },
+    { m: "B", p: null },
+    { m: "C", p: 100 },
+    { m: "D", p: 300 },
+    { m: "E", p: 200 },
+  ];
+  it("sorts cheapest first, ties in their original order, no price last", () => {
+    expect(sortByPrice(rows, (r) => r.p, "asc").map((r) => r.m)).toEqual(["C", "E", "A", "D", "B"]);
+  });
+  it("sorts dearest first with no price still last", () => {
+    expect(sortByPrice(rows, (r) => r.p, "desc").map((r) => r.m)).toEqual(["A", "D", "E", "C", "B"]);
   });
 });

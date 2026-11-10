@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Copy, Info, Plus, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Copy, Info, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { buildGroupLookup, priceLabel, sellingPrice, splitDescription, visiblePriceKeys, type PriceGroup } from "@/lib/price-list";
+import { buildGroupLookup, priceLabel, sellingPrice, sortByPrice, splitDescription, visiblePriceKeys, type PriceGroup, type SortDir } from "@/lib/price-list";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getPriceGroupCategories,
@@ -85,13 +85,19 @@ export function PriceListSearch({
   const [quoteAt, setQuoteAt] = useState<string>("srp");
   // The one row whose details are open, if any.
   const [openId, setOpenId] = useState<string | null>(null);
+  // Sorting by a price column; null keeps the best-match order.
+  const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
   const q = useDebounced(query, 250);
 
   // Opens on the newest active list.
   useEffect(() => {
     if (!listId && active.length > 0) setListId(active[0].id);
   }, [active, listId]);
-  useEffect(() => setCategory(ALL), [listId]);
+  useEffect(() => {
+    setCategory(ALL);
+    // Another list has other price columns.
+    setSort(null);
+  }, [listId]);
 
   const list = lists.find((l) => l.id === listId);
   const multi = isMultiPrice(list);
@@ -108,15 +114,16 @@ export function PriceListSearch({
     staleTime: 5 * 60_000,
   });
 
+  const sorting = sort != null;
   const { data: results = [], isFetching } = useQuery({
-    queryKey: ["price-list-search", listId, category, q],
-    queryFn: () => searchPriceList({ priceListIds: [listId], query: q, category: category === ALL ? null : category, limit: 100 }),
+    queryKey: ["price-list-search", listId, category, q, sorting],
+    queryFn: () => searchPriceList({ priceListIds: [listId], query: q, category: category === ALL ? null : category, limit: 100, all: sorting }),
     enabled: !!listId,
     placeholderData: (prev) => prev,
   });
 
   const lookup = useMemo(() => (list ? buildGroupLookup(list.brand, groups, links) : () => null), [list, groups, links]);
-  const rows: PricedRow[] = useMemo(
+  const priced: PricedRow[] = useMemo(
     () => results.map((r) => {
       if (multi) {
         const p = r.prices?.[quoteAt as keyof typeof r.prices];
@@ -144,6 +151,15 @@ export function PriceListSearch({
         { key: "price", label: "Your price", value: (r) => r.price, strong: true },
       ];
   const showWarranty = multi;
+
+  // Sorted over every match, then cut to the first 100 shown.
+  const sortCol = sort ? priceCols.find((c) => c.key === sort.key) : undefined;
+  const ordered = sortCol ? sortByPrice(priced, sortCol.value, sort!.dir) : priced;
+  const rows = ordered.slice(0, 100);
+  const total = priced.length;
+  // Low to high, then high to low, then back to best match.
+  const cycleSort = (key: string) =>
+    setSort((cur) => (cur?.key !== key ? { key, dir: "asc" } : cur.dir === "asc" ? { key, dir: "desc" } : null));
   // The model gets the most room: it's what you read out to the customer.
   const grid = `minmax(0,1.6fr) minmax(0,2fr) minmax(0,1fr)${priceCols.map(() => (multi ? " 84px" : " 92px")).join("")}${showWarranty ? " 68px" : ""} 28px`;
 
@@ -183,8 +199,33 @@ export function PriceListSearch({
         )}
       </div>
 
+      {/* Phones have no column headings to click, so sorting is a menu. */}
+      <Select
+        value={sort ? `${sort.key}:${sort.dir}` : "best"}
+        onValueChange={(v) => {
+          if (v === "best") return setSort(null);
+          const [key, dir] = v.split(":");
+          setSort({ key, dir: dir as SortDir });
+        }}
+      >
+        <SelectTrigger className="h-9 w-full text-sm md:hidden" aria-label="Sort"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="best">Sort: best match</SelectItem>
+          {priceCols.flatMap((c) => [
+            <SelectItem key={`${c.key}:asc`} value={`${c.key}:asc`}>{c.label}: low to high</SelectItem>,
+            <SelectItem key={`${c.key}:desc`} value={`${c.key}:desc`}>{c.label}: high to low</SelectItem>,
+          ])}
+        </SelectContent>
+      </Select>
+
       <p className="text-[11px] text-muted-foreground">
-        {isFetching ? "Searching…" : rows.length === 100 ? "First 100 matches. Type more to narrow it down." : `${rows.length} match${rows.length === 1 ? "" : "es"}`}
+        {isFetching
+          ? "Searching…"
+          : sortCol && total > 100
+            ? `The ${sort!.dir === "asc" ? "100 cheapest" : "100 dearest"} of ${total.toLocaleString()} matches by ${sortCol.label}.`
+            : !sortCol && total === 100
+              ? "First 100 matches. Type more to narrow it down."
+              : `${total.toLocaleString()} match${total === 1 ? "" : "es"}${sortCol ? `, ${sort!.dir === "asc" ? "cheapest" : "dearest"} first by ${sortCol.label}` : ""}`}
       </p>
 
       {rows.length === 0 ? (
@@ -196,7 +237,23 @@ export function PriceListSearch({
           {/* Header only on wider screens; phones get stacked rows. */}
           <div className="hidden gap-3 border-b px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid" style={{ gridTemplateColumns: grid }}>
             <span>Model</span><span>Description</span><span>Category</span>
-            {priceCols.map((c) => <span key={c.key} className="text-right">{c.label}</span>)}
+            {priceCols.map((c) => {
+              const on = sort?.key === c.key;
+              const Icon = !on ? ArrowUpDown : sort!.dir === "asc" ? ArrowUp : ArrowDown;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => cycleSort(c.key)}
+                  className={cn("flex items-center justify-end gap-1 text-right hover:text-foreground", on && "text-foreground")}
+                  title={!on ? `Sort by ${c.label}, low to high` : sort!.dir === "asc" ? `Sort by ${c.label}, high to low` : "Back to best match"}
+                  aria-sort={on ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  {c.label}
+                  <Icon className={cn("h-3 w-3 shrink-0", !on && "opacity-40")} aria-hidden="true" />
+                </button>
+              );
+            })}
             {showWarranty && <span className="text-right">Warranty</span>}
             <span />
           </div>

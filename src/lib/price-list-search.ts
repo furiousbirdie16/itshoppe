@@ -53,6 +53,9 @@ export function modelTags(model: string, category = ""): string[] {
   const tags: string[] = [];
   if (/^DS-2CE/.test(m)) tags.push("analog", "turbohd", "camera");
   else if (/^DS-2C[DV]/.test(m)) tags.push("ip", "network", "camera");
+  // Network switches: their descriptions never say "switch" ("L2, Smart
+  // Managed, 8 10/100M RJ45 PoE ports").
+  else if (/^DS-3[ET]\d/.test(m)) tags.push("switch", "network");
 
   // Recorders: the two digits after DS-72 / DS-76 are the channel count
   // (DS-7208HGHI is an 8-channel DVR, DS-7616NI a 16-channel NVR).

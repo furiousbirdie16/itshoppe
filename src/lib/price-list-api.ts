@@ -17,6 +17,9 @@ export interface PriceList {
   created_at: string;
   /** Named prices the list carries (TP-Link: vip, dealer, bottom, srp). Empty for an SDP list. */
   price_columns: PriceKey[] | null;
+  /** Sheets this upload kept, and the ones that were unticked. */
+  sheets: string[] | null;
+  skipped_sheets: string[] | null;
 }
 
 /** A list with named prices shows those instead of SDP plus markup. */
@@ -53,7 +56,15 @@ export const getPriceLists = async (): Promise<PriceList[]> => {
  * fails the half-saved list is removed so it never shows with models missing.
  */
 export async function savePriceList(
-  input: { brand: string; name: string; fileName: string; rows: ParsedPriceRow[]; priceColumns: PriceKey[] },
+  input: {
+    brand: string;
+    name: string;
+    fileName: string;
+    rows: ParsedPriceRow[];
+    priceColumns: PriceKey[];
+    sheets: string[];
+    skippedSheets: string[];
+  },
   onProgress?: (saved: number, total: number) => void,
 ): Promise<PriceList> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -63,6 +74,8 @@ export async function savePriceList(
     file_name: input.fileName,
     row_count: input.rows.length,
     price_columns: input.priceColumns,
+    sheets: input.sheets,
+    skipped_sheets: input.skippedSheets,
     created_by: user?.id ?? null,
   }).select().single();
   if (error) throw error;
@@ -129,20 +142,30 @@ export async function searchPriceList(opts: {
   query: string;
   category?: string | null;
   limit?: number;
+  /**
+   * Every match, not just the best few: needed to sort by price, or the
+   * cheapest model could sit outside the ones fetched.
+   */
+  all?: boolean;
 }): Promise<PriceListItem[]> {
   if (opts.priceListIds.length === 0) return [];
   const limit = opts.limit ?? 50;
   const terms = parseSearchQuery(opts.query);
-  let q = db.from("price_list_items")
-    .select("id, price_list_id, model, description, category, sdp, prices, warranty, tags")
-    .in("price_list_id", opts.priceListIds);
-  if (opts.category) q = q.eq("category", opts.category);
-  for (const t of terms) q = q.filter("search_text", "imatch", termToPattern(t));
+  const build = () => {
+    let q = db.from("price_list_items")
+      .select("id, price_list_id, model, description, category, sdp, prices, warranty, tags")
+      .in("price_list_id", opts.priceListIds);
+    if (opts.category) q = q.eq("category", opts.category);
+    for (const t of terms) q = q.filter("search_text", "imatch", termToPattern(t));
+    return q.order("sort_order").order("id");
+  };
+  const tidy = (data: unknown[]) =>
+    (data as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [] }));
+  if (opts.all) return rankMatches(tidy(await fetchAllRows<PriceListItem>(build)), terms);
   // With words to rank by, fetch more than are shown so the best ones are in.
-  const { data, error } = await q.order("sort_order").order("id").limit(terms.length > 0 ? 300 : limit);
+  const { data, error } = await build().limit(terms.length > 0 ? 300 : limit);
   if (error) throw error;
-  const rows = ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [] }));
-  return rankMatches(rows, terms).slice(0, limit);
+  return rankMatches(tidy(data || []), terms).slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------

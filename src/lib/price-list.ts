@@ -66,6 +66,8 @@ export interface ParsedPriceList {
   /** Sheets that held no priced models, with the reason. */
   skipped: { sheet: string; reason: string }[];
   categories: string[];
+  /** The sheets that held priced models, each with its rows, in file order. */
+  sheets: { name: string; rows: ParsedPriceRow[] }[];
 }
 
 type Cell = unknown;
@@ -287,19 +289,52 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
 export function parsePriceListWorkbook(wb: XLSX.WorkBook): ParsedPriceList {
   const rows: ParsedPriceRow[] = [];
   const skipped: ParsedPriceList["skipped"] = [];
-  const categories: string[] = [];
+  const sheets: ParsedPriceList["sheets"] = [];
   for (const name of wb.SheetNames) {
     const sheetRows = parsePriceListSheet(wb.Sheets[name], name);
     if (sheetRows.length === 0) {
       skipped.push({ sheet: clean(name), reason: "No models with a price" });
       continue;
     }
-    for (const r of sheetRows) if (!categories.includes(r.category)) categories.push(r.category);
-    rows.push(...sheetRows);
+    sheets.push({ name: clean(name), rows: sheetRows });
   }
+  return { ...summarize(sheets), skipped };
+}
+
+function summarize(sheets: ParsedPriceList["sheets"]) {
+  const rows = sheets.flatMap((s) => s.rows);
+  const categories: string[] = [];
+  for (const r of rows) if (!categories.includes(r.category)) categories.push(r.category);
   const seenKeys = new Set(rows.flatMap((r) => Object.keys(r.prices ?? {})));
   const priceColumns = PRICE_COLUMNS.map((c) => c.key).filter((k) => seenKeys.has(k));
-  return { rows, skipped, categories, priceColumns };
+  return { rows, categories, priceColumns, sheets };
+}
+
+/** The same list without the sheets you left unticked. */
+export function keepSheets(list: ParsedPriceList, excluded: Set<string>): ParsedPriceList {
+  if (excluded.size === 0) return list;
+  return { ...summarize(list.sheets.filter((s) => !excluded.has(s.name))), skipped: list.skipped };
+}
+
+/**
+ * Which sheets start unticked on an upload, from the brand's last upload:
+ * the ones you left out then. A sheet that list never had is new and starts
+ * ticked, flagged so you notice it.
+ */
+export function sheetDefaults(
+  sheetNames: string[],
+  previous: { sheets: string[] | null; skipped_sheets: string[] | null } | null,
+): { excluded: Set<string>; isNew: Set<string> } {
+  const key = (s: string) => s.trim().toLowerCase();
+  if (!previous || ((previous.sheets?.length ?? 0) === 0 && (previous.skipped_sheets?.length ?? 0) === 0)) {
+    return { excluded: new Set(), isNew: new Set() };
+  }
+  const skipped = new Set((previous.skipped_sheets ?? []).map(key));
+  const known = new Set([...(previous.sheets ?? []), ...(previous.skipped_sheets ?? [])].map(key));
+  return {
+    excluded: new Set(sheetNames.filter((n) => skipped.has(key(n)))),
+    isNew: new Set(sheetNames.filter((n) => !known.has(key(n)))),
+  };
 }
 
 export function readPriceListFile(data: ArrayBuffer): ParsedPriceList {
@@ -407,4 +442,22 @@ export function splitDescription(description: string): { headline: string; parts
   const lines = text.split(/\s*[;；]\s*/).map((l) => l.trim()).filter(Boolean);
   if (lines.length <= 1) return { headline: text, parts: [] };
   return { headline: lines[0], parts: lines.slice(1).map((l) => ({ label: null, text: l })) };
+}
+
+export type SortDir = "asc" | "desc";
+
+/**
+ * Orders rows by a price, cheapest or dearest first. Models with no price for
+ * it go last either way, and ties keep their best-match order.
+ */
+export function sortByPrice<T>(rows: T[], price: (r: T) => number | null | undefined, dir: SortDir): T[] {
+  return rows
+    .map((r, i) => ({ r, i, p: price(r) }))
+    .sort((a, b) => {
+      const an = a.p == null;
+      const bn = b.p == null;
+      if (an || bn) return an === bn ? a.i - b.i : an ? 1 : -1;
+      return (dir === "asc" ? a.p! - b.p! : b.p! - a.p!) || a.i - b.i;
+    })
+    .map((x) => x.r);
 }

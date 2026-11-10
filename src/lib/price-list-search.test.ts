@@ -42,6 +42,8 @@ describe("modelTags", () => {
     expect(modelTags("iDS-7208HQHI-M1/E")).toEqual(["dvr", "analog", "recorder", "8ch"]);
     expect(modelTags("DS-7616NI-Q2")).toEqual(["nvr", "ip", "recorder", "16ch"]);
     expect(modelTags("DS-K1T502DBWX-C")).toEqual([]);
+    expect(modelTags("DS-3E1510P-EI/M-8P2F")).toEqual(["switch", "network"]);
+    expect(modelTags("DS-3T1512HP-SI-8P4F")).toEqual(["switch", "network"]);
   });
   it("falls back on the sheet name", () => {
     expect(modelTags("XYZ-100", "Pro DVR")).toEqual(["dvr", "analog", "recorder"]);
@@ -104,7 +106,7 @@ describe("TP-Link wording", () => {
     expect(matches("8port poe", ...SWITCH)).toBe(true);
     expect(matches("16 port switch", ...SWITCH)).toBe(false);
     expect(matches("8 port switch", "SG3452P", "PoE Switch", "Omada 52-Port Gigabit Switch with 48-Port PoE+")).toBe(false);
-    expect(matches("8 port poe switch", "DS-3E0510P-E", "Smart CCTV Networking", "L2, Unmanaged, 8 10/100M RJ45 PoE ports, 2 Gigabit uplink, switch")).toBe(true);
+    expect(matches("8 port poe switch", "DS-3E0510P-E", "Smart CCTV Networking", "L2, Unmanaged, 8 10/100M RJ45 PoE ports, 2 Gigabit uplink")).toBe(true);
   });
   it("knows the Wi-Fi generations", () => {
     expect(matches("wifi 7 mesh", ...DECO)).toBe(true);

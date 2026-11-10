@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { PriceListSearch, usePriceListData } from "@/components/PriceListSearch";
-import { describeMarkup, priceLabel, readPriceListFile, type MarkupType, type ParsedPriceList, type PriceGroup } from "@/lib/price-list";
+import { describeMarkup, keepSheets, priceLabel, readPriceListFile, sheetDefaults, type MarkupType, type ParsedPriceList, type PriceGroup } from "@/lib/price-list";
 import {
   assignCategories,
   deletePriceGroup,
@@ -120,6 +120,28 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
   // The lists a replace would archive: this brand's active ones.
   const current = useMemo(() => lists.filter((l) => l.is_active && sameBrand(l.brand, brand)), [lists, brand]);
 
+  // Sheets you untick are left out. The brand's last upload decides which
+  // start unticked, and sheets it never had are flagged as new.
+  const previous = useMemo(() => lists.find((l) => sameBrand(l.brand, brand)) ?? null, [lists, brand]);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [isNew, setIsNew] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!parsed) return;
+    const d = sheetDefaults(parsed.sheets.map((x) => x.name), previous);
+    setExcluded(d.excluded);
+    setIsNew(d.isNew);
+    // Keyed on the list's id: a background refetch hands back a new object
+    // for the same list, and must not undo the ticks you have changed.
+  }, [parsed, previous?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kept = useMemo(() => (parsed ? keepSheets(parsed, excluded) : null), [parsed, excluded]);
+  const toggleSheet = (sheet: string, keep: boolean) =>
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (keep) next.delete(sheet);
+      else next.add(sheet);
+      return next;
+    });
+
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     setReading(true);
@@ -131,6 +153,12 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
       const result = readPriceListFile(buf);
       setParsed(result);
       setFileName(file.name);
+      // A file named for a brand you already have ("SEPT 21-HIKVISION PL",
+      // "TP-Link Pricelist") sets the brand, so a Hikvision file can't
+      // replace the TP-Link list because the box still said TP-Link.
+      const bare = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const named = brands.find((b) => bare(b) && bare(file.name).includes(bare(b)));
+      if (named) setBrand(named);
       if (!name) setName(file.name.replace(/\.xlsx?$/i, "").trim());
     } catch (e) {
       toast.error(`Couldn't read that file. ${e instanceof Error ? e.message : ""}`.trim());
@@ -141,18 +169,27 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      if (!parsed) throw new Error("Choose a file first");
+      if (!parsed || !kept) throw new Error("Choose a file first");
+      if (kept.rows.length === 0) throw new Error("Tick at least one sheet to keep");
       if (!brand.trim()) throw new Error("Enter the brand");
       if (!name.trim()) throw new Error("Enter a name for this list");
       // Taken before saving, so the new list is never among them.
       const toArchive = replace ? current : [];
       const list = await savePriceList(
-        { brand, name, fileName, rows: parsed.rows, priceColumns: parsed.priceColumns },
+        {
+          brand,
+          name,
+          fileName,
+          rows: kept.rows,
+          priceColumns: kept.priceColumns,
+          sheets: kept.sheets.map((x) => x.name),
+          skippedSheets: parsed.sheets.map((x) => x.name).filter((n) => excluded.has(n)),
+        },
         (saved, total) => setProgress({ saved, total }),
       );
       // Markup groups are for one-price SDP lists; a list with its own
       // selling prices (TP-Link's SRP) needs none.
-      if (parsed.priceColumns.length === 0) await ensureDefaultGroup(brand);
+      if (kept.priceColumns.length === 0) await ensureDefaultGroup(brand);
       // Only once the new list is fully saved: a failed upload leaves the
       // old one in use.
       let archiveFailed = false;
@@ -163,18 +200,18 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
           archiveFailed = true;
         }
       }
-      return { list, archived: toArchive, archiveFailed };
+      return { list, archived: toArchive, archiveFailed, saved: kept };
     },
-    onSuccess: ({ archived, archiveFailed }) => {
+    onSuccess: ({ archived, archiveFailed, saved }) => {
       qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY });
       qc.invalidateQueries({ queryKey: PRICE_GROUPS_KEY });
       qc.invalidateQueries({ queryKey: ["price-list-search"] });
       const sorted = new Set(links.filter((l) => sameBrand(l.brand, brand)).map((l) => l.category.trim().toLowerCase()));
-      const unsorted = parsed?.priceColumns.length
+      const unsorted = saved.priceColumns.length
         ? 0
-        : (parsed?.categories ?? []).filter((c) => !sorted.has(c.trim().toLowerCase())).length;
+        : saved.categories.filter((c) => !sorted.has(c.trim().toLowerCase())).length;
       toast.success(
-        `Saved ${parsed?.rows.length.toLocaleString()} models` +
+        `Saved ${saved.rows.length.toLocaleString()} models` +
           (archived.length > 0 ? `. Archived ${archived.map((l) => `"${l.name}"`).join(", ")}.` : ""),
       );
       if (archiveFailed) toast.error("The old list couldn't be archived. Archive it from the Uploads tab.");
@@ -191,10 +228,10 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
 
   return (
     <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Upload price list</DialogTitle>
-          <DialogDescription>Each sheet of the Excel file becomes a category. Nothing is added to inventory.</DialogDescription>
+          <DialogDescription>Choose which sheets to keep. Nothing is added to inventory.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -216,13 +253,37 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
             {reading ? "Reading the file…" : fileName || "Choose Excel file"}
           </Button>
 
-          {parsed && (
+          {parsed && kept && (
             <div className="space-y-2">
               <div className="grid grid-cols-3 gap-2">
-                <Stat label="Models found" value={parsed.rows.length.toLocaleString()} />
-                <Stat label="Categories" value={String(parsed.categories.length)} />
-                <Stat label="Sheets skipped" value={String(parsed.skipped.length)} />
+                <Stat label="Models kept" value={kept.rows.length.toLocaleString()} />
+                <Stat label="Categories" value={String(kept.categories.length)} />
+                <Stat label="Sheets kept" value={`${kept.sheets.length} of ${parsed.sheets.length}`} />
               </div>
+              {parsed.sheets.length > 1 && (
+                <div className="rounded-md border">
+                  <div className="flex items-center justify-between border-b px-3 py-1.5">
+                    <span className="text-xs font-medium">Sheets</span>
+                    <span className="flex gap-3 text-xs">
+                      <button type="button" className="text-primary hover:underline disabled:opacity-50" onClick={() => setExcluded(new Set())} disabled={saving}>Select all</button>
+                      <button type="button" className="text-primary hover:underline disabled:opacity-50" onClick={() => setExcluded(new Set(parsed.sheets.map((x) => x.name)))} disabled={saving}>Select none</button>
+                    </span>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto py-1">
+                    {parsed.sheets.map((sh) => (
+                      <label key={sh.name} className="flex cursor-pointer items-center gap-2.5 px-3 py-1 hover:bg-muted/50">
+                        <Checkbox checked={!excluded.has(sh.name)} onCheckedChange={(v) => toggleSheet(sh.name, !!v)} disabled={saving} />
+                        <span className="min-w-0 flex-1 truncate text-sm">{sh.name}</span>
+                        {isNew.has(sh.name) && <span className="rounded bg-primary/10 px-1.5 py-px text-[10px] font-medium text-primary">New</span>}
+                        <span className="text-xs tabular-nums text-muted-foreground">{sh.rows.length}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {previous && ((previous.sheets?.length ?? 0) > 0 || (previous.skipped_sheets?.length ?? 0) > 0) && (
+                    <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">Ticked the same as your last {previous.brand} upload.</p>
+                  )}
+                </div>
+              )}
               {parsed.priceColumns.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   Prices found: <span className="font-medium text-foreground">{parsed.priceColumns.map(priceLabel).join(" · ")}</span>. No markup groups needed.
@@ -264,7 +325,7 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={() => saveMut.mutate()} disabled={saving || !parsed || parsed.rows.length === 0}>
+          <Button onClick={() => saveMut.mutate()} disabled={saving || !kept || kept.rows.length === 0}>
             {saving ? "Saving…" : "Save price list"}
           </Button>
         </DialogFooter>
