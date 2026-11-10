@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { logActivity } from "@/lib/activity-log";
 import type { MarkupType, ParsedPriceRow, PriceGroup, PriceGroupCategory } from "@/lib/price-list";
+import { buildSearchText, parseSearchQuery, rankMatches, termToPattern } from "@/lib/price-list-search";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -68,6 +69,7 @@ export async function savePriceList(
         category: r.category,
         sdp: r.sdp,
         msrp: r.msrp,
+        search_text: buildSearchText(r.model, r.category, r.description, r.keywords),
         sort_order: i + j,
       }));
       const { error: e } = await db.from("price_list_items").insert(chunk);
@@ -105,19 +107,12 @@ export const getPriceListCategories = async (priceListId: string): Promise<strin
 // Search
 // ---------------------------------------------------------------------------
 
-/** Words a PostgREST `or` filter can carry: commas and brackets would break it. */
-function searchWords(q: string): string[] {
-  return q
-    .split(/\s+/)
-    .map((w) => w.replace(/[^a-zA-Z0-9.\-/+#]/g, ""))
-    .filter(Boolean)
-    .slice(0, 6);
-}
-
 /**
  * Finds models in the database, never in the browser: a list can be bigger
- * than the 1,000 rows one request returns. Every word must match the model or
- * the description; the model is matched without its dashes and brackets.
+ * than the 1,000 rows one request returns. Each word of the search must match
+ * the model's search text (see price-list-search.ts for how "8ch DVR" or
+ * "2mp indoor analog" are read). The best few hundred matches come back and
+ * are put in order here, the obvious answer first.
  */
 export async function searchPriceList(opts: {
   priceListIds: string[];
@@ -126,19 +121,18 @@ export async function searchPriceList(opts: {
   limit?: number;
 }): Promise<PriceListItem[]> {
   if (opts.priceListIds.length === 0) return [];
+  const limit = opts.limit ?? 50;
+  const terms = parseSearchQuery(opts.query);
   let q = db.from("price_list_items")
     .select("id, price_list_id, model, description, category, sdp, msrp")
     .in("price_list_id", opts.priceListIds);
   if (opts.category) q = q.eq("category", opts.category);
-  for (const w of searchWords(opts.query)) {
-    const key = w.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const parts = [`description.ilike.%${w}%`];
-    if (key) parts.push(`model_key.ilike.%${key}%`);
-    q = q.or(parts.join(","));
-  }
-  const { data, error } = await q.order("sort_order").order("id").limit(opts.limit ?? 50);
+  for (const t of terms) q = q.filter("search_text", "imatch", termToPattern(t));
+  // With words to rank by, fetch more than are shown so the best ones are in.
+  const { data, error } = await q.order("sort_order").order("id").limit(terms.length > 0 ? 300 : limit);
   if (error) throw error;
-  return ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), msrp: r.msrp == null ? null : Number(r.msrp) }));
+  const rows = ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), msrp: r.msrp == null ? null : Number(r.msrp) }));
+  return rankMatches(rows, terms).slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------

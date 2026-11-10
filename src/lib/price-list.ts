@@ -22,6 +22,12 @@ export interface ParsedPriceRow {
   category: string;
   sdp: number;
   msrp: number | null;
+  /**
+   * Shape, resolution, indoor/outdoor and the like from their own columns
+   * ("Turret · 4MP · Indoor"). Kept for searching only: IP camera
+   * descriptions never say "bullet" or "4MP", these columns do.
+   */
+  keywords: string;
 }
 
 export interface ParsedPriceList {
@@ -58,6 +64,7 @@ const PRICE_HEADER = /sdp|dealer price/;
 const MSRP_HEADER = /msrp/;
 const DESC_HEADER = /desc/;
 const NOISE_HEADER = /remark|note|status|picture|image|appearance|sap|bom|certific|firmware|^no\.?$/;
+const KEYWORD_HEADER = /form factor|resolution|indoor|outdoor|^type$|features?|lens|offering level/;
 
 interface Columns {
   model: number;
@@ -66,6 +73,7 @@ interface Columns {
   desc: number[];
   /** Columns that never describe a model: notes, codes, pictures. */
   noise: Set<number>;
+  keywords: number[];
 }
 
 /** Column positions if this row is a heading row, else null. */
@@ -90,7 +98,11 @@ function readHeader(row: Cell[]): Columns | null {
   h.forEach((s, i) => {
     if (NOISE_HEADER.test(s)) noise.add(i);
   });
-  return { model, sdp, msrp, desc, noise };
+  const keywords: number[] = [];
+  h.forEach((s, i) => {
+    if (isHead(s) && KEYWORD_HEADER.test(s) && i !== model && !desc.includes(i) && !noise.has(i)) keywords.push(i);
+  });
+  return { model, sdp, msrp, desc, noise, keywords };
 }
 
 /** Copy each merged cell's value into every cell it covers. */
@@ -176,7 +188,8 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     const key = `${model.toLowerCase()}|${sdp}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ model, description, category, sdp, msrp });
+    const keywords = [...new Set(cols.keywords.map((i) => clean(row[i])).filter(Boolean))].join(" · ");
+    out.push({ model, description, category, sdp, msrp, keywords });
   }
   return out;
 }

@@ -43,7 +43,7 @@ describe("parsePriceListWorkbook", () => {
       ],
     }));
     expect(r.rows).toEqual([
-      { model: "DS-2CE10DF3T-PF", description: "2M BSI CMOS Sensor,Outdoor mini Bullet", category: "colorVu", sdp: 1269.27, msrp: 2538.54 },
+      { model: "DS-2CE10DF3T-PF", description: "2M BSI CMOS Sensor,Outdoor mini Bullet", category: "colorVu", sdp: 1269.27, msrp: 2538.54, keywords: "" },
     ]);
     expect(r.categories).toEqual(["colorVu"]);
   });
@@ -86,7 +86,7 @@ describe("parsePriceListWorkbook", () => {
       ],
     }));
     expect(r.rows).toEqual([
-      { model: "DS-K3G501CLX-R/Dm55", description: "card solution · 550mm · Right", category: "Turnstiles", sdp: 48964.5, msrp: 97929 },
+      { model: "DS-K3G501CLX-R/Dm55", description: "card solution · 550mm · Right", category: "Turnstiles", sdp: 48964.5, msrp: 97929, keywords: "Right" },
     ]);
   });
 
