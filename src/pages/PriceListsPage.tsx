@@ -102,6 +102,8 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
   const [parsed, setParsed] = useState<ParsedPriceList | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<{ saved: number; total: number } | null>(null);
+  // Replacing is the usual case: a new month's file supersedes the last one.
+  const [replace, setReplace] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -111,7 +113,11 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
     setFileName("");
     setParsed(null);
     setProgress(null);
+    setReplace(true);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The lists a replace would archive: this brand's active ones.
+  const current = useMemo(() => lists.filter((l) => l.is_active && sameBrand(l.brand, brand)), [lists, brand]);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -137,17 +143,33 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
       if (!parsed) throw new Error("Choose a file first");
       if (!brand.trim()) throw new Error("Enter the brand");
       if (!name.trim()) throw new Error("Enter a name for this list");
+      // Taken before saving, so the new list is never among them.
+      const toArchive = replace ? current : [];
       const list = await savePriceList({ brand, name, fileName, rows: parsed.rows }, (saved, total) => setProgress({ saved, total }));
       await ensureDefaultGroup(brand);
-      return list;
+      // Only once the new list is fully saved: a failed upload leaves the
+      // old one in use.
+      let archiveFailed = false;
+      for (const old of toArchive) {
+        try {
+          await setPriceListActive(old.id, false);
+        } catch {
+          archiveFailed = true;
+        }
+      }
+      return { list, archived: toArchive, archiveFailed };
     },
-    onSuccess: () => {
+    onSuccess: ({ archived, archiveFailed }) => {
       qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY });
       qc.invalidateQueries({ queryKey: PRICE_GROUPS_KEY });
       qc.invalidateQueries({ queryKey: ["price-list-search"] });
       const sorted = new Set(links.filter((l) => sameBrand(l.brand, brand)).map((l) => l.category.trim().toLowerCase()));
       const unsorted = (parsed?.categories ?? []).filter((c) => !sorted.has(c.trim().toLowerCase())).length;
-      toast.success(`Saved ${parsed?.rows.length.toLocaleString()} models`);
+      toast.success(
+        `Saved ${parsed?.rows.length.toLocaleString()} models` +
+          (archived.length > 0 ? `. Archived ${archived.map((l) => `"${l.name}"`).join(", ")}.` : ""),
+      );
+      if (archiveFailed) toast.error("The old list couldn't be archived. Archive it from the Uploads tab.");
       onOpenChange(false);
       onSaved(unsorted);
     },
@@ -203,6 +225,20 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
                 <p className="text-xs text-destructive">No priced models were found. Check that the file has Model and SDP columns.</p>
               )}
             </div>
+          )}
+
+          {parsed && current.length > 0 && (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5">
+              <Checkbox checked={replace} onCheckedChange={(v) => setReplace(!!v)} disabled={saving} className="mt-0.5" />
+              <span className="min-w-0 text-sm">
+                Replace the current {brand.trim()} list
+                <span className="block text-xs text-muted-foreground">
+                  {replace
+                    ? <>Archives {current.map((l) => `"${l.name}" (uploaded ${format(new Date(l.created_at), "MMM d")})`).join(", ")} once this one is saved. It stays under Uploads for comparing prices.</>
+                    : <>Both lists stay in use. You'll pick which one to search.</>}
+                </span>
+              </span>
+            </label>
           )}
 
           {progress && (
