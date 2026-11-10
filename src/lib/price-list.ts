@@ -14,7 +14,33 @@ import * as XLSX from "xlsx";
  * the headings, some repeat the headings halfway down, and merged cells leave
  * a description on the first row of a group only. The reader copes with all
  * of that and reports the sheets it could not use.
+ *
+ * Some suppliers give several prices instead of one SDP. TP-Link's list has
+ * "Model No." and four price columns (VIP, Special DP, Bottom, SRP), and
+ * groups models under section rows ("PoE Switch", then "L2+ Managed Switch")
+ * rather than one sheet per category. A sheet with VIP and SRP headings is
+ * read that way: all four prices are kept, the section becomes the category,
+ * and the Comment column's "EOL" and "↑" become tags.
  */
+
+/** The named prices a multi-price list can carry, in the order they show. */
+export type PriceKey = "vip" | "dealer" | "bottom" | "srp";
+
+export const PRICE_COLUMNS: { key: PriceKey; label: string; header: RegExp; staffCanSee: boolean }[] = [
+  { key: "vip", label: "VIP", header: /^vip price/, staffCanSee: false },
+  { key: "dealer", label: "Dealer", header: /^special ?dp\b/, staffCanSee: false },
+  { key: "bottom", label: "Bottom", header: /^(online )?bottom price/, staffCanSee: true },
+  { key: "srp", label: "SRP", header: /^srp\b/, staffCanSee: true },
+];
+
+export const priceLabel = (key: string) => PRICE_COLUMNS.find((c) => c.key === key)?.label ?? key.toUpperCase();
+
+/** Which of a list's prices someone may see: admins all, staff the selling ones. */
+export function visiblePriceKeys(listColumns: string[], isAdmin: boolean): string[] {
+  return listColumns.filter((k) => isAdmin || PRICE_COLUMNS.find((c) => c.key === k)?.staffCanSee);
+}
+
+export type PriceTag = "eol" | "price_up";
 
 export interface ParsedPriceRow {
   model: string;
@@ -27,10 +53,16 @@ export interface ParsedPriceRow {
    * descriptions never say "bullet" or "4MP", these columns do.
    */
   keywords: string;
+  /** Multi-price lists only: every named price on the row. */
+  prices?: Partial<Record<PriceKey, number>>;
+  warranty?: string;
+  tags?: PriceTag[];
 }
 
 export interface ParsedPriceList {
   rows: ParsedPriceRow[];
+  /** The named prices this file carries ([] for a one-price SDP list). */
+  priceColumns: PriceKey[];
   /** Sheets that held no priced models, with the reason. */
   skipped: { sheet: string; reason: string }[];
   categories: string[];
@@ -58,6 +90,7 @@ const MODEL_HEADERS: RegExp[] = [
   /^(product )?model( name)?s?$/,
   /^models? for spec/,
   /^basic model$/,
+  /^model (no\.?|number)$/,
 ];
 const PRICE_HEADER = /sdp|dealer price/;
 // MSRP is not kept; the column is found only so it never ends up in a
@@ -66,6 +99,8 @@ const MSRP_HEADER = /msrp/;
 const DESC_HEADER = /desc/;
 const NOISE_HEADER = /remark|note|status|picture|image|appearance|sap|bom|certific|firmware|^no\.?$/;
 const KEYWORD_HEADER = /form factor|resolution|indoor|outdoor|^type$|features?|lens|offering level/;
+const WARRANTY_HEADER = /^warranty/;
+const COMMENT_HEADER = /^comments?$/;
 
 interface Columns {
   model: number;
@@ -75,6 +110,10 @@ interface Columns {
   /** Columns that never describe a model: notes, codes, pictures. */
   noise: Set<number>;
   keywords: number[];
+  /** Multi-price sheets: where each named price is. Empty for SDP sheets. */
+  prices: { key: PriceKey; index: number }[];
+  warranty: number;
+  comment: number;
 }
 
 /** Column positions if this row is a heading row, else null. */
@@ -88,8 +127,22 @@ function readHeader(row: Cell[]): Columns | null {
     model = h.findIndex((s) => isHead(s) && re.test(s));
     if (model >= 0) break;
   }
-  const sdp = h.findIndex((s) => isHead(s) && PRICE_HEADER.test(s));
+  const prices: Columns["prices"] = [];
+  for (const c of PRICE_COLUMNS) {
+    const i = h.findIndex((s) => isHead(s) && c.header.test(s));
+    if (i >= 0) prices.push({ key: c.key, index: i });
+  }
+  const multi = prices.some((p) => p.key === "vip") && prices.some((p) => p.key === "srp");
+  // A multi-price list's base price is VIP, its buying price.
+  // "New SDP Price" / "Previous VIP Price" head a table of price changes,
+  // not a list of models to sell.
+  const isChangeLog = (s: string) => /^(new|previous|old|eol)\b/.test(s);
+  const sdp = multi
+    ? prices.find((p) => p.key === "vip")!.index
+    : h.findIndex((s) => isHead(s) && PRICE_HEADER.test(s) && !isChangeLog(s));
   if (model < 0 || sdp < 0) return null;
+  const warranty = h.findIndex((s) => isHead(s) && WARRANTY_HEADER.test(s));
+  const comment = h.findIndex((s) => isHead(s) && COMMENT_HEADER.test(s));
   const msrp = h.findIndex((s) => isHead(s) && MSRP_HEADER.test(s));
   const desc: number[] = [];
   h.forEach((s, i) => {
@@ -99,11 +152,14 @@ function readHeader(row: Cell[]): Columns | null {
   h.forEach((s, i) => {
     if (NOISE_HEADER.test(s)) noise.add(i);
   });
+  if (warranty >= 0) noise.add(warranty);
+  if (comment >= 0) noise.add(comment);
+  for (const p of prices) noise.add(p.index);
   const keywords: number[] = [];
   h.forEach((s, i) => {
     if (isHead(s) && KEYWORD_HEADER.test(s) && i !== model && !desc.includes(i) && !noise.has(i)) keywords.push(i);
   });
-  return { model, sdp, msrp, desc, noise, keywords };
+  return { model, sdp, msrp, desc, noise, keywords, prices: multi ? prices : [], warranty, comment };
 }
 
 /** Copy each merged cell's value into every cell it covers. */
@@ -151,10 +207,15 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
   trimRange(ws);
   fillMerges(ws);
   const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, blankrows: false, defval: null, raw: true });
-  const category = clean(sheetName);
+  const sheet = clean(sheetName);
   const out: ParsedPriceRow[] = [];
   const seen = new Set<string>();
   let cols: Columns | null = null;
+  // Multi-price sheets group models under section rows: a label in the first
+  // column ("PoE Switch"), then sub-labels in the model column ("L2+ Managed
+  // Switch"). The section is the category; the sub-label helps search.
+  let section = "";
+  let sub = "";
 
   for (const row of rows) {
     // Headings can come again halfway down a sheet with different columns.
@@ -166,8 +227,21 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     if (!cols) continue;
     const model = clean(row[cols.model]);
     const sdp = parsePriceCell(row[cols.sdp]);
+    const multi = cols.prices.length > 0;
+    if (multi && sdp == null) {
+      const first = clean(row[0]);
+      const hasDesc = cols.desc.some((i) => clean(row[i]));
+      if (cols.model > 0 && first && !model) {
+        section = first;
+        sub = "";
+      } else if (model && !hasDesc) {
+        sub = model;
+      }
+      continue;
+    }
     // Group labels ("DF3T", "Pro Series: …") have no price and drop out here.
     if (!model || sdp == null) continue;
+    const category = multi && section ? section : sheet;
 
     let description: string;
     if (cols.desc.length > 0) {
@@ -188,8 +262,24 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     const key = `${model.toLowerCase()}|${sdp}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const keywords = [...new Set(cols.keywords.map((i) => clean(row[i])).filter(Boolean))].join(" · ");
-    out.push({ model, description, category, sdp, keywords });
+    const kw = cols.keywords.map((i) => clean(row[i]));
+    if (multi) kw.push(sub, sheet);
+    const keywords = [...new Set(kw.filter(Boolean))].join(" · ");
+    if (!multi) {
+      out.push({ model, description, category, sdp, keywords });
+      continue;
+    }
+    const prices: Partial<Record<PriceKey, number>> = {};
+    for (const p of cols.prices) {
+      const v = parsePriceCell(row[p.index]);
+      if (v != null) prices[p.key] = v;
+    }
+    const comment = cols.comment >= 0 ? clean(row[cols.comment]) : "";
+    const tags: PriceTag[] = [];
+    if (/\beol\b/i.test(comment)) tags.push("eol");
+    if (/↑|increase/i.test(comment)) tags.push("price_up");
+    const warranty = cols.warranty >= 0 ? clean(row[cols.warranty]) : "";
+    out.push({ model, description, category, sdp, keywords, prices, warranty, tags });
   }
   return out;
 }
@@ -204,10 +294,12 @@ export function parsePriceListWorkbook(wb: XLSX.WorkBook): ParsedPriceList {
       skipped.push({ sheet: clean(name), reason: "No models with a price" });
       continue;
     }
-    categories.push(clean(name));
+    for (const r of sheetRows) if (!categories.includes(r.category)) categories.push(r.category);
     rows.push(...sheetRows);
   }
-  return { rows, skipped, categories };
+  const seenKeys = new Set(rows.flatMap((r) => Object.keys(r.prices ?? {})));
+  const priceColumns = PRICE_COLUMNS.map((c) => c.key).filter((k) => seenKeys.has(k));
+  return { rows, skipped, categories, priceColumns };
 }
 
 export function readPriceListFile(data: ArrayBuffer): ParsedPriceList {

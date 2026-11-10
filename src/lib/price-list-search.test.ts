@@ -12,7 +12,7 @@ import {
 /** What Postgres would do with the patterns: every term must match. */
 function matches(query: string, model: string, category: string, description: string): boolean {
   const text = buildSearchText(model, category, description);
-  return parseSearchQuery(query).every((t) => new RegExp(termToPattern(t).replace(/\\[mM]/g, "\\b"), "i").test(text));
+  return parseSearchQuery(query).every((t) => new RegExp(termToPattern(t).replace(/\\m/g, "(?<![a-z0-9_])").replace(/\\M/g, "(?![a-z0-9_])"), "i").test(text));
 }
 
 const DVR = ["DS-7208HGHI-M1", "AcuSense DVR", "full-channel motion detection 2.0 ,8 Turbo HD/AHD/Analog interface input,8-ch HDTVI coaxial video&audio input"] as const;
@@ -95,7 +95,33 @@ describe("IP cameras from their own columns", () => {
   });
 });
 
+describe("TP-Link wording", () => {
+  const SWITCH = ["TL-SG1008P", "PoE Switch", "8-Port Gigabit Desktop Switch with 4-Port PoE+ PORT: 4× Gigabit PoE+ Ports"] as const;
+  const DECO = ["Deco BE85(3-pack)", "Whole-Home Wi-Fi System", "BE22000 Whole Home Mesh Wi-Fi 7 System(Tri-Band)"] as const;
+  const AX = ["Archer AX55", "Wi-Fi Router", "AX3000 Dual Band Gigabit Wi-Fi 6 Router"] as const;
+  it("reads ports however they are written", () => {
+    expect(matches("8 port poe switch", ...SWITCH)).toBe(true);
+    expect(matches("8port poe", ...SWITCH)).toBe(true);
+    expect(matches("16 port switch", ...SWITCH)).toBe(false);
+    expect(matches("8 port switch", "SG3452P", "PoE Switch", "Omada 52-Port Gigabit Switch with 48-Port PoE+")).toBe(false);
+    expect(matches("8 port poe switch", "DS-3E0510P-E", "Smart CCTV Networking", "L2, Unmanaged, 8 10/100M RJ45 PoE ports, 2 Gigabit uplink, switch")).toBe(true);
+  });
+  it("knows the Wi-Fi generations", () => {
+    expect(matches("wifi 7 mesh", ...DECO)).toBe(true);
+    expect(matches("wifi7 deco", ...DECO)).toBe(true);
+    expect(matches("wifi 6 router", ...AX)).toBe(true);
+    expect(matches("wifi 7 router", ...AX)).toBe(false);
+  });
+});
+
 describe("rankMatches", () => {
+  it("ranks by the description's headline too", () => {
+    const rows = [
+      { model: "VIGI NVR4064H", category: "NVR", description: "VIGI 64 Channel Network Video Recorder SPEC: 16-ch playback, 8-ch decoding" },
+      { model: "VIGI NVR1008H", category: "NVR", description: "VIGI 8 Channel Network Video Recorder SPEC: 1 SATA" },
+    ];
+    expect(rankMatches(rows, parseSearchQuery("nvr 8ch")).map((r) => r.model)).toEqual(["VIGI NVR1008H", "VIGI NVR4064H"]);
+  });
   it("puts the 8-channel DVR above a 16-channel one that mentions 8-ch", () => {
     const rows = [DVR16, DVR].map(([model, category, description]) => ({ model, category, description }));
     expect(rankMatches(rows, parseSearchQuery("8ch dvr")).map((r) => r.model)).toEqual(["DS-7208HGHI-M1", "DS-7216HGHI-M1"]);

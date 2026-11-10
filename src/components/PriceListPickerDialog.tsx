@@ -9,9 +9,10 @@ export interface PriceListPick {
 }
 
 /**
- * Picks a model from a supplier price list for a quotation line, at your
- * price (SDP plus the group's markup). The line is a typed-in one (a name
- * and a price), so nothing is added to inventory.
+ * Picks a model from a supplier price list for a quotation line: at your
+ * price (SDP plus the group's markup) on an SDP list, or at the price chosen
+ * under "Quote at" (SRP by default) on a list like TP-Link's. The line is a
+ * typed-in one (a name and a price), so nothing is added to inventory.
  */
 export function PriceListPickerDialog({
   open,
@@ -24,7 +25,7 @@ export function PriceListPickerDialog({
 }) {
   const pick = (r: PricedRow) => {
     if (r.price == null) {
-      toast.error("This model has no price group yet.");
+      toast.error(r.list?.price_columns?.length ? "This model has no price for that choice." : "This model has no price group yet.");
       return;
     }
     onPick({ name: quoteLineName(r.model, r.description), price: r.price });
@@ -36,7 +37,7 @@ export function PriceListPickerDialog({
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Add from price list</DialogTitle>
-          <DialogDescription>Click a model to add it at your price (SDP + markup). You can add several, then close this.</DialogDescription>
+          <DialogDescription>Click a model to add it at the price in bold. You can add several, then close this.</DialogDescription>
         </DialogHeader>
         {open && <PriceListSearch onPick={pick} autoFocus compact />}
       </DialogContent>

@@ -5,12 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { peso } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { buildGroupLookup, sellingPrice, type PriceGroup } from "@/lib/price-list";
+import { buildGroupLookup, priceLabel, sellingPrice, visiblePriceKeys, type PriceGroup } from "@/lib/price-list";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   getPriceGroupCategories,
   getPriceGroups,
   getPriceListCategories,
   getPriceLists,
+  isMultiPrice,
   searchPriceList,
   PRICE_GROUP_CATEGORIES_KEY,
   PRICE_GROUPS_KEY,
@@ -22,7 +24,11 @@ import {
 export interface PricedRow extends PriceListItem {
   list: PriceList | undefined;
   group: PriceGroup | null;
-  /** SDP plus the group's markup, rounded up to ₱10. */
+  /**
+   * The price a quotation line gets: SDP plus the group's markup (rounded up
+   * to ₱10) on an SDP list, or the chosen named price (SRP by default) on a
+   * list like TP-Link's.
+   */
   price: number | null;
 }
 
@@ -51,9 +57,12 @@ function useDebounced<T>(value: T, ms: number): T {
 const ALL = "__all__";
 
 /**
- * Search box, list and category pickers, and the results with their selling
- * price. `onPick` makes each result clickable (the quotation picker); without
- * it the results are a read-only table.
+ * Search box, list and category pickers, and the results with their prices.
+ * An SDP list (Hikvision) shows SDP and your price; a list with named prices
+ * (TP-Link) shows those, admins seeing all four and staff only Bottom and
+ * SRP. `onPick` makes each result clickable (the quotation picker), and on a
+ * named-price list adds a "Quote at" choice; without it the results are a
+ * read-only table.
  */
 export function PriceListSearch({
   onPick,
@@ -64,11 +73,14 @@ export function PriceListSearch({
   autoFocus?: boolean;
   compact?: boolean;
 }) {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const { lists, groups, links, isLoading } = usePriceListData();
   const active = useMemo(() => lists.filter((l) => l.is_active), [lists]);
   const [listId, setListId] = useState<string>("");
   const [category, setCategory] = useState<string>(ALL);
   const [query, setQuery] = useState("");
+  const [quoteAt, setQuoteAt] = useState<string>("srp");
   const q = useDebounced(query, 250);
 
   // Opens on the newest active list.
@@ -78,6 +90,13 @@ export function PriceListSearch({
   useEffect(() => setCategory(ALL), [listId]);
 
   const list = lists.find((l) => l.id === listId);
+  const multi = isMultiPrice(list);
+  const priceKeys = useMemo(() => (multi ? visiblePriceKeys(list!.price_columns ?? [], isAdmin) : []), [multi, list, isAdmin]);
+  // SRP unless this person can't see it or the list has none.
+  useEffect(() => {
+    if (priceKeys.length > 0 && !priceKeys.includes(quoteAt)) setQuoteAt(priceKeys.includes("srp") ? "srp" : priceKeys[priceKeys.length - 1]);
+  }, [priceKeys, quoteAt]);
+
   const { data: categories = [] } = useQuery({
     queryKey: ["price-list-categories", listId],
     queryFn: () => getPriceListCategories(listId),
@@ -95,10 +114,14 @@ export function PriceListSearch({
   const lookup = useMemo(() => (list ? buildGroupLookup(list.brand, groups, links) : () => null), [list, groups, links]);
   const rows: PricedRow[] = useMemo(
     () => results.map((r) => {
+      if (multi) {
+        const p = r.prices?.[quoteAt as keyof typeof r.prices];
+        return { ...r, list, group: null, price: p ?? null };
+      }
       const group = lookup(r.category);
       return { ...r, list, group, price: sellingPrice(r.sdp, group) };
     }),
-    [results, lookup, list],
+    [results, lookup, list, multi, quoteAt],
   );
 
   if (!isLoading && active.length === 0) {
@@ -109,6 +132,17 @@ export function PriceListSearch({
     );
   }
 
+  // Columns after Model, Description and Category.
+  const priceCols: { key: string; label: string; value: (r: PricedRow) => number | null | undefined; strong?: boolean }[] = multi
+    ? priceKeys.map((k) => ({ key: k, label: priceLabel(k), value: (r) => r.prices?.[k as keyof typeof r.prices], strong: !!onPick && k === quoteAt }))
+    : [
+        { key: "sdp", label: "SDP", value: (r) => r.sdp },
+        { key: "price", label: "Your price", value: (r) => r.price, strong: true },
+      ];
+  const showWarranty = multi;
+  // The model gets the most room: it's what you read out to the customer.
+  const grid = `minmax(0,1.6fr) minmax(0,2fr) minmax(0,1fr)${priceCols.map(() => (multi ? " 84px" : " 92px")).join("")}${showWarranty ? " 68px" : ""}`;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -118,14 +152,14 @@ export function PriceListSearch({
             autoFocus={autoFocus}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search model or description, e.g. 7608NI or 4MP bullet"
+            placeholder="Search model or description, e.g. 7608NI or 8 port poe switch"
             className="h-9 pl-8 text-sm"
           />
         </div>
         <Select value={listId} onValueChange={setListId}>
           <SelectTrigger className="h-9 w-full text-sm sm:w-56"><SelectValue placeholder="Price list" /></SelectTrigger>
           <SelectContent>
-            {active.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+            {active.map((l) => <SelectItem key={l.id} value={l.id}>{l.brand} · {l.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={category} onValueChange={setCategory}>
@@ -135,6 +169,14 @@ export function PriceListSearch({
             {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
+        {onPick && multi && priceKeys.length > 0 && (
+          <Select value={quoteAt} onValueChange={setQuoteAt}>
+            <SelectTrigger className="h-9 w-full text-sm sm:w-40" aria-label="Quote at"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {priceKeys.map((k) => <SelectItem key={k} value={k}>Quote at {priceLabel(k)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <p className="text-[11px] text-muted-foreground">
@@ -148,9 +190,10 @@ export function PriceListSearch({
       ) : (
         <div className={cn("rounded-lg border bg-card", compact && "max-h-[55vh] overflow-y-auto")}>
           {/* Header only on wider screens; phones get stacked rows. */}
-          <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_96px_104px] gap-3 border-b px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid">
+          <div className="hidden gap-3 border-b px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid" style={{ gridTemplateColumns: grid }}>
             <span>Model</span><span>Description</span><span>Category</span>
-            <span className="text-right">SDP</span><span className="text-right">Your price</span>
+            {priceCols.map((c) => <span key={c.key} className="text-right">{c.label}</span>)}
+            {showWarranty && <span className="text-right">Warranty</span>}
           </div>
           {rows.map((r) => {
             const Row = onPick ? "button" : "div";
@@ -160,21 +203,44 @@ export function PriceListSearch({
                 type={onPick ? "button" : undefined}
                 onClick={onPick ? () => onPick(r) : undefined}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 border-b px-3 py-2 text-left text-sm last:border-b-0 md:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_96px_104px] md:items-center",
+                  "block w-full border-b px-3 py-2 text-left text-sm last:border-b-0 md:grid md:items-center md:gap-3",
                   onPick && "hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none",
                 )}
+                style={{ gridTemplateColumns: grid }}
               >
-                <span className="truncate font-medium" title={r.model}>{r.model}</span>
-                <span className="text-right font-semibold tabular-nums md:hidden">{r.price != null ? peso(r.price) : "—"}</span>
-                <span className="col-span-2 line-clamp-2 text-xs text-muted-foreground md:col-span-1 md:truncate" title={r.description}>{r.description || "—"}</span>
-                <span className="truncate text-xs text-muted-foreground md:text-sm" title={r.group ? `${r.category} · ${r.group.name}` : r.category}>
+                {/* Wraps rather than cuts off: a model number half-shown is no use. */}
+                <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span className="font-medium [overflow-wrap:anywhere]">{r.model}</span>
+                  {r.tags?.includes("eol") && <span className="shrink-0 rounded bg-muted px-1 py-px text-[10px] font-medium text-muted-foreground" title="End of life: being phased out">EOL</span>}
+                  {r.tags?.includes("price_up") && <span className="shrink-0 rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" title="Price went up in this list">Price up</span>}
+                </span>
+                <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground md:mt-0 md:truncate" title={r.description}>{r.description || "—"}</span>
+                <span className="block truncate text-xs text-muted-foreground md:text-sm" title={r.group ? `${r.category} · ${r.group.name}` : r.category}>
                   {r.category}
                   {r.group && <span className="hidden text-[11px] md:block">{r.group.name}</span>}
                 </span>
-                <span className="text-right text-xs tabular-nums text-muted-foreground md:text-sm">
-                  <span className="md:hidden">SDP </span>{peso(r.sdp)}
+                {/* Phones: the prices as a row of small label/value pairs. */}
+                <span className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 md:hidden">
+                  {priceCols.map((c) => {
+                    const v = c.value(r);
+                    return (
+                      <span key={c.key} className="text-xs">
+                        <span className="text-muted-foreground">{c.label} </span>
+                        <span className={cn("tabular-nums", c.strong && "font-semibold")}>{v != null ? peso(v) : "—"}</span>
+                      </span>
+                    );
+                  })}
+                  {showWarranty && r.warranty && <span className="text-xs text-muted-foreground">{r.warranty}</span>}
                 </span>
-                <span className="hidden text-right font-semibold tabular-nums md:block">{r.price != null ? peso(r.price) : "—"}</span>
+                {priceCols.map((c) => {
+                  const v = c.value(r);
+                  return (
+                    <span key={c.key} className={cn("hidden text-right tabular-nums md:block", c.strong ? "font-semibold" : "text-muted-foreground")}>
+                      {v != null ? peso(v) : "—"}
+                    </span>
+                  );
+                })}
+                {showWarranty && <span className="hidden truncate text-right text-xs text-muted-foreground md:block">{r.warranty || "—"}</span>}
               </Row>
             );
           })}

@@ -13,13 +13,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { PriceListSearch, usePriceListData } from "@/components/PriceListSearch";
-import { describeMarkup, readPriceListFile, type MarkupType, type ParsedPriceList, type PriceGroup } from "@/lib/price-list";
+import { describeMarkup, priceLabel, readPriceListFile, type MarkupType, type ParsedPriceList, type PriceGroup } from "@/lib/price-list";
 import {
   assignCategories,
   deletePriceGroup,
   deletePriceList,
   ensureDefaultGroup,
   getPriceListCategories,
+  isMultiPrice,
   savePriceGroup,
   savePriceList,
   setPriceListActive,
@@ -145,8 +146,13 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
       if (!name.trim()) throw new Error("Enter a name for this list");
       // Taken before saving, so the new list is never among them.
       const toArchive = replace ? current : [];
-      const list = await savePriceList({ brand, name, fileName, rows: parsed.rows }, (saved, total) => setProgress({ saved, total }));
-      await ensureDefaultGroup(brand);
+      const list = await savePriceList(
+        { brand, name, fileName, rows: parsed.rows, priceColumns: parsed.priceColumns },
+        (saved, total) => setProgress({ saved, total }),
+      );
+      // Markup groups are for one-price SDP lists; a list with its own
+      // selling prices (TP-Link's SRP) needs none.
+      if (parsed.priceColumns.length === 0) await ensureDefaultGroup(brand);
       // Only once the new list is fully saved: a failed upload leaves the
       // old one in use.
       let archiveFailed = false;
@@ -164,7 +170,9 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
       qc.invalidateQueries({ queryKey: PRICE_GROUPS_KEY });
       qc.invalidateQueries({ queryKey: ["price-list-search"] });
       const sorted = new Set(links.filter((l) => sameBrand(l.brand, brand)).map((l) => l.category.trim().toLowerCase()));
-      const unsorted = (parsed?.categories ?? []).filter((c) => !sorted.has(c.trim().toLowerCase())).length;
+      const unsorted = parsed?.priceColumns.length
+        ? 0
+        : (parsed?.categories ?? []).filter((c) => !sorted.has(c.trim().toLowerCase())).length;
       toast.success(
         `Saved ${parsed?.rows.length.toLocaleString()} models` +
           (archived.length > 0 ? `. Archived ${archived.map((l) => `"${l.name}"`).join(", ")}.` : ""),
@@ -215,6 +223,11 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
                 <Stat label="Categories" value={String(parsed.categories.length)} />
                 <Stat label="Sheets skipped" value={String(parsed.skipped.length)} />
               </div>
+              {parsed.priceColumns.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Prices found: <span className="font-medium text-foreground">{parsed.priceColumns.map(priceLabel).join(" · ")}</span>. No markup groups needed.
+                </p>
+              )}
               {parsed.skipped.length > 0 && (
                 <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                   <AlertTriangle className="mr-1 inline h-3.5 w-3.5 -translate-y-px" />
@@ -335,7 +348,9 @@ const DEFAULT = "__default__";
 
 function PriceGroupsPanel({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
-  const { lists, groups, links } = usePriceListData();
+  const { lists: allLists, groups, links } = usePriceListData();
+  // Only one-price SDP lists are priced through markup groups.
+  const lists = useMemo(() => allLists.filter((l) => !isMultiPrice(l)), [allLists]);
   const brands = useMemo(() => [...new Set(lists.map((l) => l.brand.trim()))], [lists]);
   const [brand, setBrand] = useState("");
   useEffect(() => {

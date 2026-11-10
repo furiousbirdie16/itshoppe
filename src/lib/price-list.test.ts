@@ -7,6 +7,7 @@ import {
   parsePriceListWorkbook,
   quoteLineName,
   roundUpToTen,
+  visiblePriceKeys,
   type PriceGroup,
 } from "@/lib/price-list";
 
@@ -109,6 +110,63 @@ describe("parsePriceListWorkbook", () => {
     const wb = book({ Wide: [["Model", "SDP"], ["M-1", 10]] });
     wb.Sheets.Wide["!ref"] = "A1:XFA58";
     expect(parsePriceListWorkbook(wb).rows).toHaveLength(1);
+  });
+});
+
+describe("multi-price lists (TP-Link)", () => {
+  const head = ["Image", "Model No.", "Description", "VIP Price \r\nVAT Ex\r\n（PHP）", "Special\r\nDP\r\nVAT Ex", "Bottom Price VAT Ex", "SRP\r\nVAT Ex", "Warranty", "Comment"];
+  it("keeps all four prices and takes the category from section rows", () => {
+    const r = parsePriceListWorkbook(book({
+      "SMB Networking": [
+        head,
+        ["PoE Switch"],
+        [null, "GE POE"],
+        [null, "TL-SG1005P", "5-Port Gigabit Desktop Switch with 4-Port PoE+", "1620", "1750", "2490", "2590", "60 months", null],
+        [null, "EAP115-Wall", "300Mbps Wall-Plate Access Point", "1100", "1200", "1590", "1690", "24 months", "EOL"],
+        [null, "DS-P7001-01", "1-port GPON OLT", "18000", "19800", "26990", "26990", "60 months", "↑"],
+      ],
+    }));
+    expect(r.priceColumns).toEqual(["vip", "dealer", "bottom", "srp"]);
+    expect(r.categories).toEqual(["PoE Switch"]);
+    expect(r.rows[0]).toEqual({
+      model: "TL-SG1005P",
+      description: "5-Port Gigabit Desktop Switch with 4-Port PoE+",
+      category: "PoE Switch",
+      sdp: 1620,
+      keywords: "GE POE · SMB Networking",
+      prices: { vip: 1620, dealer: 1750, bottom: 2490, srp: 2590 },
+      warranty: "60 months",
+      tags: [],
+    });
+    expect(r.rows[1].tags).toEqual(["eol"]);
+    expect(r.rows[2].tags).toEqual(["price_up"]);
+  });
+
+  it("skips tables of price changes", () => {
+    const r = parsePriceListWorkbook(book({
+      "SDP Price Changes": [
+        ["Model", "New SDP Price", "New SRP", "Previous SDP Price"],
+        ["DS-P7001-01", "19800", "26990", "15000"],
+      ],
+      "VIP Price Changes": [
+        ["Model", "New VIP Price", "New Online Bottom Price", "New SRP", "Previous VIP Price"],
+        ["DS-P7001-01", "18000", "26990", "26990", "14000"],
+      ],
+    }));
+    expect(r.rows).toEqual([]);
+    expect(r.skipped.map((x) => x.sheet)).toEqual(["SDP Price Changes", "VIP Price Changes"]);
+  });
+
+  it("shows staff only Bottom and SRP, admins all four", () => {
+    const cols = ["vip", "dealer", "bottom", "srp"];
+    expect(visiblePriceKeys(cols, true)).toEqual(["vip", "dealer", "bottom", "srp"]);
+    expect(visiblePriceKeys(cols, false)).toEqual(["bottom", "srp"]);
+  });
+
+  it("leaves one-price lists as they were", () => {
+    const r = parsePriceListWorkbook(book({ NVR: [["Model", "Description", "SDP"], ["DS-7608NI", "8-ch", 4783.32]] }));
+    expect(r.priceColumns).toEqual([]);
+    expect(r.rows[0].prices).toBeUndefined();
   });
 });
 

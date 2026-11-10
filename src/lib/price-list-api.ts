@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { logActivity } from "@/lib/activity-log";
-import type { MarkupType, ParsedPriceRow, PriceGroup, PriceGroupCategory } from "@/lib/price-list";
+import type { MarkupType, ParsedPriceRow, PriceGroup, PriceGroupCategory, PriceKey, PriceTag } from "@/lib/price-list";
 import { buildSearchText, parseSearchQuery, rankMatches, termToPattern } from "@/lib/price-list-search";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,7 +15,12 @@ export interface PriceList {
   row_count: number;
   is_active: boolean;
   created_at: string;
+  /** Named prices the list carries (TP-Link: vip, dealer, bottom, srp). Empty for an SDP list. */
+  price_columns: PriceKey[] | null;
 }
+
+/** A list with named prices shows those instead of SDP plus markup. */
+export const isMultiPrice = (l: PriceList | undefined | null) => (l?.price_columns?.length ?? 0) > 0;
 
 export interface PriceListItem {
   id: string;
@@ -24,6 +29,9 @@ export interface PriceListItem {
   description: string;
   category: string;
   sdp: number;
+  prices: Partial<Record<PriceKey, number>>;
+  warranty: string | null;
+  tags: PriceTag[];
 }
 
 export const PRICE_LISTS_KEY = ["price-lists"] as const;
@@ -45,7 +53,7 @@ export const getPriceLists = async (): Promise<PriceList[]> => {
  * fails the half-saved list is removed so it never shows with models missing.
  */
 export async function savePriceList(
-  input: { brand: string; name: string; fileName: string; rows: ParsedPriceRow[] },
+  input: { brand: string; name: string; fileName: string; rows: ParsedPriceRow[]; priceColumns: PriceKey[] },
   onProgress?: (saved: number, total: number) => void,
 ): Promise<PriceList> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -54,6 +62,7 @@ export async function savePriceList(
     name: input.name.trim(),
     file_name: input.fileName,
     row_count: input.rows.length,
+    price_columns: input.priceColumns,
     created_by: user?.id ?? null,
   }).select().single();
   if (error) throw error;
@@ -67,6 +76,9 @@ export async function savePriceList(
         description: r.description,
         category: r.category,
         sdp: r.sdp,
+        prices: r.prices ?? {},
+        warranty: r.warranty || null,
+        tags: r.tags ?? [],
         search_text: buildSearchText(r.model, r.category, r.description, r.keywords),
         sort_order: i + j,
       }));
@@ -122,14 +134,14 @@ export async function searchPriceList(opts: {
   const limit = opts.limit ?? 50;
   const terms = parseSearchQuery(opts.query);
   let q = db.from("price_list_items")
-    .select("id, price_list_id, model, description, category, sdp")
+    .select("id, price_list_id, model, description, category, sdp, prices, warranty, tags")
     .in("price_list_id", opts.priceListIds);
   if (opts.category) q = q.eq("category", opts.category);
   for (const t of terms) q = q.filter("search_text", "imatch", termToPattern(t));
   // With words to rank by, fetch more than are shown so the best ones are in.
   const { data, error } = await q.order("sort_order").order("id").limit(terms.length > 0 ? 300 : limit);
   if (error) throw error;
-  const rows = ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp) }));
+  const rows = ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [] }));
   return rankMatches(rows, terms).slice(0, limit);
 }
 
