@@ -377,3 +377,34 @@ export function quoteLineName(model: string, description: string, max = 90): str
   const name = `${model} - ${d}`;
   return name.length > max ? `${name.slice(0, max - 1).trimEnd()}…` : name;
 }
+
+const SECTION_LABELS: Record<string, string> = {
+  spec: "Spec", sepc: "Spec", specs: "Spec",
+  feature: "Features", features: "Features", fature: "Features",
+  port: "Ports", ports: "Ports",
+  speed: "Speed",
+  hardware: "Hardware",
+};
+
+/**
+ * A description split into readable parts for the details panel. TP-Link
+ * writes "Headline SPEED: … SPEC: … FEATURE: …" (sometimes "SEPC" or
+ * "FATURE"), which becomes a headline and labelled parts. Hikvision writes
+ * one run of specs separated by semicolons, which becomes one line each.
+ */
+export function splitDescription(description: string): { headline: string; parts: { label: string | null; text: string }[] } {
+  const text = description.trim();
+  const re = /\b(spec|sepc|specs|features?|fature|ports?|speed|hardware)\s*:\s*/gi;
+  const marks = [...text.matchAll(re)];
+  if (marks.length > 0) {
+    const headline = text.slice(0, marks[0].index).trim().replace(/[,;·]\s*$/, "");
+    const parts = marks.map((m, i) => ({
+      label: SECTION_LABELS[m[1].toLowerCase()] ?? m[1],
+      text: text.slice(m.index! + m[0].length, i + 1 < marks.length ? marks[i + 1].index : undefined).trim().replace(/[,;]\s*$/, ""),
+    })).filter((p) => p.text);
+    return { headline, parts };
+  }
+  const lines = text.split(/\s*[;；]\s*/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length <= 1) return { headline: text, parts: [] };
+  return { headline: lines[0], parts: lines.slice(1).map((l) => ({ label: null, text: l })) };
+}

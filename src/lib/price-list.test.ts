@@ -7,6 +7,7 @@ import {
   parsePriceListWorkbook,
   quoteLineName,
   roundUpToTen,
+  splitDescription,
   visiblePriceKeys,
   type PriceGroup,
 } from "@/lib/price-list";
@@ -202,5 +203,27 @@ describe("quoteLineName", () => {
     expect(quoteLineName("DS-7608NI-Q1/W", "8-ch camera input, decoding at 8-ch 1080P")).toBe("DS-7608NI-Q1/W - 8-ch camera input");
     expect(quoteLineName("M-1", "")).toBe("M-1");
     expect(quoteLineName("M-1", "x".repeat(200)).length).toBe(90);
+  });
+});
+
+describe("splitDescription", () => {
+  it("splits TP-Link descriptions at their labels, misspelt ones too", () => {
+    expect(splitDescription("Omada 8-Port Switch PORT: 8× Gigabit Ports SEPC: Desktop Steel Case FATURE: Plug and Play")).toEqual({
+      headline: "Omada 8-Port Switch",
+      parts: [
+        { label: "Ports", text: "8× Gigabit Ports" },
+        { label: "Spec", text: "Desktop Steel Case" },
+        { label: "Features", text: "Plug and Play" },
+      ],
+    });
+  });
+  it("puts each semicolon part of a Hikvision description on its own line", () => {
+    expect(splitDescription("1/1.8\" Progressive Scan CMOS; H.265+/H.265; 25fps(2688×1520)")).toEqual({
+      headline: "1/1.8\" Progressive Scan CMOS",
+      parts: [{ label: null, text: "H.265+/H.265" }, { label: null, text: "25fps(2688×1520)" }],
+    });
+  });
+  it("leaves a plain description whole", () => {
+    expect(splitDescription("8-ch camera input, 1 SATA")).toEqual({ headline: "8-ch camera input, 1 SATA", parts: [] });
   });
 });
