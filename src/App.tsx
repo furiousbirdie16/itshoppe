@@ -29,6 +29,7 @@ import ExpensesPage from "@/pages/ExpensesPage";
 import FinancialDashboardPage from "@/pages/FinancialDashboardPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import CustomerPricingPage from "@/pages/CustomerPricingPage";
+import PriceListsPage from "@/pages/PriceListsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
@@ -95,6 +96,7 @@ function ProtectedRoutes() {
           <Route path="/online-sales" element={<OnlineSalesPage />} />
           <Route path="/commission" element={<CommissionPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
+          <Route path="/price-lists" element={<PriceListsPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
           <Route path="/business-insights" element={<BusinessInsightsPage />} />
           <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />

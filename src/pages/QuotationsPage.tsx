@@ -13,10 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock, BookOpen } from "lucide-react";
 import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
+import { PriceListPickerDialog } from "@/components/PriceListPickerDialog";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import { DragHandle } from "@/components/DragHandle";
@@ -373,6 +374,17 @@ export default function QuotationsPage() {
 
   const resetForm = () => { setForm({ customer_id: "", quotation_date: todayISO(), notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
+  // A model from a supplier price list goes in as a typed-in line, filling an
+  // empty last line rather than leaving a blank one above it.
+  const [priceListOpen, setPriceListOpen] = useState(false);
+  const addFromPriceList = (pick: { name: string; price: number }) => {
+    setLines(prev => {
+      const line = { item_id: "", item_name: pick.name, quantity: "1", unit_price: String(pick.price), variation_id: null };
+      const last = prev[prev.length - 1];
+      if (last && !last.item_id && !last.item_name) return [...prev.slice(0, -1), line];
+      return [...prev, line];
+    });
+  };
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
@@ -613,7 +625,11 @@ export default function QuotationsPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <Label className="text-xs font-medium">Line Items</Label>
-                <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                <div className="flex gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => setPriceListOpen(true)} className="h-7 rounded-md text-xs"><BookOpen className="h-3 w-3 mr-1" /> From price list</Button>
+                  <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                </div>
+                <PriceListPickerDialog open={priceListOpen} onOpenChange={setPriceListOpen} onPick={addFromPriceList} />
               </div>
               <div className="space-y-2">
                 {lines.map((line, idx) => {
