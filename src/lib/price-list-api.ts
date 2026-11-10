@@ -24,7 +24,6 @@ export interface PriceListItem {
   description: string;
   category: string;
   sdp: number;
-  msrp: number | null;
 }
 
 export const PRICE_LISTS_KEY = ["price-lists"] as const;
@@ -68,7 +67,6 @@ export async function savePriceList(
         description: r.description,
         category: r.category,
         sdp: r.sdp,
-        msrp: r.msrp,
         search_text: buildSearchText(r.model, r.category, r.description, r.keywords),
         sort_order: i + j,
       }));
@@ -124,14 +122,14 @@ export async function searchPriceList(opts: {
   const limit = opts.limit ?? 50;
   const terms = parseSearchQuery(opts.query);
   let q = db.from("price_list_items")
-    .select("id, price_list_id, model, description, category, sdp, msrp")
+    .select("id, price_list_id, model, description, category, sdp")
     .in("price_list_id", opts.priceListIds);
   if (opts.category) q = q.eq("category", opts.category);
   for (const t of terms) q = q.filter("search_text", "imatch", termToPattern(t));
   // With words to rank by, fetch more than are shown so the best ones are in.
   const { data, error } = await q.order("sort_order").order("id").limit(terms.length > 0 ? 300 : limit);
   if (error) throw error;
-  const rows = ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), msrp: r.msrp == null ? null : Number(r.msrp) }));
+  const rows = ((data || []) as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp) }));
   return rankMatches(rows, terms).slice(0, limit);
 }
 

@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
  * Supplier price lists, kept apart from inventory.
  *
  * A supplier's Excel price list (Hikvision sends one with 80-odd sheets) is
- * read into plain rows: model, description, category, SDP and MSRP. Nothing
+ * read into plain rows: model, description, category and SDP. Nothing
  * here touches stock; a model only becomes an inventory item when someone
  * adds it on purpose.
  *
@@ -21,7 +21,6 @@ export interface ParsedPriceRow {
   description: string;
   category: string;
   sdp: number;
-  msrp: number | null;
   /**
    * Shape, resolution, indoor/outdoor and the like from their own columns
    * ("Turret · 4MP · Indoor"). Kept for searching only: IP camera
@@ -61,6 +60,8 @@ const MODEL_HEADERS: RegExp[] = [
   /^basic model$/,
 ];
 const PRICE_HEADER = /sdp|dealer price/;
+// MSRP is not kept; the column is found only so it never ends up in a
+// description.
 const MSRP_HEADER = /msrp/;
 const DESC_HEADER = /desc/;
 const NOISE_HEADER = /remark|note|status|picture|image|appearance|sap|bom|certific|firmware|^no\.?$/;
@@ -167,7 +168,6 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     const sdp = parsePriceCell(row[cols.sdp]);
     // Group labels ("DF3T", "Pro Series: …") have no price and drop out here.
     if (!model || sdp == null) continue;
-    const msrp = cols.msrp >= 0 ? parsePriceCell(row[cols.msrp]) : null;
 
     let description: string;
     if (cols.desc.length > 0) {
@@ -189,7 +189,7 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     if (seen.has(key)) continue;
     seen.add(key);
     const keywords = [...new Set(cols.keywords.map((i) => clean(row[i])).filter(Boolean))].join(" · ");
-    out.push({ model, description, category, sdp, msrp, keywords });
+    out.push({ model, description, category, sdp, keywords });
   }
   return out;
 }

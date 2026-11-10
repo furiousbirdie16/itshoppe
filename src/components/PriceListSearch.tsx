@@ -148,9 +148,9 @@ export function PriceListSearch({
       ) : (
         <div className={cn("rounded-lg border bg-card", compact && "max-h-[55vh] overflow-y-auto")}>
           {/* Header only on wider screens; phones get stacked rows. */}
-          <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_96px_104px_96px] gap-3 border-b px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid">
+          <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_96px_104px] gap-3 border-b px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid">
             <span>Model</span><span>Description</span><span>Category</span>
-            <span className="text-right">SDP</span><span className="text-right">Your price</span><span className="text-right">MSRP</span>
+            <span className="text-right">SDP</span><span className="text-right">Your price</span>
           </div>
           {rows.map((r) => {
             const Row = onPick ? "button" : "div";
@@ -160,7 +160,7 @@ export function PriceListSearch({
                 type={onPick ? "button" : undefined}
                 onClick={onPick ? () => onPick(r) : undefined}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 border-b px-3 py-2 text-left text-sm last:border-b-0 md:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_96px_104px_96px] md:items-center",
+                  "grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 border-b px-3 py-2 text-left text-sm last:border-b-0 md:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_96px_104px] md:items-center",
                   onPick && "hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none",
                 )}
               >
@@ -175,9 +175,6 @@ export function PriceListSearch({
                   <span className="md:hidden">SDP </span>{peso(r.sdp)}
                 </span>
                 <span className="hidden text-right font-semibold tabular-nums md:block">{r.price != null ? peso(r.price) : "—"}</span>
-                <span className="col-span-2 text-xs tabular-nums text-muted-foreground md:col-span-1 md:text-right md:text-sm">
-                  <span className="md:hidden">MSRP </span>{r.msrp != null ? peso(r.msrp) : "—"}
-                </span>
               </Row>
             );
           })}
