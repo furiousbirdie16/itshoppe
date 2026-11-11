@@ -155,6 +155,9 @@ export function PriceListSearch({
   const [quoteAt, setQuoteAt] = useState<string>("srp");
   const [openId, setOpenId] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
+  // The column under the mouse, lit up the whole way down (rows light up on
+  // their own hover), so a spec can be followed down and a model across.
+  const [hoverCol, setHoverCol] = useState<string | null>(null);
   const q = useDebounced(query, 250);
 
   // Opens on the newest active list.
@@ -239,7 +242,8 @@ export function PriceListSearch({
       specCol("mp", "44px"),
       specCol("shape", "68px"),
       specCol("place", "64px"),
-      specCol("lens", "minmax(0,0.8fr)"),
+      // Wide enough for "2.8/3.6/6mm" on one line.
+      specCol("lens", "minmax(92px,0.8fr)"),
       specCol("night", "minmax(0,1fr)"),
       specCol("channels", "36px"),
       specCol("extras", "minmax(0,1fr)"),
@@ -283,6 +287,9 @@ export function PriceListSearch({
   const cycleSort = (key: string) =>
     setSort((cur) => (cur?.key !== key ? { key, dir: "asc" } : cur.dir === "asc" ? { key, dir: "desc" } : null));
   const grid = `${cols.map((c) => c.width).join(" ")} 28px`;
+  // Cells touch (no grid gap) and carry their own padding, so a lit column
+  // is one unbroken strip.
+  const cellCls = (key: string) => cn("md:self-stretch md:px-1.5 md:py-2", hoverCol === key && "md:bg-primary/[0.07]");
   const filtersOn = category !== ALL || type !== ALL || Object.values(spec).some(Boolean);
 
   const specFilter = (k: "mp" | "shape" | "place", label: string, values: string[] | undefined) =>
@@ -389,11 +396,17 @@ export function PriceListSearch({
           {isFetching ? "Searching…" : "No models match."}
         </div>
       ) : (
-        <div className={cn("rounded-lg border bg-card", compact && "max-h-[55vh] overflow-y-auto")}>
+        <div className={cn("rounded-lg border bg-card", compact && "max-h-[55vh] overflow-y-auto")} onMouseLeave={() => setHoverCol(null)}>
           {/* Header only on wider screens; phones get stacked rows. */}
-          <div className="hidden gap-3 border-b px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid" style={{ gridTemplateColumns: grid }}>
+          <div className="hidden border-b px-1.5 text-[11px] font-medium text-muted-foreground md:grid" style={{ gridTemplateColumns: grid }}>
             {cols.map((c) => {
-              if (!c.price) return <span key={c.key} className="truncate" title={c.label}>{c.short ?? c.label}</span>;
+              if (!c.price) {
+                return (
+                  <span key={c.key} className={cn("truncate", cellCls(c.key), hoverCol === c.key && "text-foreground")} title={c.label} onMouseEnter={() => setHoverCol(c.key)}>
+                    {c.short ?? c.label}
+                  </span>
+                );
+              }
               const on = sort?.key === c.key;
               const Icon = !on ? ArrowUpDown : sort!.dir === "asc" ? ArrowUp : ArrowDown;
               return (
@@ -401,7 +414,8 @@ export function PriceListSearch({
                   key={c.key}
                   type="button"
                   onClick={() => cycleSort(c.key)}
-                  className={cn("flex items-center justify-end gap-1 text-right hover:text-foreground", on && "text-foreground")}
+                  onMouseEnter={() => setHoverCol(c.key)}
+                  className={cn("flex items-center justify-end gap-1 text-right hover:text-foreground", cellCls(c.key), (on || hoverCol === c.key) && "text-foreground")}
                   title={!on ? `Sort by ${c.label}, low to high` : sort!.dir === "asc" ? `Sort by ${c.label}, high to low` : "Back to best match"}
                   aria-sort={on ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}
                 >
@@ -432,14 +446,14 @@ export function PriceListSearch({
                       activate();
                     }
                   }}
-                  className="relative block w-full cursor-pointer px-3 py-2 pr-10 text-left text-sm hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none md:grid md:items-center md:gap-3 md:pr-3"
+                  className="relative block w-full cursor-pointer px-3 py-2 pr-10 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none md:grid md:px-1.5 md:py-0"
                   style={{ gridTemplateColumns: grid }}
                 >
                   {cols.map((c) => {
                     if (c.key === "model") {
                       return (
                         // Wraps rather than cuts off: a model number half-shown is no use.
-                        <span key={c.key} className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <span key={c.key} className={cn("flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 md:content-start", cellCls(c.key))} onMouseEnter={() => setHoverCol(c.key)}>
                           <span className="font-medium [overflow-wrap:anywhere]">{r.model}</span>
                           <Tags r={r} />
                         </span>
@@ -448,7 +462,7 @@ export function PriceListSearch({
                     if (c.price) {
                       const v = c.price(r);
                       return (
-                        <span key={c.key} className={cn("hidden text-right tabular-nums md:block", c.strong ? "font-semibold" : "text-muted-foreground")}>
+                        <span key={c.key} className={cn("hidden text-right tabular-nums md:block", cellCls(c.key), c.strong ? "font-semibold" : "text-muted-foreground")} onMouseEnter={() => setHoverCol(c.key)}>
                           {v != null ? peso(v) : "—"}
                         </span>
                       );
@@ -457,10 +471,11 @@ export function PriceListSearch({
                       <span
                         key={c.key}
                         // Two lines rather than "3.6/…": a cut-off spec can't be read.
-                        className={cn("hidden break-words text-xs md:line-clamp-2 md:text-[13px]", c.key === "description" || c.key === "category" ? "text-muted-foreground" : "")}
+                        onMouseEnter={() => setHoverCol(c.key)}
+                        className={cn("hidden break-words text-xs md:block md:text-[13px]", cellCls(c.key), c.key === "description" || c.key === "category" ? "text-muted-foreground" : "")}
                         title={typeof c.cell?.(r) === "string" ? (c.cell!(r) as string) : undefined}
                       >
-                        {c.cell?.(r)}
+                        <span className="md:line-clamp-2">{c.cell?.(r)}</span>
                       </span>
                     );
                   })}
@@ -485,7 +500,7 @@ export function PriceListSearch({
                     {multi && r.warranty && <span className="text-xs text-muted-foreground">{r.warranty}</span>}
                   </span>
                   {/* Top-right on phones, last column on wider screens. */}
-                  <span className="absolute right-2 top-2 md:static md:flex md:justify-end">
+                  <span className="absolute right-2 top-2 md:static md:flex md:justify-end md:py-1.5" onMouseEnter={() => setHoverCol(null)}>
                     {onPick ? (
                       <button
                         type="button"
