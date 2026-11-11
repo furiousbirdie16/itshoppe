@@ -3,7 +3,7 @@ import { fetchAllRows } from "@/lib/paginate";
 import { logActivity } from "@/lib/activity-log";
 import type { ParsedPriceRow, PriceKey, PriceTag } from "@/lib/price-list";
 import type { Specs } from "@/lib/price-specs";
-import { buildSearchText, parseSearchQuery, rankMatches, termToPattern } from "@/lib/price-list-search";
+import { buildSearchText, keepRightKind, parseSearchQuery, rankMatches, termToPattern } from "@/lib/price-list-search";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -184,11 +184,11 @@ export async function searchPriceList(opts: {
   };
   const tidy = (data: unknown[]) =>
     (data as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [], specs: r.specs ?? {} }));
-  if (opts.all) return rankMatches(tidy(await fetchAllRows<PriceListItem>(build)), terms);
+  if (opts.all) return rankMatches(keepRightKind(tidy(await fetchAllRows<PriceListItem>(build)), terms), terms);
   // With words to rank by, fetch more than are shown so the best ones are in.
   const { data, error } = await build().limit(terms.length > 0 ? 300 : limit);
   if (error) throw error;
-  return rankMatches(tidy(data || []), terms).slice(0, limit);
+  return rankMatches(keepRightKind(tidy(data || []), terms), terms).slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------

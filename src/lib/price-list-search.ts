@@ -199,17 +199,44 @@ export function termToPattern(t: SearchTerm): string {
  * description. "8ch DVR" puts the 8-channel DVRs above 16-channel ones that
  * mention "8-ch IP input".
  */
-export function rankMatches<T extends { model: string; category: string; description: string }>(rows: T[], terms: SearchTerm[]): T[] {
+type Row = { model: string; category: string; description: string };
+
+/**
+ * What a product *is*: its model number and the words that number stands
+ * for, its category, and the description's opening words — its headline on
+ * lists like TP-Link's ("Omada 8-Port Gigabit Smart Switch", "VIGI 64
+ * Channel NVR"). Not the specs further on.
+ */
+function identityOf(r: Row): string {
+  const headline = r.description.split(/\b(?:SPEC|PORT|SPEED|FEATURE)\s*:|[;,，]/)[0].slice(0, 80);
+  return ` ${normalizeSearch(`${r.model} ${r.model.toLowerCase().replace(/[^a-z0-9]/g, "")} ${modelTags(r.model, r.category).join(" ")} ${r.category} ${headline}`)} `;
+}
+
+const inIdentity = (head: string, t: SearchTerm) =>
+  t.alternatives.some((a) => (t.anywhere ? head.includes(a) : SIZE_WORD.test(a) || a.length <= 3 ? head.includes(` ${a} `) : head.includes(` ${a}`)));
+
+/**
+ * Words that name a kind of recorder must be what the product is, not a
+ * mention in its specs: Hikvision cameras say "Smart Lighting (With Acusense
+ * DVR)", which makes them work with a DVR, not one.
+ */
+const KIND_WORDS = new Set(["dvr", "nvr", "recorder"]);
+
+export function keepRightKind<T extends Row>(rows: T[], terms: SearchTerm[]): T[] {
+  const kinds = terms.filter((t) => t.alternatives.some((a) => KIND_WORDS.has(a)));
+  if (kinds.length === 0) return rows;
+  return rows.filter((r) => {
+    const head = identityOf(r);
+    return kinds.every((t) => inIdentity(head, t));
+  });
+}
+
+export function rankMatches<T extends Row>(rows: T[], terms: SearchTerm[]): T[] {
   if (terms.length === 0) return rows;
   const scored = rows.map((r, i) => {
-    // The description's opening words are its headline on lists like
-    // TP-Link's ("Omada 8-Port Gigabit Smart Switch", "VIGI 64 Channel NVR").
-    const headline = r.description.split(/\b(?:SPEC|PORT|SPEED|FEATURE)\s*:|[;,]/)[0].slice(0, 80);
-    const head = ` ${normalizeSearch(`${r.model} ${r.model.toLowerCase().replace(/[^a-z0-9]/g, "")} ${modelTags(r.model, r.category).join(" ")} ${r.category} ${headline}`)} `;
+    const head = identityOf(r);
     let score = 0;
-    for (const t of terms) {
-      if (t.alternatives.some((a) => (t.anywhere ? head.includes(a) : SIZE_WORD.test(a) || a.length <= 3 ? head.includes(` ${a} `) : head.includes(` ${a}`)))) score++;
-    }
+    for (const t of terms) if (inIdentity(head, t)) score++;
     return { r, i, score };
   });
   scored.sort((a, b) => b.score - a.score || a.i - b.i);

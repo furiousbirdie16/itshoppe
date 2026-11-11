@@ -245,7 +245,7 @@ export function PriceListSearch({
       // Wide enough for "2.8/3.6/6mm" on one line.
       specCol("lens", "minmax(92px,0.8fr)"),
       specCol("night", "minmax(0,1fr)"),
-      specCol("channels", "36px"),
+      specCol("channels", "44px"),
       specCol("extras", "minmax(0,1fr)"),
       { key: "description", label: "Description", width: "minmax(0,2fr)", cell: (r) => r.description || "—" },
       ...prices,

@@ -5,6 +5,7 @@ import {
   normalizeSearch,
   resolutionTag,
   parseSearchQuery,
+  keepRightKind,
   rankMatches,
   termToPattern,
 } from "@/lib/price-list-search";
@@ -131,5 +132,20 @@ describe("rankMatches", () => {
   it("puts the 8-channel DVR above a 16-channel one that mentions 8-ch", () => {
     const rows = [DVR16, DVR].map(([model, category, description]) => ({ model, category, description }));
     expect(rankMatches(rows, parseSearchQuery("8ch dvr")).map((r) => r.model)).toEqual(["DS-7208HGHI-M1", "DS-7216HGHI-M1"]);
+  });
+});
+
+describe("keepRightKind", () => {
+  const rows = [
+    { model: "DS-7208HGHI-M1", category: "AcuSense DVR", description: "8 Turbo HD/AHD/Analog interface input" },
+    { model: "DS-2CE10DF0T-LPFS", category: "colorVu Hybrid", description: "2M CMOS, Smart Lighting(With Acusense DVR)，Support TVI" },
+    { model: "VIGI NVR1008H", category: "NVR", description: "VIGI 8 Channel Network Video Recorder" },
+  ];
+  it("keeps cameras that only mention a DVR out of a DVR search", () => {
+    expect(keepRightKind(rows, parseSearchQuery("dvr")).map((r) => r.model)).toEqual(["DS-7208HGHI-M1"]);
+    expect(keepRightKind(rows, parseSearchQuery("8ch nvr")).map((r) => r.model)).toEqual(["VIGI NVR1008H"]);
+  });
+  it("leaves other searches alone", () => {
+    expect(keepRightKind(rows, parseSearchQuery("smart lighting"))).toHaveLength(3);
   });
 });
