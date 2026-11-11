@@ -47,7 +47,7 @@ describe("parsePriceListWorkbook", () => {
         ["DS-2CE10DF3T-PF", null, "2M BSI CMOS Sensor,Outdoor mini Bullet", 1269.27, 2538.54],
       ],
     }));
-    expect(r.rows).toEqual([
+    expect(r.rows).toMatchObject([
       { model: "DS-2CE10DF3T-PF", description: "2M BSI CMOS Sensor,Outdoor mini Bullet", category: "colorVu", sdp: 1269.27, keywords: "" },
     ]);
     expect(r.categories).toEqual(["colorVu"]);
@@ -90,7 +90,7 @@ describe("parsePriceListWorkbook", () => {
         ["card solution", "550mm", "Right", "DS-K3G501CLX-R/Dm55", "48964.5", "97929", "Price increase"],
       ],
     }));
-    expect(r.rows).toEqual([
+    expect(r.rows).toMatchObject([
       { model: "DS-K3G501CLX-R/Dm55", description: "card solution · 550mm · Right", category: "Turnstiles", sdp: 48964.5, keywords: "Right" },
     ]);
   });
@@ -132,7 +132,7 @@ describe("multi-price lists (TP-Link)", () => {
     }));
     expect(r.priceColumns).toEqual(["vip", "dealer", "bottom", "srp"]);
     expect(r.categories).toEqual(["PoE Switch"]);
-    expect(r.rows[0]).toEqual({
+    expect(r.rows[0]).toMatchObject({
       model: "TL-SG1005P",
       description: "5-Port Gigabit Desktop Switch with 4-Port PoE+",
       category: "PoE Switch",

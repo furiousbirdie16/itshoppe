@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/lib/paginate";
 import { logActivity } from "@/lib/activity-log";
-import type { MarkupType, ParsedPriceRow, PriceGroup, PriceGroupCategory, PriceKey, PriceTag } from "@/lib/price-list";
+import type { ParsedPriceRow, PriceKey, PriceTag } from "@/lib/price-list";
+import type { Specs } from "@/lib/price-specs";
 import { buildSearchText, parseSearchQuery, rankMatches, termToPattern } from "@/lib/price-list-search";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,11 +36,11 @@ export interface PriceListItem {
   prices: Partial<Record<PriceKey, number>>;
   warranty: string | null;
   tags: PriceTag[];
+  specs: Specs;
 }
 
 export const PRICE_LISTS_KEY = ["price-lists"] as const;
-export const PRICE_GROUPS_KEY = ["price-groups"] as const;
-export const PRICE_GROUP_CATEGORIES_KEY = ["price-group-categories"] as const;
+export const CATEGORY_TYPES_KEY = ["price-category-types"] as const;
 
 // ---------------------------------------------------------------------------
 // Lists
@@ -92,7 +93,8 @@ export async function savePriceList(
         prices: r.prices ?? {},
         warranty: r.warranty || null,
         tags: r.tags ?? [],
-        search_text: buildSearchText(r.model, r.category, r.description, r.keywords),
+        specs: r.specs ?? {},
+        search_text: buildSearchText(r.model, r.category, r.description, r.keywords, { ...r.specs }),
         sort_order: i + j,
       }));
       const { error: e } = await db.from("price_list_items").insert(chunk);
@@ -118,12 +120,26 @@ export const deletePriceList = async (list: PriceList) => {
   await logActivity("deleted_price_list", "price_list", list.id, { name: list.name, brand: list.brand });
 };
 
-/** Every sheet name in a list, for the group editor and the category filter. */
-export const getPriceListCategories = async (priceListId: string): Promise<string[]> => {
-  const rows = await fetchAllRows<{ category: string; id: string }>(() =>
-    db.from("price_list_items").select("category, id").eq("price_list_id", priceListId).order("sort_order").order("id"),
+export interface PriceListFacets {
+  categories: string[];
+  /** The values each spec filter can offer, from this list's models. */
+  mp: string[];
+  shape: string[];
+  place: string[];
+}
+
+/** Every category in a list, and the MP / shape / indoor-outdoor values its models have. */
+export const getPriceListFacets = async (priceListId: string): Promise<PriceListFacets> => {
+  const rows = await fetchAllRows<{ category: string; specs: Specs | null; id: string }>(() =>
+    db.from("price_list_items").select("category, specs, id").eq("price_list_id", priceListId).order("sort_order").order("id"),
   );
-  return [...new Set(rows.map((r) => r.category))];
+  const uniq = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];
+  return {
+    categories: uniq(rows.map((r) => r.category)),
+    mp: uniq(rows.map((r) => r.specs?.mp)).sort((a, b) => parseFloat(a) - parseFloat(b)),
+    shape: uniq(rows.map((r) => r.specs?.shape)).sort(),
+    place: uniq(rows.map((r) => r.specs?.place)).sort(),
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -141,6 +157,10 @@ export async function searchPriceList(opts: {
   priceListIds: string[];
   query: string;
   category?: string | null;
+  /** Only these categories (a type's categories); an empty list finds nothing. */
+  categories?: string[] | null;
+  /** Spec filters: { mp: "2MP", shape: "Dome", place: "Indoor" }. */
+  specs?: Partial<Record<"mp" | "shape" | "place", string>>;
   limit?: number;
   /**
    * Every match, not just the best few: needed to sort by price, or the
@@ -149,18 +169,21 @@ export async function searchPriceList(opts: {
   all?: boolean;
 }): Promise<PriceListItem[]> {
   if (opts.priceListIds.length === 0) return [];
+  if (opts.categories && opts.categories.length === 0) return [];
   const limit = opts.limit ?? 50;
   const terms = parseSearchQuery(opts.query);
   const build = () => {
     let q = db.from("price_list_items")
-      .select("id, price_list_id, model, description, category, sdp, prices, warranty, tags")
+      .select("id, price_list_id, model, description, category, sdp, prices, warranty, tags, specs")
       .in("price_list_id", opts.priceListIds);
     if (opts.category) q = q.eq("category", opts.category);
+    if (opts.categories) q = q.in("category", opts.categories);
+    for (const [k, v] of Object.entries(opts.specs ?? {})) if (v) q = q.eq(`specs->>${k}`, v);
     for (const t of terms) q = q.filter("search_text", "imatch", termToPattern(t));
     return q.order("sort_order").order("id");
   };
   const tidy = (data: unknown[]) =>
-    (data as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [] }));
+    (data as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [], specs: r.specs ?? {} }));
   if (opts.all) return rankMatches(tidy(await fetchAllRows<PriceListItem>(build)), terms);
   // With words to rank by, fetch more than are shown so the best ones are in.
   const { data, error } = await build().limit(terms.length > 0 ? 300 : limit);
@@ -169,90 +192,111 @@ export async function searchPriceList(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Price groups
+// Category types ("Analog camera", "IP camera", "DVR"…)
 // ---------------------------------------------------------------------------
 
-export const getPriceGroups = async (): Promise<PriceGroup[]> => {
-  const { data, error } = await db.from("price_groups").select("*").order("sort_order").order("name");
-  if (error) throw error;
-  return ((data || []) as PriceGroup[]).map((g) => ({ ...g, markup_value: Number(g.markup_value) }));
-};
-
-export const getPriceGroupCategories = async (): Promise<PriceGroupCategory[]> =>
-  fetchAllRows<PriceGroupCategory>(() => db.from("price_group_categories").select("*").order("id"));
-
-/** Makes sure a brand has its "Everything else" group, so every model has a price. */
-export async function ensureDefaultGroup(brand: string): Promise<void> {
-  const { data } = await db.from("price_groups").select("id").ilike("brand", brand.trim()).eq("is_default", true).limit(1);
-  if (data && data.length > 0) return;
-  const { error } = await db.from("price_groups").insert({
-    brand: brand.trim(),
-    name: "Everything else",
-    markup_type: "percent",
-    markup_value: 10,
-    is_default: true,
-    sort_order: 1000,
-  });
-  // Someone else made it a moment ago: fine.
-  if (error && error.code !== "23505") throw error;
-}
-
-export async function savePriceGroup(g: {
-  id?: string;
+export interface CategoryType {
+  id: string;
   brand: string;
-  name: string;
-  markup_type: MarkupType;
-  markup_value: number;
-  sort_order?: number;
-}): Promise<PriceGroup> {
-  const row = {
-    brand: g.brand.trim(),
-    name: g.name.trim(),
-    markup_type: g.markup_type,
-    markup_value: g.markup_value,
-    updated_at: new Date().toISOString(),
-    ...(g.sort_order != null ? { sort_order: g.sort_order } : {}),
-  };
-  if (!row.name) throw new Error("Enter a group name");
-  const res = g.id
-    ? await db.from("price_groups").update(row).eq("id", g.id).select().single()
-    : await db.from("price_groups").insert(row).select().single();
-  if (res.error) {
-    if (res.error.code === "23505") throw new Error(`There is already a group called "${row.name}"`);
-    throw res.error;
-  }
-  await logActivity(g.id ? "updated_price_group" : "created_price_group", "price_group", res.data.id, {
-    brand: row.brand, name: row.name, markup_type: row.markup_type, markup_value: row.markup_value,
-  });
-  return res.data as PriceGroup;
+  category: string;
+  type: string;
 }
 
-/** Deleting a group sends its sheets back to "Everything else". */
-export const deletePriceGroup = async (id: string) => {
-  const { error } = await db.from("price_groups").delete().eq("id", id);
-  if (error) throw error;
-  await logActivity("deleted_price_group", "price_group", id);
-};
+/** The types offered before any are made; your own are added to these. */
+export const STARTER_TYPES = ["Analog camera", "IP camera", "DVR", "NVR", "Kit", "Network switch", "Cable", "Accessory"];
 
-/**
- * Puts sheets into a group, or back to "Everything else" when groupId is
- * null. A sheet in another group moves.
- */
-export async function assignCategories(brand: string, categories: string[], groupId: string | null): Promise<void> {
+export const getCategoryTypes = async (): Promise<CategoryType[]> =>
+  fetchAllRows<CategoryType>(() => db.from("price_category_types").select("*").order("id"));
+
+/** Gives categories a type, or clears it when type is null. A category in another type moves. */
+export async function setCategoryTypes(brand: string, categories: string[], type: string | null): Promise<void> {
   if (categories.length === 0) return;
   const b = brand.trim();
-  const existing = await getPriceGroupCategories();
   const keys = new Set(categories.map((c) => c.trim().toLowerCase()));
+  const existing = await getCategoryTypes();
   const toRemove = existing
-    .filter((l) => l.brand.trim().toLowerCase() === b.toLowerCase() && keys.has(l.category.trim().toLowerCase()))
-    .map((l) => l.id);
+    .filter((t) => t.brand.trim().toLowerCase() === b.toLowerCase() && keys.has(t.category.trim().toLowerCase()))
+    .map((t) => t.id);
   if (toRemove.length > 0) {
-    const { error } = await db.from("price_group_categories").delete().in("id", toRemove);
+    const { error } = await db.from("price_category_types").delete().in("id", toRemove);
     if (error) throw error;
   }
-  if (!groupId) return;
-  const { error } = await db.from("price_group_categories").insert(
-    categories.map((c) => ({ brand: b, category: c.trim(), group_id: groupId })),
-  );
+  const clean = type?.trim();
+  if (!clean) return;
+  const { error } = await db.from("price_category_types").insert(categories.map((c) => ({ brand: b, category: c.trim(), type: clean })));
   if (error) throw error;
+  await logActivity("set_price_category_type", "price_list", undefined, { brand: b, type: clean, categories });
+}
+
+// ---------------------------------------------------------------------------
+// A customer's last price for a model
+// ---------------------------------------------------------------------------
+
+/**
+ * The last price a customer paid or was quoted for a model, or null.
+ *
+ * Looked for in two places. Inventory sales of the same model: items named
+ * like "HIK Colorvu 2mp outdoor no audio DS-2CE10DF3T-PF", matched on the
+ * model as a whole word so "…-PF" is not "…-PFS", through the customer's
+ * price history. And price-list lines on their quotations and invoices,
+ * found by name: the model alone, or "model - description" as the picker
+ * writes it. Cancelled invoices don't count. The most recent wins.
+ */
+export async function getLastPriceForModel(customerId: string, model: string): Promise<{ price: number; date: string; from: "invoice" | "quotation" | "sale" } | null> {
+  const prefix = model.replace(/[%_\\]/g, (c) => `\\${c}`);
+  const matches = (name: string | null) => {
+    const n = (name ?? "").trim().toLowerCase();
+    const m = model.trim().toLowerCase();
+    return n === m || n.startsWith(`${m} - `);
+  };
+  const wholeWord = (text: string | null) =>
+    (text ?? "").toLowerCase().split(/\s+/).includes(model.trim().toLowerCase());
+  const [inv, quo, items] = await Promise.all([
+    db.from("invoice_items")
+      .select("unit_price, item_name, invoices!inner(customer_id, invoice_date, status, created_at)")
+      .eq("invoices.customer_id", customerId)
+      .neq("invoices.status", "cancelled")
+      .ilike("item_name", `${prefix}%`)
+      .limit(200),
+    db.from("quotation_items")
+      .select("unit_price, item_name, quotations!inner(customer_id, quotation_date, created_at)")
+      .eq("quotations.customer_id", customerId)
+      .ilike("item_name", `${prefix}%`)
+      .limit(200),
+    db.from("items").select("id, name, sku").or(`name.ilike.%${prefix}%,sku.ilike.%${prefix}%`).limit(50),
+  ]);
+  if (inv.error) throw inv.error;
+  if (quo.error) throw quo.error;
+  if (items.error) throw items.error;
+  const itemIds = ((items.data ?? []) as { id: string; name: string | null; sku: string | null }[])
+    .filter((i) => wholeWord(i.name) || wholeWord(i.sku))
+    .map((i) => i.id);
+  let sales: { unit_price: number; sold_at: string; created_at: string | null }[] = [];
+  if (itemIds.length > 0) {
+    const { data, error } = await db.from("customer_price_history")
+      .select("unit_price, sold_at, created_at")
+      .eq("customer_id", customerId)
+      .in("item_id", itemIds)
+      .order("sold_at", { ascending: false })
+      .limit(20);
+    if (error) throw error;
+    sales = data ?? [];
+  }
+  type Line = { unit_price: number; item_name: string | null };
+  type InvLine = Line & { invoices: { invoice_date: string | null; created_at: string | null } | null };
+  type QuoLine = Line & { quotations: { quotation_date: string | null; created_at: string | null } | null };
+  type Hit = { price: number; date: string; created: string; from: "invoice" | "quotation" | "sale" };
+  const hits: Hit[] = [
+    ...((inv.data ?? []) as InvLine[]).filter((r) => matches(r.item_name)).map((r) => ({
+      price: Number(r.unit_price), date: r.invoices?.invoice_date ?? "", created: r.invoices?.created_at ?? "", from: "invoice" as const,
+    })),
+    ...((quo.data ?? []) as QuoLine[]).filter((r) => matches(r.item_name)).map((r) => ({
+      price: Number(r.unit_price), date: r.quotations?.quotation_date ?? "", created: r.quotations?.created_at ?? "", from: "quotation" as const,
+    })),
+    ...sales.map((r) => ({ price: Number(r.unit_price), date: (r.sold_at ?? "").slice(0, 10), created: r.created_at ?? "", from: "sale" as const })),
+  ].filter((h) => h.price > 0);
+  if (hits.length === 0) return null;
+  hits.sort((a, b) => (a.date === b.date ? (a.created < b.created ? 1 : -1) : a.date < b.date ? 1 : -1));
+  const { price, date, from } = hits[0];
+  return { price, date, from };
 }

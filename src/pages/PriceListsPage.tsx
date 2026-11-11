@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, Archive, ArchiveRestore, FileSpreadsheet, Plus, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Archive, ArchiveRestore, FileSpreadsheet, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,23 +12,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
 import { PriceListSearch, usePriceListData } from "@/components/PriceListSearch";
-import { describeMarkup, keepSheets, priceLabel, readPriceListFile, sheetDefaults, type MarkupType, type ParsedPriceList, type PriceGroup } from "@/lib/price-list";
+import { keepSheets, priceLabel, readPriceListFile, sheetDefaults, type ParsedPriceList } from "@/lib/price-list";
 import {
-  assignCategories,
-  deletePriceGroup,
   deletePriceList,
-  ensureDefaultGroup,
-  getPriceListCategories,
-  isMultiPrice,
-  savePriceGroup,
+  getPriceListFacets,
   savePriceList,
+  setCategoryTypes,
   setPriceListActive,
-  PRICE_GROUP_CATEGORIES_KEY,
-  PRICE_GROUPS_KEY,
+  CATEGORY_TYPES_KEY,
   PRICE_LISTS_KEY,
+  STARTER_TYPES,
   type PriceList,
 } from "@/lib/price-list-api";
+import { typeLookup } from "@/components/PriceListSearch";
 
 const sameBrand = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -57,14 +55,14 @@ export default function PriceListsPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="search">Search</TabsTrigger>
-          <TabsTrigger value="groups">Price groups</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
           {isAdmin && <TabsTrigger value="lists">Uploads</TabsTrigger>}
         </TabsList>
         <TabsContent value="search" className="mt-4">
           <PriceListSearch />
         </TabsContent>
-        <TabsContent value="groups" className="mt-4">
-          <PriceGroupsPanel canEdit={isAdmin} />
+        <TabsContent value="categories" className="mt-4">
+          <CategoriesPanel canEdit={isAdmin} />
         </TabsContent>
         {isAdmin && (
           <TabsContent value="lists" className="mt-4">
@@ -77,10 +75,10 @@ export default function PriceListsPage() {
         <UploadDialog
           open={uploadOpen}
           onOpenChange={setUploadOpen}
-          onSaved={(unsorted) => {
-            if (unsorted > 0) {
-              setTab("groups");
-              toast.info(`${unsorted} categor${unsorted === 1 ? "y is" : "ies are"} not in a price group yet. They use "Everything else" until you sort them.`);
+          onSaved={(untyped) => {
+            if (untyped > 0) {
+              setTab("categories");
+              toast.info(`${untyped} categor${untyped === 1 ? "y has" : "ies have"} no type yet. Set them here to filter by type.`);
             }
           }}
         />
@@ -95,7 +93,7 @@ export default function PriceListsPage() {
 
 function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: (unsorted: number) => void }) {
   const qc = useQueryClient();
-  const { lists, links } = usePriceListData();
+  const { lists, types } = usePriceListData();
   const brands = useMemo(() => [...new Set(lists.map((l) => l.brand))], [lists]);
   const [brand, setBrand] = useState("");
   const [name, setName] = useState("");
@@ -187,9 +185,6 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
         },
         (saved, total) => setProgress({ saved, total }),
       );
-      // Markup groups are for one-price SDP lists; a list with its own
-      // selling prices (TP-Link's SRP) needs none.
-      if (kept.priceColumns.length === 0) await ensureDefaultGroup(brand);
       // Only once the new list is fully saved: a failed upload leaves the
       // old one in use.
       let archiveFailed = false;
@@ -204,19 +199,17 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
     },
     onSuccess: ({ archived, archiveFailed, saved }) => {
       qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY });
-      qc.invalidateQueries({ queryKey: PRICE_GROUPS_KEY });
       qc.invalidateQueries({ queryKey: ["price-list-search"] });
-      const sorted = new Set(links.filter((l) => sameBrand(l.brand, brand)).map((l) => l.category.trim().toLowerCase()));
-      const unsorted = saved.priceColumns.length
-        ? 0
-        : saved.categories.filter((c) => !sorted.has(c.trim().toLowerCase())).length;
+      qc.invalidateQueries({ queryKey: ["price-list-facets"] });
+      const typeOf = typeLookup(brand, types);
+      const untyped = saved.categories.filter((c) => !typeOf(c)).length;
       toast.success(
         `Saved ${saved.rows.length.toLocaleString()} models` +
           (archived.length > 0 ? `. Archived ${archived.map((l) => `"${l.name}"`).join(", ")}.` : ""),
       );
       if (archiveFailed) toast.error("The old list couldn't be archived. Archive it from the Uploads tab.");
       onOpenChange(false);
-      onSaved(unsorted);
+      onSaved(untyped);
     },
     onError: (e: Error) => {
       setProgress(null);
@@ -402,68 +395,73 @@ function UploadsPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Price groups
+// Categories: a type for each, set in bulk
 // ---------------------------------------------------------------------------
 
-const DEFAULT = "__default__";
+const NO_TYPE = "__none__";
+const NEW_TYPE = "__new__";
 
-function PriceGroupsPanel({ canEdit }: { canEdit: boolean }) {
+function CategoriesPanel({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
-  const { lists: allLists, groups, links } = usePriceListData();
-  // Only one-price SDP lists are priced through markup groups.
-  const lists = useMemo(() => allLists.filter((l) => !isMultiPrice(l)), [allLists]);
+  const { lists, types } = usePriceListData();
   const brands = useMemo(() => [...new Set(lists.map((l) => l.brand.trim()))], [lists]);
   const [brand, setBrand] = useState("");
   useEffect(() => {
     if (!brand && brands.length > 0) setBrand(brands[0]);
   }, [brands, brand]);
 
-  // Sheets come from the brand's newest list.
+  // Categories come from the brand's newest list.
   const latest = lists.find((l) => sameBrand(l.brand, brand) && l.is_active) ?? lists.find((l) => sameBrand(l.brand, brand));
-  const { data: categories = [] } = useQuery({
-    queryKey: ["price-list-categories", latest?.id],
-    queryFn: () => getPriceListCategories(latest!.id),
+  const { data: facets } = useQuery({
+    queryKey: ["price-list-facets", latest?.id],
+    queryFn: () => getPriceListFacets(latest!.id),
     enabled: !!latest,
     staleTime: 5 * 60_000,
   });
+  const categories = facets?.categories ?? [];
+  const typeOf = useMemo(() => typeLookup(brand, types), [brand, types]);
+  // Your types first, then the starter ones you haven't used yet.
+  const typeNames = useMemo(() => {
+    const used = [...new Set(types.map((t) => t.type))].sort();
+    return [...used, ...STARTER_TYPES.filter((t) => !used.some((u) => u.toLowerCase() === t.toLowerCase()))];
+  }, [types]);
 
-  const brandGroups = useMemo(
-    () => groups.filter((g) => sameBrand(g.brand, brand)).sort((a, b) => Number(a.is_default) - Number(b.is_default) || a.sort_order - b.sort_order || a.name.localeCompare(b.name)),
-    [groups, brand],
-  );
-  const groupOf = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const l of links) if (sameBrand(l.brand, brand)) m.set(l.category.trim().toLowerCase(), l.group_id);
-    return (c: string) => m.get(c.trim().toLowerCase()) ?? null;
-  }, [links, brand]);
-
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: PRICE_GROUPS_KEY });
-    qc.invalidateQueries({ queryKey: PRICE_GROUP_CATEGORIES_KEY });
-  };
-
-  const [editing, setEditing] = useState<Partial<PriceGroup> | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEffect(() => setSelected(new Set()), [brand]);
+  const [newTypeFor, setNewTypeFor] = useState<string[] | null>(null);
+  const [newType, setNewType] = useState("");
 
-  const assignMut = useMutation({
-    mutationFn: ({ cats, groupId }: { cats: string[]; groupId: string | null }) => assignCategories(brand, cats, groupId),
-    onSuccess: () => { refresh(); setSelected(new Set()); },
-    onError: (e: Error) => toast.error(e.message || "Couldn't move the categories"),
+  const setMut = useMutation({
+    mutationFn: ({ cats, type }: { cats: string[]; type: string | null }) => setCategoryTypes(brand, cats, type),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: CATEGORY_TYPES_KEY });
+      setSelected(new Set());
+      toast.success(v.type ? `${v.cats.length} categor${v.cats.length === 1 ? "y" : "ies"} set to ${v.type}` : "Type cleared");
+    },
+    onError: (e: Error) => toast.error(e.message || "Couldn't set the type"),
   });
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => deletePriceGroup(id),
-    onSuccess: () => { refresh(); toast.success("Group deleted. Its categories use \"Everything else\" now."); },
-    onError: (e: Error) => toast.error(e.message || "Couldn't delete the group"),
-  });
+  const apply = (cats: string[], value: string) => {
+    if (value === NEW_TYPE) {
+      setNewTypeFor(cats);
+      setNewType("");
+      return;
+    }
+    setMut.mutate({ cats, type: value === NO_TYPE ? null : value });
+  };
 
   if (brands.length === 0) {
-    return <p className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">Upload a price list first, then sort its categories into price groups here.</p>;
+    return <p className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">Upload a price list first, then give its categories a type here.</p>;
   }
 
-  const unsorted = categories.filter((c) => !groupOf(c));
-  const fallback = brandGroups.find((g) => g.is_default);
+  const untyped = categories.filter((c) => !typeOf(c)).length;
   const toggle = (c: string, on: boolean) => setSelected((s) => { const n = new Set(s); if (on) n.add(c); else n.delete(c); return n; });
+  const typeOptions = (
+    <>
+      <SelectItem value={NO_TYPE}>No type</SelectItem>
+      {typeNames.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+      <SelectItem value={NEW_TYPE}>New type…</SelectItem>
+    </>
+  );
 
   return (
     <div className="space-y-4">
@@ -474,82 +472,53 @@ function PriceGroupsPanel({ canEdit }: { canEdit: boolean }) {
         </Select>
       )}
 
-      <div className="rounded-lg border bg-card">
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <p className="text-sm font-medium">Price groups · {brand}</p>
-          {canEdit && (
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditing({ brand, markup_type: "amount", markup_value: 0, name: "" })}>
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add group
-            </Button>
-          )}
-        </div>
-        <div className="divide-y">
-          {brandGroups.map((g) => {
-            const count = g.is_default ? unsorted.length : categories.filter((c) => groupOf(c) === g.id).length;
-            return (
-              <div key={g.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{g.name}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {g.is_default ? `Any category not in another group · ${count} now` : `${count} categor${count === 1 ? "y" : "ies"}`}
-                  </p>
-                </div>
-                <span className="text-sm font-semibold tabular-nums">{describeMarkup(g.markup_type, Number(g.markup_value))}</span>
-                {canEdit && (
-                  <div className="flex gap-0.5">
-                    <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setEditing(g)}>Edit</Button>
-                    {!g.is_default && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Delete ${g.name}`} onClick={() => { if (confirm(`Delete "${g.name}"? Its categories will use "Everything else".`)) deleteMut.mutate(g.id); }}>
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">Prices round up to the next ₱10. Changing a markup reprices every model in the group straight away; quotations already saved keep their prices.</p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Give each category a type, e.g. colorVu, colorVu Hybrid and Two-way Audio as <span className="font-medium text-foreground">Analog camera</span>.
+        The Type filter on the Search tab then shows only those. Types are kept by category name, so next month's upload keeps them.
+      </p>
 
-      {unsorted.length > 0 && fallback && (
+      {untyped > 0 && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
           <AlertTriangle className="mr-1 inline h-3.5 w-3.5 -translate-y-px" />
-          {unsorted.length} categor{unsorted.length === 1 ? "y is" : "ies are"} not in a group and use {describeMarkup(fallback.markup_type, Number(fallback.markup_value))}.
+          {untyped} of {categories.length} categor{categories.length === 1 ? "y has" : "ies have"} no type yet.
         </div>
       )}
 
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-          <p className="mr-auto text-sm font-medium">Categories {latest && <span className="font-normal text-muted-foreground">· from {latest.name}</span>}</p>
-          {canEdit && selected.size > 0 && (
+          <p className="mr-auto text-sm font-medium">
+            Categories · {brand} {latest && <span className="font-normal text-muted-foreground">· from {latest.name}</span>}
+          </p>
+          {canEdit && (
             <>
-              <span className="text-xs text-muted-foreground">{selected.size} selected → </span>
-              <Select onValueChange={(v) => assignMut.mutate({ cats: [...selected], groupId: v === DEFAULT ? null : v })}>
-                <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder="Put in group…" /></SelectTrigger>
-                <SelectContent>
-                  {brandGroups.map((g) => <SelectItem key={g.id} value={g.is_default ? DEFAULT : g.id}>{g.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <button type="button" className="text-xs text-primary hover:underline" onClick={() => setSelected(new Set(categories))}>Select all</button>
+              {selected.size > 0 && (
+                <>
+                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => setSelected(new Set())}>Clear</button>
+                  <span className="text-xs text-muted-foreground">{selected.size} selected →</span>
+                  <Select value="" onValueChange={(v) => apply([...selected], v)}>
+                    <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder="Set type…" /></SelectTrigger>
+                    <SelectContent>{typeOptions}</SelectContent>
+                  </Select>
+                </>
+              )}
             </>
           )}
         </div>
         <div className="divide-y">
           {categories.map((c) => {
-            const gid = groupOf(c);
+            const t = typeOf(c);
             return (
               <div key={c} className="flex items-center gap-3 px-3 py-1.5">
                 {canEdit && <Checkbox checked={selected.has(c)} onCheckedChange={(v) => toggle(c, !!v)} aria-label={`Select ${c}`} />}
                 <span className="min-w-0 flex-1 truncate text-sm">{c}</span>
                 {canEdit ? (
-                  <Select value={gid ?? DEFAULT} onValueChange={(v) => assignMut.mutate({ cats: [c], groupId: v === DEFAULT ? null : v })}>
-                    <SelectTrigger className="h-8 w-44 text-xs sm:w-52"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {brandGroups.map((g) => <SelectItem key={g.id} value={g.is_default ? DEFAULT : g.id}>{g.name}</SelectItem>)}
-                    </SelectContent>
+                  <Select value={t ?? NO_TYPE} onValueChange={(v) => apply([c], v)}>
+                    <SelectTrigger className={cn("h-8 w-44 text-xs sm:w-52", !t && "text-muted-foreground")}><SelectValue /></SelectTrigger>
+                    <SelectContent>{typeOptions}</SelectContent>
                   </Select>
                 ) : (
-                  <span className="text-xs text-muted-foreground">{brandGroups.find((g) => g.id === gid)?.name ?? fallback?.name ?? "—"}</span>
+                  <span className="text-xs text-muted-foreground">{t ?? "—"}</span>
                 )}
               </div>
             );
@@ -557,60 +526,19 @@ function PriceGroupsPanel({ canEdit }: { canEdit: boolean }) {
         </div>
       </div>
 
-      {editing && <GroupDialog group={editing} onClose={() => setEditing(null)} onSaved={refresh} />}
+      <Dialog open={newTypeFor != null} onOpenChange={(o) => !o && setNewTypeFor(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New type</DialogTitle>
+            <DialogDescription>For {newTypeFor?.length ?? 0} categor{newTypeFor?.length === 1 ? "y" : "ies"}.</DialogDescription>
+          </DialogHeader>
+          <Input autoFocus value={newType} onChange={(e) => setNewType(e.target.value)} placeholder="PTZ camera" onKeyDown={(e) => { if (e.key === "Enter" && newType.trim() && newTypeFor) { setMut.mutate({ cats: newTypeFor, type: newType.trim() }); setNewTypeFor(null); } }} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewTypeFor(null)}>Cancel</Button>
+            <Button disabled={!newType.trim()} onClick={() => { if (newTypeFor) setMut.mutate({ cats: newTypeFor, type: newType.trim() }); setNewTypeFor(null); }}>Set type</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-  );
-}
-
-function GroupDialog({ group, onClose, onSaved }: { group: Partial<PriceGroup>; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(group.name ?? "");
-  const [type, setType] = useState<MarkupType>(group.markup_type ?? "amount");
-  const [value, setValue] = useState(String(group.markup_value ?? ""));
-  const mut = useMutation({
-    mutationFn: () => {
-      const v = Number(value);
-      if (!Number.isFinite(v) || v < 0) throw new Error("Enter a markup of 0 or more");
-      return savePriceGroup({ id: group.id, brand: group.brand!, name, markup_type: type, markup_value: v });
-    },
-    onSuccess: () => { onSaved(); onClose(); },
-    onError: (e: Error) => toast.error(e.message || "Couldn't save the group"),
-  });
-  const example = Number(value) >= 0 ? describeMarkup(type, Number(value) || 0) : "";
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{group.id ? "Edit price group" : "Add price group"}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="CCTV cameras" disabled={group.is_default} autoFocus={!group.id} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Markup</Label>
-              <Select value={type} onValueChange={(v) => setType(v as MarkupType)}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="amount">Fixed amount (₱)</SelectItem>
-                  <SelectItem value="percent">Percent (%)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{type === "percent" ? "Percent" : "Amount"}</Label>
-              <Input type="number" min={0} value={value} onChange={(e) => setValue(e.target.value)} className="numeric-field" />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">Selling price = {example}, rounded up to the next ₱10.</p>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>{mut.isPending ? "Saving…" : "Save"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

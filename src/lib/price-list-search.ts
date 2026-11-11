@@ -56,6 +56,16 @@ export function modelTags(model: string, category = ""): string[] {
   // Network switches: their descriptions never say "switch" ("L2, Smart
   // Managed, 8 10/100M RJ45 PoE ports").
   else if (/^DS-3[ET]\d/.test(m)) tags.push("switch", "network");
+  // HiWatch, Hikvision's value line, numbers its own way: HWI- IP camera,
+  // HWT- analog camera, HWN- NVR, HWD- DVR.
+  else if (/^(?:E-)?HWI/.test(m)) tags.push("ip", "network", "camera", "hiwatch");
+  else if (/^HWT/.test(m)) tags.push("analog", "turbohd", "camera", "hiwatch");
+  if (/^HWN-/.test(m)) tags.push("nvr", "ip", "recorder", "hiwatch");
+  if (/^HWD-/.test(m)) tags.push("dvr", "analog", "recorder", "hiwatch");
+  const hw = m.match(/^HW[ND]-\d{2}(\d{2})/);
+  if (hw) tags.push(`${Number(hw[1])}ch`);
+  // Kits are cameras with a recorder, sold as one.
+  if (/\bkit\b/.test(cat)) tags.push("kit", "camera");
 
   // Recorders: the two digits after DS-72 / DS-76 are the channel count
   // (DS-7208HGHI is an 8-channel DVR, DS-7616NI a 16-channel NVR).
@@ -84,10 +94,13 @@ export function resolutionTag(text: string): string | null {
 }
 
 /** The text stored with each model for searching. */
-export function buildSearchText(model: string, category: string, description: string, keywords = ""): string {
+export function buildSearchText(model: string, category: string, description: string, keywords = "", specs: Record<string, string | undefined> = {}): string {
   const key = model.toLowerCase().replace(/[^a-z0-9]/g, "");
   const res = resolutionTag(`${keywords} ${description}`) ?? "";
-  return normalizeSearch(`${model} ${key} ${modelTags(model, category).join(" ")} ${category} ${keywords} ${res} ${description}`);
+  // The specs too, so "indoor dome" finds a dome whose description never
+  // says either word.
+  const spec = Object.values(specs).filter(Boolean).join(" ");
+  return normalizeSearch(`${model} ${key} ${modelTags(model, category).join(" ")} ${category} ${keywords} ${spec} ${res} ${description}`);
 }
 
 // Words that say nothing about the product. Includes the Taglish ones a

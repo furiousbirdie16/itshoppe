@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { extractSpecs, SPEC_HEADERS, type Specs } from "@/lib/price-specs";
 
 /**
  * Supplier price lists, kept apart from inventory.
@@ -53,6 +54,8 @@ export interface ParsedPriceRow {
    * descriptions never say "bullet" or "4MP", these columns do.
    */
   keywords: string;
+  /** MP, shape, indoor/outdoor, lens… for columns and filters. */
+  specs?: Specs;
   /** Multi-price lists only: every named price on the row. */
   prices?: Partial<Record<PriceKey, number>>;
   warranty?: string;
@@ -116,6 +119,8 @@ interface Columns {
   prices: { key: PriceKey; index: number }[];
   warranty: number;
   comment: number;
+  /** Columns holding a spec ("Form Factor" → shape). */
+  specFields: { key: string; index: number }[];
 }
 
 /** Column positions if this row is a heading row, else null. */
@@ -161,7 +166,13 @@ function readHeader(row: Cell[]): Columns | null {
   h.forEach((s, i) => {
     if (isHead(s) && KEYWORD_HEADER.test(s) && i !== model && !desc.includes(i) && !noise.has(i)) keywords.push(i);
   });
-  return { model, sdp, msrp, desc, noise, keywords, prices: multi ? prices : [], warranty, comment };
+  const specFields: Columns["specFields"] = [];
+  for (const sh of SPEC_HEADERS) {
+    h.forEach((s, i) => {
+      if (isHead(s) && sh.header.test(s) && i !== model && !desc.includes(i)) specFields.push({ key: sh.key, index: i });
+    });
+  }
+  return { model, sdp, msrp, desc, noise, keywords, prices: multi ? prices : [], warranty, comment, specFields };
 }
 
 /** Copy each merged cell's value into every cell it covers. */
@@ -218,12 +229,16 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
   // Switch"). The section is the category; the sub-label helps search.
   let section = "";
   let sub = "";
+  // One-price sheets put group rows above models too ("ColorVu Lite+MD2.0
+  // 10 series bullet"): the shape is often only written there.
+  let group = "";
 
   for (const row of rows) {
     // Headings can come again halfway down a sheet with different columns.
     const head = readHeader(row);
     if (head) {
       cols = head;
+      group = "";
       continue;
     }
     if (!cols) continue;
@@ -242,7 +257,12 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
       continue;
     }
     // Group labels ("DF3T", "Pro Series: …") have no price and drop out here.
-    if (!model || sdp == null) continue;
+    if (!model || sdp == null) {
+      // Merged across the row, a group label fills every cell with itself.
+      const label = [...new Set(row.map(clean).filter(Boolean))];
+      if (label.length === 1 && label[0].length <= 80) group = label[0];
+      continue;
+    }
     const category = multi && section ? section : sheet;
 
     let description: string;
@@ -267,8 +287,14 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     const kw = cols.keywords.map((i) => clean(row[i]));
     if (multi) kw.push(sub, sheet);
     const keywords = [...new Set(kw.filter(Boolean))].join(" · ");
+    const fields: Record<string, string> = {};
+    for (const sf of cols.specFields) {
+      const v = clean(row[sf.index]);
+      if (v) fields[sf.key] = fields[sf.key] ? `${fields[sf.key]} ${v}` : v;
+    }
+    const specs = extractSpecs({ model, category, description, fields, group: multi ? sub || section : group });
     if (!multi) {
-      out.push({ model, description, category, sdp, keywords });
+      out.push({ model, description, category, sdp, keywords, specs });
       continue;
     }
     const prices: Partial<Record<PriceKey, number>> = {};
@@ -281,7 +307,7 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     if (/\beol\b/i.test(comment)) tags.push("eol");
     if (/↑|increase/i.test(comment)) tags.push("price_up");
     const warranty = cols.warranty >= 0 ? clean(row[cols.warranty]) : "";
-    out.push({ model, description, category, sdp, keywords, prices, warranty, tags });
+    out.push({ model, description, category, sdp, keywords, specs, prices, warranty, tags });
   }
   return out;
 }

@@ -44,6 +44,10 @@ describe("modelTags", () => {
     expect(modelTags("DS-K1T502DBWX-C")).toEqual([]);
     expect(modelTags("DS-3E1510P-EI/M-8P2F")).toEqual(["switch", "network"]);
     expect(modelTags("DS-3T1512HP-SI-8P4F")).toEqual(["switch", "network"]);
+    expect(modelTags("HWI-B140H(C)")).toEqual(["ip", "network", "camera", "hiwatch"]);
+    expect(modelTags("HWT-T120-M")).toEqual(["analog", "turbohd", "camera", "hiwatch"]);
+    expect(modelTags("HWN-2104MH")).toEqual(["nvr", "ip", "recorder", "hiwatch", "4ch"]);
+    expect(modelTags("TVI-4CH2D2B-2MP-Eco", "Analog KIT")).toEqual(["kit", "camera"]);
   });
   it("falls back on the sheet name", () => {
     expect(modelTags("XYZ-100", "Pro DVR")).toEqual(["dvr", "analog", "recorder"]);

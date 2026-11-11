@@ -377,9 +377,9 @@ export default function QuotationsPage() {
   // A model from a supplier price list goes in as a typed-in line, filling an
   // empty last line rather than leaving a blank one above it.
   const [priceListOpen, setPriceListOpen] = useState(false);
-  const addFromPriceList = (pick: { name: string; price: number }) => {
+  const addFromPriceList = (pick: { name: string; price: number | null }) => {
     setLines(prev => {
-      const line = { item_id: "", item_name: pick.name, quantity: "1", unit_price: String(pick.price), variation_id: null };
+      const line = { item_id: "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null };
       const last = prev[prev.length - 1];
       if (last && !last.item_id && !last.item_name) return [...prev.slice(0, -1), line];
       return [...prev, line];
@@ -629,7 +629,7 @@ export default function QuotationsPage() {
                   <Button variant="outline" size="sm" onClick={() => setPriceListOpen(true)} className="h-7 rounded-md text-xs"><BookOpen className="h-3 w-3 mr-1" /> From price list</Button>
                   <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
                 </div>
-                <PriceListPickerDialog open={priceListOpen} onOpenChange={setPriceListOpen} onPick={addFromPriceList} />
+                <PriceListPickerDialog open={priceListOpen} onOpenChange={setPriceListOpen} onPick={addFromPriceList} customerId={form.customer_id || null} />
               </div>
               <div className="space-y-2">
                 {lines.map((line, idx) => {
