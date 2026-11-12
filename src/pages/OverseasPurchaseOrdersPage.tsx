@@ -42,6 +42,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { usePermissions } from "@/lib/permissions";
 import { isForeign, fxPosition, foreignAmount } from "@/lib/fx";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { CargoCostDialog } from "@/components/CargoCostDialog";
@@ -1190,7 +1191,7 @@ export default function OverseasPurchaseOrdersPage() {
     <div className="space-y-6">
         <div className="page-header mb-0">
           <h1 className="page-title">Overseas PO</h1>
-          <p className="page-description">{filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
+          <p className="page-description"><BranchScope /> · {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ""} • Stock added when marked received</p>
           {/* What the currency on hand actually cost, not a market rate — it is
               the figure an order should be valued at. */}
           {isAdmin && fxHoldings.length > 0 && (
@@ -1976,7 +1977,7 @@ export default function OverseasPurchaseOrdersPage() {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Estimated arrival</Label>
-              <Input type="date" value={shipEta} onChange={(e) => setShipEta(e.target.value)} className="h-9" />
+              <DateField value={shipEta} onChange={setShipEta} />
               <p className="text-[11px] text-muted-foreground">
                 Starts a month out — change it to whatever the supplier says. Drives the
                 ETA column and the incoming-stock view, and can be corrected later from

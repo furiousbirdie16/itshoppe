@@ -440,7 +440,7 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Due Date</Label>
-                <Input type="date" value={dueDate} disabled className="h-9 bg-muted/40" />
+                <DateField value={dueDate} onChange={() => {}} disabled placeholder="—" />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -723,7 +723,7 @@ export default function PurchaseOrdersPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Payment Due</Label>
-                <Input type="date" value={editDueDate} disabled className="h-9 bg-muted/40" />
+                <DateField value={editDueDate} onChange={() => {}} disabled placeholder="—" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Status</Label>

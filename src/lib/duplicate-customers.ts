@@ -31,7 +31,7 @@ export type DuplicateMatch<T> = {
  * catches "NRC" against "NRC Builders"; it needs four characters, so a short
  * name does not flag half the list.
  */
-export function findDuplicateCustomers<T extends { id: string; name: string }>(
+export function findDuplicateCustomers<T extends { id: string; name: string; contact_person?: string | null }>(
   name: string,
   customers: T[],
   excludeId?: string,
@@ -44,7 +44,10 @@ export function findDuplicateCustomers<T extends { id: string; name: string }>(
     if (excludeId && c.id === excludeId) continue;
     const other = normalizeCustomerName(c.name);
     if (!other) continue;
-    if (other === needle) out.push({ customer: c, kind: "same" });
+    // A company's contact person counts too: typing "Danica" should flag
+    // "ABC Trading · Danica" as well as a customer named Danica.
+    const contact = normalizeCustomerName(c.contact_person || "");
+    if (other === needle || (contact && contact === needle)) out.push({ customer: c, kind: "same" });
     else if (
       needle.length >= 4 &&
       other.length >= 4 &&

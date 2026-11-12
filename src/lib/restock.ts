@@ -69,6 +69,8 @@ export interface Demand {
   leftOut: DemandSale[];
   /** Big orders that would be set aside but were included by hand. */
   included: DemandSale[];
+  /** Set when too few days counted: the days the sales were spread over instead. */
+  spreadDays?: number;
 }
 
 /**
@@ -104,12 +106,31 @@ export function itemDemand(p: {
   const sales = p.sales.filter((s) => s.daysAgo >= 0 && s.daysAgo <= HISTORY_DAYS && s.units > 0);
   const total = sales.reduce((a, s) => a + s.units, 0);
 
-  // One-off big orders.
-  const usual = median(sales.map((s) => s.units)) ?? 0;
-  const big = sales.length >= 4 && usual > 0 ? sales.filter((s) => s.units >= usual * 8 && s.units >= total * 0.15) : [];
+  const age = p.createdAt ? differenceInCalendarDays(p.today, parseISO(p.createdAt)) : HISTORY_DAYS;
+  // Days the item has been around to sell, within the window.
+  const span = Math.max(1, Math.min(HISTORY_DAYS, age));
+
+  // One-off big orders. Two ways to spot one:
+  // - with plenty of sales, one at least 8× the usual order size and at least
+  //   15% of the period's sales (a project order);
+  // - with few sales, one worth more than a month of what everything else
+  //   sold. Without this, a slow item's single 500 piece order read as its
+  //   normal pace for months.
+  // Two or more of them in the window is a customer who buys in bulk, not a
+  // one-off, so they all count.
+  const usualAll = median(sales.map((s) => s.units)) ?? 0;
+  const candidates = sales.filter((s) => {
+    const byUsual = sales.length >= 4 && usualAll > 0 && s.units >= usualAll * 8 && s.units >= total * 0.15;
+    const paceWithout = (total - s.units) / span;
+    const byPace = paceWithout > 0 && s.units > paceWithout * 30;
+    return byUsual || byPace;
+  });
+  const big = candidates.length === 1 ? candidates : [];
   const leftOut = big.filter((s) => !p.includeIds?.has(s.id));
   const included = big.filter((s) => p.includeIds?.has(s.id));
   const leftOutIds = new Set(leftOut.map((s) => s.id));
+  // The usual order size, from the sales that count.
+  const usual = median(sales.filter((s) => !leftOutIds.has(s.id)).map((s) => s.units)) ?? 0;
 
   // Stock change on each day (ago), to walk backwards from today's stock.
   const change = new Map<number, number>();
@@ -128,7 +149,6 @@ export function itemDemand(p: {
   const reliable = startOfDay.slice(1).every((v) => v >= -0.01);
   const needed = Math.max(usual, 1e-6);
 
-  const age = p.createdAt ? differenceInCalendarDays(p.today, parseISO(p.createdAt)) : HISTORY_DAYS;
   const windows = [0, 1, 2].map(() => ({ units: 0, days: 0 }));
   let usedUnits = 0;
   let usedDays = 0;
@@ -157,8 +177,22 @@ export function itemDemand(p: {
     weighted += (w.units / w.days) * WEIGHTS[i];
     weightSum += WEIGHTS[i];
   });
-  const rate = weightSum > 0 ? weighted / weightSum : usedDays > 0 ? usedUnits / usedDays : 0;
-  return { rate, usedUnits, usedDays, shortDays, leftOut, included };
+  let rate = weightSum > 0 ? weighted / weightSum : usedDays > 0 ? usedUnits / usedDays : 0;
+
+  // Too little to go on. When the sales that count fell on only a few days,
+  // and most of the window was set aside as short of stock, the rate came
+  // from a handful of days: one 100 piece sale over 2 days read as 50 a day.
+  // Spread them over at least a month instead (or the item's age, if newer).
+  // An item selling steadily since a restock has many sale days and keeps
+  // its real pace.
+  const saleDays = new Set([...soldOn.keys()].filter((k) => k >= 1 && k <= HISTORY_DAYS)).size;
+  const minDays = Math.min(30, span);
+  let spreadDays: number | undefined;
+  if (saleDays < 5 && usedDays < minDays && usedUnits / minDays < rate) {
+    rate = usedUnits / minDays;
+    spreadDays = minDays;
+  }
+  return { rate, usedUnits, usedDays, shortDays, leftOut, included, spreadDays };
 }
 
 /** What past deliveries say about a supplier. Medians, so one disaster does not skew it. */

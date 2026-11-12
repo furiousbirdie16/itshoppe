@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck } from "lucide-react";
+import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck, BadgePercent, Coins, BookOpen } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -60,10 +60,13 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Customers", url: "/customers", icon: Users },
       { title: "Customer Pricing", url: "/customer-pricing", icon: Tag },
+      { title: "Price Lists", url: "/price-lists", icon: BookOpen },
       { title: "Quotations", url: "/quotations", icon: FileText },
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Online Sales", url: "/online-sales", icon: Store },
       { title: "Warranty Lookup", url: "/warranty", icon: ShieldCheck },
+      // Staff see only their own, once their login is tied to an agent.
+      { title: "Commission", url: "/commission", icon: BadgePercent },
     ],
   },
   {
@@ -77,6 +80,7 @@ const navGroups: NavGroup[] = [
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
       // Staff can record and edit payables; only admins can settle one.
       { title: "Payables", url: "/payables", icon: Wallet },
+      { title: "Expenses", url: "/expenses", icon: Coins, adminOnly: true },
       { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
     ],
   },

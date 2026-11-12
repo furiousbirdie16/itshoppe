@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -79,6 +79,9 @@ function renderPage() {
 }
 
 describe("Reorder List", () => {
+  // The page remembers its Local/Import pick; each test starts on All types.
+  beforeEach(() => { try { localStorage.clear(); } catch { /* no storage */ } });
+
   it("groups items into Order now / On order / Watch and leaves healthy stock out", async () => {
     renderPage();
     const table = await screen.findByRole("table");
@@ -110,7 +113,8 @@ describe("Reorder List", () => {
 
   it("opens the PO form for just that item from its Order button", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Order Patch Cord" }));
+    // The full table can take over a second to draw when every test file runs at once.
+    fireEvent.click(await screen.findByRole("button", { name: "Order Patch Cord" }, { timeout: 5000 }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Create Purchase Orders")).toBeInTheDocument();
     expect(within(dialog).getByText("Patch Cord")).toBeInTheDocument();

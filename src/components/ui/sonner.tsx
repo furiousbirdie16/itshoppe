@@ -10,6 +10,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // Top centre, clear of the row action icons at the bottom right: a
+      // message pauses while the mouse is over it, and down there the mouse
+      // usually still is from the click, so it never went away on its own.
+      position="top-center"
+      closeButton
+      duration={3000}
       toastOptions={{
         classNames: {
           toast:

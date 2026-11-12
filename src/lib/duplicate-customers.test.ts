@@ -45,4 +45,13 @@ describe("findDuplicateCustomers", () => {
     ]);
     expect(hits.map((h) => h.customer.id)).toEqual(["b", "a"]);
   });
+
+  it("flags a company whose contact person has the name typed", () => {
+    const hits = findDuplicateCustomers("danica", [
+      { id: "c", name: "ABC Trading", contact_person: "Danica" },
+      { id: "d", name: "Danica" },
+      { id: "e", name: "Zed Shop", contact_person: "Danilo" },
+    ]);
+    expect(hits.map((h) => [h.customer.id, h.kind])).toEqual([["c", "same"], ["d", "same"]]);
+  });
 });

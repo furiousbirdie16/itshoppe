@@ -9,6 +9,7 @@ import { DollarSign, TruckIcon, ShoppingCart, Receipt, Wallet, Banknote, Coins, 
 import { useFinanceSummary } from "@/hooks/use-finance-summary";
 import { DashboardAnalytics } from "@/components/DashboardAnalytics";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { FinanceChangeDialog } from "@/components/FinanceChangeDialog";
 import { getFinanceSnapshots } from "@/lib/finance-snapshots";
 import { metricValue, snapshotForDaysAgo, type FinanceFigures, type FinanceMetric } from "@/lib/finance-compare";
@@ -130,7 +131,7 @@ export default function DashboardPage() {
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
         <p className="page-description">
-          {activeBranch ? `${activeBranch.branch_name} (${activeBranch.branch_code})` : "All branches — company-wide totals"}
+          <BranchScope />{activeBranch ? ` (${activeBranch.branch_code})` : " — company-wide totals"}
         </p>
       </div>
 

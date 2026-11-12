@@ -2882,9 +2882,9 @@ export const getPayables = async (): Promise<Payable[]> =>
  * A unique index on payable_id makes the insert the source of truth about
  * whether a payable has already been settled.
  */
-const syncPayablePosting = async (p: Payable) => {
+const syncPayablePosting = async (p: Payable, paidOn?: string) => {
   const { data: existing } = await from("cash_transactions")
-    .select("id, amount, account_id").eq("payable_id", p.id).maybeSingle();
+    .select("id, amount, account_id, txn_date").eq("payable_id", p.id).maybeSingle();
 
   const { shouldPost, accountId, amount } = payablePosting(p as any);
 
@@ -2899,8 +2899,10 @@ const syncPayablePosting = async (p: Payable) => {
     // Editing a settled payable — a corrected amount, or a different account —
     // moves the posting with it rather than leaving a stale withdrawal behind.
     const row = existing as any;
-    if (Number(row.amount) !== amount || row.account_id !== accountId) {
-      await updateCashTransaction(row.id, { amount, account_id: accountId } as Partial<CashTransaction>);
+    if (Number(row.amount) !== amount || row.account_id !== accountId || (paidOn && row.txn_date !== paidOn)) {
+      await updateCashTransaction(row.id, {
+        amount, account_id: accountId, ...(paidOn ? { txn_date: paidOn } : {}),
+      } as Partial<CashTransaction>);
     }
     return;
   }
@@ -2909,7 +2911,9 @@ const syncPayablePosting = async (p: Payable) => {
     account_id: accountId,
     direction: "out",
     amount,
-    txn_date: new Date().toISOString().slice(0, 10),
+    // The day it was marked paid, so a check settled late still lands in the
+    // ledger (and the month's expenses) on the day the money actually moved.
+    txn_date: paidOn || new Date().toISOString().slice(0, 10),
     category: p.category || "Payable",
     payee: p.payee,
     reference: p.is_check ? p.check_number || "" : "",
@@ -2930,13 +2934,13 @@ export const createPayable = async (p: Partial<Payable>) => {
   return created;
 };
 
-export const updatePayable = async (id: string, p: Partial<Payable>) => {
+export const updatePayable = async (id: string, p: Partial<Payable>, opts: { paidOn?: string } = {}) => {
   const { data, error } = await from("payables")
     .update({ ...p, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
   const updated = data as Payable;
   await logActivity("updated_payable", "payable", id, { payee: updated.payee });
-  await syncPayablePosting(updated);
+  await syncPayablePosting(updated, opts.paidOn);
   return updated;
 };
 

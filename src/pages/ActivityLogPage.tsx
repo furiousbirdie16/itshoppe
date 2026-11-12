@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { getActivityLogs, searchActivityLogs } from "@/lib/activity-log";
 import { format, subDays, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,6 +11,7 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { ColumnDef, ColumnVisibilityMenu, useColumnPrefs } from "@/components/ColumnVisibility";
 import { searchMatches, searchWords } from "@/lib/search";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 const actionColors: Record<string, string> = {
   created: "bg-success/10 text-success border-success/20",
@@ -132,16 +132,14 @@ export default function ActivityLogPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-end gap-2">
-          <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">From</Label>
-            <Input type="date" value={fromDay} max={toDay} onChange={(e) => e.target.value && setFromDay(e.target.value)} className="h-9 w-[150px]" disabled={searchingAll} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">To</Label>
-            <Input type="date" value={toDay} min={fromDay} onChange={(e) => e.target.value && setToDay(e.target.value)} className="h-9 w-[150px]" disabled={searchingAll} />
-          </div>
-        </div>
+        <DateRangeFilter
+          className="w-64"
+          from={fromDay}
+          to={toDay}
+          clearable={false}
+          disabled={searchingAll}
+          onChange={(f, t) => { if (!f) return; setFromDay(f); setToDay(t || f); }}
+        />
         <ColumnVisibilityMenu
           columns={orderedColumns}
           visible={state.visible}

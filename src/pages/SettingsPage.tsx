@@ -10,6 +10,7 @@ import { DocumentLogoCard } from "@/components/DocumentLogoCard";
 import { CompanyContactCard } from "@/components/CompanyContactCard";
 import { MarginTargetCard } from "@/components/MarginTargetCard";
 import { DeferredCategoriesCard } from "@/components/DeferredCategoriesCard";
+import { CommissionRulesCard } from "@/components/CommissionRulesCard";
 import { docNo } from "@/lib/doc-number";
 
 const LABELS: Record<string, string> = {
@@ -54,7 +55,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">Document numbering and the logo printed on documents</p>
+        <p className="text-sm text-muted-foreground mt-1">Document numbering, the logo printed on documents, and agent commission</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
@@ -109,6 +110,7 @@ export default function SettingsPage() {
         <CompanyContactCard />
         <MarginTargetCard />
         <DeferredCategoriesCard />
+        <CommissionRulesCard />
       </div>
     </div>
   );

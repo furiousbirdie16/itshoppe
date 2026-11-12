@@ -15,32 +15,30 @@ import { FinanceMobileCard } from "@/components/FinanceMobileCard";
 import { runningBalances } from "@/lib/running-balance";
 import { matchesTransactionSearch } from "@/lib/txn-search";
 import { FxRateHistoryDialog } from "@/components/FxRateHistoryDialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { DateField } from "@/components/DateField";
 import { StatCard } from "@/components/StatCard";
-import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, Landmark, ExternalLink, ListChecks, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { setTransactionCategory } from "@/lib/expenses-api";
 import { toast } from "sonner";
 import { format, parse, isValid, subDays, startOfDay } from "date-fns";
 import { peso } from "@/lib/currency";
 import { docNo } from "@/lib/doc-number";
 import { cn } from "@/lib/utils";
-import { getCashEdits, previousAmount, describeEdit, type CashEdit } from "@/lib/cash-edits";
+import { getCashEdits, previousAmount, editChanges, type CashEdit } from "@/lib/cash-edits";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } from "@/lib/fx";
 import { useSort } from "@/hooks/use-sort";
 import ExportButton from "@/components/ExportButton";
 import { SortableHeader } from "@/components/SortableHeader";
+import { TransactionDialog, TransferDialog, AccountDialog } from "@/components/CashLedgerDialogs";
+import {
+  emptyTxnForm, txnFormFrom, emptyAccountForm, accountFormFrom, type TxnForm, type AccountForm,
+} from "@/lib/cash-ledger-forms";
+import { CategorySelect } from "@/components/CategorySelect";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
-const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({
-  account_id: "", txn_date: today(), direction: "out" as "in" | "out",
-  amount: "", category: "", payee: "", reference: "", notes: "", fx_rate: "",
-});
-const emptyTransfer = () => ({ from_account_id: "", to_account_id: "", amount: "", amount_to: "", txn_date: today(), notes: "" });
-const emptyAccount = () => ({ name: "", account_number: "", opening_balance: "", notes: "", currency: BASE_CURRENCY });
 
 /** Emails are long in a narrow column — show the name part, full address on hover. */
 function shortUser(email: string) {
@@ -103,8 +101,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   const [open, setOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [editing, setEditing] = useState<CashTransaction | null>(null);
-  const [form, setForm] = useState(emptyForm());
-  const [transfer, setTransfer] = useState(emptyTransfer());
+  const [formInitial, setFormInitial] = useState<TxnForm>(() => emptyTxnForm());
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
@@ -113,7 +110,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   const [rangeTo, setRangeTo] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CashAccount | null>(null);
-  const [accountForm, setAccountForm] = useState(emptyAccount());
+  const [accountInitial, setAccountInitial] = useState<AccountForm>(emptyAccountForm);
   const [rateHistoryAccount, setRateHistoryAccount] = useState<CashAccount | null>(null);
 
   const { data: allAccounts = [], isPending: accountsPending } = useQuery({ queryKey: ["cash-accounts"], queryFn: getCashAccounts });
@@ -310,6 +307,22 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
    */
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const [toolbarHidden, setToolbarHidden] = useState(false);
+
+  // ---- Selecting rows to re-file in bulk ----
+  // Off by default so the ledger stays as it was; the tick boxes only appear
+  // while selecting.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const stopSelecting = () => { setSelecting(false); setSelected(new Set()); setBulkCategory(""); };
+  // A transfer moves money between accounts; it has no category to file.
+  const canSelect = (t: CashTransaction) => !t.transfer_group_id;
+  const toggleSelected = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   useEffect(() => {
     const el = toolbarRef.current;
     if (!el) return;
@@ -353,27 +366,60 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     const edits = editsByTxn.get(t.id);
     if (!edits?.length) return null;
     const accountName = (id: string) => allAccounts.find((a) => a.id === id)?.name || "another account";
-    const detail = edits
-      .map((e) => [
-        `${format(new Date(e.edited_at), "MMM d, yyyy h:mm a")}${e.edited_by_email ? ` · ${shortUser(e.edited_by_email)}` : ""}`,
-        ...describeEdit(e, { amount: (n) => amountLabel(t, n), account: accountName }).map((l) => `  ${l}`),
-      ].join("\n"))
-      .join("\n\n");
     return (
-      <span
-        title={detail}
-        className={cn("inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400", className)}
-      >
-        <Pencil className="h-2.5 w-2.5" /> Edited{edits.length > 1 ? ` ×${edits.length}` : ""}
-      </span>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25",
+              className,
+            )}
+            aria-label="Show what was edited"
+          >
+            <Pencil className="h-2.5 w-2.5" /> Edited{edits.length > 1 ? ` \u00d7${edits.length}` : ""}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 p-0" onClick={(e) => e.stopPropagation()}>
+          <div className="border-b px-3 py-2">
+            <p className="text-xs font-semibold">
+              Edited {edits.length} time{edits.length === 1 ? "" : "s"}
+            </p>
+            {t.created_by_email && (
+              <p className="text-[11px] text-muted-foreground">
+                Recorded by {shortUser(t.created_by_email)} on {format(new Date(t.created_at), "MMM d, yyyy h:mm a")}
+              </p>
+            )}
+          </div>
+          <ol className="max-h-72 overflow-y-auto divide-y">
+            {edits.map((e) => (
+              <li key={e.id} className="px-3 py-2 space-y-1">
+                <p className="text-[11px] text-muted-foreground">
+                  {format(new Date(e.edited_at), "MMM d, yyyy h:mm a")}
+                  {e.edited_by_email ? <> · <span className="text-foreground">{shortUser(e.edited_by_email)}</span></> : null}
+                </p>
+                <ul className="space-y-0.5">
+                  {editChanges(e, { amount: (n) => amountLabel(t, n), account: accountName }).map((c) => (
+                    <li key={c.label} className="text-xs">
+                      <span className="text-muted-foreground">{c.label}: </span>
+                      <span className="line-through text-muted-foreground">{c.from}</span>
+                      <span className="mx-1 text-muted-foreground">{"\u2192"}</span>
+                      <span className="font-medium">{c.to}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        </PopoverContent>
+      </Popover>
     );
   };
   const accountById = useMemo(
     () => Object.fromEntries(allAccounts.map((a) => [a.id, a])),
     [allAccounts],
   );
-  const formAccount = accountById[form.account_id];
-  const formIsForeign = formAccount ? isForeign(formAccount) : false;
 
   /**
    * Columns for the spreadsheet export.
@@ -466,7 +512,39 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   // three that come and go. Kept in one place so an empty row always spans the
   // whole table.
   const ledgerColumnCount =
-    7 + (showAccountFilter ? 1 : 0) + (hasForeign ? 1 : 0) + (showRunningBalance ? 1 : 0);
+    7 + (selecting ? 1 : 0) + (showAccountFilter ? 1 : 0) + (hasForeign ? 1 : 0) + (showRunningBalance ? 1 : 0);
+
+  const selectable = sorted.filter(canSelect);
+  const allShownSelected = selectable.length > 0 && selectable.every((t) => selected.has(t.id));
+  // Only what is ticked and still on screen: a filter changed after ticking
+  // must not re-file rows the user can no longer see.
+  const selectedShown = selectable.filter((t) => selected.has(t.id));
+  const toggleAllShown = () => setSelected((prev) => {
+    const next = new Set(prev);
+    if (allShownSelected) selectable.forEach((t) => next.delete(t.id));
+    else selectable.forEach((t) => next.add(t.id));
+    return next;
+  });
+
+  /** Files every ticked entry under one category, or clears it with "". */
+  const applyBulkCategory = async (category: string) => {
+    const ids = selectedShown.map((t) => t.id);
+    if (!ids.length) return;
+    setBulkSaving(true);
+    let failed = 0;
+    // A few at a time: quick on a long selection without flooding the API.
+    for (let i = 0; i < ids.length; i += 8) {
+      const results = await Promise.allSettled(ids.slice(i, i + 8).map((id) => setTransactionCategory(id, category)));
+      failed += results.filter((r) => r.status === "rejected").length;
+    }
+    setBulkSaving(false);
+    invalidate();
+    queryClient.invalidateQueries({ queryKey: ["expenses"] });
+    const done = ids.length - failed;
+    if (done) toast.success(`${done} entr${done === 1 ? "y" : "ies"} ${category ? `filed under ${category}` : "left with no category"}`);
+    if (failed) toast.error(`${failed} could not be changed — you may not have access to those accounts`);
+    stopSelecting();
+  };
 
   const visibleAccounts = accountFilter === "all" ? accounts : accounts.filter((a) => a.id === accountFilter);
   // The owner's position is money owed, not money held, so it never joins a
@@ -540,22 +618,15 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     onError: (e: any) => toast.error(e.message),
   });
 
-  const openAccountCreate = () => { setEditingAccount(null); setAccountForm(emptyAccount()); setAccountOpen(true); };
+  const openAccountCreate = () => { setEditingAccount(null); setAccountInitial(emptyAccountForm()); setAccountOpen(true); };
 
   const openAccountEdit = (a: CashAccount) => {
     setEditingAccount(a);
-    setAccountForm({
-      name: a.name,
-      account_number: a.account_number || "",
-      opening_balance: String(a.opening_balance ?? ""),
-      notes: a.notes || "",
-      currency: a.currency || BASE_CURRENCY,
-    });
+    setAccountInitial(accountFormFrom(a));
     setAccountOpen(true);
   };
 
-  const handleAccountSubmit = () => {
-    if (!accountForm.name.trim()) { toast.error("Account name is required"); return; }
+  const handleAccountSubmit = (accountForm: AccountForm) => {
     accountMut.mutate({
       name: accountForm.name.trim(),
       account_type: accountType,
@@ -590,90 +661,14 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm(), account_id: accountFilter !== "all" ? accountFilter : accounts[0]?.id || "" });
+    setFormInitial(emptyTxnForm(accountFilter !== "all" ? accountFilter : accounts[0]?.id || ""));
     setOpen(true);
   };
 
   const openEdit = (t: CashTransaction) => {
     setEditing(t);
-    setForm({
-      account_id: t.account_id,
-      txn_date: t.txn_date,
-      direction: t.direction,
-      amount: String(t.amount ?? ""),
-      fx_rate: t.fx_rate == null ? "" : String(t.fx_rate),
-      category: t.category || "",
-      payee: t.payee || "",
-      reference: t.reference || "",
-      notes: t.notes || "",
-    });
+    setFormInitial(txnFormFrom(t));
     setOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (!form.account_id) { toast.error("Select an account"); return; }
-    const amount = Number(form.amount);
-    if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
-    const needsRate = formIsForeign && form.direction === "in";
-    const rate = Number(form.fx_rate);
-    if (needsRate && (!rate || rate <= 0)) {
-      toast.error(`Enter the PHP rate paid per 1 ${formAccount?.currency}`);
-      return;
-    }
-    const data: Partial<CashTransaction> = {
-      account_id: form.account_id,
-      txn_date: form.txn_date,
-      direction: form.direction,
-      amount,
-      fx_rate: needsRate ? rate : null,
-      category: form.category.trim(),
-      payee: form.payee.trim(),
-      reference: form.reference.trim(),
-      notes: form.notes,
-    };
-    if (editing) updateMut.mutate({ id: editing.id, data });
-    else createMut.mutate(data);
-  };
-
-  const targetById = useMemo(
-    () => Object.fromEntries(transferTargets.map((a) => [a.id, a])),
-    [transferTargets],
-  );
-  const transferFrom = accountById[transfer.from_account_id] || targetById[transfer.from_account_id];
-  const transferTo = accountById[transfer.to_account_id] || targetById[transfer.to_account_id];
-  const transferCurrenciesDiffer =
-    !!transferFrom && !!transferTo &&
-    (transferFrom.currency || BASE_CURRENCY) !== (transferTo.currency || BASE_CURRENCY);
-
-  /**
-   * A transfer leg names the account at the other end in `payee`, and which end
-   * that is comes from the direction. Rendered as a route so either row says
-   * where the money actually went, rather than only which account it touched.
-   */
-  const handleTransfer = () => {
-    const amount = Number(transfer.amount);
-    if (!transfer.from_account_id || !transfer.to_account_id) { toast.error("Pick both accounts"); return; }
-    if (transfer.from_account_id === transfer.to_account_id) { toast.error("Pick two different accounts"); return; }
-    // Without it the ledger shows money moving with no explanation, which is
-    // the thing this pair of rows is least able to reconstruct later.
-    if (!transfer.notes.trim()) { toast.error("Say what the transfer is for"); return; }
-    if (!amount || amount <= 0) { toast.error("Enter an amount greater than zero"); return; }
-
-    if (!transferCurrenciesDiffer) {
-      transferMut.mutate({ ...transfer, amount, amount_to: amount, fx_rate: null });
-      return;
-    }
-    // An exchange: both sides differ, and the implied rate is what was really paid.
-    const amountTo = Number(transfer.amount_to);
-    if (!amountTo || amountTo <= 0) { toast.error(`Enter the ${transferTo?.currency} amount received`); return; }
-    const toIsForeign = isForeign(transferTo as any);
-    transferMut.mutate({
-      ...transfer,
-      amount,
-      amount_to: amountTo,
-      // Rate only means anything when the destination is the foreign side.
-      fx_rate: toIsForeign ? amount / amountTo : null,
-    });
   };
 
   return (
@@ -695,7 +690,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               : `${(accountById[accountFilter]?.name || "account").replace(/[^A-Za-z0-9]+/g, "_").toLowerCase()}_transactions`}
           />
           {showAccountFilter && (
-            <Button variant="outline" onClick={() => { setTransfer(emptyTransfer()); setTransferOpen(true); }} className="rounded-lg h-9 px-4 text-sm font-medium">
+            <Button variant="outline" onClick={() => setTransferOpen(true)} className="rounded-lg h-9 px-4 text-sm font-medium">
               <ArrowLeftRight className="h-4 w-4 mr-1.5" /> Transfer
             </Button>
           )}
@@ -821,212 +816,48 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         </Select>
 
         {rangePreset === "custom" && (
-          <div className="flex items-center gap-1.5">
-            <DateField value={rangeFrom} onChange={setRangeFrom} placeholder="From" />
-            <span className="text-xs text-muted-foreground">to</span>
-            <DateField value={rangeTo} onChange={setRangeTo} placeholder="To" />
-          </div>
+          <DateRangeFilter className="w-64" from={rangeFrom} to={rangeTo} onChange={(f, t) => { setRangeFrom(f); setRangeTo(t); }} />
         )}
+
+        <Button
+          variant={selecting ? "secondary" : "ghost"}
+          size="sm"
+          className="h-9 px-3 text-sm text-muted-foreground sm:ml-auto"
+          onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+        >
+          {selecting ? <><X className="h-4 w-4 mr-1.5" /> Done</> : <><ListChecks className="h-4 w-4 mr-1.5" /> Select</>}
+        </Button>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">{editing ? "Edit Transaction" : "New Transaction"}</DialogTitle></DialogHeader>
-          <div className="grid gap-4 pt-2">
-            {accounts.length > 1 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Account *</Label>
-                <Select value={form.account_id} onValueChange={(v) => setForm({ ...form, account_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Select account" /></SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Type *</Label>
-                <Select value={form.direction} onValueChange={(v) => setForm({ ...form, direction: v as "in" | "out" })}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="in">Inflow (money in)</SelectItem>
-                    <SelectItem value="out">Outflow (money out)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">
-                  Amount *{formIsForeign && ` (${formAccount?.currency})`}
-                </Label>
-                <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            {formIsForeign && form.direction === "in" && (
-              <div className="space-y-1.5 rounded-lg border p-3">
-                <Label className="text-xs font-medium">PHP per 1 {formAccount?.currency} *</Label>
-                <Input type="number" step="0.0001" min="0" value={form.fx_rate} onChange={(e) => setForm({ ...form, fx_rate: e.target.value })} className="h-9" placeholder="e.g. 9.05" />
-                <p className="text-[11px] text-muted-foreground">
-                  {Number(form.amount) > 0 && Number(form.fx_rate) > 0
-                    ? `Costs ${peso(Number(form.amount) * Number(form.fx_rate))}. `
-                    : ""}
-                  Outflows are valued automatically at the running average.
-                </p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Date *</Label>
-                <DateField value={form.txn_date} onChange={(v) => setForm({ ...form, txn_date: v })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Category</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9" placeholder="e.g. Supplies, Fuel" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Payee / Source</Label>
-                <Input value={form.payee} onChange={(e) => setForm({ ...form, payee: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Reference</Label>
-                <Input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="h-9" placeholder="OR / slip no." />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="resize-none" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} className="rounded-lg h-9">
-              {editing ? "Save Changes" : "Add Transaction"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransactionDialog
+        open={open}
+        onOpenChange={setOpen}
+        editing={!!editing}
+        initial={formInitial}
+        accounts={accounts}
+        accountById={accountById}
+        pending={createMut.isPending || updateMut.isPending}
+        onSubmit={(data) => (editing ? updateMut.mutate({ id: editing.id, data }) : createMut.mutate(data))}
+      />
 
-      <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">{editingAccount ? "Edit Account" : "New Account"}</DialogTitle></DialogHeader>
-          <div className="grid gap-4 pt-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Account Name *</Label>
-              <Input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} className="h-9" placeholder={accountType === "bank" ? "e.g. GCash, BDO, Metrobank" : "e.g. Petty Cash, Geraldine Cash"} />
-              <p className="text-[11px] text-muted-foreground">This name appears as a payment option when marking invoices paid.</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Currency</Label>
-              <Input
-                value={accountForm.currency}
-                onChange={(e) => setAccountForm({ ...accountForm, currency: e.target.value.toUpperCase() })}
-                className="h-9"
-                placeholder="PHP"
-                disabled={!!editingAccount}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {editingAccount
-                  ? "Currency cannot be changed once the account has history."
-                  : "Use PHP unless this holds a foreign currency, e.g. RMB. Foreign accounts are valued in PHP at a weighted-average rate."}
-              </p>
-            </div>
-            <div className={accountType === "bank" ? "grid grid-cols-2 gap-3" : ""}>
-              {accountType === "bank" && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Account Number</Label>
-                  <Input value={accountForm.account_number} onChange={(e) => setAccountForm({ ...accountForm, account_number: e.target.value })} className="h-9" />
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Opening Balance</Label>
-                <Input type="number" step="0.01" value={accountForm.opening_balance} onChange={(e) => setAccountForm({ ...accountForm, opening_balance: e.target.value })} className="h-9" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={accountForm.notes} onChange={(e) => setAccountForm({ ...accountForm, notes: e.target.value })} className="resize-none" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAccountOpen(false)}>Cancel</Button>
-            <Button onClick={handleAccountSubmit} disabled={accountMut.isPending} className="rounded-lg h-9">
-              {editingAccount ? "Save Changes" : "Add Account"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AccountDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        editing={!!editingAccount}
+        initial={accountInitial}
+        accountType={accountType}
+        pending={accountMut.isPending}
+        onSubmit={handleAccountSubmit}
+      />
 
-      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">Transfer Between Accounts</DialogTitle></DialogHeader>
-          <div className="grid gap-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">From *</Label>
-                <Select value={transfer.from_account_id} onValueChange={(v) => setTransfer({ ...transfer, from_account_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Account" /></SelectTrigger>
-                  <SelectContent>
-                    {transferTargets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">To *</Label>
-                <Select value={transfer.to_account_id} onValueChange={(v) => setTransfer({ ...transfer, to_account_id: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Account" /></SelectTrigger>
-                  <SelectContent>
-                    {transferTargets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">
-                  Amount Sent *{transferFrom ? ` (${transferFrom.currency || BASE_CURRENCY})` : ""}
-                </Label>
-                <Input type="number" step="0.01" min="0" value={transfer.amount} onChange={(e) => setTransfer({ ...transfer, amount: e.target.value })} className="h-9" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Date *</Label>
-                <DateField value={transfer.txn_date} onChange={(v) => setTransfer({ ...transfer, txn_date: v })} />
-              </div>
-            </div>
-            {transferCurrenciesDiffer && (
-              <div className="space-y-1.5 rounded-lg border p-3">
-                <Label className="text-xs font-medium">
-                  Amount Received * ({transferTo?.currency})
-                </Label>
-                <Input type="number" step="0.01" min="0" value={transfer.amount_to} onChange={(e) => setTransfer({ ...transfer, amount_to: e.target.value })} className="h-9" />
-                <p className="text-[11px] text-muted-foreground">
-                  {Number(transfer.amount) > 0 && Number(transfer.amount_to) > 0
-                    ? `Rate: ${(Number(transfer.amount) / Number(transfer.amount_to)).toFixed(4)} ${transferFrom?.currency || BASE_CURRENCY} per 1 ${transferTo?.currency}`
-                    : "An exchange — enter what actually landed in the destination."}
-                </p>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Reason *</Label>
-              <Textarea
-                value={transfer.notes}
-                onChange={(e) => setTransfer({ ...transfer, notes: e.target.value })}
-                className="resize-none"
-                rows={2}
-                placeholder="e.g. Fund payroll, top up for supplier payment"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Shown on both sides of the transfer in the ledger.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
-            <Button onClick={handleTransfer} disabled={transferMut.isPending} className="rounded-lg h-9">Record Transfer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        targets={transferTargets}
+        accountById={accountById}
+        pending={transferMut.isPending}
+        onSubmit={(data) => transferMut.mutate(data)}
+      />
 
       {/* Phones get stacked cards; the table runs to nine columns with accounts
           and a PHP-value column, which pushes the amount off-screen. */}
@@ -1041,8 +872,20 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
           </div>
         ) : (
           sorted.map((t) => (
-            <FinanceMobileCard
+            <div
               key={t.id}
+              className={cn(selecting && "flex items-center gap-2", selecting && canSelect(t) && "cursor-pointer")}
+              onClick={selecting && canSelect(t) ? () => toggleSelected(t.id) : undefined}
+            >
+            {selecting && (
+              <span onClick={(e) => e.stopPropagation()} className="shrink-0">
+                {canSelect(t)
+                  ? <Checkbox checked={selected.has(t.id)} onCheckedChange={() => toggleSelected(t.id)} aria-label="Select" />
+                  : <span className="block h-4 w-4" />}
+              </span>
+            )}
+            <FinanceMobileCard
+              className={cn(selecting && "flex-1 min-w-0", selected.has(t.id) && "border-primary/40 bg-primary/5")}
               title={transferRoute(t) || t.payee || "—"}
               subtitle={
                 transferRoute(t) ? (
@@ -1074,7 +917,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                   ))}
                 </>
               }
-              actions={
+              actions={selecting ? undefined : (
                 <>
                   <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-8 w-8 rounded-md" aria-label="Edit">
                     <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1083,8 +926,9 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </>
-              }
+              )}
             />
+            </div>
           ))
         )}
       </div>
@@ -1093,6 +937,11 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         <Table>
           <TableHeader>
             <TableRow>
+              {selecting && (
+                <TableHead className="w-10">
+                  <Checkbox checked={allShownSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
+                </TableHead>
+              )}
               <SortableHeader sortKey="txn_date" label="Date" sort={sort} onToggle={toggle} />
               {showAccountFilter && <SortableHeader sortKey="account" label="Account" sort={sort} onToggle={toggle} />}
               <SortableHeader sortKey="category" label="Category" sort={sort} onToggle={toggle} />
@@ -1111,7 +960,20 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
             ) : sorted.length === 0 ? (
               <TableRow><TableCell colSpan={ledgerColumnCount}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div></TableCell></TableRow>
             ) : sorted.map((t) => (
-              <TableRow key={t.id} className="hover:bg-muted/30">
+              <TableRow
+                key={t.id}
+                className={cn("hover:bg-muted/30", selecting && canSelect(t) && "cursor-pointer", selected.has(t.id) && "bg-primary/5 hover:bg-primary/10")}
+                onClick={selecting && canSelect(t) ? () => toggleSelected(t.id) : undefined}
+              >
+                {selecting && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {canSelect(t) ? (
+                      <Checkbox checked={selected.has(t.id)} onCheckedChange={() => toggleSelected(t.id)} aria-label="Select" />
+                    ) : (
+                      <span className="block h-4 w-4" title="Transfers have no category" />
+                    )}
+                  </TableCell>
+                )}
                 <TableCell className="text-sm text-muted-foreground">{formatDate(t.txn_date)}</TableCell>
                 {showAccountFilter && <TableCell className="text-sm">{t.cash_accounts?.name || "—"}</TableCell>}
                 <TableCell className="text-sm">{t.category || "—"}</TableCell>
@@ -1145,8 +1007,8 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
                     </span>
                   ))}
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-0.5">
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className={cn("flex justify-end gap-0.5", selecting && "invisible")}>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(t)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(t.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                   </div>
@@ -1172,7 +1034,28 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         onOpenChange={(o) => { if (!o) setInvoiceDetailId(null); }}
       />
 
-      {toolbarHidden && (
+      {/* The one place the bulk action lives: a small bar that appears only once
+          something is ticked, so the ledger itself stays as it was. */}
+      {selecting && selectedShown.length > 0 && (
+        <div className="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-xl border bg-background/95 px-3 py-2 shadow-lg backdrop-blur">
+            <span className="text-sm font-medium tabular-nums">{selectedShown.length} selected</span>
+            <div className="w-[190px]">
+              <CategorySelect expensesOnly placeholder="Set category…" value={bulkCategory} onChange={setBulkCategory} className="h-8 text-sm" />
+            </div>
+            <Button size="sm" className="h-8" disabled={!bulkCategory || bulkSaving} onClick={() => applyBulkCategory(bulkCategory)}>
+              {bulkSaving ? "Saving…" : "Apply"}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" disabled={bulkSaving} onClick={() => {
+              if (window.confirm(`Remove the category from ${selectedShown.length} entr${selectedShown.length === 1 ? "y" : "ies"}?`)) void applyBulkCategory("");
+            }}>
+              Clear category
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {toolbarHidden && !selecting && (
         <Button
           onClick={openCreate}
           aria-label="Add transaction"

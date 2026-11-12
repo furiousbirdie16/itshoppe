@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Item } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
 import { searchMatches } from "@/lib/search";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface Props {
   item: Item | null;
@@ -199,10 +200,7 @@ export default function CostHistoryDialog({ item, open, onOpenChange }: Props) {
                   <SelectItem value="same">Unchanged</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="flex gap-1">
-                <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-9 text-sm" />
-                <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="h-9 text-sm" />
-              </div>
+              <DateRangeFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
             </div>
 
             <div className="border rounded-md overflow-hidden">

@@ -163,3 +163,43 @@ describe("incoming stock counted from its arrival", () => {
     expect(p.orderByDays).toBe(planReorder(cabinet).orderByDays);
   });
 });
+
+describe("itemDemand with few sales (RJ45 Rubber Boot Blue)", () => {
+  const today = new Date(2026, 10, 9);
+  const base = { adjustments: [], createdAt: "2024-01-01", today };
+  // Almost nothing in stock until 1,932 landed; one 100 piece sale since.
+  const delivery = { daysAgo: 3, units: 2030 };
+  const first = { id: "a", ref: "INV-1", daysAgo: 2, units: 100 };
+
+  it("spreads one sale over a month instead of the 2 days with stock", () => {
+    const d = itemDemand({ ...base, sales: [first], stockNow: 1932, receipts: [delivery] });
+    expect(d.usedDays).toBeLessThan(5);
+    expect(d.spreadDays).toBe(30);
+    expect(d.rate).toBeCloseTo(100 / 30);
+  });
+
+  it("leaves out a single 500 order as a one-off", () => {
+    const big = { id: "b", ref: "INV-2", daysAgo: 1, units: 500 };
+    const d = itemDemand({ ...base, sales: [first, big], stockNow: 1432, receipts: [delivery] });
+    expect(d.leftOut.map((o) => o.ref)).toEqual(["INV-2"]);
+    expect(d.rate).toBeCloseTo(100 / 30);
+  });
+
+  it("counts big orders that keep coming as a bulk buyer", () => {
+    const sales = [
+      { id: "b", ref: "INV-2", daysAgo: 40, units: 500 },
+      { id: "c", ref: "INV-3", daysAgo: 10, units: 500 },
+      { id: "d", ref: "INV-4", daysAgo: 5, units: 20 },
+    ];
+    const d = itemDemand({ ...base, sales, stockNow: 2000, receipts: [] });
+    expect(d.leftOut).toHaveLength(0);
+    expect(d.rate).toBeGreaterThan(5);
+  });
+
+  it("keeps the real pace of an item selling steadily since a restock", () => {
+    const sales = Array.from({ length: 10 }, (_, i) => ({ id: `s${i}`, ref: "INV", daysAgo: i + 1, units: 3 }));
+    const d = itemDemand({ ...base, sales, stockNow: 30, receipts: [{ daysAgo: 10, units: 60 }] });
+    expect(d.spreadDays).toBeUndefined();
+    expect(d.rate).toBeCloseTo(3, 0);
+  });
+});

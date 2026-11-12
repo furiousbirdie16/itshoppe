@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -13,10 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock, BookOpen } from "lucide-react";
 import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
+import { PriceListPickerDialog } from "@/components/PriceListPickerDialog";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import { DragHandle } from "@/components/DragHandle";
@@ -38,7 +39,9 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { useBranch } from "@/contexts/BranchContext";
+import { BranchScope } from "@/components/BranchScope";
 import { docNo } from "@/lib/doc-number";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
 
@@ -48,7 +51,6 @@ export default function QuotationsPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const { activeBranchId, branches } = useBranch();
-  const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewQ, setViewQ] = useState<string | null>(null);
@@ -372,6 +374,17 @@ export default function QuotationsPage() {
 
   const resetForm = () => { setForm({ customer_id: "", quotation_date: todayISO(), notes: "", valid_until: "", sales_agent: "", payment_terms: "", payment_due_date: "", branch_id: "" }); setLines([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]); setEditId(null); setAgentAutoFilled(false); };
   const addLine = () => setLines([...lines, { item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
+  // A model from a supplier price list goes in as a typed-in line, filling an
+  // empty last line rather than leaving a blank one above it.
+  const [priceListOpen, setPriceListOpen] = useState(false);
+  const addFromPriceList = (pick: { name: string; price: number | null }) => {
+    setLines(prev => {
+      const line = { item_id: "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null };
+      const last = prev[prev.length - 1];
+      if (last && !last.item_id && !last.item_name) return [...prev.slice(0, -1), line];
+      return [...prev, line];
+    });
+  };
   const updateLine = (idx: number, field: string, value: any) => {
     const newLines = [...lines];
     (newLines[idx] as any)[field] = value;
@@ -394,7 +407,7 @@ export default function QuotationsPage() {
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
-          <p className="page-description">{filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
+          <p className="page-description"><BranchScope /> · {filtered.length} quotation{filtered.length !== 1 ? "s" : ""}{filtered.length !== quotations.length ? ` (filtered from ${quotations.length})` : ""}</p>
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
@@ -471,25 +484,13 @@ export default function QuotationsPage() {
 
       {showFilters && (
         <div className="filter-bar">
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date From</Label>
-            <Input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => {
-                setFilterDateFrom(e.target.value);
-                if (!e.target.value) return;
-                requestAnimationFrame(() => {
-                  filterDateToRef.current?.focus();
-                  filterDateToRef.current?.showPicker?.();
-                });
-              }}
-              className="h-9 sm:h-8 sm:w-36 text-sm"
+          <div className="space-y-1 sm:w-64">
+            <Label className="text-xs font-medium">Date</Label>
+            <DateRangeFilter
+              from={filterDateFrom}
+              to={filterDateTo}
+              onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t); }}
             />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date To</Label>
-            <Input ref={filterDateToRef} type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium">Customer</Label>
@@ -624,7 +625,11 @@ export default function QuotationsPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <Label className="text-xs font-medium">Line Items</Label>
-                <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                <div className="flex gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => setPriceListOpen(true)} className="h-7 rounded-md text-xs"><BookOpen className="h-3 w-3 mr-1" /> From price list</Button>
+                  <Button variant="outline" size="sm" onClick={addLine} className="h-7 rounded-md text-xs"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                </div>
+                <PriceListPickerDialog open={priceListOpen} onOpenChange={setPriceListOpen} onPick={addFromPriceList} customerId={form.customer_id || null} />
               </div>
               <div className="space-y-2">
                 {lines.map((line, idx) => {

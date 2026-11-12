@@ -14,6 +14,8 @@ export interface Shortage {
   needed: number;   // base units required by this line(s)
   shortBy: number;  // needed - available (>0)
   unit: string;
+  /** For a cut item: the store count as whole rolls plus the open roll. */
+  rolls?: { whole: number; open: number };
 }
 
 /**
@@ -136,19 +138,24 @@ export const checkStoreStock = async (
         available,
         needed,
         shortBy: needed - available,
-        unit: cutMode.get(itemId) ? (it.base_unit || "m") : (it.base_unit || "pcs"),
+        // A cut sale is counted in metres. The item's base_unit is often the
+        // roll itself ("roll"), which made "-1194 roll" read as rolls.
+        unit: cutMode.get(itemId) ? "m" : (it.base_unit || "pcs"),
+        ...(cutMode.get(itemId) ? { rolls: { whole: storeQty, open: openRem } } : {}),
       });
     }
   }
   return shortages;
 };
 
+const rollsText = (n: number) => `${n} roll${Math.abs(n) === 1 ? "" : "s"}`;
+
 /** Format shortages as a human-readable warning message. */
 export const formatShortageMessage = (shortages: Shortage[]): string => {
   return shortages
     .map(
       (s) =>
-        `• ${s.name}: store has ${s.available} ${s.unit}, need ${s.needed} ${s.unit} (short by ${s.shortBy})`,
+        `• ${s.name}: store has ${s.available} ${s.unit}${s.rolls ? ` (${rollsText(s.rolls.whole)} + ${s.rolls.open} m open)` : ""}, need ${s.needed} ${s.unit} (short by ${s.shortBy} ${s.unit})`,
     )
     .join("\n");
 };

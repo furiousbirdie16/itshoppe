@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { FilterLabel, RangeFilter, SegmentedFilter } from "@/components/FilterControls";
 import { Plus, Pencil, Trash2, Upload, FileSpreadsheet, Check, AlertCircle, Search, Undo2, XCircle, Filter, ChevronRight, ChevronDown, X, DollarSign, CircleDollarSign, Coins, ArrowUp, ArrowDown , Download, ShieldCheck, ScanLine } from "lucide-react";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
@@ -20,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { peso } from "@/lib/currency";
 import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
 import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
+import { fixSheetRange, isLazadaStatement, parseLazadaStatement } from "@/lib/lazada-statement";
 import { expandBundle, getSkuBundles, skuKey, type SkuBundle } from "@/lib/sku-bundles";
 import { SkuBundleDialog } from "@/components/SkuBundleDialog";
 import { OnlineOrderSerialsPanel } from "@/components/OnlineOrderSerialsPanel";
@@ -172,7 +176,6 @@ export default function OnlineSalesPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const { activeBranchId, branches } = useBranch();
-  const filterDateToRef = useRef<HTMLInputElement | null>(null);
   const { data: sales = [], isLoading } = useQuery({ queryKey: ["online_sales", activeBranchId], queryFn: () => getOnlineSales(activeBranchId) });
   const { data: variations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations() });
   // Serials held per sale line. Under the "online_sales" key so returning,
@@ -252,6 +255,17 @@ export default function OnlineSalesPage() {
   const [filterQtyMin, setFilterQtyMin] = useState("");
   const [filterQtyMax, setFilterQtyMax] = useState("");
   const [filterNoCost, setFilterNoCost] = useState(false);
+  const activeFilterCount = [
+    filterDateFrom || filterDateTo,
+    filterChannel !== "all",
+    filterStatus !== "all",
+    filterPayment !== "all",
+    filterQtyMin || filterQtyMax,
+    filterPriceMin || filterPriceMax,
+    filterPaidMin || filterPaidMax,
+    filterFeesMin || filterFeesMax,
+    filterNoCost,
+  ].filter(Boolean).length;
   const clearFilters = () => {
     setFilterDateFrom(""); setFilterDateTo(""); setFilterChannel("all"); setFilterStatus("all");
     setFilterPayment("all"); setFilterPriceMin(""); setFilterPriceMax("");
@@ -964,9 +978,51 @@ export default function OnlineSalesPage() {
       try {
         const wb = XLSX.read(evt.target?.result, { type: "array", cellDates: false });
         const ws = wb.Sheets[wb.SheetNames[0]];
+        // Lazada's export understates its own size; read every filled column.
+        fixSheetRange(ws as any);
         const sheetRows = XLSX.utils.sheet_to_json<BulkCell[]>(ws, { header: 1, defval: "", raw: false, blankrows: false })
           .filter((row) => row.some((cell) => normalizeBulkCell(cell) !== ""));
         if (sheetRows.length === 0) { toast.error("File is empty"); return; }
+
+        // Lazada's account statement export: one row per fee per unit, added
+        // up per Order Number. An order paid here already is updated only if
+        // the file holds its whole payout (its Item Price Credit) and the
+        // figure differs; one with only late fees in the file is not applied.
+        if (isLazadaStatement(sheetRows)) {
+          const { orders, shopCharges, notReleased, statementTotals } = parseLazadaStatement(sheetRows);
+          type PayRow = (typeof bulkPayRows)[number];
+          const parsedLazada: PayRow[] = orders.map((o): PayRow => {
+            const matches = payMatchPool.filter((s: any) => s.order_number === o.orderId);
+            const base = { order_id: o.orderId, amount_paid: o.amount, matched_ids: [] as string[], expected: 0, valid: false, duplicate: false };
+            if (matches.length === 0) {
+              return { ...base, missing: o.complete, error: o.complete ? "Not in the ERP — upload this order first" : `Not in the ERP — only late fees (${peso(o.amount)}) in this file` };
+            }
+            const matched = { ...base, matched_ids: matches.map((s: any) => s.id), expected: expectedForGroup(matches) };
+            const allPaid = matches.every((s: any) => s.payment_status === "paid");
+            if (!o.complete) {
+              return allPaid
+                ? { ...matched, duplicate: true, error: `Already paid — late fees of ${peso(o.amount)} in this file not applied` }
+                : { ...matched, error: "Only late fees in this file — export by order date to get the full payout" };
+            }
+            const returned = matches.find((s: any) => s.status === "returned" || s.status === "cancelled");
+            const orderStatus = returned?.status ?? (o.returned ? "returned" : undefined);
+            if (allPaid) {
+              const already = matches.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
+              if (Math.abs(already - o.amount) < 0.01) return { ...matched, duplicate: true, error: "Already paid — skipped" };
+              return { ...matched, valid: true, adjustment: true, loss: o.amount < 0, orderStatus };
+            }
+            return { ...matched, valid: true, loss: o.amount < 0, orderStatus };
+          });
+          parsedLazada.sort((a, b) => Number(!!b.missing) - Number(!!a.missing));
+          const shopTotal = shopCharges.reduce((sum, c) => sum + c.amount, 0);
+          setBulkPayNote([
+            `Lazada statement recognised — ${Object.keys(statementTotals).length} statements, rows added up per Order Number`,
+            shopCharges.length ? `${shopCharges.length} shop charges with no order (${peso(shopTotal)}) not applied to orders` : "",
+            notReleased ? `${notReleased} rows not yet released left out` : "",
+          ].filter(Boolean).join(" · "));
+          setBulkPayRows(parsedLazada);
+          return;
+        }
 
         // Shopee's balance transaction report, as downloaded. Only rows with
         // an Order ID are used; an order already paid here is left alone; one
@@ -1258,6 +1314,9 @@ export default function OnlineSalesPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
+            {activeFilterCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary px-1.5 text-[11px] font-medium leading-5 text-primary-foreground">{activeFilterCount}</span>
+            )}
           </Button>
           <ExportButton
             data={filtered}
@@ -1314,109 +1373,103 @@ export default function OnlineSalesPage() {
       </div>
 
       {showFilters && (
-        <div className="filter-bar">
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date From</Label>
-            <Input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
-              className="h-9 sm:h-8 sm:w-36 text-sm"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Date To</Label>
-            <Input ref={filterDateToRef} type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-9 sm:h-8 sm:w-36 text-sm" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Channel</Label>
-            <Select value={filterChannel} onValueChange={setFilterChannel}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Channels</SelectItem>
-                {([
-                  { v: "shopee", l: "Shopee" },
-                  { v: "lazada", l: "Lazada" },
-                  { v: "others", l: "Others" },
-                ] as const).filter(o => availableChannels.has(o.v)).map(o => (
-                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Status</Label>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                {([
-                  { v: "completed", l: "Completed" },
-                  { v: "returned", l: "Returned" },
-                  { v: "cancelled", l: "Cancelled" },
-                ] as const).filter(o => availableStatuses.has(o.v)).map(o => (
-                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Payment</Label>
-            <Select value={filterPayment} onValueChange={setFilterPayment}>
-              <SelectTrigger className="h-9 sm:h-8 sm:w-36 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Payments</SelectItem>
-                {([
-                  { v: "paid", l: "Paid" },
-                  { v: "unpaid", l: "Unpaid" },
-                ] as const).filter(o => availablePayments.has(o.v)).map(o => (
-                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Qty Min</Label>
-            <Input type="number" value={filterQtyMin} onChange={e => setFilterQtyMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Qty Max</Label>
-            <Input type="number" value={filterQtyMax} onChange={e => setFilterQtyMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Price Min</Label>
-            <Input type="number" value={filterPriceMin} onChange={e => setFilterPriceMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Price Max</Label>
-            <Input type="number" value={filterPriceMax} onChange={e => setFilterPriceMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Paid Min</Label>
-            <Input type="number" value={filterPaidMin} onChange={e => setFilterPaidMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Paid Max</Label>
-            <Input type="number" value={filterPaidMax} onChange={e => setFilterPaidMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Fees Min</Label>
-            <Input type="number" value={filterFeesMin} onChange={e => setFilterFeesMin(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="0" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Fees Max</Label>
-            <Input type="number" value={filterFeesMax} onChange={e => setFilterFeesMax(e.target.value)} className="h-9 sm:h-8 sm:w-24 text-sm" placeholder="∞" />
-          </div>
-          {isAdmin && (
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Cost</Label>
-              <label className="flex items-center gap-2 h-9 sm:h-8 text-xs cursor-pointer">
-                <Checkbox checked={filterNoCost} onCheckedChange={(v) => setFilterNoCost(!!v)} />
-                <span>No cost only</span>
-              </label>
+        <div className="rounded-xl border bg-card">
+          <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Filter className="h-4 w-4 text-muted-foreground" /> Filters
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{activeFilterCount} on</span>
+              )}
             </div>
-          )}
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear</Button>
+            <div className="flex items-center gap-1">
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">Clear all</Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => setShowFilters(false)} className="h-8 w-8" aria-label="Close filters">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-4 px-4 py-4">
+            <div className="w-full sm:w-64">
+              <FilterLabel>Order date</FilterLabel>
+              <DateRangeFilter
+                from={filterDateFrom}
+                to={filterDateTo}
+                onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t); }}
+              />
+            </div>
+            <div className="max-w-full overflow-x-auto">
+              <FilterLabel>Channel</FilterLabel>
+              <SegmentedFilter
+                value={filterChannel}
+                onChange={setFilterChannel}
+                options={[
+                  { value: "all", label: "All" },
+                  ...([
+                    { value: "shopee", label: "Shopee" },
+                    { value: "lazada", label: "Lazada" },
+                    { value: "others", label: "Others" },
+                  ].filter(o => availableChannels.has(o.value) || filterChannel === o.value)),
+                ]}
+              />
+            </div>
+            <div className="max-w-full overflow-x-auto">
+              <FilterLabel>Status</FilterLabel>
+              <SegmentedFilter
+                value={filterStatus}
+                onChange={setFilterStatus}
+                options={[
+                  { value: "all", label: "All" },
+                  ...([
+                    { value: "completed", label: "Completed" },
+                    { value: "returned", label: "Returned" },
+                    { value: "cancelled", label: "Cancelled" },
+                  ].filter(o => availableStatuses.has(o.value) || filterStatus === o.value)),
+                ]}
+              />
+            </div>
+            <div className="max-w-full overflow-x-auto">
+              <FilterLabel>Payment</FilterLabel>
+              <SegmentedFilter
+                value={filterPayment}
+                onChange={setFilterPayment}
+                options={[
+                  { value: "all", label: "All" },
+                  ...([
+                    { value: "paid", label: "Paid" },
+                    { value: "unpaid", label: "Unpaid" },
+                  ].filter(o => availablePayments.has(o.value) || filterPayment === o.value)),
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 border-t bg-muted/20 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <FilterLabel>Quantity</FilterLabel>
+              <RangeFilter min={filterQtyMin} max={filterQtyMax} onMin={setFilterQtyMin} onMax={setFilterQtyMax} />
+            </div>
+            <div>
+              <FilterLabel>Selling price</FilterLabel>
+              <RangeFilter prefix="₱" min={filterPriceMin} max={filterPriceMax} onMin={setFilterPriceMin} onMax={setFilterPriceMax} />
+            </div>
+            <div>
+              <FilterLabel>Amount paid</FilterLabel>
+              <RangeFilter prefix="₱" min={filterPaidMin} max={filterPaidMax} onMin={setFilterPaidMin} onMax={setFilterPaidMax} />
+            </div>
+            <div>
+              <FilterLabel>Fees</FilterLabel>
+              <RangeFilter prefix="₱" min={filterFeesMin} max={filterFeesMax} onMin={setFilterFeesMin} onMax={setFilterFeesMax} />
+            </div>
+            {isAdmin && (
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm sm:col-span-2 lg:col-span-4">
+                <Switch checked={filterNoCost} onCheckedChange={setFilterNoCost} />
+                <span>Only sales with no cost recorded</span>
+              </label>
+            )}
+          </div>
         </div>
       )}
 

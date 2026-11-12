@@ -25,13 +25,16 @@ import LoansPage from "@/pages/LoansPage";
 import CashPage from "@/pages/CashPage";
 import BankPage from "@/pages/BankPage";
 import PayablesPage from "@/pages/PayablesPage";
+import ExpensesPage from "@/pages/ExpensesPage";
 import FinancialDashboardPage from "@/pages/FinancialDashboardPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
 import CustomerPricingPage from "@/pages/CustomerPricingPage";
+import PriceListsPage from "@/pages/PriceListsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
 import BusinessInsightsPage from "@/pages/BusinessInsightsPage";
+import CommissionPage from "@/pages/CommissionPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -88,9 +91,12 @@ function ProtectedRoutes() {
           <Route path="/bank" element={<AdminRoute><BankPage /></AdminRoute>} />
           <Route path="/owner-transactions" element={<Navigate to="/bank" replace />} />
           <Route path="/payables" element={<PayablesPage />} />
+          <Route path="/expenses" element={<AdminRoute><ExpensesPage /></AdminRoute>} />
           <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
+          <Route path="/commission" element={<CommissionPage />} />
           <Route path="/customer-pricing" element={<CustomerPricingPage />} />
+          <Route path="/price-lists" element={<PriceListsPage />} />
           <Route path="/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
           <Route path="/business-insights" element={<BusinessInsightsPage />} />
           <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
