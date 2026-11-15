@@ -38,7 +38,11 @@ import {
 } from "@/lib/cash-ledger-forms";
 import { CategorySelect } from "@/components/CategorySelect";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { useIsMobile } from "@/hooks/use-mobile";
 
+
+/** Lines put on screen at a time; more load as the list is scrolled. */
+const LEDGER_PAGE = 100;
 
 /** Emails are long in a narrow column — show the name part, full address on hover. */
 function shortUser(email: string) {
@@ -194,6 +198,28 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     amount: (r) => Number(r.amount),
     recorded_by: (r) => r.created_by_email || "",
   });
+
+  // ---- How much of the ledger is on screen ----
+  // A ledger of 1,500 lines built every line twice (phone cards and the hidden
+  // desktop table): about 70,000 page elements. On a phone that made opening
+  // the add box take seconds, and typing straight after it lag. Only the
+  // layout for this screen is built now, the newest lines first, more as you
+  // scroll. Totals, search, filters and export still use every line.
+  const isPhone = useIsMobile();
+  const [shownCount, setShownCount] = useState(LEDGER_PAGE);
+  useEffect(() => { setShownCount(LEDGER_PAGE); }, [search, accountFilter, directionFilter, rangePreset, rangeFrom, rangeTo, sort.key, sort.dir]);
+  const visible = useMemo(() => sorted.slice(0, shownCount), [sorted, shownCount]);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const hasMore = sorted.length > visible.length;
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !hasMore) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setShownCount((n) => n + LEDGER_PAGE);
+    }, { rootMargin: "600px 0px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, isPhone]);
 
   // Foreign accounts are valued in PHP from a running weighted-average of the
   // rates paid, so one total can span currencies.
@@ -861,7 +887,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
 
       {/* Phones get stacked cards; the table runs to nine columns with accounts
           and a PHP-value column, which pushes the amount off-screen. */}
-      <div className="md:hidden space-y-2">
+      {isPhone && <div className="space-y-2">
         {isLoading ? (
           <div className="flex justify-center py-10">
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -871,7 +897,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
             <div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div>
           </div>
         ) : (
-          sorted.map((t) => (
+          visible.map((t) => (
             <div
               key={t.id}
               className={cn(selecting && "flex items-center gap-2", selecting && canSelect(t) && "cursor-pointer")}
@@ -931,9 +957,9 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
             </div>
           ))
         )}
-      </div>
+      </div>}
 
-      <div className="data-table-wrapper hidden md:block">
+      {!isPhone && <div className="data-table-wrapper">
         <Table>
           <TableHeader>
             <TableRow>
@@ -959,7 +985,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
               <TableRow><TableCell colSpan={ledgerColumnCount} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sorted.length === 0 ? (
               <TableRow><TableCell colSpan={ledgerColumnCount}><div className="empty-state"><Wallet className="empty-state-icon" /><p className="text-sm">No transactions yet</p></div></TableCell></TableRow>
-            ) : sorted.map((t) => (
+            ) : visible.map((t) => (
               <TableRow
                 key={t.id}
                 className={cn("hover:bg-muted/30", selecting && canSelect(t) && "cursor-pointer", selected.has(t.id) && "bg-primary/5 hover:bg-primary/10")}
@@ -1017,7 +1043,16 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
             ))}
           </TableBody>
         </Table>
-      </div>
+      </div>}
+
+      {/* Loads the next lines as it comes into view; the button is for when it
+          does not (or for anyone who prefers to ask). */}
+      {!isLoading && hasMore && (
+        <div ref={moreRef} className="flex flex-col items-center gap-1 py-3 text-xs text-muted-foreground">
+          <span>Showing {visible.length.toLocaleString()} of {sorted.length.toLocaleString()}</span>
+          <Button variant="outline" size="sm" className="h-8" onClick={() => setShownCount((n) => n + LEDGER_PAGE)}>Show more</Button>
+        </div>
+      )}
 
       <FxRateHistoryDialog
         account={rateHistoryAccount}
