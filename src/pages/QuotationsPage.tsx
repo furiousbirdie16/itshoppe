@@ -186,12 +186,6 @@ export default function QuotationsPage() {
   const sortedQuotations = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
   const hiddenCount = sortedAll.length - sortedQuotations.length;
 
-  // Admin-only total: sum of accepted quotations in current filter
-  const totalSales = useMemo(() => {
-    return filtered
-      .filter((q: any) => q.status === "accepted")
-      .reduce((s: number, q: any) => s + Number(q.total_amount || 0), 0);
-  }, [filtered]);
 
   const toggleAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set());
@@ -529,15 +523,6 @@ export default function QuotationsPage() {
         </div>
       )}
 
-      {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
-          </div>
-          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
-        </div>
-      )}
 
       {/* Create / Edit Dialog */}
       <Dialog open={createOpen} onOpenChange={handleClose}>

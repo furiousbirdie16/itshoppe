@@ -559,16 +559,6 @@ export default function OnlineSalesPage() {
     return groupedFiltered.slice(start, start + perPage);
   }, [groupedFiltered, currentPage, perPage, pageSize]);
 
-  // Admin-only total: sum of completed sales (deal_price preferred, else posted_price) in current filter
-  const totalSales = useMemo(() => {
-    return filtered
-      .filter((s: any) => (s.status || "completed") === "completed")
-      .reduce((sum: number, s: any) => {
-        const price = Number(s.deal_price) > 0 ? Number(s.deal_price) : Number(s.posted_price || 0);
-        const qty = Number(s.quantity || 1);
-        return sum + price * qty;
-      }, 0);
-  }, [filtered]);
 
   const allSelected = filtered.length > 0 && filtered.every((s: any) => selected.has(s.id));
   const toggleSelectAll = () => {
@@ -1473,15 +1463,6 @@ export default function OnlineSalesPage() {
         </div>
       )}
 
-      {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Sum of completed sales in current view</p>
-          </div>
-          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
-        </div>
-      )}
       {isAdmin && missingCostCount > 0 && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
           <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />

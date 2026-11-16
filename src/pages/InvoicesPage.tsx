@@ -307,16 +307,6 @@ export default function InvoicesPage() {
   const sortedInvoices = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
   const hiddenCount = sortedAll.length - sortedInvoices.length;
 
-  // Statuses that count as a real sale (exclude reserved, draft, cancelled)
-  const SALE_STATUSES = new Set(["confirmed", "paid", "unpaid", "shipped", "completed"]);
-
-  // Total sales (admin only) — sum of real sales (excludes reserved & cancelled) in current filter
-  const totalSales = useMemo(() => {
-    return filtered
-      .filter((inv: any) => SALE_STATUSES.has(inv.status))
-      .reduce((s: number, inv: any) => s + Number(inv.total_amount || 0), 0);
-  }, [filtered]);
-
 
   const toggleAll = () => {
     if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
@@ -1180,15 +1170,6 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-card">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Excludes reserved &amp; cancelled. Counts shipped, paid, completed.</p>
-          </div>
-          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
-        </div>
-      )}
 
       <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
