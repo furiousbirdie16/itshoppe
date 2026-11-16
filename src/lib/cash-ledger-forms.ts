@@ -55,3 +55,25 @@ export function accountFormFrom(a: CashAccount): AccountForm {
     currency: a.currency || BASE_CURRENCY,
   };
 }
+
+/** The category a balance correction is filed under. Not an expense or income: it only fixes the balance. */
+export const BALANCE_ADJUSTMENT = "Balance adjustment";
+
+/**
+ * The entry that brings an account to the balance typed in its Edit box.
+ *
+ * The opening balance can change in the same save, which moves the balance by
+ * the same amount, so that is allowed for first: the typed figure is what the
+ * account ends up showing. Null when nothing needs recording.
+ */
+export function balanceAdjustment(p: {
+  current: number;
+  oldOpening: number;
+  newOpening: number;
+  target: number;
+}): { direction: "in" | "out"; amount: number } | null {
+  const after = p.current + (p.newOpening - p.oldOpening);
+  const diff = Math.round((p.target - after) * 100) / 100;
+  if (!Number.isFinite(diff) || Math.abs(diff) < 0.005) return null;
+  return { direction: diff > 0 ? "in" : "out", amount: Math.abs(diff) };
+}
