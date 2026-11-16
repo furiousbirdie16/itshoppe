@@ -94,7 +94,14 @@ export function PriceListLinksPanel() {
     return { ...p, linkedId, sug, choice };
   });
   const linkedCount = rows.filter((r) => r.linkedId).length;
-  const highReady = rows.filter((r) => !r.linkedId && r.sug && confidence(r.sug.score, r.sug.runnerUp) === "high" && !picked[r.model]);
+  // A name listed twice in the price list is one link, counted once.
+  const highReady = [
+    ...new Map(
+      rows
+        .filter((r) => !r.linkedId && r.sug && confidence(r.sug.score, r.sug.runnerUp) === "high" && !picked[r.model])
+        .map((r) => [r.model.trim().toLowerCase(), r] as const),
+    ).values(),
+  ];
   const visible = rows.filter((r) => (show === "all" ? true : show === "linked" ? !!r.linkedId : !r.linkedId));
   const busy = saveMut.isPending;
 

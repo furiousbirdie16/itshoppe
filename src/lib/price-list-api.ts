@@ -330,9 +330,14 @@ export function linkLookup(links: ItemLink[]) {
  * product already linked moves to the new item.
  */
 export async function setItemLinks(brand: string, pairs: { product: string; itemId: string | null }[]): Promise<void> {
-  if (pairs.length === 0) return;
   const b = brand.trim();
-  const keys = new Set(pairs.map((p) => p.product.trim().toLowerCase()));
+  // One link per product name: a name listed twice (in two sections, or in
+  // other capitals) would otherwise collide with itself. The last one wins.
+  const byKey = new Map<string, { product: string; itemId: string | null }>();
+  for (const p of pairs) if (p.product.trim()) byKey.set(p.product.trim().toLowerCase(), p);
+  pairs = [...byKey.values()];
+  if (pairs.length === 0) return;
+  const keys = new Set(byKey.keys());
   const existing = await getItemLinks();
   const toRemove = existing
     .filter((l) => l.brand.trim().toLowerCase() === b.toLowerCase() && keys.has(l.product.trim().toLowerCase()))
