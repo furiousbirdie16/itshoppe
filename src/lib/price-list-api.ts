@@ -359,3 +359,66 @@ export const getPriceListProducts = async (priceListId: string) =>
   fetchAllRows<{ id: string; model: string; category: string; tags: PriceTag[] | null }>(() =>
     db.from("price_list_items").select("id, model, category, tags").eq("price_list_id", priceListId).order("sort_order").order("id"),
   );
+
+/** A price list's prices for an inventory item linked to one of its products. */
+export interface LinkedListPrice {
+  brand: string;
+  product: string;
+  bottom: number | null;
+  srp: number | null;
+}
+
+/**
+ * Each linked inventory item's prices, from the active list of the link's
+ * brand. Only lists with named prices (Bottom, SRP) count: a one-price SDP
+ * list has no selling price to offer.
+ */
+export function linkedPricesByItem(
+  links: Pick<ItemLink, "brand" | "product" | "item_id">[],
+  lists: Pick<PriceList, "id" | "brand" | "is_active">[],
+  products: { price_list_id: string; model: string; prices: Partial<Record<PriceKey, number | null>> | null }[],
+): Map<string, LinkedListPrice> {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const activeByBrand = new Map<string, string>();
+  for (const l of lists) if (l.is_active && !activeByBrand.has(norm(l.brand))) activeByBrand.set(norm(l.brand), l.id);
+  const productByKey = new Map<string, (typeof products)[number]>();
+  for (const p of products) {
+    const k = `${p.price_list_id}|${norm(p.model)}`;
+    if (!productByKey.has(k)) productByKey.set(k, p);
+  }
+  const out = new Map<string, LinkedListPrice>();
+  for (const link of links) {
+    const listId = activeByBrand.get(norm(link.brand));
+    const p = listId ? productByKey.get(`${listId}|${norm(link.product)}`) : undefined;
+    const pos = (v: unknown) => (typeof v === "number" && v > 0 ? v : null);
+    const bottom = pos(p?.prices?.bottom);
+    const srp = pos(p?.prices?.srp);
+    if (bottom == null && srp == null) continue;
+    out.set(link.item_id, { brand: link.brand.trim(), product: p!.model, bottom, srp });
+  }
+  return out;
+}
+
+// Under the links key, so saving a link refreshes these too.
+export const LINKED_PRICES_KEY = [...ITEM_LINKS_KEY, "prices"] as const;
+
+export async function getLinkedListPrices(): Promise<Map<string, LinkedListPrice>> {
+  const [links, lists] = await Promise.all([getItemLinks(), getPriceLists()]);
+  const brands = new Set(links.map((l) => l.brand.trim().toLowerCase()));
+  const listIds = lists.filter((l) => l.is_active && brands.has(l.brand.trim().toLowerCase())).map((l) => l.id);
+  if (listIds.length === 0) return new Map();
+  const products = await fetchAllRows<{ price_list_id: string; model: string; prices: Partial<Record<PriceKey, number | null>> | null }>(() =>
+    db.from("price_list_items").select("price_list_id, model, prices").in("price_list_id", listIds).order("id"),
+  );
+  return linkedPricesByItem(links, lists, products);
+}
+
+/**
+ * A walk-in pays SRP: no customer on the document, or one whose channel
+ * says walk-in. Everyone else starts at Bottom.
+ */
+export const isWalkIn = (customer: { channel?: string | null } | null | undefined) => !customer || /walk/i.test(customer.channel ?? "");
+
+/** The price list price to start a line at: SRP for walk-ins, Bottom otherwise. */
+export const linkedStartPrice = (p: LinkedListPrice | undefined, walkIn: boolean): number | null =>
+  p ? (walkIn ? p.srp ?? p.bottom : p.bottom ?? p.srp) : null;
