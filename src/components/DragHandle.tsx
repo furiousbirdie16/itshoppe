@@ -16,8 +16,11 @@ export function DragHandle({ index, className, ...props }: Props) {
       aria-label={`Drag line ${index + 1} to reorder`}
       title="Drag to reorder"
       className={cn(
-        "flex select-none items-center justify-end gap-0.5 text-[11px] tabular-nums text-muted-foreground",
-        "cursor-grab touch-none active:cursor-grabbing hover:text-foreground",
+        // Only as wide as the grip and number: on a phone the grid row is the
+        // card's full width, and a full-width grip caught scrolls meant for the page.
+        "flex w-fit select-none items-center justify-end gap-0.5 justify-self-end rounded px-1.5 py-1 -my-1 text-[11px] tabular-nums text-muted-foreground",
+        // pan-y: a scroll may start on the grip; a held grip still drags (see useDragReorder).
+        "cursor-grab touch-pan-y [-webkit-touch-callout:none] active:cursor-grabbing hover:text-foreground",
         className,
       )}
     >

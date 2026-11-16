@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 
 /**
@@ -10,12 +10,37 @@ import type React from "react";
  * the row under the finger is found by its data-drag-row index. Near the top
  * or bottom of a scrolling dialog the dialog scrolls, so a long list can be
  * dragged end to end.
+ *
+ * On a touch screen the grip has to be held still for a moment before the row
+ * lifts. A finger that lands on it and moves straight away is a scroll, and is
+ * left to scroll: a drag that started on contact used to reorder lines (or
+ * send one off screen) whenever a scroll happened to begin on a grip.
  */
+/** How long a finger must rest on the grip before the row lifts. */
+export const TOUCH_HOLD_MS = 250;
+/** How far a resting finger may wander before it counts as a scroll. */
+const TOUCH_SLOP_PX = 8;
 export function useDragReorder(onMove: (from: number, to: number) => void) {
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
   const current = useRef(drag);
   current.current = drag;
   const scroller = useRef<HTMLElement | null>(null);
+  // A touch waiting out the hold: where it landed, and the timer that lifts it.
+  const pending = useRef<{ x: number; y: number; timer: number } | null>(null);
+
+  const clearPending = () => {
+    if (pending.current) window.clearTimeout(pending.current.timer);
+    pending.current = null;
+  };
+
+  // While a touch drag runs, the page must not scroll under the finger. The
+  // grip allows vertical panning (so a scroll can start on it), so the scroll
+  // is stopped here instead, once the drag has started.
+  const blockScroll = useRef((e: TouchEvent) => { if (current.current) e.preventDefault(); });
+  const stopBlocking = () => document.removeEventListener("touchmove", blockScroll.current);
+
+  // A form closed mid-hold or mid-drag leaves no timer or listener behind.
+  useEffect(() => () => { clearPending(); stopBlocking(); }, []);
 
   const findScroller = (el: HTMLElement | null): HTMLElement | null => {
     for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
@@ -30,12 +55,35 @@ export function useDragReorder(onMove: (from: number, to: number) => void) {
       onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
         // Main button or touch only; right-click is left to the browser.
         if (e.button > 0) return;
-        e.preventDefault();
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-        scroller.current = findScroller(e.currentTarget);
-        setDrag({ from: index, over: index });
+        const el = e.currentTarget;
+        const start = () => {
+          pending.current = null;
+          scroller.current = findScroller(el);
+          setDrag({ from: index, over: index });
+        };
+        if (e.pointerType !== "touch") {
+          e.preventDefault();
+          el.setPointerCapture?.(e.pointerId);
+          start();
+          return;
+        }
+        // Touch: lift only after a still hold, so a scroll stays a scroll.
+        clearPending();
+        const pointerId = e.pointerId;
+        pending.current = {
+          x: e.clientX,
+          y: e.clientY,
+          timer: window.setTimeout(() => {
+            try { el.setPointerCapture?.(pointerId); } catch { /* finger already gone */ }
+            document.addEventListener("touchmove", blockScroll.current, { passive: false });
+            navigator.vibrate?.(10);
+            start();
+          }, TOUCH_HOLD_MS),
+        };
       },
       onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+        const p = pending.current;
+        if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > TOUCH_SLOP_PX) clearPending();
         const d = current.current;
         if (!d) return;
         const box = scroller.current?.getBoundingClientRect();
@@ -49,11 +97,15 @@ export function useDragReorder(onMove: (from: number, to: number) => void) {
         if (Number.isFinite(over) && over !== d.over) setDrag({ ...d, over });
       },
       onPointerUp: () => {
+        clearPending();
+        stopBlocking();
         const d = current.current;
         setDrag(null);
         if (d && d.from !== d.over) onMove(d.from, d.over);
       },
-      onPointerCancel: () => setDrag(null),
+      onPointerCancel: () => { clearPending(); stopBlocking(); setDrag(null); },
+      // Long-pressing the grip must not open the phone's copy/select menu.
+      onContextMenu: (e: React.MouseEvent<HTMLElement>) => e.preventDefault(),
     }),
     [onMove],
   );
