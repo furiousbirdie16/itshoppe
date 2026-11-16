@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall, freshDocumentRow } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -447,7 +447,9 @@ export default function InvoicesPage() {
     return c;
   }, [selectedIds, invoices]);
 
-  const openPreview = async (inv: any) => {
+  const openPreview = async (listed: any) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const inv = await freshDocumentRow("invoices", listed);
     const lineItems = await getInvoiceItems(inv.id);
     // A row that arrived without its join still knows its customer id, and the
     // customer list is already loaded — so the name never has to be missing.

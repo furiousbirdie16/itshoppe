@@ -5,8 +5,7 @@ import {
   getOverseasSuppliers, generateOverseasPONumber, getOverseasPOItems, createOverseasPOItems, saveOverseasPOLines, getItems, getItemsWithStock, receiveOverseasPO, unreceiveOverseasPO, getAllOverseasPOItems, getShipments,
   createShipment, updateShipment, deleteShipment, getCashAccounts, getCashTransactions,
   getLastOverseasCosts, lastOverseasCostKey,
-  getOverseasPoPayments, createOverseasPoPayment, deleteOverseasPoPayment,
-} from "@/lib/api";
+  getOverseasPoPayments, createOverseasPoPayment, deleteOverseasPoPayment, freshDocumentRow } from "@/lib/api";
 import type { ShipmentTracking } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -914,7 +913,9 @@ export default function OverseasPurchaseOrdersPage() {
     setLines(lines.map((l, i) => i === idx ? { ...l, [field]: value } : l));
   };
 
-  const openPreview = async (po: OverseasPurchaseOrder) => {
+  const openPreview = async (listed: OverseasPurchaseOrder) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const po = await freshDocumentRow("overseas_purchase_orders", listed);
     const poItems = await getOverseasPOItems(po.id);
     setPreviewData({
       type: "purchase_order",

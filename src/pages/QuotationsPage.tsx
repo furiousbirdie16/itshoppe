@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer } from "@/lib/api";
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer, freshDocumentRow } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -204,7 +204,9 @@ export default function QuotationsPage() {
   const parsePrice = (v: string) => parseFloat(v) || 0;
   const lineTotal = (l: LineItem) => parseQty(l.quantity) * parsePrice(l.unit_price);
 
-  const openPreview = async (q: any) => {
+  const openPreview = async (listed: any) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const q = await freshDocumentRow("quotations", listed);
     const lineItems = await getQuotationItems(q.id);
     const dueDate = getDueDate(q);
     setPreviewData({
