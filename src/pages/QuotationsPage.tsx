@@ -43,7 +43,11 @@ import { BranchScope } from "@/components/BranchScope";
 import { docNo } from "@/lib/doc-number";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 
-interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
+interface LineItem {
+  item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null;
+  /** Priced from a price list (Bottom / SRP): the customer price hint must not overwrite it. */
+  fromPriceList?: boolean;
+}
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
@@ -379,9 +383,10 @@ export default function QuotationsPage() {
   // A model from a supplier price list goes in as a typed-in line, filling an
   // empty last line rather than leaving a blank one above it.
   const [priceListOpen, setPriceListOpen] = useState(false);
-  const addFromPriceList = (pick: { name: string; price: number | null }) => {
+  const addFromPriceList = (pick: { name: string; price: number | null; itemId?: string | null }) => {
     setLines(prev => {
-      const line = { item_id: "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null };
+      // A product linked to inventory goes in as that item, so invoicing it moves stock.
+      const line = { item_id: pick.itemId ?? "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null, fromPriceList: pick.price != null };
       const last = prev[prev.length - 1];
       if (last && !last.item_id && !last.item_name) return [...prev.slice(0, -1), line];
       return [...prev, line];
@@ -648,6 +653,8 @@ export default function QuotationsPage() {
                           customName={line.item_name}
                           onChange={(itemId, item, customName, variation) => {
                             const newLines = [...lines];
+                            // Picking another item drops the price list's price claim.
+                            newLines[idx].fromPriceList = false;
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
@@ -695,7 +702,11 @@ export default function QuotationsPage() {
                           standardPrice={Number(selectedItem.selling_price)}
                           costPrice={Number(selectedItem.cost_price)}
                           currentPrice={parsePrice(line.unit_price)}
-                          onSuggested={(suggested) => updateLine(idx, "unit_price", String(suggested))}
+                          onSuggested={(suggested) => {
+                            // A ₱0 suggestion (an item whose price lives in a price
+                            // list, not Inventory) would only wipe the price.
+                            if (!line.fromPriceList && suggested > 0) updateLine(idx, "unit_price", String(suggested));
+                          }}
                         />
                       )}
                     </div>

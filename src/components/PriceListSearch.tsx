@@ -13,6 +13,9 @@ import { SPEC_LABELS, type SpecKey } from "@/lib/price-specs";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getCategoryTypes,
+  getItemLinks,
+  linkLookup,
+  ITEM_LINKS_KEY,
   getPriceListFacets,
   getPriceLists,
   isMultiPrice,
@@ -28,6 +31,8 @@ export interface PricedRow extends PriceListItem {
   list: PriceList | undefined;
   /** The category's type ("Analog camera"), if one is set. */
   type: string | null;
+  /** The inventory item this product is linked to, if any. */
+  itemId: string | null;
   /**
    * The price a quotation line gets straight from the list: on a list like
    * TP-Link's, the price chosen under "Quote at" (SRP by default). Null on
@@ -41,9 +46,11 @@ export interface PricedRow extends PriceListItem {
 export function usePriceListData() {
   const lists = useQuery({ queryKey: PRICE_LISTS_KEY, queryFn: getPriceLists });
   const types = useQuery({ queryKey: CATEGORY_TYPES_KEY, queryFn: getCategoryTypes });
+  const links = useQuery({ queryKey: ITEM_LINKS_KEY, queryFn: getItemLinks });
   return {
     lists: lists.data ?? [],
     types: types.data ?? [],
+    links: links.data ?? [],
     isLoading: lists.isLoading,
   };
 }
@@ -138,21 +145,27 @@ export function PriceListSearch({
   onPick,
   autoFocus,
   compact,
+  defaultQuoteAt = "srp",
 }: {
   onPick?: (row: PricedRow) => void;
   autoFocus?: boolean;
   compact?: boolean;
+  /** The "Quote at" price to start on: Bottom for customers, SRP for walk-ins. */
+  defaultQuoteAt?: string;
 }) {
   const { role } = useAuth();
   const isAdmin = role === "admin";
-  const { lists, types, isLoading } = usePriceListData();
+  const { lists, types, links, isLoading } = usePriceListData();
+  const linkOf = useMemo(() => linkLookup(links), [links]);
   const active = useMemo(() => lists.filter((l) => l.is_active), [lists]);
   const [listId, setListId] = useState<string>("");
   const [category, setCategory] = useState<string>(ALL);
   const [type, setType] = useState<string>(ALL);
   const [spec, setSpec] = useState<Partial<Record<"mp" | "shape" | "place", string>>>({});
   const [query, setQuery] = useState("");
-  const [quoteAt, setQuoteAt] = useState<string>("srp");
+  const [quoteAt, setQuoteAt] = useState<string>(defaultQuoteAt);
+  // Choosing another customer (walk-in or not) moves the default with it.
+  useEffect(() => setQuoteAt(defaultQuoteAt), [defaultQuoteAt]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
   // The column under the mouse, lit up the whole way down (rows light up on
@@ -176,10 +189,13 @@ export function PriceListSearch({
   const brand = list?.brand ?? "";
   const multi = isMultiPrice(list);
   const priceKeys = useMemo(() => (multi ? visiblePriceKeys(list!.price_columns ?? [], isAdmin) : []), [multi, list, isAdmin]);
-  // SRP unless this person can't see it or the list has none.
+  // The default unless this person can't see it or the list has none
+  // (Hikvision's solar sheet has no Bottom): then SRP, then the last shown.
   useEffect(() => {
-    if (priceKeys.length > 0 && !priceKeys.includes(quoteAt)) setQuoteAt(priceKeys.includes("srp") ? "srp" : priceKeys[priceKeys.length - 1]);
-  }, [priceKeys, quoteAt]);
+    if (priceKeys.length > 0 && !priceKeys.includes(quoteAt)) {
+      setQuoteAt(priceKeys.includes(defaultQuoteAt) ? defaultQuoteAt : priceKeys.includes("srp") ? "srp" : priceKeys[priceKeys.length - 1]);
+    }
+  }, [priceKeys, quoteAt, defaultQuoteAt]);
 
   const { data: facets } = useQuery({
     queryKey: ["price-list-facets", listId],
@@ -214,9 +230,10 @@ export function PriceListSearch({
       ...r,
       list,
       type: typeOf(r.category),
+      itemId: linkOf(brand, r.model),
       price: multi ? r.prices?.[quoteAt as keyof typeof r.prices] ?? null : null,
     })),
-    [results, list, multi, quoteAt, typeOf],
+    [results, list, multi, quoteAt, typeOf, linkOf, brand],
   );
 
   // Every column this list can show, in order.
@@ -250,6 +267,7 @@ export function PriceListSearch({
       { key: "description", label: "Description", width: "minmax(0,2fr)", cell: (r) => r.description || "—" },
       ...prices,
       ...(multi ? [{ key: "warranty", label: "Warranty", width: "68px", cell: (r: PricedRow) => r.warranty || "—" }] : []),
+      { key: "packing", label: "Per carton", short: "Carton", width: "84px", cell: (r: PricedRow) => r.specs?.packing || "—" },
     ];
   }, [multi, priceKeys, onPick, quoteAt]);
 
@@ -532,6 +550,8 @@ function Tags({ r }: { r: PricedRow }) {
     <>
       {r.tags?.includes("eol") && <span className="shrink-0 rounded bg-muted px-1 py-px text-[10px] font-medium text-muted-foreground" title="End of life: being phased out">EOL</span>}
       {r.tags?.includes("price_up") && <span className="shrink-0 rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" title="Price went up in this list">Price up</span>}
+      {r.tags?.includes("no_stock") && <span className="shrink-0 rounded bg-red-100 px-1 py-px text-[10px] font-medium text-red-800 dark:bg-red-950/40 dark:text-red-300" title="Marked NO STOCK in the price list">No stock</span>}
+      {r.itemId && <span className="shrink-0 rounded bg-emerald-100 px-1 py-px text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300" title="Linked to an inventory item: quoted as that item">In inventory</span>}
     </>
   );
 }

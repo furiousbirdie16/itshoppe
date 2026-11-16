@@ -32,7 +32,8 @@ export interface PriceListItem {
   model: string;
   description: string;
   category: string;
-  sdp: number;
+  /** Null for a product marked "No stock". */
+  sdp: number | null;
   prices: Partial<Record<PriceKey, number>>;
   warranty: string | null;
   tags: PriceTag[];
@@ -183,7 +184,7 @@ export async function searchPriceList(opts: {
     return q.order("sort_order").order("id");
   };
   const tidy = (data: unknown[]) =>
-    (data as PriceListItem[]).map((r) => ({ ...r, sdp: Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [], specs: r.specs ?? {} }));
+    (data as PriceListItem[]).map((r) => ({ ...r, sdp: r.sdp == null ? null : Number(r.sdp), prices: r.prices ?? {}, tags: r.tags ?? [], specs: r.specs ?? {} }));
   if (opts.all) return rankMatches(keepRightKind(tidy(await fetchAllRows<PriceListItem>(build)), terms), terms);
   // With words to rank by, fetch more than are shown so the best ones are in.
   const { data, error } = await build().limit(terms.length > 0 ? 300 : limit);
@@ -300,3 +301,56 @@ export async function getLastPriceForModel(customerId: string, model: string): P
   const { price, date, from } = hits[0];
   return { price, date, from };
 }
+
+// ---------------------------------------------------------------------------
+// Links from price list products to inventory items
+// ---------------------------------------------------------------------------
+
+export interface ItemLink {
+  id: string;
+  brand: string;
+  product: string;
+  item_id: string;
+}
+
+export const ITEM_LINKS_KEY = ["price-item-links"] as const;
+
+export const getItemLinks = async (): Promise<ItemLink[]> =>
+  fetchAllRows<ItemLink>(() => db.from("price_item_links").select("*").order("id"));
+
+/** A brand+product → inventory item lookup. */
+export function linkLookup(links: ItemLink[]) {
+  const m = new Map<string, string>();
+  for (const l of links) m.set(`${l.brand.trim().toLowerCase()}|${l.product.trim().toLowerCase()}`, l.item_id);
+  return (brand: string, product: string) => m.get(`${brand.trim().toLowerCase()}|${product.trim().toLowerCase()}`) ?? null;
+}
+
+/**
+ * Links products to inventory items, or unlinks them (itemId null). A
+ * product already linked moves to the new item.
+ */
+export async function setItemLinks(brand: string, pairs: { product: string; itemId: string | null }[]): Promise<void> {
+  if (pairs.length === 0) return;
+  const b = brand.trim();
+  const keys = new Set(pairs.map((p) => p.product.trim().toLowerCase()));
+  const existing = await getItemLinks();
+  const toRemove = existing
+    .filter((l) => l.brand.trim().toLowerCase() === b.toLowerCase() && keys.has(l.product.trim().toLowerCase()))
+    .map((l) => l.id);
+  for (let i = 0; i < toRemove.length; i += 200) {
+    const { error } = await db.from("price_item_links").delete().in("id", toRemove.slice(i, i + 200));
+    if (error) throw error;
+  }
+  const rows = pairs.filter((p) => p.itemId).map((p) => ({ brand: b, product: p.product.trim(), item_id: p.itemId }));
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await db.from("price_item_links").insert(rows.slice(i, i + 200));
+    if (error) throw error;
+  }
+  await logActivity("linked_price_list_items", "price_list", undefined, { brand: b, linked: rows.length, unlinked: pairs.length - rows.length });
+}
+
+/** Every product of a list (name, category, tags), for the links screen. */
+export const getPriceListProducts = async (priceListId: string) =>
+  fetchAllRows<{ id: string; model: string; category: string; tags: PriceTag[] | null }>(() =>
+    db.from("price_list_items").select("id, model, category, tags").eq("price_list_id", priceListId).order("sort_order").order("id"),
+  );
