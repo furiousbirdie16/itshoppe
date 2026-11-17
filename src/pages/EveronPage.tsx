@@ -282,7 +282,9 @@ export default function EveronPage() {
       <Dialog open={remitOpen} onOpenChange={setRemitOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Remit to Everon</DialogTitle></DialogHeader>
-          <div className="space-y-3">
+          {/* min-w-0: the dialog is a grid, and without it a long invoice line
+              widens the whole dialog past the screen instead of shortening. */}
+          <div className="space-y-3 min-w-0">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label>Invoices this covers</Label>
@@ -303,12 +305,13 @@ export default function EveronPage() {
                   {unremitted.map((t) => (
                     <label key={t.id} className="flex items-center gap-2 px-2.5 py-2 text-sm cursor-pointer hover:bg-muted/40">
                       <Checkbox checked={form.ids.has(t.id)} onCheckedChange={() => toggleId(t.id)} />
-                      <span className="flex-1 min-w-0 truncate">
-                        <span className="font-medium">{(t.reference || "Everon payment").replace(/^Everon\s+/, "")}</span>
-                        {t.payee && <span className="ml-1.5 text-xs text-muted-foreground">{t.payee}</span>}
-                        <span className="ml-1.5 text-xs text-muted-foreground">{formatDate(t.txn_date)}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate font-medium">{(t.reference || "Everon payment").replace(/^Everon\s+/, "")}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {[t.payee, formatDate(t.txn_date)].filter(Boolean).join(" · ")}
+                        </span>
                       </span>
-                      <span className="tabular-nums text-sm">{peso(Number(t.amount))}</span>
+                      <span className="shrink-0 tabular-nums text-sm">{peso(Number(t.amount))}</span>
                     </label>
                   ))}
                 </div>
