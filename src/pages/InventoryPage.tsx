@@ -1462,8 +1462,10 @@ export default function InventoryPage() {
                   }
                 })}
                 <TableCell className="w-px whitespace-nowrap text-right sticky right-0 z-10 bg-card shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
-                  {/* Two at hand, the rest in a menu: nine icons on every row
-                      made this the widest column on the page. */}
+                  {/* Three at hand, the rest in a menu: nine icons on every row
+                      made this the widest column on the page. Edit, history
+                      and transfer; someone who cannot edit gets Adjust stock,
+                      the next in line, so every row still shows three. */}
                   <div className="flex justify-end gap-0.5">
                     {isAdmin && !viewArchived && (
                       <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="h-7 w-7 rounded-md" title="Edit">
@@ -1473,6 +1475,16 @@ export default function InventoryPage() {
                     <Button variant="ghost" size="icon" onClick={() => setHistoryItem(item)} className="h-7 w-7 rounded-md" title="Stock history">
                       <History className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
+                    {!viewArchived && (
+                      <Button variant="ghost" size="icon" onClick={() => setTransferItem(item)} className="h-7 w-7 rounded-md" title="Transfer stock">
+                        <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
+                    {!isAdmin && !viewArchived && (
+                      <Button variant="ghost" size="icon" onClick={() => setAdjustItem(item)} className="h-7 w-7 rounded-md" title="Adjust stock">
+                        <ClipboardEdit className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    )}
                     {isAdmin && viewArchived && (
                       <Button variant="ghost" size="icon" onClick={() => unarchiveMut.mutate([item.id])} className="h-7 w-7 rounded-md" title="Restore">
                         <ArchiveRestore className="h-3.5 w-3.5 text-primary" />
@@ -1487,8 +1499,9 @@ export default function InventoryPage() {
                       <DropdownMenuContent align="end" className="w-44">
                         {!viewArchived && (
                           <>
-                            <DropdownMenuItem onClick={() => setTransferItem(item)}><ArrowLeftRight className="mr-2 h-4 w-4" /> Transfer stock</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setAdjustItem(item)}><ClipboardEdit className="mr-2 h-4 w-4" /> Adjust stock</DropdownMenuItem>
+                            {isAdmin && (
+                              <DropdownMenuItem onClick={() => setAdjustItem(item)}><ClipboardEdit className="mr-2 h-4 w-4" /> Adjust stock</DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => setVariationsItem(item)}><Layers className="mr-2 h-4 w-4" /> Variations</DropdownMenuItem>
                           </>
                         )}
