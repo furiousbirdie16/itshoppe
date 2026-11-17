@@ -29,6 +29,9 @@ import { TodayMovementExport } from "@/components/TodayMovementExport";
 import { costFromRows } from "@/lib/branch-cost";
 import { FilterCombobox } from "@/components/FilterCombobox";
 import { InsightsProductCard } from "@/components/InsightsProductCard";
+import InvoiceDetailsDialog from "@/components/InvoiceDetailsDialog";
+import OnlineSaleDetailsDialog from "@/components/OnlineSaleDetailsDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
 import { useStockSplit } from "@/hooks/use-stock-split";
 import { ACTION_CLASS, fmtDays, fmtUnits, makeBuckets } from "@/lib/insights";
@@ -132,14 +135,105 @@ function ChipGroup<T extends string>({
   );
 }
 
-type CustomerRow = { key: string; name: string; orders: number; sales: number; profit: number; margin: number | null; unpaid: number; last: string };
+type CustomerOrderRow = {
+  id: string;
+  /** What the details popup opens: the invoice, or one line of the online order. */
+  openId: string;
+  kind: "invoice" | "online";
+  ref: string;
+  date: string;
+  paid: boolean;
+  amount: number;
+  profit: number;
+  /** Sales on this order whose cost is known, for its margin. */
+  costed: number;
+};
+type CustomerRow = { key: string; name: string; orders: number; sales: number; profit: number; margin: number | null; unpaid: number; last: string; orderList: CustomerOrderRow[] };
+
+/**
+ * A customer's (or channel's) orders in the range, newest first. Each order
+ * number opens the invoice or online order itself.
+ */
+function CustomerOrdersDialog({
+  customer: c, onClose, isAdmin, money, onOpenOrder,
+}: {
+  customer: CustomerRow | null;
+  onClose: () => void;
+  isAdmin: boolean;
+  money: (n: number) => string;
+  onOpenOrder: (o: CustomerOrderRow) => void;
+}) {
+  return (
+    <Dialog open={!!c} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-2xl h-[100dvh] max-h-[100dvh] rounded-none p-4 sm:h-auto sm:max-h-[85vh] sm:rounded-lg sm:p-6 overflow-y-auto">
+        <DialogHeader className="text-left">
+          <DialogTitle className="text-lg pr-6 capitalize">{c?.name}</DialogTitle>
+        </DialogHeader>
+        {c && (
+          <div className="space-y-3">
+            <div className={cn("grid divide-x rounded-lg border text-center", isAdmin ? "grid-cols-2 sm:grid-cols-4 [&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(n+3)]:border-t-0" : "grid-cols-2")}>
+              {([
+                ["Orders", String(c.orders)],
+                ...(isAdmin
+                  ? [["Sales", money(c.sales)], ["Profit", money(c.profit)], ["Margin", c.margin == null ? "—" : `${c.margin.toFixed(1)}%`]]
+                  : [["Last order", c.last ? format(parseISO(c.last), "MMM d") : "—"]]),
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="px-1 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                  <div className={cn("text-base font-semibold tabular-nums", label === "Profit" && "text-green-600")}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Orders in the date range on this page{isAdmin ? ". Unpaid orders are not counted in sales or profit yet" : ""}. Tap a number to open it.
+            </p>
+            <div className="divide-y rounded-lg border">
+              {c.orderList.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-muted-foreground">No orders in this range.</p>
+              ) : c.orderList.map((o) => {
+                const margin = o.costed > 0 ? (o.profit / o.costed) * 100 : null;
+                return (
+                  <div key={o.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <button type="button" onClick={() => onOpenOrder(o)} className="font-medium tabular-nums text-primary hover:underline">
+                        {o.ref}
+                      </button>
+                      <div className="text-xs text-muted-foreground">
+                        {o.date ? format(parseISO(o.date), "MMM d, yyyy") : "—"}
+                        {" · "}
+                        <span className={o.paid ? "text-green-600" : "text-amber-600"}>{o.paid ? "Paid" : "Unpaid"}</span>
+                      </div>
+                    </div>
+                    {/* Staff see no money, so there is nothing to put here for them. */}
+                    {isAdmin && (
+                      <div className="shrink-0 text-right tabular-nums">
+                        <div className="text-sm font-medium">{money(o.amount)}</div>
+                        {o.paid && (
+                          <div className="text-xs text-muted-foreground">
+                            {margin == null
+                              ? <span title="No cost was saved on this order, so its profit is unknown">profit —</span>
+                              : <><span className="text-green-600">{money(o.profit)}</span> · {margin.toFixed(1)}%</>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 /**
  * One list of who bought: orders, sales, profit, margin and last order. Money
  * columns are left out for staff.
  */
 function CustomerTable({
-  title, subtitle, rows, sort, isAdmin, money, search, onSearch, empty, capitalize,
+  title, subtitle, rows, sort, isAdmin, money, search, onSearch, empty, capitalize, onOpen,
 }: {
   title: string;
   subtitle: string;
@@ -151,6 +245,8 @@ function CustomerTable({
   onSearch?: (v: string) => void;
   empty: string;
   capitalize?: boolean;
+  /** Opens the customer's orders. */
+  onOpen?: (row: CustomerRow) => void;
 }) {
   const cols = isAdmin ? 6 : 3;
   return (
@@ -158,7 +254,7 @@ function CustomerTable({
       <div className="flex flex-wrap items-center justify-between gap-2 p-4 pb-3">
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="text-xs text-muted-foreground">{subtitle}</p>
+          <p className="text-xs text-muted-foreground">{subtitle}{onOpen ? " Tap a name to see its orders." : ""}</p>
         </div>
         {onSearch && (
           <div className="relative w-full sm:w-56">
@@ -183,9 +279,14 @@ function CustomerTable({
             {rows.length === 0 ? (
               <tr><td colSpan={cols} className="px-3 py-6 text-center text-xs text-muted-foreground">{empty}</td></tr>
             ) : rows.map((c) => (
-              <tr key={c.key} className="border-t">
+              <tr
+                key={c.key}
+                className={cn("border-t", onOpen && "cursor-pointer hover:bg-muted/40")}
+                onClick={onOpen ? () => onOpen(c) : undefined}
+              >
                 <td className="px-3 py-2 font-medium">
-                  <span className={cn(capitalize && "capitalize")}>{c.name}</span>
+                  <span className={cn(capitalize && "capitalize", onOpen && "text-primary")}>{c.name}</span>
+                  {onOpen && <ChevronRight className="ml-0.5 inline h-3.5 w-3.5 text-muted-foreground" />}
                   {/* On a phone the narrow columns fold in here. */}
                   <div className="text-[11px] font-normal text-muted-foreground sm:hidden">
                     {isAdmin && <>{c.orders} order{c.orders === 1 ? "" : "s"}</>}
@@ -931,11 +1032,17 @@ export default function BusinessInsightsPage() {
   // margin is profit over the sales whose cost is known, so a line missing its
   // cost does not drag it down.
   const customerStats = useMemo(() => {
-    type Acc = { key: string; name: string; orders: Set<string>; sales: number; profit: number; costedSales: number; unpaid: number; last: string };
+    type Acc = { key: string; name: string; orders: Set<string>; sales: number; profit: number; costedSales: number; unpaid: number; last: string; list: Map<string, CustomerOrderRow> };
     const add = (m: Map<string, Acc>, key: string, name: string) => {
       let e = m.get(key);
-      if (!e) { e = { key, name, orders: new Set(), sales: 0, profit: 0, costedSales: 0, unpaid: 0, last: "" }; m.set(key, e); }
+      if (!e) { e = { key, name, orders: new Set(), sales: 0, profit: 0, costedSales: 0, unpaid: 0, last: "", list: new Map() }; m.set(key, e); }
       return e;
+    };
+    // One entry per invoice or online order, for the list a row opens.
+    const order = (e: Acc, id: string, openId: string, kind: CustomerOrderRow["kind"], ref: string, date: string, paid: boolean) => {
+      let o = e.list.get(id);
+      if (!o) { o = { id, openId, kind, ref, date, paid, amount: 0, profit: 0, costed: 0 }; e.list.set(id, o); }
+      return o;
     };
 
     const channels = new Map<string, Acc>();
@@ -943,12 +1050,16 @@ export default function BusinessInsightsPage() {
       const channel = String(r.sales_channel || "others");
       const e = add(channels, channel, channel);
       const rev = Number(r.posted_price || 0) * Number(r.quantity || 0);
-      e.orders.add(String(r.order_number || r.id));
+      const orderNo = String(r.order_number || r.id);
+      e.orders.add(orderNo);
       if (r.order_date && r.order_date > e.last) e.last = r.order_date;
-      if (r.payment_status !== "paid") { e.unpaid += rev; continue; }
+      const paid = r.payment_status === "paid";
+      const o = order(e, orderNo, r.id, "online", r.order_number || "—", r.order_date || "", paid);
+      o.amount += rev;
+      if (!paid) { e.unpaid += rev; continue; }
       e.sales += rev;
       const fin = onlineFinMap.get(r.id);
-      if (fin?.hasCost) { e.profit += fin.profit; e.costedSales += rev; }
+      if (fin?.hasCost) { e.profit += fin.profit; e.costedSales += rev; o.profit += fin.profit; o.costed += rev; }
     }
 
     // Profit per invoice line, from the cost saved when it was sold.
@@ -967,13 +1078,17 @@ export default function BusinessInsightsPage() {
       const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
       e.orders.add(inv.id);
       if (inv.invoice_date && inv.invoice_date > e.last) e.last = inv.invoice_date;
-      if (!paidInvoiceIds.has(r.invoice_id)) { e.unpaid += rev; continue; }
+      const paid = paidInvoiceIds.has(r.invoice_id);
+      const o = order(e, r.invoice_id, r.invoice_id, "invoice", docNo(inv.invoice_number) || "—", inv.invoice_date || "", paid);
+      o.amount += rev;
+      if (!paid) { e.unpaid += rev; continue; }
       e.sales += rev;
       const k = `${r.invoice_id}|${r.item_id || ""}|${r.variation_id || ""}`;
       if (profitByLine.has(k)) {
         e.costedSales += rev;
+        o.costed += rev;
         // Several lines can share a key; the profit is added once.
-        if (!counted.has(k)) { e.profit += profitByLine.get(k)!; counted.add(k); }
+        if (!counted.has(k)) { e.profit += profitByLine.get(k)!; o.profit += profitByLine.get(k)!; counted.add(k); }
       }
     }
 
@@ -987,6 +1102,8 @@ export default function BusinessInsightsPage() {
         margin: e.costedSales > 0 ? (e.profit / e.costedSales) * 100 : null,
         unpaid: e.unpaid,
         last: e.last,
+        // Newest first.
+        orderList: Array.from(e.list.values()).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
       }));
     const invoiceList = finish(customers);
     const onlineList = finish(channels);
@@ -1004,6 +1121,10 @@ export default function BusinessInsightsPage() {
     };
   }, [onlineRows, invoiceRows, onlineFinMap, financialsRows, paidInvoiceIds]);
   const [customerSearch, setCustomerSearch] = useState("");
+  // The customer or channel whose orders are open, and an order opened from it.
+  const [openCustomer, setOpenCustomer] = useState<CustomerRow | null>(null);
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
+  const [openOnlineId, setOpenOnlineId] = useState<string | null>(null);
 
   const handleExport = () => {
     const wb = XLSX.utils.book_new();
@@ -2245,6 +2366,7 @@ export default function BusinessInsightsPage() {
             search={customerSearch}
             onSearch={setCustomerSearch}
             empty={customerSearch ? "No customer matches that name." : "No invoice sales in this range."}
+            onOpen={setOpenCustomer}
           />
           <CustomerTable
             title="Online channels"
@@ -2255,7 +2377,18 @@ export default function BusinessInsightsPage() {
             money={money}
             empty="No online sales in this range."
             capitalize
+            onOpen={setOpenCustomer}
           />
+
+          <CustomerOrdersDialog
+            customer={openCustomer}
+            onClose={() => setOpenCustomer(null)}
+            isAdmin={isAdmin}
+            money={money}
+            onOpenOrder={(o) => (o.kind === "invoice" ? setOpenInvoiceId(o.openId) : setOpenOnlineId(o.openId))}
+          />
+          <InvoiceDetailsDialog invoiceId={openInvoiceId} open={!!openInvoiceId} onOpenChange={(v) => !v && setOpenInvoiceId(null)} />
+          <OnlineSaleDetailsDialog onlineSaleId={openOnlineId} open={!!openOnlineId} onOpenChange={(v) => !v && setOpenOnlineId(null)} />
         </TabsContent>
 
       </Tabs>
