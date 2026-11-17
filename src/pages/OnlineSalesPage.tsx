@@ -215,10 +215,20 @@ export default function OnlineSalesPage() {
     for (const f of onlineFinancials as any[]) m.set(f.online_sale_id, f);
     return m;
   }, [onlineFinancials]);
+  // Only completed sales need a cost: returned and cancelled ones are left out
+  // of profit and margin anyway. Counted from this branch's sales so the
+  // number matches what clicking the warning shows.
+  const isMissingCost = (s: any) => {
+    if ((s.status || "completed") !== "completed") return false;
+    const f = finBySaleId.get(s.id);
+    return !!f && !f.has_cost;
+  };
   const missingCostCount = useMemo(
-    () => (onlineFinancials as any[]).filter((f) => !f.has_cost).length,
-    [onlineFinancials],
+    () => (sales as any[]).filter(isMissingCost).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sales, finBySaleId],
   );
+  const [costOnly, setCostOnly] = useState(false);
 
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -467,7 +477,8 @@ export default function OnlineSalesPage() {
   };
 
   const baseFiltered = sales.filter((s: any) =>
-    matchTabSearchDateQtyPrice(s) && (!serialsOnly || !!missingSerials[s.order_number]));
+    matchTabSearchDateQtyPrice(s) && (!serialsOnly || !!missingSerials[s.order_number])
+    && (!costOnly || isMissingCost(s)));
 
   // Available options exclude only their own filter to keep the others authoritative.
   const availableChannels = useMemo(() => {
@@ -1463,11 +1474,25 @@ export default function OnlineSalesPage() {
         </div>
       )}
 
-      {isAdmin && missingCostCount > 0 && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+      {isAdmin && (missingCostCount > 0 || costOnly) && (
+        <button
+          type="button"
+          onClick={() => {
+            setCostOnly((v) => !v);
+            setActiveTab("completed");
+            setSelected(new Set());
+            setPage(1);
+          }}
+          className="w-full text-left rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2"
+        >
           <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span><strong>{missingCostCount}</strong> online sale{missingCostCount === 1 ? "" : "s"} missing product cost — gross profit / margin cannot be calculated for them. Set the item/variation cost in Inventory to include them in analytics.</span>
-        </div>
+          <span>
+            <strong>{missingCostCount}</strong> online sale{missingCostCount === 1 ? "" : "s"} missing product cost — gross profit / margin cannot be calculated for them. Set the item/variation cost in Inventory, or type it in the sale's cost box.
+            <span className="ml-1 font-medium underline underline-offset-2">
+              {costOnly ? "Showing only these · show all" : "Show them"}
+            </span>
+          </span>
+        </button>
       )}
 
 
