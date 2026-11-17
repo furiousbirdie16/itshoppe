@@ -22,6 +22,7 @@ import { peso } from "@/lib/currency";
 import { BASE_CURRENCY, isForeign } from "@/lib/fx";
 import type { CashAccount, CashAccountType, CashTransaction } from "@/types/database";
 import type { TxnForm, AccountForm } from "@/lib/cash-ledger-forms";
+import { BALANCE_ADJUSTMENT, balanceAdjustment } from "@/lib/cash-ledger-forms";
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 
@@ -312,8 +313,16 @@ interface AccountDialogProps {
   initial: AccountForm;
   accountType: CashAccountType;
   pending: boolean;
-  onSubmit: (form: AccountForm) => void;
+  /**
+   * Today's balance, when it can be corrected from here (editing a peso
+   * account). Typing a different figure records the difference.
+   */
+  currentBalance?: number | null;
+  onSubmit: (form: AccountForm, adjustment: AccountAdjustment | null) => void;
 }
+
+/** The inflow or outflow that brings the balance to the figure typed. */
+export interface AccountAdjustment { direction: "in" | "out"; amount: number; notes: string }
 
 export function AccountDialog(props: AccountDialogProps) {
   return (
@@ -326,13 +335,25 @@ export function AccountDialog(props: AccountDialogProps) {
   );
 }
 
-function AccountFormBody({ editing, initial, accountType, pending, onSubmit, onOpenChange }: AccountDialogProps) {
+function AccountFormBody({ editing, initial, accountType, pending, currentBalance, onSubmit, onOpenChange }: AccountDialogProps) {
   const [accountForm, setAccountForm] = useState<AccountForm>(initial);
   const set = (patch: Partial<AccountForm>) => setAccountForm((f) => ({ ...f, ...patch }));
+  const canAdjust = editing && currentBalance != null;
+  const [target, setTarget] = useState(canAdjust ? String(Math.round((currentBalance as number) * 100) / 100) : "");
+  const [adjustNote, setAdjustNote] = useState("");
+  const adjustment = canAdjust && target.trim() !== ""
+    ? balanceAdjustment({
+        current: currentBalance as number,
+        oldOpening: Number(initial.opening_balance) || 0,
+        newOpening: Number(accountForm.opening_balance) || 0,
+        target: Number(target),
+      })
+    : null;
 
   const handleSubmit = () => {
     if (!accountForm.name.trim()) { toast.error("Account name is required"); return; }
-    onSubmit(accountForm);
+    if (canAdjust && target.trim() !== "" && !Number.isFinite(Number(target))) { toast.error("Enter the current balance as a number"); return; }
+    onSubmit(accountForm, adjustment ? { ...adjustment, notes: adjustNote.trim() } : null);
   };
 
   return (
@@ -370,6 +391,22 @@ function AccountFormBody({ editing, initial, accountType, pending, onSubmit, onO
             <Input type="number" step="0.01" value={accountForm.opening_balance} onChange={(e) => set({ opening_balance: e.target.value })} className="h-9" />
           </div>
         </div>
+        {canAdjust && (
+          <div className="space-y-1.5 rounded-lg border p-3">
+            <Label className="text-xs font-medium">Current balance</Label>
+            <Input type="number" step="0.01" value={target} onChange={(e) => setTarget(e.target.value)} className="h-9" />
+            {adjustment ? (
+              <>
+                <p className={`text-xs font-medium ${adjustment.direction === "in" ? "text-emerald-600" : "text-red-600"}`}>
+                  {adjustment.direction === "in" ? "+" : "\u2212"}{peso(adjustment.amount)} will be recorded as {adjustment.direction === "in" ? "an inflow" : "an outflow"} today ({BALANCE_ADJUSTMENT}).
+                </p>
+                <Input value={adjustNote} onChange={(e) => setAdjustNote(e.target.value)} className="h-9" placeholder="Why? (optional) e.g. deposit not recorded" />
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">Type the real balance to correct it. The difference is recorded as an inflow or outflow, not as income or an expense.</p>
+            )}
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Notes</Label>
           <Textarea value={accountForm.notes} onChange={(e) => set({ notes: e.target.value })} className="resize-none" rows={2} />

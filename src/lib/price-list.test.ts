@@ -276,3 +276,32 @@ describe("sortByPrice", () => {
     expect(sortByPrice(rows, (r) => r.p, "desc").map((r) => r.m)).toEqual(["A", "D", "E", "C", "B"]);
   });
 });
+
+describe("your office list (Product · SRP · BOTTOM · DP)", () => {
+  it("reads products under a merged Product heading, sections, DP, per carton and No stock", () => {
+    const r = parsePriceListWorkbook(book({
+      "All Items": [
+        ["Product", "Product", "SRP", "BOTTOM", "DP", "Quantity \r\n/ Carton"],
+        ["JUNCTION BOX"],
+        [null, "80x50mm junction box", "55", "50", "40", "200 pcs"],
+        ["CABLES", "CABLES", "CABLES", "CABLES", "CABLES", "CABLES"],
+        [null, "Cat6 Indoor 305m\r\n23 AWG", "NO STOCK", "NO STOCK", "NO STOCK", null],
+      ],
+    }));
+    expect(r.priceColumns).toEqual(["dp", "bottom", "srp"]);
+    expect(r.categories).toEqual(["JUNCTION BOX", "CABLES"]);
+    expect(r.rows[0]).toMatchObject({
+      model: "80x50mm junction box",
+      category: "JUNCTION BOX",
+      sdp: 40,
+      prices: { dp: 40, bottom: 50, srp: 55 },
+      specs: { packing: "200 pcs" },
+    });
+    expect(r.rows[1]).toMatchObject({ model: "Cat6 Indoor 305m 23 AWG", category: "CABLES", sdp: null, prices: {}, tags: ["no_stock"] });
+  });
+
+  it("lets everyone see DP, unlike TP-Link's Special DP", () => {
+    expect(visiblePriceKeys(["dp", "bottom", "srp"], false)).toEqual(["dp", "bottom", "srp"]);
+    expect(visiblePriceKeys(["vip", "dealer", "bottom", "srp"], false)).toEqual(["bottom", "srp"]);
+  });
+});

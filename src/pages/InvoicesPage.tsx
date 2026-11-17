@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall } from "@/lib/api";
+import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall, freshDocumentRow } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
+import { useLinkedPrices } from "@/hooks/use-linked-prices";
 import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
 
@@ -49,7 +50,13 @@ import { dealerPriceOf, dp2Of, priceBand } from "@/lib/commission";
 import { searchMatches } from "@/lib/search";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 
-interface LineItem { item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null; }
+interface LineItem {
+  item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null;
+  /** Priced from the price list the item is linked to (Bottom, or SRP for walk-ins). */
+  fromPriceList?: boolean;
+  /** That price was filled in automatically, so it follows a change of customer. */
+  listAuto?: boolean;
+}
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -101,6 +108,7 @@ export default function InvoicesPage() {
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const { startPrice } = useLinkedPrices();
   const resellers = useMemo(
     () => (customers as any[])
       .filter((c) => c.classification === "reseller")
@@ -299,16 +307,6 @@ export default function InvoicesPage() {
   const sortedInvoices = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
   const hiddenCount = sortedAll.length - sortedInvoices.length;
 
-  // Statuses that count as a real sale (exclude reserved, draft, cancelled)
-  const SALE_STATUSES = new Set(["confirmed", "paid", "unpaid", "shipped", "completed"]);
-
-  // Total sales (admin only) — sum of real sales (excludes reserved & cancelled) in current filter
-  const totalSales = useMemo(() => {
-    return filtered
-      .filter((inv: any) => SALE_STATUSES.has(inv.status))
-      .reduce((s: number, inv: any) => s + Number(inv.total_amount || 0), 0);
-  }, [filtered]);
-
 
   const toggleAll = () => {
     if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
@@ -447,7 +445,9 @@ export default function InvoicesPage() {
     return c;
   }, [selectedIds, invoices]);
 
-  const openPreview = async (inv: any) => {
+  const openPreview = async (listed: any) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const inv = await freshDocumentRow("invoices", listed);
     const lineItems = await getInvoiceItems(inv.id);
     // A row that arrived without its join still knows its customer id, and the
     // customer list is already loaded — so the name never has to be missing.
@@ -1170,15 +1170,6 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-card">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Excludes reserved &amp; cancelled. Counts shipped, paid, completed.</p>
-          </div>
-          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
-        </div>
-      )}
 
       <Dialog open={createOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1300,6 +1291,8 @@ export default function InvoicesPage() {
                           customName={line.item_name}
                           onChange={(itemId, item, customName, variation) => {
                             const newLines = [...lines];
+                            newLines[idx].fromPriceList = false;
+                            newLines[idx].listAuto = false;
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
@@ -1308,6 +1301,13 @@ export default function InvoicesPage() {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
+                              // Linked to your price list: start at Bottom, or SRP for a walk-in.
+                              const listPrice = startPrice(itemId, customers.find((c) => c.id === form.customer_id));
+                              if (listPrice != null) {
+                                newLines[idx].unit_price = listPrice;
+                                newLines[idx].fromPriceList = true;
+                                newLines[idx].listAuto = true;
+                              }
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
@@ -1320,7 +1320,7 @@ export default function InvoicesPage() {
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
                           <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; updateLine(idx, "unit_price", v === "" ? "" : (parseFloat(v) || "")); }} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v === "" ? "" : (parseFloat(v) || ""), listAuto: false } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
@@ -1360,7 +1360,19 @@ export default function InvoicesPage() {
                           standardPrice={Number(selectedItem.selling_price)}
                           costPrice={Number(selectedItem.cost_price)}
                           currentPrice={Number(line.unit_price) || 0}
-                          onSuggested={(suggested) => updateLine(idx, "unit_price", suggested)}
+                          onSuggested={(suggested, info) => {
+                            // The customer's fixed price wins; then the price list
+                            // (Bottom, SRP for walk-ins); then their usual price.
+                            if (info.fixed != null) return updateLine(idx, "unit_price", info.fixed);
+                            if (line.fromPriceList) {
+                              // Keep a price you typed or chose under "Quote at".
+                              if (!line.listAuto) return;
+                              const listPrice = startPrice(line.item_id, customers.find((c) => c.id === form.customer_id));
+                              if (listPrice != null) updateLine(idx, "unit_price", listPrice);
+                              return;
+                            }
+                            updateLine(idx, "unit_price", suggested);
+                          }}
                         />
                       )}
                     </div>

@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { PriceListSearch, usePriceListData } from "@/components/PriceListSearch";
+import { PriceListLinksPanel } from "@/components/PriceListLinksPanel";
 import { keepSheets, priceLabel, readPriceListFile, sheetDefaults, type ParsedPriceList } from "@/lib/price-list";
 import {
   deletePriceList,
@@ -56,6 +57,7 @@ export default function PriceListsPage() {
         <TabsList>
           <TabsTrigger value="search">Search</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
+          {isAdmin && <TabsTrigger value="links">Inventory links</TabsTrigger>}
           {isAdmin && <TabsTrigger value="lists">Uploads</TabsTrigger>}
         </TabsList>
         <TabsContent value="search" className="mt-4">
@@ -64,6 +66,11 @@ export default function PriceListsPage() {
         <TabsContent value="categories" className="mt-4">
           <CategoriesPanel canEdit={isAdmin} />
         </TabsContent>
+        {isAdmin && (
+          <TabsContent value="links" className="mt-4">
+            <PriceListLinksPanel />
+          </TabsContent>
+        )}
         {isAdmin && (
           <TabsContent value="lists" className="mt-4">
             <UploadsPanel />

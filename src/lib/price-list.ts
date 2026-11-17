@@ -25,12 +25,14 @@ import { extractSpecs, SPEC_HEADERS, type Specs } from "@/lib/price-specs";
  */
 
 /** The named prices a multi-price list can carry, in the order they show. */
-export type PriceKey = "vip" | "dealer" | "bottom" | "srp";
+export type PriceKey = "vip" | "dealer" | "dp" | "bottom" | "srp";
 
 export const PRICE_COLUMNS: { key: PriceKey; label: string; header: RegExp; staffCanSee: boolean }[] = [
   { key: "vip", label: "VIP", header: /^vip price/, staffCanSee: false },
   { key: "dealer", label: "Dealer", header: /^special ?dp\b/, staffCanSee: false },
-  { key: "bottom", label: "Bottom", header: /^(online )?bottom price/, staffCanSee: true },
+  // Your own office list's dealer price: everyone quoting needs it.
+  { key: "dp", label: "DP", header: /^dp\b/, staffCanSee: true },
+  { key: "bottom", label: "Bottom", header: /^(online )?bottom\b/, staffCanSee: true },
   { key: "srp", label: "SRP", header: /^srp\b/, staffCanSee: true },
 ];
 
@@ -41,13 +43,14 @@ export function visiblePriceKeys(listColumns: string[], isAdmin: boolean): strin
   return listColumns.filter((k) => isAdmin || PRICE_COLUMNS.find((c) => c.key === k)?.staffCanSee);
 }
 
-export type PriceTag = "eol" | "price_up";
+export type PriceTag = "eol" | "price_up" | "no_stock";
 
 export interface ParsedPriceRow {
   model: string;
   description: string;
   category: string;
-  sdp: number;
+  /** Null only for a product marked "No stock" in place of its prices. */
+  sdp: number | null;
   /**
    * Shape, resolution, indoor/outdoor and the like from their own columns
    * ("Turret · 4MP · Indoor"). Kept for searching only: IP camera
@@ -96,6 +99,8 @@ const MODEL_HEADERS: RegExp[] = [
   /^models? for spec/,
   /^basic model$/,
   /^model (no\.?|number)$/,
+  // Your office list names products rather than numbering them.
+  /^products?( name)?$/,
 ];
 const PRICE_HEADER = /sdp|dealer price/;
 // MSRP is not kept; the column is found only so it never ends up in a
@@ -106,6 +111,7 @@ const NOISE_HEADER = /remark|note|status|picture|image|appearance|sap|bom|certif
 const KEYWORD_HEADER = /form factor|resolution|indoor|outdoor|^type$|features?|lens|offering level/;
 const WARRANTY_HEADER = /^warranty/;
 const COMMENT_HEADER = /^comments?$/;
+const PACKING_HEADER = /quantity\s*\/\s*carton|per carton|packing|pcs\s*\/\s*ctn/;
 
 interface Columns {
   model: number;
@@ -119,6 +125,8 @@ interface Columns {
   prices: { key: PriceKey; index: number }[];
   warranty: number;
   comment: number;
+  /** "Quantity / Carton": 200 pcs, 100 meters. */
+  packing: number;
   /** Columns holding a spec ("Form Factor" → shape). */
   specFields: { key: string; index: number }[];
 }
@@ -134,22 +142,29 @@ function readHeader(row: Cell[]): Columns | null {
     model = h.findIndex((s) => isHead(s) && re.test(s));
     if (model >= 0) break;
   }
+  // A heading merged over two columns ("Product" across A:B, with section
+  // names in A and products in B) fills both: the names are in the last.
+  while (model >= 0 && h[model + 1] && h[model + 1] === h[model]) model++;
   const prices: Columns["prices"] = [];
   for (const c of PRICE_COLUMNS) {
     const i = h.findIndex((s) => isHead(s) && c.header.test(s));
     if (i >= 0) prices.push({ key: c.key, index: i });
   }
-  const multi = prices.some((p) => p.key === "vip") && prices.some((p) => p.key === "srp");
-  // A multi-price list's base price is VIP, its buying price.
+  // Several named prices: an SRP beside a VIP, dealer, DP or bottom price.
+  const multi = prices.some((p) => p.key === "srp") && prices.some((p) => p.key !== "srp");
+  // The base price is the lowest kind it has: VIP (TP-Link's buying price),
+  // else DP, the dealer price, bottom.
   // "New SDP Price" / "Previous VIP Price" head a table of price changes,
   // not a list of models to sell.
   const isChangeLog = (s: string) => /^(new|previous|old|eol)\b/.test(s);
+  const baseOrder: PriceKey[] = ["vip", "dp", "dealer", "bottom", "srp"];
   const sdp = multi
-    ? prices.find((p) => p.key === "vip")!.index
+    ? baseOrder.map((k) => prices.find((p) => p.key === k)).find(Boolean)!.index
     : h.findIndex((s) => isHead(s) && PRICE_HEADER.test(s) && !isChangeLog(s));
   if (model < 0 || sdp < 0) return null;
   const warranty = h.findIndex((s) => isHead(s) && WARRANTY_HEADER.test(s));
   const comment = h.findIndex((s) => isHead(s) && COMMENT_HEADER.test(s));
+  const packing = h.findIndex((s) => isHead(s) && PACKING_HEADER.test(s));
   const msrp = h.findIndex((s) => isHead(s) && MSRP_HEADER.test(s));
   const desc: number[] = [];
   h.forEach((s, i) => {
@@ -161,6 +176,7 @@ function readHeader(row: Cell[]): Columns | null {
   });
   if (warranty >= 0) noise.add(warranty);
   if (comment >= 0) noise.add(comment);
+  if (packing >= 0) noise.add(packing);
   for (const p of prices) noise.add(p.index);
   const keywords: number[] = [];
   h.forEach((s, i) => {
@@ -172,7 +188,7 @@ function readHeader(row: Cell[]): Columns | null {
       if (isHead(s) && sh.header.test(s) && i !== model && !desc.includes(i)) specFields.push({ key: sh.key, index: i });
     });
   }
-  return { model, sdp, msrp, desc, noise, keywords, prices: multi ? prices : [], warranty, comment, specFields };
+  return { model, sdp, msrp, desc, noise, keywords, prices: multi ? prices : [], warranty, comment, packing, specFields };
 }
 
 /** Copy each merged cell's value into every cell it covers. */
@@ -245,10 +261,14 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     const model = clean(row[cols.model]);
     const sdp = parsePriceCell(row[cols.sdp]);
     const multi = cols.prices.length > 0;
-    if (multi && sdp == null) {
+    // "NO STOCK" written where the prices go: kept, tagged, with no price.
+    const noStock = multi && !!model && cols.prices.some((p) => /no\s*stock|out of stock|unavailable/i.test(clean(row[p.index])));
+    if (multi && sdp == null && !noStock) {
       const first = clean(row[0]);
       const hasDesc = cols.desc.some((i) => clean(row[i]));
-      if (cols.model > 0 && first && !model) {
+      // A section label in the first column, or merged across the whole row
+      // so it also fills the product column.
+      if (cols.model > 0 && first && (!model || model === first)) {
         section = first;
         sub = "";
       } else if (model && !hasDesc) {
@@ -257,7 +277,7 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
       continue;
     }
     // Group labels ("DF3T", "Pro Series: …") have no price and drop out here.
-    if (!model || sdp == null) {
+    if (!model || (sdp == null && !noStock)) {
       // Merged across the row, a group label fills every cell with itself.
       const label = [...new Set(row.map(clean).filter(Boolean))];
       if (label.length === 1 && label[0].length <= 80) group = label[0];
@@ -293,6 +313,8 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
       if (v) fields[sf.key] = fields[sf.key] ? `${fields[sf.key]} ${v}` : v;
     }
     const specs = extractSpecs({ model, category, description, fields, group: multi ? sub || section : group });
+    const packing = cols.packing >= 0 ? clean(row[cols.packing]) : "";
+    if (packing) specs.packing = packing;
     if (!multi) {
       out.push({ model, description, category, sdp, keywords, specs });
       continue;
@@ -306,6 +328,7 @@ export function parsePriceListSheet(ws: XLSX.WorkSheet, sheetName: string): Pars
     const tags: PriceTag[] = [];
     if (/\beol\b/i.test(comment)) tags.push("eol");
     if (/↑|increase/i.test(comment)) tags.push("price_up");
+    if (noStock) tags.push("no_stock");
     const warranty = cols.warranty >= 0 ? clean(row[cols.warranty]) : "";
     out.push({ model, description, category, sdp, keywords, specs, prices, warranty, tags });
   }

@@ -9,7 +9,7 @@
  * (HiWatch HWI-B… is a bullet). Some stay blank when nothing says.
  */
 
-export type SpecKey = "mp" | "shape" | "place" | "lens" | "night" | "channels" | "extras";
+export type SpecKey = "mp" | "shape" | "place" | "lens" | "night" | "channels" | "extras" | "packing";
 
 export interface Specs {
   mp?: string;
@@ -19,6 +19,8 @@ export interface Specs {
   night?: string;
   channels?: string;
   extras?: string;
+  /** Per carton, from your office list: "200 pcs", "100 meters". */
+  packing?: string;
 }
 
 /** Sheet columns that hold a spec, by heading. */
@@ -204,4 +206,5 @@ export const SPEC_LABELS: Record<SpecKey, string> = {
   night: "Night vision",
   channels: "Channels",
   extras: "Extras",
+  packing: "Per carton",
 };

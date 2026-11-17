@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoices, getCustomers, getInvoiceItems, getCashAccountOptions, markManualReceivablePaid, unmarkManualReceivablePaid } from "@/lib/api";
+import { getInvoices, getCustomers, getInvoiceItems, getCashAccountOptions, markManualReceivablePaid, unmarkManualReceivablePaid, freshDocumentRow } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -29,16 +29,21 @@ import { BranchScope } from "@/components/BranchScope";
 import { docNo } from "@/lib/doc-number";
 import { searchMatches } from "@/lib/search";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { SuggestInput } from "@/components/SuggestInput";
 
 interface ManualForm {
-  customer_id: string;
+  /** Who owes it, typed. Not tied to the customer list. */
+  person_name: string;
   description: string;
   amount: string;
   due_date: string;
   notes: string;
 }
 
-const emptyManualForm: ManualForm = { customer_id: "", description: "", amount: "", due_date: "", notes: "" };
+/** Who owes a manual receivable: the typed name, or the customer it was linked to before names were typed. */
+const manualName = (m: { person_name?: string | null; customers?: { name?: string | null } | null }): string => m.person_name || m.customers?.name || "";
+
+const emptyManualForm: ManualForm = { person_name: "", description: "", amount: "", due_date: "", notes: "" };
 
 export default function PendingPaymentsPage() {
   const queryClient = useQueryClient();
@@ -113,6 +118,9 @@ export default function PendingPaymentsPage() {
     return true;
   }), [pendingInvoices, filterDateFrom, filterDateTo]);
 
+  // Names typed on earlier entries, offered while typing so the same person is spelt the same way.
+  const manualNames = useMemo(() => manualReceivables.map(manualName).filter(Boolean), [manualReceivables]);
+
   const dateFilteredManual = useMemo(() => manualReceivables.filter((m: any) => {
     const dateStr = (m.created_at || "").split("T")[0];
     if (filterDateFrom && dateStr < filterDateFrom) return false;
@@ -135,12 +143,17 @@ export default function PendingPaymentsPage() {
 
   const filteredManual = useMemo(() => {
     if (filterCustomer === "all") return dateFilteredManual;
-    return dateFilteredManual.filter((m: any) => m.customer_id === filterCustomer);
+    const picked = customers.find((c) => c.id === filterCustomer);
+    const pickedName = (picked?.name || "").trim().toLowerCase();
+    return dateFilteredManual.filter((m: { customer_id?: string | null; person_name?: string | null }) =>
+      m.customer_id === filterCustomer || (!!pickedName && manualName(m).trim().toLowerCase() === pickedName));
   }, [dateFilteredManual, filterCustomer]);
 
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); };
 
-  const openPreview = async (inv: any) => {
+  const openPreview = async (listed: any) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const inv = await freshDocumentRow("invoices", listed);
     const lineItems = await getInvoiceItems(inv.id);
     setPreviewData({
       type: "invoice",
@@ -171,7 +184,9 @@ export default function PendingPaymentsPage() {
   const saveManualMut = useMutation({
     mutationFn: async () => {
       const payload = {
-        customer_id: manualForm.customer_id || null,
+        person_name: manualForm.person_name.trim() || null,
+        // The typed name replaces the old customer link.
+        customer_id: null,
         description: manualForm.description,
         amount: manualForm.amount ? parseFloat(manualForm.amount) : 0,
         due_date: manualForm.due_date || null,
@@ -244,7 +259,7 @@ export default function PendingPaymentsPage() {
   const openEdit = (m: any) => {
     setEditId(m.id);
     setManualForm({
-      customer_id: m.customer_id || "",
+      person_name: manualName(m),
       description: m.description || "",
       amount: m.amount != null ? String(m.amount) : "",
       due_date: m.due_date || "",
@@ -286,7 +301,7 @@ export default function PendingPaymentsPage() {
       : filteredManual.map((m: any) => ({
         kind: "manual" as const, raw: m,
         source: "Manual", reference: m.description || "",
-        customer: m.customers?.name || "",
+        customer: manualName(m),
         date: (m.created_at || "").split("T")[0],
         due_date: m.due_date || "",
         status: m.status || "",
@@ -328,7 +343,7 @@ export default function PendingPaymentsPage() {
           <ExportButton
             data={[
               ...filteredInvoices.map((r: any) => ({ source: "Invoice", number: docNo(r.invoice_number), customer: r.customers?.name || "", description: "", status: r.status, date: r.invoice_date, due_date: r.due_date || "Due now", amount: r.total_amount })),
-              ...filteredManual.map((r: any) => ({ source: "Manual", number: "—", customer: r.customers?.name || "", description: r.description, status: r.status, date: (r.created_at || "").split("T")[0], due_date: r.due_date || "Due now", amount: r.amount })),
+              ...filteredManual.map((r: any) => ({ source: "Manual", number: "—", customer: manualName(r), description: r.description, status: r.status, date: (r.created_at || "").split("T")[0], due_date: r.due_date || "Due now", amount: r.amount })),
             ]}
             columns={{
               "Source": (r: any) => r.source,
@@ -429,14 +444,14 @@ export default function PendingPaymentsPage() {
           <DialogHeader><DialogTitle className="text-lg">{editId ? "Edit Pending Payment" : "Add Pending Payment"}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Customer</Label>
-              <Select value={manualForm.customer_id || "none"} onValueChange={v => setManualForm({ ...manualForm, customer_id: v === "none" ? "" : v })}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— None —</SelectItem>
-                  {customers.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs font-medium">Name</Label>
+              <SuggestInput
+                value={manualForm.person_name}
+                onChange={(person_name) => setManualForm({ ...manualForm, person_name })}
+                options={manualNames}
+                placeholder="Who owes this payment?"
+                className="h-9"
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Description *</Label>

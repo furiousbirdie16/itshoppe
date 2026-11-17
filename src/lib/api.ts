@@ -981,6 +981,28 @@ export const deleteInvoice = async (id: string) => {
   if (error) throw error;
 };
 
+/**
+ * The saved copy of a document, read fresh for its PDF. The row a list hands
+ * over can be from before an edit: the list refetches in the background, so a
+ * PDF opened right after saving printed the old total and the old customer
+ * (INV-01719 showed 63,400 and JABS after being edited to 63,850). Falls back
+ * to the row given if the read fails, so the preview still opens.
+ */
+export const freshDocumentRow = async <T extends { id: string }>(
+  table: "invoices" | "quotations" | "purchase_orders" | "overseas_purchase_orders",
+  row: T,
+): Promise<T> => {
+  const join = {
+    invoices: "customers(*)",
+    quotations: "customers(*)",
+    purchase_orders: "suppliers(*)",
+    overseas_purchase_orders: "overseas_suppliers(*)",
+  }[table];
+  const { data, error } = await from(table).select(`*, ${join}`).eq("id", row.id).maybeSingle();
+  if (error || !data) return row;
+  return { ...row, ...(data as any) };
+};
+
 export const getInvoiceItems = async (invId: string): Promise<InvoiceItem[]> => {
   const { data, error } = await from("invoice_items").select("*, items(*), item_variations(*)").eq("invoice_id", invId);
   if (error) throw error;
@@ -3021,7 +3043,9 @@ export const markManualReceivablePaid = async (
   const actor = await currentActor();
 
   const { data: row } = await from("manual_receivables")
-    .select("amount, description, customers(name)")
+    // "*" rather than naming person_name, so this still works on a database
+    // that has not had the column added.
+    .select("*, customers(name)")
     .eq("id", receivableId)
     .maybeSingle();
 
@@ -3047,7 +3071,7 @@ export const markManualReceivablePaid = async (
     direction: "in",
     amount,
     category: "Receivable Collection",
-    payee: (row as any)?.customers?.name || "",
+    payee: (row as any)?.person_name || (row as any)?.customers?.name || "",
     reference: "",
     notes: `Collected pending payment${(row as any)?.description ? `: ${(row as any).description}` : ""}`,
   };

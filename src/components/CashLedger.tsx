@@ -32,9 +32,9 @@ import { BASE_CURRENCY, isForeign, fxPosition, fxPhpAmountById, foreignAmount } 
 import { useSort } from "@/hooks/use-sort";
 import ExportButton from "@/components/ExportButton";
 import { SortableHeader } from "@/components/SortableHeader";
-import { TransactionDialog, TransferDialog, AccountDialog } from "@/components/CashLedgerDialogs";
+import { TransactionDialog, TransferDialog, AccountDialog, type AccountAdjustment } from "@/components/CashLedgerDialogs";
 import {
-  emptyTxnForm, txnFormFrom, emptyAccountForm, accountFormFrom, type TxnForm, type AccountForm,
+  emptyTxnForm, txnFormFrom, emptyAccountForm, accountFormFrom, BALANCE_ADJUSTMENT, type TxnForm, type AccountForm,
 } from "@/lib/cash-ledger-forms";
 import { CategorySelect } from "@/components/CategorySelect";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -627,13 +627,35 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
   });
 
   const accountMut = useMutation({
-    mutationFn: (data: Partial<CashAccount>) =>
-      editingAccount ? updateCashAccount(editingAccount.id, data) : createCashAccount(data),
-    onSuccess: () => {
+    mutationFn: async ({ data, adjustment }: { data: Partial<CashAccount>; adjustment: AccountAdjustment | null }) => {
+      if (!editingAccount) return createCashAccount(data);
+      const saved = await updateCashAccount(editingAccount.id, data);
+      // The balance typed in the box: the difference goes in as an entry of
+      // its own, so the correction shows in the ledger with when and why.
+      if (adjustment) {
+        await createCashTransaction({
+          account_id: editingAccount.id,
+          txn_date: format(new Date(), "yyyy-MM-dd"),
+          direction: adjustment.direction,
+          amount: adjustment.amount,
+          fx_rate: null,
+          category: BALANCE_ADJUSTMENT,
+          payee: BALANCE_ADJUSTMENT,
+          reference: "",
+          notes: adjustment.notes,
+        });
+      }
+      return saved;
+    },
+    onSuccess: (_saved, { adjustment }) => {
       invalidate();
       setAccountOpen(false);
       setEditingAccount(null);
-      toast.success(editingAccount ? "Account updated" : "Account added");
+      toast.success(
+        !editingAccount ? "Account added"
+          : adjustment ? `Account updated · ${adjustment.direction === "in" ? "+" : "\u2212"}${peso(adjustment.amount)} ${BALANCE_ADJUSTMENT.toLowerCase()} recorded`
+          : "Account updated",
+      );
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -652,8 +674,8 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
     setAccountOpen(true);
   };
 
-  const handleAccountSubmit = (accountForm: AccountForm) => {
-    accountMut.mutate({
+  const handleAccountSubmit = (accountForm: AccountForm, adjustment: AccountAdjustment | null) => {
+    accountMut.mutate({ adjustment, data: {
       name: accountForm.name.trim(),
       account_type: accountType,
       account_number: accountForm.account_number.trim(),
@@ -661,7 +683,7 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
       opening_balance: Number(accountForm.opening_balance) || 0,
       notes: accountForm.notes,
       sort_order: editingAccount?.sort_order ?? accounts.length,
-    });
+    } });
   };
 
   /**
@@ -872,6 +894,9 @@ export function CashLedger({ accountType, alsoShow, title, description, showAcco
         editing={!!editingAccount}
         initial={accountInitial}
         accountType={accountType}
+        // Peso accounts only: a foreign account's balance is held at a rate,
+        // and a correction there needs one too.
+        currentBalance={editingAccount && !isForeign(editingAccount) ? balanceOf(editingAccount, txns) : null}
         pending={accountMut.isPending}
         onSubmit={handleAccountSubmit}
       />

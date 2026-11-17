@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder, getItemsWithStock } from "@/lib/api";
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder, getSuppliers, getItems, createPOItems, deletePOItems, getPOItems, receivePO, unreceivePO, generatePONumber, updatePurchaseOrder, getItemsWithStock, freshDocumentRow } from "@/lib/api";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -99,7 +99,9 @@ export default function PurchaseOrdersPage() {
     total_amount: (r) => Number(r.total_amount),
   });
 
-  const openPreview = async (po: any) => {
+  const openPreview = async (listed: any) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const po = await freshDocumentRow("purchase_orders", listed);
     const lineItems = await getPOItems(po.id);
     const extra: { label: string; value: string }[] = [];
     if (po.payment_terms) extra.push({ label: "Payment Terms", value: `${po.payment_terms} days` });

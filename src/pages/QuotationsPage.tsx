@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer } from "@/lib/api";
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer, freshDocumentRow } from "@/lib/api";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ import { format, addDays, parseISO } from "date-fns";
 const todayISO = () => format(new Date(), "yyyy-MM-dd");
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
+import { useLinkedPrices } from "@/hooks/use-linked-prices";
 import { useAuth } from "@/contexts/AuthContext";
 import { DateField } from "@/components/DateField";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
@@ -43,7 +44,13 @@ import { BranchScope } from "@/components/BranchScope";
 import { docNo } from "@/lib/doc-number";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 
-interface LineItem { item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null; }
+interface LineItem {
+  item_id: string; item_name: string; quantity: string; unit_price: string; variation_id: string | null;
+  /** Priced from a price list (Bottom / SRP): the customer price hint must not overwrite it. */
+  fromPriceList?: boolean;
+  /** That price was filled in automatically, so it follows a change of customer. */
+  listAuto?: boolean;
+}
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
@@ -85,6 +92,7 @@ export default function QuotationsPage() {
 
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations", activeBranchId], queryFn: () => getQuotations(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
+  const { startPrice } = useLinkedPrices();
   // Stock shown in the picker must come from item_branch_stock, not items.quantity.
   // The branch this quotation is for: the one picked in the form, else the
   // page's. Asking in the form means a half-typed quotation is never lost to a
@@ -178,12 +186,6 @@ export default function QuotationsPage() {
   const sortedQuotations = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
   const hiddenCount = sortedAll.length - sortedQuotations.length;
 
-  // Admin-only total: sum of accepted quotations in current filter
-  const totalSales = useMemo(() => {
-    return filtered
-      .filter((q: any) => q.status === "accepted")
-      .reduce((s: number, q: any) => s + Number(q.total_amount || 0), 0);
-  }, [filtered]);
 
   const toggleAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set());
@@ -204,7 +206,9 @@ export default function QuotationsPage() {
   const parsePrice = (v: string) => parseFloat(v) || 0;
   const lineTotal = (l: LineItem) => parseQty(l.quantity) * parsePrice(l.unit_price);
 
-  const openPreview = async (q: any) => {
+  const openPreview = async (listed: any) => {
+    // Read the saved copy: the list may still hold the one from before an edit.
+    const q = await freshDocumentRow("quotations", listed);
     const lineItems = await getQuotationItems(q.id);
     const dueDate = getDueDate(q);
     setPreviewData({
@@ -377,9 +381,10 @@ export default function QuotationsPage() {
   // A model from a supplier price list goes in as a typed-in line, filling an
   // empty last line rather than leaving a blank one above it.
   const [priceListOpen, setPriceListOpen] = useState(false);
-  const addFromPriceList = (pick: { name: string; price: number | null }) => {
+  const addFromPriceList = (pick: { name: string; price: number | null; itemId?: string | null }) => {
     setLines(prev => {
-      const line = { item_id: "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null };
+      // A product linked to inventory goes in as that item, so invoicing it moves stock.
+      const line = { item_id: pick.itemId ?? "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null, fromPriceList: pick.price != null };
       const last = prev[prev.length - 1];
       if (last && !last.item_id && !last.item_name) return [...prev.slice(0, -1), line];
       return [...prev, line];
@@ -518,15 +523,6 @@ export default function QuotationsPage() {
         </div>
       )}
 
-      {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 sm:p-4 rounded-lg border bg-primary/5">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">Total Sales</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Sum of accepted quotations in current filter</p>
-          </div>
-          <p className="text-xl sm:text-2xl font-bold tabular-nums truncate">{peso(totalSales)}</p>
-        </div>
-      )}
 
       {/* Create / Edit Dialog */}
       <Dialog open={createOpen} onOpenChange={handleClose}>
@@ -646,6 +642,9 @@ export default function QuotationsPage() {
                           customName={line.item_name}
                           onChange={(itemId, item, customName, variation) => {
                             const newLines = [...lines];
+                            // Picking another item drops the price list's price claim.
+                            newLines[idx].fromPriceList = false;
+                            newLines[idx].listAuto = false;
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
@@ -654,6 +653,13 @@ export default function QuotationsPage() {
                               newLines[idx].item_id = itemId;
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
+                              // Linked to your price list: start at Bottom, or SRP for a walk-in.
+                              const listPrice = startPrice(itemId, customers.find((c) => c.id === form.customer_id));
+                              if (listPrice != null) {
+                                newLines[idx].unit_price = String(listPrice);
+                                newLines[idx].fromPriceList = true;
+                                newLines[idx].listAuto = true;
+                              }
                             } else {
                               newLines[idx].item_id = "";
                               newLines[idx].item_name = customName || "";
@@ -666,7 +672,7 @@ export default function QuotationsPage() {
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
                           <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => updateLine(idx, "unit_price", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" value={line.unit_price} onChange={e => setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: e.target.value, listAuto: false } : l))} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
@@ -693,7 +699,20 @@ export default function QuotationsPage() {
                           standardPrice={Number(selectedItem.selling_price)}
                           costPrice={Number(selectedItem.cost_price)}
                           currentPrice={parsePrice(line.unit_price)}
-                          onSuggested={(suggested) => updateLine(idx, "unit_price", String(suggested))}
+                          onSuggested={(suggested, info) => {
+                            // The customer's fixed price wins; then the price list
+                            // (Bottom, SRP for walk-ins); then their usual price.
+                            if (info.fixed != null) return updateLine(idx, "unit_price", String(info.fixed));
+                            if (line.fromPriceList) {
+                              // Keep a price you typed or chose under "Quote at".
+                              if (!line.listAuto) return;
+                              const listPrice = startPrice(line.item_id, customers.find((c) => c.id === form.customer_id));
+                              if (listPrice != null) updateLine(idx, "unit_price", String(listPrice));
+                              return;
+                            }
+                            // A ₱0 suggestion would only wipe the price.
+                            if (suggested > 0) updateLine(idx, "unit_price", String(suggested));
+                          }}
                         />
                       )}
                     </div>
