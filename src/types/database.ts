@@ -427,6 +427,8 @@ export interface Payable {
   date_written: string | null;
   category: string;
   notes: string;
+  /** Set on rows the database keeps itself ("everon": owed to Everon); not edited by hand. */
+  system_key?: string | null;
   created_at: string;
   updated_at: string;
   suppliers?: Supplier;

@@ -80,6 +80,7 @@ const navGroups: NavGroup[] = [
       { title: "Marketplace Receivables", url: "/marketplace-receivables", icon: Store, adminOnly: true },
       // Staff can record and edit payables; only admins can settle one.
       { title: "Payables", url: "/payables", icon: Wallet },
+      { title: "Everon", url: "/everon", icon: HandCoins, adminOnly: true },
       { title: "Expenses", url: "/expenses", icon: Coins, adminOnly: true },
       { title: "Loans", url: "/loans", icon: PiggyBank, adminOnly: true },
     ],

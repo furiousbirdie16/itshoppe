@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPayables, createPayable, updatePayable, deletePayable, getSuppliers, getCashAccounts } from "@/lib/api";
 import { PayablesBulkUpload } from "@/components/PayablesBulkUpload";
@@ -83,7 +84,11 @@ export default function PayablesPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   /** A settled payable is admin-only to touch at all. */
-  const canEdit = (p: Payable) => isAdmin || !SETTLED_IN_FULL.includes(p.status);
+  // Rows the database keeps itself (owed to Everon) change only through their
+  // own page, so they get no pay, edit or delete here.
+  const canEdit = (p: Payable) => !p.system_key && (isAdmin || !SETTLED_IN_FULL.includes(p.status));
+  const canSettle = (p: Payable) => !p.system_key && isAdmin && !SETTLED.includes(p.status);
+  const canDelete = (p: Payable) => !p.system_key && isAdmin;
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Payable | null>(null);
@@ -468,7 +473,7 @@ export default function PayablesPage() {
               meta={<span>Due {formatDate(p.due_date)}</span>}
               actions={
                 <>
-                  {isAdmin && !SETTLED.includes(p.status) && (
+                  {canSettle(p) && (
                     <Button variant="ghost" size="icon" onClick={() => openPay(p)} className="h-8 w-8 rounded-md" aria-label="Mark as paid">
                       <CircleCheck className="h-3.5 w-3.5 text-success" />
                     </Button>
@@ -478,7 +483,10 @@ export default function PayablesPage() {
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   )}
-                  {isAdmin && (
+                  {p.system_key === "everon" && isAdmin && (
+                    <Button asChild variant="outline" size="sm" className="h-8 text-xs"><Link to="/everon">Remit</Link></Button>
+                  )}
+                  {canDelete(p) && (
                     <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-8 w-8 rounded-md" aria-label="Delete">
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -523,13 +531,16 @@ export default function PayablesPage() {
                 <TableCell><Badge variant={STATUS_VARIANT[p.status]} className="text-xs font-normal">{STATUS_LABELS[p.status]}</Badge></TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    {isAdmin && !SETTLED.includes(p.status) && (
+                    {canSettle(p) && (
                       <Button variant="ghost" size="icon" onClick={() => openPay(p)} className="h-7 w-7 rounded-md" title="Mark as paid"><CircleCheck className="h-3.5 w-3.5 text-success" /></Button>
                     )}
                     {canEdit(p) && (
                       <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="h-7 w-7 rounded-md"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
-                    {isAdmin && (
+                    {p.system_key === "everon" && isAdmin && (
+                      <Button asChild variant="outline" size="sm" className="h-7 text-xs"><Link to="/everon">Remit</Link></Button>
+                    )}
+                    {canDelete(p) && (
                       <Button variant="ghost" size="icon" onClick={() => deleteMut.mutate(p.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     )}
                   </div>

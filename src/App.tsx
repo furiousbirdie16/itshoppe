@@ -25,6 +25,7 @@ import LoansPage from "@/pages/LoansPage";
 import CashPage from "@/pages/CashPage";
 import BankPage from "@/pages/BankPage";
 import PayablesPage from "@/pages/PayablesPage";
+import EveronPage from "@/pages/EveronPage";
 import ExpensesPage from "@/pages/ExpensesPage";
 import FinancialDashboardPage from "@/pages/FinancialDashboardPage";
 import OnlineSalesPage from "@/pages/OnlineSalesPage";
@@ -91,6 +92,7 @@ function ProtectedRoutes() {
           <Route path="/bank" element={<AdminRoute><BankPage /></AdminRoute>} />
           <Route path="/owner-transactions" element={<Navigate to="/bank" replace />} />
           <Route path="/payables" element={<PayablesPage />} />
+          <Route path="/everon" element={<AdminRoute><EveronPage /></AdminRoute>} />
           <Route path="/expenses" element={<AdminRoute><ExpensesPage /></AdminRoute>} />
           <Route path="/financial-dashboard" element={<AdminRoute><FinancialDashboardPage /></AdminRoute>} />
           <Route path="/online-sales" element={<OnlineSalesPage />} />
