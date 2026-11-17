@@ -20,7 +20,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { SortableHeader } from "@/components/SortableHeader";
 import { useSort } from "@/hooks/use-sort";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ShoppingCart, Receipt, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Users, ArrowUp, ArrowDown, ArrowUpDown, Columns3, PackagePlus, PackageX, Boxes, Clock, Truck, LineChart } from "lucide-react";
+import { CalendarIcon, DollarSign, Package, Search, ChevronRight, ChevronDown, Download, Filter, TrendingUp, AlertTriangle, ShoppingBag, Users, ArrowUp, ArrowDown, ArrowUpDown, Columns3, PackagePlus, PackageX, Boxes, Clock, Truck, LineChart } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAllRows } from "@/lib/paginate";
 import { useBranch } from "@/contexts/BranchContext";
@@ -128,6 +128,102 @@ function ChipGroup<T extends string>({
           {o.l}
         </Button>
       ))}
+    </div>
+  );
+}
+
+type CustomerRow = { key: string; name: string; orders: number; sales: number; profit: number; margin: number | null; unpaid: number; last: string };
+
+/**
+ * One list of who bought: orders, sales, profit, margin and last order. Money
+ * columns are left out for staff.
+ */
+function CustomerTable({
+  title, subtitle, rows, sort, isAdmin, money, search, onSearch, empty, capitalize,
+}: {
+  title: string;
+  subtitle: string;
+  rows: CustomerRow[];
+  sort: { sort: { key: string | null; dir: "asc" | "desc" }; toggle: (k: string) => void };
+  isAdmin: boolean;
+  money: (n: number) => string;
+  search?: string;
+  onSearch?: (v: string) => void;
+  empty: string;
+  capitalize?: boolean;
+}) {
+  const cols = isAdmin ? 6 : 3;
+  return (
+    <div className="rounded-lg border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-4 pb-3">
+        <div>
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        {onSearch && (
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Find a customer..." className="h-8 pl-8 text-xs" />
+          </div>
+        )}
+      </div>
+      <div className="max-h-[28rem] overflow-y-auto border-t">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-muted/60 backdrop-blur text-xs">
+            <tr className="text-left">
+              <SortableTh sortKey="name" label="Customer" sort={sort.sort} onToggle={sort.toggle} />
+              <SortableTh sortKey="orders" label="Orders" sort={sort.sort} onToggle={sort.toggle} align="right" className={isAdmin ? "hidden sm:table-cell" : undefined} />
+              {isAdmin && <SortableTh sortKey="sales" label="Sales" sort={sort.sort} onToggle={sort.toggle} align="right" />}
+              {isAdmin && <SortableTh sortKey="profit" label="Profit" sort={sort.sort} onToggle={sort.toggle} align="right" />}
+              {isAdmin && <SortableTh sortKey="margin" label="Margin" sort={sort.sort} onToggle={sort.toggle} align="right" className="hidden sm:table-cell" />}
+              <SortableTh sortKey="last" label="Last order" sort={sort.sort} onToggle={sort.toggle} align="right" className="hidden sm:table-cell" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={cols} className="px-3 py-6 text-center text-xs text-muted-foreground">{empty}</td></tr>
+            ) : rows.map((c) => (
+              <tr key={c.key} className="border-t">
+                <td className="px-3 py-2 font-medium">
+                  <span className={cn(capitalize && "capitalize")}>{c.name}</span>
+                  {/* On a phone the narrow columns fold in here. */}
+                  <div className="text-[11px] font-normal text-muted-foreground sm:hidden">
+                    {isAdmin && <>{c.orders} order{c.orders === 1 ? "" : "s"}</>}
+                    {isAdmin && c.last && " · "}
+                    {c.last && <>last {format(parseISO(c.last), "MMM d")}</>}
+                  </div>
+                </td>
+                <td className={cn("px-3 py-2 text-right tabular-nums", isAdmin && "hidden sm:table-cell")}>{c.orders}</td>
+                {isAdmin && (
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {money(c.sales)}
+                    {c.unpaid > 0 && <div className="text-[11px] text-amber-600 whitespace-nowrap">+{money(c.unpaid)} unpaid</div>}
+                  </td>
+                )}
+                {isAdmin && (
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    <div className="font-semibold text-green-600">{money(c.profit)}</div>
+                    {c.margin != null && (
+                      <div className={cn("text-[11px] sm:hidden", c.margin < 10 ? "text-amber-600" : "text-muted-foreground")}>{c.margin.toFixed(1)}% margin</div>
+                    )}
+                  </td>
+                )}
+                {isAdmin && (
+                  <td
+                    className={cn("px-3 py-2 text-right tabular-nums hidden sm:table-cell", c.margin != null && c.margin < 10 && "text-amber-600 font-medium")}
+                    title={c.margin != null && c.margin < 10 ? "Low margin: under 10% of sales is profit" : undefined}
+                  >
+                    {c.margin == null ? <span className="text-muted-foreground">—</span> : `${c.margin.toFixed(1)}%`}
+                  </td>
+                )}
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap hidden sm:table-cell">
+                  {c.last ? format(parseISO(c.last), "MMM d, yyyy") : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -830,66 +926,84 @@ export default function BusinessInsightsPage() {
 
   // Customer analytics: separate online vs invoice.
   // Revenue excludes unpaid orders so it matches the totals shown elsewhere.
+  // Per customer (invoices) and per channel (online — those have no named
+  // buyer). Sales and profit count paid orders only, as everywhere on this page;
+  // margin is profit over the sales whose cost is known, so a line missing its
+  // cost does not drag it down.
   const customerStats = useMemo(() => {
-    // Online: group by sales_channel as "customer proxy" (no real customer on online)
-    const onlineChannels = new Map<string, { revenue: number; orders: Set<string> }>();
+    type Acc = { key: string; name: string; orders: Set<string>; sales: number; profit: number; costedSales: number; unpaid: number; last: string };
+    const add = (m: Map<string, Acc>, key: string, name: string) => {
+      let e = m.get(key);
+      if (!e) { e = { key, name, orders: new Set(), sales: 0, profit: 0, costedSales: 0, unpaid: 0, last: "" }; m.set(key, e); }
+      return e;
+    };
+
+    const channels = new Map<string, Acc>();
     for (const r of onlineRows as any[]) {
       const channel = String(r.sales_channel || "others");
-      const orderNum = String(r.order_number || r.id);
+      const e = add(channels, channel, channel);
       const rev = Number(r.posted_price || 0) * Number(r.quantity || 0);
-      const isPaid = r.payment_status === "paid";
-      const e = onlineChannels.get(channel) || { revenue: 0, orders: new Set() };
-      if (isPaid) e.revenue += rev;
-      e.orders.add(orderNum);
-      onlineChannels.set(channel, e);
+      e.orders.add(String(r.order_number || r.id));
+      if (r.order_date && r.order_date > e.last) e.last = r.order_date;
+      if (r.payment_status !== "paid") { e.unpaid += rev; continue; }
+      e.sales += rev;
+      const fin = onlineFinMap.get(r.id);
+      if (fin?.hasCost) { e.profit += fin.profit; e.costedSales += rev; }
     }
-    const onlineUniqueOrders = new Set<string>();
-    let onlineRevenue = 0;
-    for (const r of onlineRows as any[]) {
-      onlineUniqueOrders.add(String(r.order_number || r.id));
-      if (r.payment_status === "paid") {
-        onlineRevenue += Number(r.posted_price || 0) * Number(r.quantity || 0);
+
+    // Profit per invoice line, from the cost saved when it was sold.
+    const profitByLine = new Map<string, number>();
+    for (const f of financialsRows as any[]) {
+      if (!paidInvoiceIds.has(f.invoice_id) || f.cost_snapshot == null) continue;
+      const k = `${f.invoice_id}|${f.item_id || ""}|${f.variation_id || ""}`;
+      profitByLine.set(k, (profitByLine.get(k) || 0) + Number(f.line_profit || 0));
+    }
+    const customers = new Map<string, Acc>();
+    const counted = new Set<string>();
+    for (const r of invoiceRows as any[]) {
+      const inv = r._invoice || {};
+      // Walk-in sales share one row rather than one per receipt.
+      const e = add(customers, inv.customer_id || "walk-in", inv.customers?.name || "Walk-in customers");
+      const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
+      e.orders.add(inv.id);
+      if (inv.invoice_date && inv.invoice_date > e.last) e.last = inv.invoice_date;
+      if (!paidInvoiceIds.has(r.invoice_id)) { e.unpaid += rev; continue; }
+      e.sales += rev;
+      const k = `${r.invoice_id}|${r.item_id || ""}|${r.variation_id || ""}`;
+      if (profitByLine.has(k)) {
+        e.costedSales += rev;
+        // Several lines can share a key; the profit is added once.
+        if (!counted.has(k)) { e.profit += profitByLine.get(k)!; counted.add(k); }
       }
     }
 
-    // Invoice: group by customer
-    const invoiceCustomers = new Map<string, { name: string; revenue: number; orders: Set<string> }>();
-    let invoiceRevenue = 0;
-    for (const r of invoiceRows as any[]) {
-      const inv = r._invoice || {};
-      const custId = inv.customer_id || `walkin:${inv.id}`;
-      const name = inv.customers?.name || "Walk-in";
-      const rev = Number(r.unit_price || 0) * Number(r.quantity || 0);
-      const isPaid = inv.status === "paid" || inv.status === "completed";
-      if (isPaid) invoiceRevenue += rev;
-      const e = invoiceCustomers.get(custId) || { name, revenue: 0, orders: new Set() };
-      if (isPaid) e.revenue += rev;
-      e.orders.add(inv.id);
-      invoiceCustomers.set(custId, e);
-    }
-
-
-    const onlineCustomerCount = onlineChannels.size;
-    const invoiceCustomerCount = invoiceCustomers.size;
-    const onlineAvg = onlineCustomerCount ? onlineRevenue / onlineCustomerCount : 0;
-    const invoiceAvg = invoiceCustomerCount ? invoiceRevenue / invoiceCustomerCount : 0;
-
-    const onlineList = Array.from(onlineChannels.entries())
-      .map(([channel, v]) => ({ name: channel, revenue: v.revenue, orders: v.orders.size, avg: v.orders.size ? v.revenue / v.orders.size : 0 }))
-      .sort((a, b) => b.revenue - a.revenue);
-    const invoiceList = Array.from(invoiceCustomers.values())
-      .map((v) => ({ name: v.name, revenue: v.revenue, orders: v.orders.size, avg: v.orders.size ? v.revenue / v.orders.size : 0 }))
-      .sort((a, b) => b.revenue - a.revenue);
-
+    const finish = (m: Map<string, Acc>) =>
+      Array.from(m.values()).map((e) => ({
+        key: e.key,
+        name: e.name,
+        orders: e.orders.size,
+        sales: e.sales,
+        profit: e.profit,
+        margin: e.costedSales > 0 ? (e.profit / e.costedSales) * 100 : null,
+        unpaid: e.unpaid,
+        last: e.last,
+      }));
+    const invoiceList = finish(customers);
+    const onlineList = finish(channels);
+    const all = [...invoiceList, ...onlineList];
+    const sales = all.reduce((t, c) => t + c.sales, 0);
+    const profit = all.reduce((t, c) => t + c.profit, 0);
+    const costed = [...customers.values(), ...channels.values()].reduce((t, c) => t + c.costedSales, 0);
     return {
-      onlineCustomerCount,
-      invoiceCustomerCount,
-      onlineAvg,
-      invoiceAvg,
-      onlineList,
       invoiceList,
+      onlineList,
+      customerCount: invoiceList.filter((c) => c.key !== "walk-in").length,
+      sales,
+      profit,
+      margin: costed > 0 ? (profit / costed) * 100 : null,
     };
-  }, [onlineRows, invoiceRows]);
+  }, [onlineRows, invoiceRows, onlineFinMap, financialsRows, paidInvoiceIds]);
+  const [customerSearch, setCustomerSearch] = useState("");
 
   const handleExport = () => {
     const wb = XLSX.utils.book_new();
@@ -1416,18 +1530,22 @@ export default function BusinessInsightsPage() {
   };
 
   // Customers tab sorts
-  const onlineCustSort = useSort(customerStats.onlineList, {
-    name: (r) => r.name,
-    orders: (r) => r.orders,
-    revenue: (r) => r.revenue,
-    avg: (r) => r.avg,
-  }, { key: "revenue", dir: "desc" });
-  const invoiceCustSort = useSort(customerStats.invoiceList, {
-    name: (r) => r.name,
-    orders: (r) => r.orders,
-    revenue: (r) => r.revenue,
-    avg: (r) => r.avg,
-  }, { key: "revenue", dir: "desc" });
+  const custAccessors = {
+    name: (r: any) => r.name,
+    orders: (r: any) => r.orders,
+    sales: (r: any) => r.sales,
+    profit: (r: any) => r.profit,
+    margin: (r: any) => r.margin ?? -Infinity,
+    last: (r: any) => r.last,
+  };
+  // Who earns the most first; staff, who see no money, get who orders most.
+  const custDefaultSort = { key: isAdmin ? "profit" : "orders", dir: "desc" as const };
+  const onlineCustSort = useSort(customerStats.onlineList, custAccessors, custDefaultSort);
+  const shownCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    return q ? customerStats.invoiceList.filter((c) => c.name.toLowerCase().includes(q)) : customerStats.invoiceList;
+  }, [customerStats.invoiceList, customerSearch]);
+  const invoiceCustSort = useSort(shownCustomers, custAccessors, custDefaultSort);
 
   // Filters that live in the mobile drawer — the count drives the badge on the
   // "Filters" button so nothing silently stays applied while hidden.
@@ -2093,99 +2211,51 @@ export default function BusinessInsightsPage() {
 
         {/* CUSTOMERS */}
         <TabsContent value="customers" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border bg-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="text-sm font-semibold">Online Customers</h2>
-                  <p className="text-xs text-muted-foreground">Grouped by sales channel</p>
-                </div>
-                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          {/* The whole picture in one line, then who it came from. */}
+          <div className={cn("grid divide-x rounded-lg border bg-card text-center", isAdmin ? "grid-cols-2 sm:grid-cols-4 [&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(n+3)]:border-t-0" : "grid-cols-2")}>
+            {([
+              ["Customers", String(customerStats.customerCount)],
+              ...(isAdmin
+                ? [
+                    ["Sales", money(customerStats.sales)],
+                    ["Gross profit", money(customerStats.profit)],
+                    ["Margin", customerStats.margin == null ? "—" : `${customerStats.margin.toFixed(1)}%`],
+                  ]
+                : [["Orders", String(customerStats.invoiceList.reduce((t, c) => t + c.orders, 0) + customerStats.onlineList.reduce((t, c) => t + c.orders, 0))]]),
+            ] as [string, string][]).map(([label, value]) => (
+              <div key={label} className="px-2 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+                <div className={cn("text-xl font-semibold tabular-nums", label === "Gross profit" && "text-green-600")}>{value}</div>
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="rounded-lg border bg-background p-3">
-                  <div className="text-xs text-muted-foreground">Channels Ordered</div>
-                  <div className="text-xl font-semibold mt-0.5">{customerStats.onlineCustomerCount}</div>
-                </div>
-                <div className="rounded-lg border bg-background p-3">
-                  <div className="text-xs text-muted-foreground">Avg per Channel</div>
-                  <div className="text-xl font-semibold mt-0.5">{money(customerStats.onlineAvg)}</div>
-                </div>
-              </div>
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40">
-                    <tr className="text-left">
-                      <SortableTh sortKey="name" label="Channel" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} />
-                      <SortableTh sortKey="orders" label="Orders" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />
-                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" />}
-                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={onlineCustSort.sort} onToggle={onlineCustSort.toggle} align="right" className="hidden sm:table-cell" />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {onlineCustSort.sorted.length === 0 ? (
-                      <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No online sales</td></tr>
-                    ) : onlineCustSort.sorted.map((c) => (
-                      <tr key={c.name} className="border-t">
-                        <td className="px-3 py-1.5 capitalize">{c.name}</td>
-                        <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                        {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
-                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground hidden sm:table-cell">{money(c.avg)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-            </div>
-
-            <div className="rounded-lg border bg-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="text-sm font-semibold">Invoice Customers</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {isAdmin ? "Unique customers with revenue and gross profit" : "Unique customers with confirmed/paid invoices"}
-                  </p>
-                </div>
-                <Receipt className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="rounded-lg border bg-background p-3">
-                  <div className="text-xs text-muted-foreground">Customers Ordered</div>
-                  <div className="text-xl font-semibold mt-0.5">{customerStats.invoiceCustomerCount}</div>
-                </div>
-                <div className="rounded-lg border bg-background p-3">
-                  <div className="text-xs text-muted-foreground">Avg per Customer</div>
-                  <div className="text-xl font-semibold mt-0.5">{money(customerStats.invoiceAvg)}</div>
-                </div>
-              </div>
-              <div className="rounded-md border overflow-hidden max-h-96 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40 sticky top-0">
-                    <tr className="text-left">
-                      <SortableTh sortKey="name" label="Customer" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} />
-                      <SortableTh sortKey="orders" label="Orders" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />
-                      {isAdmin && <SortableTh sortKey="revenue" label="Revenue" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" />}
-                      {isAdmin && <SortableTh sortKey="avg" label="Avg/Order" sort={invoiceCustSort.sort} onToggle={invoiceCustSort.toggle} align="right" className="hidden sm:table-cell" />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoiceCustSort.sorted.length === 0 ? (
-                      <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No invoice sales</td></tr>
-                    ) : invoiceCustSort.sorted.map((c, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="px-3 py-1.5">{c.name}</td>
-                        <td className="px-3 py-1.5 text-right">{c.orders}</td>
-                        {isAdmin && <td className="px-3 py-1.5 text-right font-semibold">{money(c.revenue)}</td>}
-                        {isAdmin && <td className="px-3 py-1.5 text-right text-muted-foreground hidden sm:table-cell">{money(c.avg)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-            </div>
+            ))}
           </div>
+          {isAdmin && (
+            <p className="px-1 text-xs text-muted-foreground">
+              Sales and profit count <strong>paid</strong> orders in the date range above. Profit is what the customer paid minus what the items cost you; margin is profit as a share of sales.
+            </p>
+          )}
+
+          <CustomerTable
+            title="Customers"
+            subtitle="Invoice customers. Walk-in sales are one row."
+            rows={invoiceCustSort.sorted}
+            sort={invoiceCustSort}
+            isAdmin={isAdmin}
+            money={money}
+            search={customerSearch}
+            onSearch={setCustomerSearch}
+            empty={customerSearch ? "No customer matches that name." : "No invoice sales in this range."}
+          />
+          <CustomerTable
+            title="Online channels"
+            subtitle="Shopee, Lazada and others don't name the buyer, so each channel is one row."
+            rows={onlineCustSort.sorted}
+            sort={onlineCustSort}
+            isAdmin={isAdmin}
+            money={money}
+            empty="No online sales in this range."
+            capitalize
+          />
         </TabsContent>
 
       </Tabs>
