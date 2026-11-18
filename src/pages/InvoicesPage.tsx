@@ -56,7 +56,20 @@ interface LineItem {
   fromPriceList?: boolean;
   /** That price was filled in automatically, so it follows a change of customer. */
   listAuto?: boolean;
+  /** Where the line's price came from, shown under the line. */
+  priceSource?: PriceSource;
 }
+
+type PriceSource = "fixed" | "last" | "bottom" | "srp" | "standard" | "manual";
+
+const PRICE_SOURCE_LABEL: Record<PriceSource, string> = {
+  fixed: "Customer's fixed price",
+  last: "Customer's last price",
+  bottom: "Price list: Bottom",
+  srp: "Price list: SRP",
+  standard: "Standard selling price",
+  manual: "Entered by hand",
+};
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -108,7 +121,7 @@ export default function InvoicesPage() {
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { startPrice } = useLinkedPrices();
+  const { startPrice, startPriceSource } = useLinkedPrices();
   const resellers = useMemo(
     () => (customers as any[])
       .filter((c) => c.classification === "reseller")
@@ -840,6 +853,8 @@ export default function InvoicesPage() {
     }
     setLines(newLines);
   };
+  const setLinePrice = (idx: number, price: number, source: PriceSource | undefined) =>
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, unit_price: price, priceSource: source } : l)));
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
 
@@ -1293,6 +1308,7 @@ export default function InvoicesPage() {
                             const newLines = [...lines];
                             newLines[idx].fromPriceList = false;
                             newLines[idx].listAuto = false;
+                            newLines[idx].priceSource = undefined;
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
@@ -1302,11 +1318,13 @@ export default function InvoicesPage() {
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
                               // Linked to your price list: start at Bottom, or SRP for a walk-in.
-                              const listPrice = startPrice(itemId, customers.find((c) => c.id === form.customer_id));
+                              const customer = customers.find((c) => c.id === form.customer_id);
+                              const listPrice = startPrice(itemId, customer);
                               if (listPrice != null) {
                                 newLines[idx].unit_price = listPrice;
                                 newLines[idx].fromPriceList = true;
                                 newLines[idx].listAuto = true;
+                                newLines[idx].priceSource = startPriceSource(itemId, customer) ?? undefined;
                               }
                             } else {
                               newLines[idx].item_id = "";
@@ -1320,7 +1338,7 @@ export default function InvoicesPage() {
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
                           <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v === "" ? "" : (parseFloat(v) || ""), listAuto: false } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v === "" ? "" : (parseFloat(v) || ""), listAuto: false, priceSource: v === "" ? undefined : "manual" } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
@@ -1333,6 +1351,11 @@ export default function InvoicesPage() {
                       {Number(line.quantity) > 0 && Number(line.unit_price) > 0 && (
                         <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
                           {Number(line.quantity)} × {peso(Number(line.unit_price))} = <span className="font-medium text-foreground">{peso(Number(line.quantity) * Number(line.unit_price))}</span>
+                        </p>
+                      )}
+                      {line.priceSource && Number(line.unit_price) > 0 && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">
+                          Price from: <span className="font-medium text-foreground">{PRICE_SOURCE_LABEL[line.priceSource]}</span>
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
@@ -1363,15 +1386,16 @@ export default function InvoicesPage() {
                           onSuggested={(suggested, info) => {
                             // The customer's fixed price wins; then the price list
                             // (Bottom, SRP for walk-ins); then their usual price.
-                            if (info.fixed != null) return updateLine(idx, "unit_price", info.fixed);
+                            if (info.fixed != null) return setLinePrice(idx, info.fixed, "fixed");
                             if (line.fromPriceList) {
                               // Keep a price you typed or chose under "Quote at".
                               if (!line.listAuto) return;
-                              const listPrice = startPrice(line.item_id, customers.find((c) => c.id === form.customer_id));
-                              if (listPrice != null) updateLine(idx, "unit_price", listPrice);
+                              const customer = customers.find((c) => c.id === form.customer_id);
+                              const listPrice = startPrice(line.item_id, customer);
+                              if (listPrice != null) setLinePrice(idx, listPrice, startPriceSource(line.item_id, customer) ?? undefined);
                               return;
                             }
-                            updateLine(idx, "unit_price", suggested);
+                            setLinePrice(idx, suggested, info.lastSold ? "last" : "standard");
                           }}
                         />
                       )}

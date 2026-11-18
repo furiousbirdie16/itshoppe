@@ -15,5 +15,15 @@ export function useLinkedPrices() {
     (itemId: string | null | undefined, customer: { channel?: string | null } | null | undefined) => linkedStartPrice(linkedOf(itemId), isWalkIn(customer)),
     [linkedOf],
   );
-  return { linkedOf, startPrice };
+  /** Which list price `startPrice` picked: "bottom" or "srp", or null when unlinked. */
+  const startPriceSource = useCallback(
+    (itemId: string | null | undefined, customer: { channel?: string | null } | null | undefined): "bottom" | "srp" | null => {
+      const p = linkedOf(itemId);
+      const price = linkedStartPrice(p, isWalkIn(customer));
+      if (!p || price == null) return null;
+      return price === p.bottom && (!isWalkIn(customer) || p.srp == null) ? "bottom" : "srp";
+    },
+    [linkedOf],
+  );
+  return { linkedOf, startPrice, startPriceSource };
 }
