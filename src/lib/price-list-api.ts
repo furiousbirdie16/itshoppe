@@ -366,17 +366,18 @@ export interface LinkedListPrice {
   product: string;
   bottom: number | null;
   srp: number | null;
+  /** The supplier's dealer price, on a one-price list (Hikvision). */
+  sdp: number | null;
 }
 
 /**
  * Each linked inventory item's prices, from the active list of the link's
- * brand. Only lists with named prices (Bottom, SRP) count: a one-price SDP
- * list has no selling price to offer.
+ * brand: Bottom and SRP on lists with named prices, SDP on one-price lists.
  */
 export function linkedPricesByItem(
   links: Pick<ItemLink, "brand" | "product" | "item_id">[],
   lists: Pick<PriceList, "id" | "brand" | "is_active">[],
-  products: { price_list_id: string; model: string; prices: Partial<Record<PriceKey, number | null>> | null }[],
+  products: { price_list_id: string; model: string; prices: Partial<Record<PriceKey, number | null>> | null; sdp?: number | null }[],
 ): Map<string, LinkedListPrice> {
   const norm = (s: string) => s.trim().toLowerCase();
   const activeByBrand = new Map<string, string>();
@@ -393,8 +394,9 @@ export function linkedPricesByItem(
     const pos = (v: unknown) => (typeof v === "number" && v > 0 ? v : null);
     const bottom = pos(p?.prices?.bottom);
     const srp = pos(p?.prices?.srp);
-    if (bottom == null && srp == null) continue;
-    out.set(link.item_id, { brand: link.brand.trim(), product: p!.model, bottom, srp });
+    const sdp = pos(p?.sdp);
+    if (bottom == null && srp == null && sdp == null) continue;
+    out.set(link.item_id, { brand: link.brand.trim(), product: p!.model, bottom, srp, sdp });
   }
   return out;
 }
@@ -407,18 +409,14 @@ export async function getLinkedListPrices(): Promise<Map<string, LinkedListPrice
   const brands = new Set(links.map((l) => l.brand.trim().toLowerCase()));
   const listIds = lists.filter((l) => l.is_active && brands.has(l.brand.trim().toLowerCase())).map((l) => l.id);
   if (listIds.length === 0) return new Map();
-  const products = await fetchAllRows<{ price_list_id: string; model: string; prices: Partial<Record<PriceKey, number | null>> | null }>(() =>
-    db.from("price_list_items").select("price_list_id, model, prices").in("price_list_id", listIds).order("id"),
+  const products = await fetchAllRows<{ price_list_id: string; model: string; prices: Partial<Record<PriceKey, number | null>> | null; sdp: number | null }>(() =>
+    db.from("price_list_items").select("price_list_id, model, prices, sdp").in("price_list_id", listIds).order("id"),
   );
   return linkedPricesByItem(links, lists, products);
 }
 
 /**
- * A walk-in pays SRP: no customer on the document, or one whose channel
- * says walk-in. Everyone else starts at Bottom.
+ * A walk-in: no customer on the document, or one whose channel says
+ * walk-in. Walk-ins get no previous price, and SRP on your own list.
  */
 export const isWalkIn = (customer: { channel?: string | null } | null | undefined) => !customer || /walk/i.test(customer.channel ?? "");
-
-/** The price list price to start a line at: SRP for walk-ins, Bottom otherwise. */
-export const linkedStartPrice = (p: LinkedListPrice | undefined, walkIn: boolean): number | null =>
-  p ? (walkIn ? p.srp ?? p.bottom : p.bottom ?? p.srp) : null;

@@ -57,6 +57,32 @@ export function usePriceListData() {
 
 const sameBrand = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/**
+ * The brand last looked at, remembered on this device so the page reopens
+ * on it. A brand rather than a list, so a newer upload of it opens instead.
+ */
+const LAST_BRAND_KEY = "priceList.lastBrand.v1";
+function readLastBrand(): string {
+  try {
+    return localStorage.getItem(LAST_BRAND_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+function saveLastBrand(brand: string) {
+  try {
+    localStorage.setItem(LAST_BRAND_KEY, brand);
+  } catch {
+    /* Private window or blocked storage: it just won't be remembered. */
+  }
+}
+
+/** The list to open on: the newest active list of the last brand looked at, else the newest active list. */
+export function startingListId(active: { id: string; brand: string }[], lastBrand: string): string {
+  const match = lastBrand ? active.find((l) => sameBrand(l.brand, lastBrand)) : undefined;
+  return (match ?? active[0])?.id ?? "";
+}
+
 /** A category → type lookup for one brand. */
 export function typeLookup(brand: string, types: CategoryType[]) {
   const m = new Map<string, string>();
@@ -173,10 +199,15 @@ export function PriceListSearch({
   const [hoverCol, setHoverCol] = useState<string | null>(null);
   const q = useDebounced(query, 250);
 
-  // Opens on the newest active list.
+  // Opens on the brand you last looked at, else the newest active list.
   useEffect(() => {
-    if (!listId && active.length > 0) setListId(active[0].id);
+    if (!listId && active.length > 0) setListId(startingListId(active, readLastBrand()));
   }, [active, listId]);
+  const chooseList = (id: string) => {
+    setListId(id);
+    const chosen = active.find((l) => l.id === id);
+    if (chosen) saveLastBrand(chosen.brand);
+  };
   // Another list has other categories, specs and price columns.
   useEffect(() => {
     setCategory(ALL);
@@ -334,7 +365,7 @@ export function PriceListSearch({
             className="h-9 pl-8 text-sm"
           />
         </div>
-        <Select value={listId} onValueChange={setListId}>
+        <Select value={listId} onValueChange={chooseList}>
           <SelectTrigger className="h-9 w-full text-sm sm:w-56"><SelectValue placeholder="Price list" /></SelectTrigger>
           <SelectContent>
             {active.map((l) => <SelectItem key={l.id} value={l.id}>{l.brand} · {l.name}</SelectItem>)}
