@@ -9,6 +9,15 @@ export interface Item {
   store_quantity: number;
   cost_price: number;
   cost_price_rmb?: number;
+  /** Pesos per RMB on the last overseas shipment. */
+  rmb_rate?: number | null;
+  /** Pesos of cargo per piece on the last overseas shipment. */
+  cargo_cost_per_unit?: number | null;
+  /** CBM one piece takes up. */
+  cbm_per_unit?: number | null;
+  landed_cost_latest?: number | null;
+  /** Pieces in one box, set by us, for ordering by the carton. */
+  qty_per_box?: number | null;
   selling_price: number;
   /** Dealer price. Sold below it counts as BD1 for commission; below 95% of it, BD2. */
   dealer_price?: number | null;

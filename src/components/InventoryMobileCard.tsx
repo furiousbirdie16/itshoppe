@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BranchStockSplit } from "@/components/BranchStockSplit";
 import type { BranchQty } from "@/hooks/use-stock-split";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { peso } from "@/lib/currency";
 import {
   ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Layers,
-  Pencil, Archive, ArchiveRestore, Trash2,
+  Pencil, Archive, ArchiveRestore, Trash2, ChevronRight,
 } from "lucide-react";
 
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
@@ -43,6 +44,8 @@ interface Props {
   onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
+  /** Cost details, opened from the card as a dropdown. */
+  details?: React.ReactNode;
 }
 
 function Field({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
@@ -73,8 +76,9 @@ function IconAction({ icon: Icon, label, onClick, danger, primary }: { icon: any
 export function InventoryMobileCard({
   item, branchLabel, stockSplit, isAdmin, viewArchived, selected, onToggleSelect,
   onTransfer, onAdjust, onHistory, onPricing, onSuppliers, onBundles,
-  onEdit, onArchive, onRestore, onDelete,
+  onEdit, onArchive, onRestore, onDelete, details,
 }: Props) {
+  const [showDetails, setShowDetails] = useState(false);
   const qty = Number(item.quantity ?? 0);
   const threshold = Number(item.low_stock_threshold ?? 0);
   const status = STATUS_META[getStockStatus(qty, threshold)];
@@ -140,6 +144,21 @@ export function InventoryMobileCard({
         <Field label="Cost Price" value={canSeeCost ? peso(Number(item.cost_price || 0)) : "—"} />
         <Field label="Selling Price" value={peso(Number(item.selling_price || 0))} />
       </div>
+
+      {details && (
+        <div className="border-t pt-1.5">
+          <button
+            type="button"
+            onClick={() => setShowDetails((v) => !v)}
+            aria-expanded={showDetails}
+            className="flex w-full items-center gap-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showDetails ? "rotate-90" : ""}`} />
+            Cost details
+          </button>
+          {showDetails && <div className="-mx-2">{details}</div>}
+        </div>
+      )}
 
       <div className="flex items-center gap-1 overflow-x-auto border-t pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {!viewArchived && (

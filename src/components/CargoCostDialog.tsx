@@ -207,6 +207,8 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
           landed_cost: r.landed,
           rmb_cost: po?.currency === "RMB" ? r.foreignCost : null,
           cbm_per_unit: r.cbmPerUnit,
+          // Landed is goods plus cargo, so what is left after the goods is cargo.
+          cargo_per_unit: Math.max(r.landed - r.foreignCost * Number(po?.exchange_rate || 1), 0),
         }));
       return applyLandedCosts(poId, rows);
     },

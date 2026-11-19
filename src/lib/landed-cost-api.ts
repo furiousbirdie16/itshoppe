@@ -66,6 +66,8 @@ export interface LandedCostRow {
   landed_cost: number;
   rmb_cost?: number | null;
   cbm_per_unit?: number | null;
+  /** Pesos of cargo per piece on this shipment. */
+  cargo_per_unit?: number | null;
 }
 
 /** Apply reviewed costs; admin only, all or nothing. Returns how many items changed. */

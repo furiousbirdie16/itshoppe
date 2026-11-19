@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { Fragment, useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getItems, getArchivedItems, createItem, updateItem, deleteItem, archiveItems, unarchiveItems, getSuppliers, setBranchQuantities, notifyInventoryAdjustments, getBranchStock } from "@/lib/api";
 import { peso } from "@/lib/currency";
@@ -19,7 +19,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal , Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal , Download, ChevronRight } from "lucide-react";
+import { ItemCostDetails } from "@/components/ItemCostDetails";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
@@ -136,6 +137,13 @@ export default function InventoryPage() {
   const [viewArchived, setViewArchived] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Rows opened to show their cost details; as many at once as wanted. */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => setExpandedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [variationsItem, setVariationsItem] = useState<Item | null>(null);
   const [transferItem, setTransferItem] = useState<Item | null>(null);
   const [adjustItem, setAdjustItem] = useState<Item | null>(null);
@@ -1272,6 +1280,7 @@ export default function InventoryPage() {
                 onArchive={() => setArchiveConfirm({ ids: [item.id], label: `"${item.name}"` })}
                 onRestore={() => unarchiveMut.mutate([item.id])}
                 onDelete={() => { if (confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) deleteMut.mutate(item.id); }}
+                details={<ItemCostDetails item={item} isAdmin={isAdmin} branchId={activeBranchId} branchLabel={branchLabel} />}
               />
             ))}
             <div ref={mobileSentinelRef} className="h-8" />
@@ -1336,7 +1345,8 @@ export default function InventoryPage() {
                 </TableCell>
               </TableRow>
             ) : sortedFiltered.map(item => (
-              <TableRow key={item.id} className={`hover:bg-muted/30 ${selectedIds.has(item.id) ? 'bg-muted/40' : ''}`} data-state={selectedIds.has(item.id) ? "selected" : undefined}>
+              <Fragment key={item.id}>
+              <TableRow className={`hover:bg-muted/30 ${selectedIds.has(item.id) ? 'bg-muted/40' : ''}`} data-state={selectedIds.has(item.id) ? "selected" : undefined}>
                 <TableCell>
                   <Checkbox
                     checked={selectedIds.has(item.id)}
@@ -1350,13 +1360,20 @@ export default function InventoryPage() {
                       return (
                         <TableCell key="c-name" className="min-w-[200px] max-w-[420px]">
                           <div className="flex flex-col gap-0.5">
-                            <span className="flex items-start gap-1.5 text-sm font-medium leading-snug">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(item.id)}
+                              aria-expanded={expandedIds.has(item.id)}
+                              title={expandedIds.has(item.id) ? "Hide cost details" : "Show cost details"}
+                              className="flex items-start gap-1 text-left text-sm font-medium leading-snug hover:text-primary"
+                            >
+                              <ChevronRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${expandedIds.has(item.id) ? "rotate-90" : ""}`} />
                               <span className="line-clamp-2">{item.name}</span>
                               {item.status && item.status !== "active" && (
                                 <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] uppercase">{item.status}</Badge>
                               )}
-                            </span>
-                            <span className="truncate text-[11px] text-muted-foreground">
+                            </button>
+                            <span className="truncate pl-[18px] text-[11px] text-muted-foreground">
                               {item.sku}
                               {item.category && <> · {item.category}</>}
                               {((item as any).source as string) === "import" && <> · <span className="text-sky-700 dark:text-sky-400">Import</span></>}
@@ -1526,6 +1543,15 @@ export default function InventoryPage() {
                   </div>
                 </TableCell>
               </TableRow>
+              {expandedIds.has(item.id) && (
+                <TableRow className="bg-muted/20 hover:bg-muted/20">
+                  <TableCell />
+                  <TableCell colSpan={visibleColCount - 1} className="py-0">
+                    <ItemCostDetails item={item} isAdmin={isAdmin} branchId={activeBranchId} branchLabel={branchLabel} />
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
             ))}
           </TableBody>
         </Table>
