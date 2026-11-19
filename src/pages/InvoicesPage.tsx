@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall, freshDocumentRow } from "@/lib/api";
+import { parseQty, parsePrice, needsWholeQty, wholeQtyError } from "@/lib/line-quantity";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,8 @@ import { searchMatches } from "@/lib/search";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface LineItem {
-  item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null;
+  // Kept as typed while editing ("2." must survive a keystroke); parsed on save.
+  item_id: string; item_name: string; quantity: number | string; unit_price: number | string; variation_id: string | null;
   /** Priced from the price list the item is linked to (Bottom, or SRP for walk-ins). */
   fromPriceList?: boolean;
   /** That price was filled in automatically, so it follows a change of customer. */
@@ -527,7 +529,10 @@ export default function InvoicesPage() {
     if (saved.length === 0) throw new Error("Add at least one item");
     for (const l of saved) {
       const name = l.item_name || "Item";
-      if (!l.quantity || Number(l.quantity) <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
+      const q = parseQty(l.quantity);
+      if (q <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
+      const whole = wholeQtyError(name, q, needsWholeQty(l, allVariations as any[]));
+      if (whole) throw new Error(whole);
     }
     return saved;
   };
@@ -537,10 +542,10 @@ export default function InvoicesPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
+      const total = Math.round(saved.reduce((s, l) => s + parseQty(l.quantity) * parsePrice(l.unit_price), 0) * 100) / 100;
       if (!invoiceBranchId) throw new Error("Pick which branch this invoice is for.");
       const inv = await createInvoice({ invoice_number: await generateInvoiceNumber(), customer_id: form.customer_id || null, invoice_date: form.invoice_date || today(), notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent, branch_id: invoiceBranchId, ...(form.reseller_id ? { reseller_id: form.reseller_id } : {}) } as any);
-      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: inv.id, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
       return inv;
     },
     onSuccess: (inv: any) => {
@@ -563,7 +568,7 @@ export default function InvoicesPage() {
     mutationFn: async () => {
       if (!editId) return;
       const saved = validateLines();
-      const total = saved.reduce((s, l) => s + Number(l.quantity) * (Number(l.unit_price) || 0), 0);
+      const total = Math.round(saved.reduce((s, l) => s + parseQty(l.quantity) * parsePrice(l.unit_price), 0) * 100) / 100;
       await updateInvoice(editId, {
         customer_id: form.customer_id || null, invoice_date: form.invoice_date || today(), notes: form.notes, due_date: form.due_date || null, total_amount: total, sales_agent: form.sales_agent,
         // Only written when there is or was one, so invoices still save on a
@@ -571,7 +576,7 @@ export default function InvoicesPage() {
         ...(form.reseller_id || originalResellerId.current ? { reseller_id: form.reseller_id } : {}),
       } as any);
       await deleteInvoiceItems(editId);
-      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: Number(l.quantity), unit_price: Number(l.unit_price) || 0, variation_id: l.variation_id || null })));
+      await createInvoiceItems(saved.map(l => ({ invoice_id: editId, item_id: l.item_id || null, item_name: l.item_name || null, quantity: parseQty(l.quantity), unit_price: parsePrice(l.unit_price), variation_id: l.variation_id || null })));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -1319,8 +1324,8 @@ export default function InvoicesPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
-                          <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v === "" ? "" : (parseFloat(v) || ""), listAuto: false } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" inputMode="decimal" step="any" min={0} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                          <Input type="number" inputMode="decimal" step="any" min={0} value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v, listAuto: false } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
