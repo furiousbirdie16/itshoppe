@@ -57,6 +57,8 @@ interface LineItem {
   fromPriceList?: boolean;
   /** That price was filled in automatically, so it follows a change of customer. */
   listAuto?: boolean;
+  /** Loaded from a saved document: the price stays as saved, not re-suggested. */
+  savedPrice?: boolean;
   /** Where the line's price came from, shown under the line. */
   priceSource?: PriceSource;
 }
@@ -517,6 +519,8 @@ export default function InvoicesPage() {
             item_name: li.item_name || li.items?.name || "",
             quantity: li.quantity,
             unit_price: Number(li.unit_price) > 0 ? Number(li.unit_price) : "" as const,
+            savedPrice: Number(li.unit_price) > 0,
+            priceSource: Number(li.unit_price) > 0 ? ("saved" as const) : undefined,
             variation_id: li.variation_id || null,
           }))
         : [{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]
@@ -1299,6 +1303,7 @@ export default function InvoicesPage() {
                             newLines[idx].fromPriceList = false;
                             newLines[idx].listAuto = false;
                             newLines[idx].priceSource = undefined;
+                            newLines[idx].savedPrice = false;
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
@@ -1374,6 +1379,9 @@ export default function InvoicesPage() {
                           costPrice={Number(selectedItem.cost_price)}
                           currentPrice={Number(line.unit_price) || 0}
                           onSuggested={(suggested, info) => {
+                            // A saved line keeps the price it was saved with
+                            // until you pick another item for it.
+                            if (line.savedPrice) return;
                             // The customer's fixed price wins; then the price list
                             // (Bottom, SRP for walk-ins); then their usual price.
                             if (info.fixed != null) return setLinePrice(idx, info.fixed, "fixed");

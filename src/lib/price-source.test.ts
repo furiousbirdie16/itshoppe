@@ -7,6 +7,7 @@ describe("priceSourceLabel", () => {
     expect(priceSourceLabel("last")).toBe("Customer's last price");
     expect(priceSourceLabel("standard")).toBe("Standard selling price");
     expect(priceSourceLabel("manual")).toBe("Entered by hand");
+    expect(priceSourceLabel("saved")).toBe("Saved price");
   });
   it("names the price list price by its column", () => {
     expect(priceSourceLabel("list:bottom")).toBe("Price list: Bottom");
