@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer, freshDocumentRow, getItemVariations } from "@/lib/api";
+import { parseQty, parsePrice, needsWholeQty, wholeQtyError } from "@/lib/line-quantity";
 import { peso } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,7 +109,8 @@ export default function QuotationsPage() {
   const quotationBranchId = form.branch_id || activeBranchId;
   // Stock in the item picker follows the quotation's branch, not the toolbar.
   const { data: items = [] } = useQuery({ queryKey: ["items-with-stock", quotationBranchId], queryFn: () => getItemsWithStock(quotationBranchId) });
-  // Shared with the item picker's own query; a variation's standard price comes from here.
+  // Which lines are cut by the metre, and so may take a decimal quantity; and a
+  // variation's standard price.
   const { data: allVariations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations(), staleTime: 30_000 });
   // Fills in a line's price: the customer's previous price, else the price list, else the standard price.
   const repriceLine = useRepriceLine<LineItem>({
@@ -216,8 +218,6 @@ export default function QuotationsPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); setSelectedIds(new Set()); toast.success(`Deleted ${selectedIds.size} quotations`); },
   });
 
-  const parseQty = (v: string) => parseInt(v) || 0;
-  const parsePrice = (v: string) => parseFloat(v) || 0;
   const lineTotal = (l: LineItem) => parseQty(l.quantity) * parsePrice(l.unit_price);
 
   const openPreview = async (listed: any) => {
@@ -324,6 +324,9 @@ export default function QuotationsPage() {
       const name = l.item_name || "Item";
       const q = parseQty(l.quantity);
       if (!q || q <= 0) throw new Error(`"${name}" must have a quantity greater than 0`);
+      // Checked here too, so a quote never turns into an invoice that cannot be saved.
+      const whole = wholeQtyError(name, q, needsWholeQty(l, allVariations as any[]));
+      if (whole) throw new Error(whole);
     }
     return saved;
   };
@@ -674,8 +677,8 @@ export default function QuotationsPage() {
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
-                          <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: e.target.value, priceSource: e.target.value === "" ? undefined : "manual" } : l))} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" inputMode="decimal" step="any" min={0} value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Qty" />
+                          <Input type="number" inputMode="decimal" step="any" min={0} value={line.unit_price} onChange={e => setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: e.target.value, priceSource: e.target.value === "" ? undefined : "manual" } : l))} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
