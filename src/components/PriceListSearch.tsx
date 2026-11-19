@@ -40,6 +40,8 @@ export interface PricedRow extends PriceListItem {
    * price instead.
    */
   price: number | null;
+  /** Which price `price` is ("bottom", "srp", ...), or null when there is none. */
+  priceKey: string | null;
 }
 
 /** Lists and category types, shared by every price list screen. */
@@ -232,6 +234,7 @@ export function PriceListSearch({
       type: typeOf(r.category),
       itemId: linkOf(brand, r.model),
       price: multi ? r.prices?.[quoteAt as keyof typeof r.prices] ?? null : null,
+      priceKey: multi ? quoteAt : null,
     })),
     [results, list, multi, quoteAt, typeOf, linkOf, brand],
   );

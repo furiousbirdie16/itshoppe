@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { PriceSource } from "@/lib/price-source";
 import { getLinkedListPrices, isWalkIn, linkedStartPrice, LINKED_PRICES_KEY, type LinkedListPrice } from "@/lib/price-list-api";
 
 /**
@@ -15,13 +16,15 @@ export function useLinkedPrices() {
     (itemId: string | null | undefined, customer: { channel?: string | null } | null | undefined) => linkedStartPrice(linkedOf(itemId), isWalkIn(customer)),
     [linkedOf],
   );
-  /** Which list price `startPrice` picked: "bottom" or "srp", or null when unlinked. */
+  /** Which list price `startPrice` picked ("list:bottom" or "list:srp"), or undefined when unlinked. */
   const startPriceSource = useCallback(
-    (itemId: string | null | undefined, customer: { channel?: string | null } | null | undefined): "bottom" | "srp" | null => {
+    (itemId: string | null | undefined, customer: { channel?: string | null } | null | undefined): PriceSource | undefined => {
       const p = linkedOf(itemId);
-      const price = linkedStartPrice(p, isWalkIn(customer));
-      if (!p || price == null) return null;
-      return price === p.bottom && (!isWalkIn(customer) || p.srp == null) ? "bottom" : "srp";
+      const walkIn = isWalkIn(customer);
+      if (!p || linkedStartPrice(p, walkIn) == null) return undefined;
+      // Mirrors linkedStartPrice: each side falls back to the other.
+      const useSrp = walkIn ? p.srp != null : p.bottom == null;
+      return useSrp ? "list:srp" : "list:bottom";
     },
     [linkedOf],
   );

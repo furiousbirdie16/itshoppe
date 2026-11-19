@@ -17,7 +17,8 @@ import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, 
 import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
-import { PriceListPickerDialog } from "@/components/PriceListPickerDialog";
+import { PriceListPickerDialog, type PriceListPick } from "@/components/PriceListPickerDialog";
+import { priceSourceLabel, type PriceSource } from "@/lib/price-source";
 import { moveItem } from "@/lib/reorder";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import { DragHandle } from "@/components/DragHandle";
@@ -50,6 +51,8 @@ interface LineItem {
   fromPriceList?: boolean;
   /** That price was filled in automatically, so it follows a change of customer. */
   listAuto?: boolean;
+  /** Where the line's price came from, shown under the line. */
+  priceSource?: PriceSource;
 }
 
 export default function QuotationsPage() {
@@ -92,7 +95,7 @@ export default function QuotationsPage() {
 
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations", activeBranchId], queryFn: () => getQuotations(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { startPrice } = useLinkedPrices();
+  const { startPrice, startPriceSource } = useLinkedPrices();
   // Stock shown in the picker must come from item_branch_stock, not items.quantity.
   // The branch this quotation is for: the one picked in the form, else the
   // page's. Asking in the form means a half-typed quotation is never lost to a
@@ -381,10 +384,10 @@ export default function QuotationsPage() {
   // A model from a supplier price list goes in as a typed-in line, filling an
   // empty last line rather than leaving a blank one above it.
   const [priceListOpen, setPriceListOpen] = useState(false);
-  const addFromPriceList = (pick: { name: string; price: number | null; itemId?: string | null }) => {
+  const addFromPriceList = (pick: PriceListPick) => {
     setLines(prev => {
       // A product linked to inventory goes in as that item, so invoicing it moves stock.
-      const line = { item_id: pick.itemId ?? "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null, fromPriceList: pick.price != null };
+      const line = { item_id: pick.itemId ?? "", item_name: pick.name, quantity: "1", unit_price: pick.price == null ? "" : String(pick.price), variation_id: null, fromPriceList: pick.price != null, priceSource: pick.price != null ? pick.source : undefined };
       const last = prev[prev.length - 1];
       if (last && !last.item_id && !last.item_name) return [...prev.slice(0, -1), line];
       return [...prev, line];
@@ -401,6 +404,8 @@ export default function QuotationsPage() {
     }
     setLines(newLines);
   };
+  const setLinePrice = (idx: number, price: number, source: PriceSource | undefined) =>
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, unit_price: String(price), priceSource: source } : l)));
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
 
   const handleClose = () => { setCreateOpen(false); setEditId(null); resetForm(); };
@@ -645,6 +650,7 @@ export default function QuotationsPage() {
                             // Picking another item drops the price list's price claim.
                             newLines[idx].fromPriceList = false;
                             newLines[idx].listAuto = false;
+                            newLines[idx].priceSource = undefined;
                             if (variation && item) {
                               newLines[idx].item_id = item.id;
                               newLines[idx].item_name = variation.name;
@@ -654,11 +660,13 @@ export default function QuotationsPage() {
                               newLines[idx].item_name = item?.name || "";
                               newLines[idx].variation_id = null;
                               // Linked to your price list: start at Bottom, or SRP for a walk-in.
-                              const listPrice = startPrice(itemId, customers.find((c) => c.id === form.customer_id));
+                              const customer = customers.find((c) => c.id === form.customer_id);
+                              const listPrice = startPrice(itemId, customer);
                               if (listPrice != null) {
                                 newLines[idx].unit_price = String(listPrice);
                                 newLines[idx].fromPriceList = true;
                                 newLines[idx].listAuto = true;
+                                newLines[idx].priceSource = startPriceSource(itemId, customer);
                               }
                             } else {
                               newLines[idx].item_id = "";
@@ -672,7 +680,7 @@ export default function QuotationsPage() {
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
                           <Input type="number" value={line.quantity} onChange={e => updateLine(idx, "quantity", e.target.value)} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: e.target.value, listAuto: false } : l))} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" value={line.unit_price} onChange={e => setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: e.target.value, listAuto: false, priceSource: e.target.value === "" ? undefined : "manual" } : l))} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
@@ -685,6 +693,11 @@ export default function QuotationsPage() {
                       {lineTotal(line) > 0 && (
                         <p className="mt-1 text-[11px] text-muted-foreground text-right tabular-nums">
                           {parseQty(line.quantity)} × {peso(parsePrice(line.unit_price))} = <span className="font-medium text-foreground">{peso(lineTotal(line))}</span>
+                        </p>
+                      )}
+                      {line.priceSource && parsePrice(line.unit_price) > 0 && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">
+                          Price from: <span className="font-medium text-foreground">{priceSourceLabel(line.priceSource)}</span>
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
@@ -702,16 +715,17 @@ export default function QuotationsPage() {
                           onSuggested={(suggested, info) => {
                             // The customer's fixed price wins; then the price list
                             // (Bottom, SRP for walk-ins); then their usual price.
-                            if (info.fixed != null) return updateLine(idx, "unit_price", String(info.fixed));
+                            if (info.fixed != null) return setLinePrice(idx, info.fixed, "fixed");
                             if (line.fromPriceList) {
                               // Keep a price you typed or chose under "Quote at".
                               if (!line.listAuto) return;
-                              const listPrice = startPrice(line.item_id, customers.find((c) => c.id === form.customer_id));
-                              if (listPrice != null) updateLine(idx, "unit_price", String(listPrice));
+                              const customer = customers.find((c) => c.id === form.customer_id);
+                              const listPrice = startPrice(line.item_id, customer);
+                              if (listPrice != null) setLinePrice(idx, listPrice, startPriceSource(line.item_id, customer));
                               return;
                             }
                             // A ₱0 suggestion would only wipe the price.
-                            if (suggested > 0) updateLine(idx, "unit_price", String(suggested));
+                            if (suggested > 0) setLinePrice(idx, suggested, info.lastSold ? "last" : "standard");
                           }}
                         />
                       )}

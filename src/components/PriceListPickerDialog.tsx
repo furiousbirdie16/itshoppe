@@ -8,6 +8,7 @@ import { getLastPriceForModel, isMultiPrice } from "@/lib/price-list-api";
 import { peso } from "@/lib/currency";
 import { supabase } from "@/integrations/supabase/client";
 import { getItems } from "@/lib/api";
+import type { PriceSource } from "@/lib/price-source";
 
 export interface PriceListPick {
   name: string;
@@ -15,6 +16,8 @@ export interface PriceListPick {
   price: number | null;
   /** Set when the product is linked to an inventory item: the line is that item. */
   itemId?: string | null;
+  /** Where `price` came from, for the line's "Price from" note. */
+  source?: PriceSource;
 }
 
 /**
@@ -69,7 +72,7 @@ export function PriceListPickerDialog({
         toast.error("This product has no price for that choice.");
         return;
       }
-      onPick({ name, price: r.price, itemId });
+      onPick({ name, price: r.price, itemId, source: r.priceKey ? `list:${r.priceKey}` : undefined });
       toast.success(`Added ${item ? item.name : r.model}${item ? " from inventory" : ""}`);
       return;
     }
@@ -80,7 +83,7 @@ export function PriceListPickerDialog({
     }
     try {
       const last = await getLastPriceForModel(customerId, r.model);
-      onPick({ name, price: last?.price ?? null, itemId });
+      onPick({ name, price: last?.price ?? null, itemId, source: last ? "last" : undefined });
       if (last) {
         toast.success(`Added ${r.model} at ${peso(last.price)}, their last price (${last.from}, ${format(new Date(last.date), "MMM d, yyyy")})`);
       } else {

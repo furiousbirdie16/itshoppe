@@ -33,6 +33,7 @@ import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useLinkedPrices } from "@/hooks/use-linked-prices";
+import { priceSourceLabel, type PriceSource } from "@/lib/price-source";
 import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
 
@@ -59,17 +60,6 @@ interface LineItem {
   /** Where the line's price came from, shown under the line. */
   priceSource?: PriceSource;
 }
-
-type PriceSource = "fixed" | "last" | "bottom" | "srp" | "standard" | "manual";
-
-const PRICE_SOURCE_LABEL: Record<PriceSource, string> = {
-  fixed: "Customer's fixed price",
-  last: "Customer's last price",
-  bottom: "Price list: Bottom",
-  srp: "Price list: SRP",
-  standard: "Standard selling price",
-  manual: "Entered by hand",
-};
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -1324,7 +1314,7 @@ export default function InvoicesPage() {
                                 newLines[idx].unit_price = listPrice;
                                 newLines[idx].fromPriceList = true;
                                 newLines[idx].listAuto = true;
-                                newLines[idx].priceSource = startPriceSource(itemId, customer) ?? undefined;
+                                newLines[idx].priceSource = startPriceSource(itemId, customer);
                               }
                             } else {
                               newLines[idx].item_id = "";
@@ -1355,7 +1345,7 @@ export default function InvoicesPage() {
                       )}
                       {line.priceSource && Number(line.unit_price) > 0 && (
                         <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">
-                          Price from: <span className="font-medium text-foreground">{PRICE_SOURCE_LABEL[line.priceSource]}</span>
+                          Price from: <span className="font-medium text-foreground">{priceSourceLabel(line.priceSource)}</span>
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
@@ -1392,7 +1382,7 @@ export default function InvoicesPage() {
                               if (!line.listAuto) return;
                               const customer = customers.find((c) => c.id === form.customer_id);
                               const listPrice = startPrice(line.item_id, customer);
-                              if (listPrice != null) setLinePrice(idx, listPrice, startPriceSource(line.item_id, customer) ?? undefined);
+                              if (listPrice != null) setLinePrice(idx, listPrice, startPriceSource(line.item_id, customer));
                               return;
                             }
                             setLinePrice(idx, suggested, info.lastSold ? "last" : "standard");
