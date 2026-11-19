@@ -133,16 +133,26 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     () => itemLines.map((l) => ({ id: l.id as string, qty: Number(l.quantity || 0), unitCost: Number(l.unit_cost || 0) })),
     [itemLines],
   );
+  /**
+   * A line ticked into a mixed box gets its cargo from the box alone: a CBM of
+   * its own as well counted it twice, and two places to type it confused.
+   * What was typed is kept, unused, in case it is taken out of the box again.
+   */
+  const boxedLines = useMemo(() => new Set(boxes.flatMap((b) => b.lineIds)), [boxes]);
+  const ownCbm = useMemo(
+    () => Object.fromEntries(Object.entries(lineCbm).filter(([k]) => !boxedLines.has(k)).map(([k, v]) => [k, n(v)])),
+    [lineCbm, boxedLines],
+  );
   const allocation = useMemo(
     () => allocateCargo(cargoLines, {
       cargoAmount: n(cargoAmount),
       otherCharges: n(otherCharges) + poFees,
       targetedCharges,
-      lineCbm: Object.fromEntries(Object.entries(lineCbm).map(([k, v]) => [k, n(v)])),
+      lineCbm: ownCbm,
       boxes,
       exchangeRate: Number(po?.exchange_rate || 1),
     }),
-    [cargoLines, cargoAmount, otherCharges, poFees, targetedCharges, lineCbm, boxes, po?.exchange_rate],
+    [cargoLines, cargoAmount, otherCharges, poFees, targetedCharges, ownCbm, boxes, po?.exchange_rate],
   );
 
   const review = useMemo(() => {
@@ -164,19 +174,20 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
         qty: Number(l.quantity || 0),
         received: Number(l.received_quantity || 0),
         unitCost: Number(l.unit_cost || 0),
-        ownCbm: n(lineCbm[l.id]),
+        ownCbm: ownCbm[l.id] ?? 0,
       })),
       allocation,
       items,
       marginTarget,
     );
-  }, [lines, stock, lineCbm, allocation, marginTarget]);
+  }, [lines, stock, ownCbm, allocation, marginTarget]);
 
   const persist = () => savePoCargo(poId, {
     cargo_amount: n(cargoAmount),
     other_charges: n(otherCharges),
-    line_cbm: Object.fromEntries(Object.entries(lineCbm).filter(([, v]) => n(v) > 0).map(([k, v]) => [k, n(v)])),
-    boxes: boxes.filter((b) => n(b.cbm) > 0 && b.lineIds.length > 0),
+    line_cbm: Object.fromEntries(Object.entries(ownCbm).filter(([, v]) => v > 0)),
+    // Kept even before its CBM is in, so what was ticked into it is not lost.
+    boxes: boxes.filter((b) => b.lineIds.length > 0),
     excluded_lines: [...excluded].filter((id) => feeLines.some((l) => l.id === id)),
     fee_targets: Object.fromEntries(
       Object.entries(feeTargets)
@@ -214,6 +225,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ["overseas_po_cargo", poId] });
+      queryClient.invalidateQueries({ queryKey: ["overseas_po_cargo_applied"] });
       queryClient.invalidateQueries({ queryKey: ["overseas_po_items", poId] });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["items-with-stock"] });
@@ -365,12 +377,20 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                         {l.items?.name || l.item_name}
                         {inBoxes.length > 0 && (
                           <span className="block text-[11px] text-muted-foreground">
-                            also in {inBoxes.map((b) => b.label).join(", ")}
+                            in {inBoxes.map((b) => b.label).join(", ")}
                           </span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm text-right tabular-nums">{fmtQty(Number(l.quantity || 0))}</TableCell>
                       <TableCell className="text-right">
+                        {inBoxes.length > 0 ? (
+                          <span
+                            className="text-xs text-muted-foreground whitespace-nowrap"
+                            title="Its cargo comes from the box. Untick it from the box to give it a CBM of its own."
+                          >
+                            From {inBoxes.map((b) => b.label).join(", ")}
+                          </span>
+                        ) : (
                         <Input
                           type="number"
                           min={0}
@@ -381,6 +401,7 @@ export function CargoCostDialog({ po, open, onOpenChange }: Props) {
                           className="h-8 text-right tabular-nums"
                           placeholder="0"
                         />
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-right tabular-nums">{peso(a?.cargo ?? 0)}</TableCell>
                       <TableCell className="text-sm text-right tabular-nums">{peso(a?.cargoPerUnit ?? 0)}</TableCell>

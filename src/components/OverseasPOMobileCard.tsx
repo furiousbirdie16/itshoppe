@@ -19,6 +19,8 @@ interface Props {
   balanceLeft?: number | null;
   /** Opens the PO's details — the PO number is the link. */
   onOpen?: () => void;
+  /** Shown beside the status once the PO's cargo costs have been applied. */
+  cargoTag?: React.ReactNode;
 }
 
 const fmtDate = (d: string) =>
@@ -32,7 +34,7 @@ const fmtDate = (d: string) =>
  * and arrival stacked beneath, so nothing needs horizontal scrolling.
  */
 export function OverseasPOMobileCard({
-  po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions, balanceLeft, onOpen,
+  po, branchName, arrival, itemsSummary, isAdmin, selected, onToggleSelect, actions, balanceLeft, onOpen, cargoTag,
 }: Props) {
   return (
     <div className={cn("rounded-lg border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
@@ -60,6 +62,7 @@ export function OverseasPOMobileCard({
 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
             <StatusBadge status={po.status} context="overseas_po" />
+            {cargoTag}
             {arrival ? (
               arrival.confirmed ? (
                 <span className="font-medium text-success">✓ {fmtDate(arrival.date)}</span>

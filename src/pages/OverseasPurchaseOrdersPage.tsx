@@ -193,6 +193,33 @@ export default function OverseasPurchaseOrdersPage() {
     cash_account_id: "",
     notes: "",
   });
+  /**
+   * When each PO's cargo costs were applied to its items. Admin only, like
+   * the cargo itself; staff get an empty map and see no tag.
+   */
+  const { data: cargoAppliedAt = new Map<string, string>() } = useQuery({
+    queryKey: ["overseas_po_cargo_applied"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("overseas_po_cargo").select("po_id, applied_at").not("applied_at", "is", null);
+      if (error) throw error;
+      return new Map<string, string>((data || []).map((r: any) => [r.po_id, r.applied_at]));
+    },
+  });
+  const cargoTag = (poId: string | undefined) => {
+    const at = poId ? cargoAppliedAt.get(poId) : undefined;
+    if (!at) return null;
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success whitespace-nowrap"
+        title={`Cargo costs applied to the items on ${new Date(at).toLocaleDateString()}`}
+      >
+        <Container className="h-3 w-3" /> Cargo applied
+      </span>
+    );
+  };
+
   const { data: poPayments = [] } = useQuery({
     queryKey: ["overseas_po_payments"],
     queryFn: getOverseasPoPayments,
@@ -1692,6 +1719,7 @@ export default function OverseasPurchaseOrdersPage() {
             <DialogTitle className="text-lg flex flex-wrap items-center gap-2 pr-6">
               PO {docNo(viewPO?.po_number)}
               {viewPO && <StatusBadge status={viewPO.status} context="overseas_po" />}
+              {cargoTag(viewPO?.id)}
             </DialogTitle>
           </DialogHeader>
           {viewPO && (
@@ -2179,6 +2207,7 @@ export default function OverseasPurchaseOrdersPage() {
                   selected={selectedIds.has(po.id)}
                   onToggleSelect={() => toggleOne(po.id)}
                   actions={renderOverseasPOActions(po)}
+                  cargoTag={cargoTag(po.id)}
                   onOpen={() => setViewPO(po)}
                   balanceLeft={paidSoFar(po.id) > 0 && !isPaidStatus(po.status) ? phpBalance(po) : null}
                   itemsSummary={
@@ -2233,7 +2262,12 @@ export default function OverseasPurchaseOrdersPage() {
                 </TableCell>
                 <TableCell className="text-sm">{po.overseas_suppliers?.name || "—"}</TableCell>
                 <TableCell className="text-sm whitespace-nowrap">{branchNameById.get((po as any).branch_id) || "—"}</TableCell>
-                <TableCell><StatusBadge status={po.status} context="overseas_po" /></TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusBadge status={po.status} context="overseas_po" />
+                    {cargoTag(po.id)}
+                  </div>
+                </TableCell>
                 <TableCell className="text-sm whitespace-nowrap">
                   {arrival ? (
                     arrival.confirmed ? (
