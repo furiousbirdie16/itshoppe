@@ -32,8 +32,9 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
 import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
-import { useLinkedPrices } from "@/hooks/use-linked-prices";
-import { priceSourceLabel, type PriceSource } from "@/lib/price-source";
+import { useRepriceLine, isAutoPriced } from "@/hooks/use-line-pricing";
+import type { ListPrices } from "@/lib/start-price";
+import { priceSourceClass, priceSourceLabel, type PriceSource } from "@/lib/price-source";
 import { isInvoiceLocked, INVOICE_LOCK_MESSAGE } from "@/lib/permissions";
 import { Lock } from "lucide-react";
 
@@ -53,15 +54,16 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 
 interface LineItem {
   item_id: string; item_name: string; quantity: number | ""; unit_price: number | ""; variation_id: string | null;
-  /** Priced from the price list the item is linked to (Bottom, or SRP for walk-ins). */
-  fromPriceList?: boolean;
-  /** That price was filled in automatically, so it follows a change of customer. */
-  listAuto?: boolean;
+  /** A price list product's name and prices, for lines priced from a list. */
+  model?: string;
+  list?: ListPrices | null;
   /** Loaded from a saved document: the price stays as saved, not re-suggested. */
   savedPrice?: boolean;
   /** Where the line's price came from, shown under the line. */
   priceSource?: PriceSource;
 }
+
+const priceAsNumber = (p: number | null): number | "" => p ?? "";
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
@@ -86,6 +88,8 @@ export default function InvoicesPage() {
     // clear it — a reseller's customer can still walk in and buy direct.
     const reseller = (customers as any[]).find((c) => c.id === v)?.reseller_id ?? null;
     setForm((f) => ({ ...f, customer_id: v, reseller_id: reseller }));
+    // Prices filled in for the old customer follow the new one; typed and saved prices stay.
+    lines.forEach((l, idx) => { if (isAutoPriced(l)) repriceLine(idx, l, v); });
     setAgentAutoFilled(false);
     if (!v || editId) return;
     try {
@@ -113,7 +117,6 @@ export default function InvoicesPage() {
 
   const { data: invoices = [] } = useQuery({ queryKey: ["invoices", activeBranchId], queryFn: () => getInvoices(activeBranchId) });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: getCustomers });
-  const { startPrice, startPriceSource } = useLinkedPrices();
   const resellers = useMemo(
     () => (customers as any[])
       .filter((c) => c.classification === "reseller")
@@ -139,6 +142,10 @@ export default function InvoicesPage() {
   // Shared with the item picker's own query, so this costs no extra read. Only
   // for the below-DP warning on a variation's line.
   const { data: allVariations = [] } = useQuery({ queryKey: ["item_variations"], queryFn: () => getItemVariations(), staleTime: 30_000 });
+  // Fills in a line's price: the customer's previous price, else the price list, else the standard price.
+  const repriceLine = useRepriceLine<LineItem>({
+    setLines, customerId: form.customer_id, customers, items, variations: allVariations, toField: priceAsNumber,
+  });
   // Payment options come from the Cash and Bank pages so the three stay in step.
   const cashPaymentOptions = cashAccounts.filter((a) => a.account_type === "petty_cash");
   const bankPaymentOptions = cashAccounts.filter((a) => a.account_type === "bank");
@@ -847,8 +854,6 @@ export default function InvoicesPage() {
     }
     setLines(newLines);
   };
-  const setLinePrice = (idx: number, price: number, source: PriceSource | undefined) =>
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, unit_price: price, priceSource: source } : l)));
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
 
@@ -1299,41 +1304,25 @@ export default function InvoicesPage() {
                           variationId={line.variation_id}
                           customName={line.item_name}
                           onChange={(itemId, item, customName, variation) => {
-                            const newLines = [...lines];
-                            newLines[idx].fromPriceList = false;
-                            newLines[idx].listAuto = false;
-                            newLines[idx].priceSource = undefined;
-                            newLines[idx].savedPrice = false;
-                            if (variation && item) {
-                              newLines[idx].item_id = item.id;
-                              newLines[idx].item_name = variation.name;
-                              newLines[idx].variation_id = variation.id;
-                            } else if (itemId) {
-                              newLines[idx].item_id = itemId;
-                              newLines[idx].item_name = item?.name || "";
-                              newLines[idx].variation_id = null;
-                              // Linked to your price list: start at Bottom, or SRP for a walk-in.
-                              const customer = customers.find((c) => c.id === form.customer_id);
-                              const listPrice = startPrice(itemId, customer);
-                              if (listPrice != null) {
-                                newLines[idx].unit_price = listPrice;
-                                newLines[idx].fromPriceList = true;
-                                newLines[idx].listAuto = true;
-                                newLines[idx].priceSource = startPriceSource(itemId, customer);
-                              }
-                            } else {
-                              newLines[idx].item_id = "";
-                              newLines[idx].item_name = customName || "";
-                              newLines[idx].variation_id = null;
-                            }
-                            setLines(newLines);
+                            const prev = lines[idx];
+                            // A new product starts with no price; it's looked up below.
+                            const base = { ...prev, savedPrice: false, model: undefined, list: undefined };
+                            const next: LineItem = variation && item
+                              ? { ...base, item_id: item.id, item_name: variation.name, variation_id: variation.id, unit_price: "", priceSource: undefined }
+                              : itemId
+                                ? { ...base, item_id: itemId, item_name: item?.name || "", variation_id: null, unit_price: "", priceSource: undefined }
+                                : isAutoPriced(prev)
+                                  ? { ...base, item_id: "", item_name: customName || "", variation_id: null, unit_price: "", priceSource: undefined }
+                                  : { ...base, item_id: "", item_name: customName || "", variation_id: null };
+                            setLines(lines.map((l, i) => (i === idx ? next : l)));
+                            if (next.item_id) repriceLine(idx, next);
                           }}
                           placeholder="Search item or variation..."
                           allowCustom
                         />
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:contents">
                           <Input type="number" value={line.quantity} onChange={e => { const v = e.target.value; updateLine(idx, "quantity", v === "" ? "" : (parseInt(v) || "")); }} className="h-9 text-sm numeric-field" placeholder="Qty" />
-                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v === "" ? "" : (parseFloat(v) || ""), listAuto: false, priceSource: v === "" ? undefined : "manual" } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
+                          <Input type="number" value={line.unit_price} onChange={e => { const v = e.target.value; setLines(lines.map((l, i) => i === idx ? { ...l, unit_price: v === "" ? "" : (parseFloat(v) || ""), priceSource: v === "" ? undefined : "manual" } : l)); }} className="h-9 text-sm numeric-field" placeholder="Price" />
                           <div className="flex items-center gap-0.5">
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx - 1))} disabled={idx === 0} className="h-9 w-7" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => setLines(moveItem(lines, idx, idx + 1))} disabled={idx === lines.length - 1} className="h-9 w-7" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></Button>
@@ -1349,8 +1338,10 @@ export default function InvoicesPage() {
                         </p>
                       )}
                       {line.priceSource && Number(line.unit_price) > 0 && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">
-                          Price from: <span className="font-medium text-foreground">{priceSourceLabel(line.priceSource)}</span>
+                        <p className="mt-1 ml-1">
+                          <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[11px]", priceSourceClass(line.priceSource))}>
+                            Price from:&nbsp;<span className="font-semibold">{priceSourceLabel(line.priceSource)}</span>
+                          </span>
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
@@ -1378,23 +1369,6 @@ export default function InvoicesPage() {
                           standardPrice={Number(selectedItem.selling_price)}
                           costPrice={Number(selectedItem.cost_price)}
                           currentPrice={Number(line.unit_price) || 0}
-                          onSuggested={(suggested, info) => {
-                            // A saved line keeps the price it was saved with
-                            // until you pick another item for it.
-                            if (line.savedPrice) return;
-                            // The customer's fixed price wins; then the price list
-                            // (Bottom, SRP for walk-ins); then their usual price.
-                            if (info.fixed != null) return setLinePrice(idx, info.fixed, "fixed");
-                            if (line.fromPriceList) {
-                              // Keep a price you typed or chose under "Quote at".
-                              if (!line.listAuto) return;
-                              const customer = customers.find((c) => c.id === form.customer_id);
-                              const listPrice = startPrice(line.item_id, customer);
-                              if (listPrice != null) setLinePrice(idx, listPrice, startPriceSource(line.item_id, customer));
-                              return;
-                            }
-                            setLinePrice(idx, suggested, info.lastSold ? "last" : "standard");
-                          }}
                         />
                       )}
                     </div>

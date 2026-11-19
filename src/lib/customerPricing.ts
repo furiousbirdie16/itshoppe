@@ -145,3 +145,21 @@ export async function getCustomerPriceHistory(customerId: string): Promise<Price
       .order("id"),
   );
 }
+
+/**
+ * The price a customer was last charged or quoted for an inventory item (and
+ * variation), or null. The same row the Customer Pricing page shows as their
+ * last price: latest sold_at, ties broken by the later created_at.
+ */
+export async function getPreviousItemPrice(customerId: string, itemId: string, variationId: string | null): Promise<number | null> {
+  let q = (supabase as any)
+    .from("customer_price_history")
+    .select("unit_price")
+    .eq("customer_id", customerId)
+    .eq("item_id", itemId);
+  q = variationId ? q.eq("variation_id", variationId) : q.is("variation_id", null);
+  const { data, error } = await q.order("sold_at", { ascending: false }).order("created_at", { ascending: false }).limit(1);
+  if (error) throw error;
+  const price = data?.[0] ? Number(data[0].unit_price) : null;
+  return price != null && price > 0 ? price : null;
+}
