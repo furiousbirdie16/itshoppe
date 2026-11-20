@@ -11,6 +11,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import { useBranch } from "@/contexts/BranchContext";
+import { transferWithinBranch } from "@/lib/stock-transfer";
 
 type Direction = "w2s" | "s2w";
 
@@ -18,9 +19,13 @@ interface Props {
   item: Item | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Whose stock, when opened for one branch's row (the shortage card). */
+  branchId?: string;
+  /** Quantity to start with: what the store is short. Can be changed. */
+  initialQty?: number;
 }
 
-export function TransferStockDialog({ item, open, onOpenChange }: Props) {
+export function TransferStockDialog({ item, open, onOpenChange, branchId: fixedBranchId, initialQty }: Props) {
   const qc = useQueryClient();
   const { activeBranchId, branches } = useBranch();
   const [direction, setDirection] = useState<Direction>("w2s");
@@ -29,29 +34,32 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
   // Asked for here when the toolbar says "All branches": the branch switcher is
   // behind this dialog and cannot be reached without closing it.
   const [pickedBranchId, setPickedBranchId] = useState("");
-  const branchId = activeBranchId || pickedBranchId;
+  const branchId = fixedBranchId || activeBranchId || pickedBranchId;
+  /** The branch whose own figures must be read, when `item` holds a total. */
+  const lookupBranchId = activeBranchId && (!fixedBranchId || fixedBranchId === activeBranchId) ? "" : (fixedBranchId || pickedBranchId);
 
   useEffect(() => {
     if (open) {
       setDirection("w2s");
-      setQty("1");
+      setQty(initialQty && initialQty > 0 ? String(initialQty) : "1");
       setNotes("");
       setPickedBranchId("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item?.id]);
 
   // On "All branches" the quantities on `item` are every branch added together,
   // so moving stock would be checked against a total that exists nowhere. Once a
   // branch is picked, read that branch's own figures.
   const { data: branchStock } = useQuery({
-    queryKey: ["item_branch_stock", item?.id, pickedBranchId],
-    enabled: !!item && !!pickedBranchId && !activeBranchId,
+    queryKey: ["item_branch_stock", item?.id, lookupBranchId],
+    enabled: !!item && !!lookupBranchId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("item_branch_stock")
         .select("warehouse_quantity, store_quantity")
         .eq("item_id", item!.id)
-        .eq("branch_id", pickedBranchId)
+        .eq("branch_id", lookupBranchId)
         .maybeSingle();
       if (error) throw error;
       return data as { warehouse_quantity: number; store_quantity: number } | null;
@@ -65,52 +73,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
       const n = parseInt(qty);
       if (Number.isNaN(n) || n <= 0) throw new Error("Enter a quantity greater than 0");
 
-      const wh = Number((branchStock?.warehouse_quantity ?? item.warehouse_quantity) ?? 0);
-      const st = Number((branchStock?.store_quantity ?? item.store_quantity) ?? 0);
-
-      if (direction === "w2s" && n > wh) throw new Error(`Warehouse only has ${wh} in stock`);
-      if (direction === "s2w" && n > st) throw new Error(`Store only has ${st} in stock`);
-
-      const src: "warehouse" | "store" = direction === "w2s" ? "warehouse" : "store";
-      const dst: "warehouse" | "store" = direction === "w2s" ? "store" : "warehouse";
-
-      // Deduct from source
-      const { data: srcData, error: srcErr } = await (supabase as any).rpc("apply_branch_stock_change", {
-        _item_id: item.id, _branch_id: branchId, _location: src,
-        _delta_stock: -n, _delta_open: 0, _units_per_stock: null,
-      });
-      if (srcErr) throw srcErr;
-      const srcRow: any = Array.isArray(srcData) ? srcData[0] : srcData;
-
-      // Add to destination
-      const { data: dstData, error: dstErr } = await (supabase as any).rpc("apply_branch_stock_change", {
-        _item_id: item.id, _branch_id: branchId, _location: dst,
-        _delta_stock: n, _delta_open: 0, _units_per_stock: null,
-      });
-      if (dstErr) throw dstErr;
-      const dstRow: any = Array.isArray(dstData) ? dstData[0] : dstData;
-
-      const srcBefore = src === "warehouse" ? srcRow.wh_before : srcRow.st_before;
-      const srcAfter = src === "warehouse" ? srcRow.warehouse_quantity : srcRow.store_quantity;
-      const dstBefore = dst === "warehouse" ? dstRow.wh_before : dstRow.st_before;
-      const dstAfter = dst === "warehouse" ? dstRow.warehouse_quantity : dstRow.store_quantity;
-
-      const { recordMovement } = await import("@/lib/inventoryLog");
-      await recordMovement({
-        itemId: item.id,
-        branchId,
-        type: direction === "w2s" ? "transfer_w2s" : "transfer_s2w",
-        quantity: n,
-        unit: item.base_unit || "pcs",
-        location: src,
-        destLocation: dst,
-        notes: notes || (direction === "w2s" ? "Warehouse → Store" : "Store → Warehouse"),
-        balanceBefore: srcBefore,
-        balanceAfter: srcAfter,
-        destBalanceBefore: dstBefore,
-        destBalanceAfter: dstAfter,
-      });
-
+      await transferWithinBranch({ itemId: item.id, branchId, direction, qty: n, unit: item.base_unit, notes });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -156,7 +119,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
         </DialogHeader>
 
         <div className="grid gap-4 pt-2">
-          {!activeBranchId && (
+          {!activeBranchId && !fixedBranchId && (
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Branch</Label>
               <Select value={pickedBranchId} onValueChange={setPickedBranchId}>
@@ -181,7 +144,7 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
             </div>
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase text-muted-foreground">Store</div>
-              <div className="text-2xl font-semibold">{st}</div>
+              <div className={`text-2xl font-semibold ${st < 0 ? "text-destructive" : ""}`}>{st}</div>
             </div>
           </div>
 
@@ -206,6 +169,11 @@ export function TransferStockDialog({ item, open, onOpenChange }: Props) {
               onChange={(e) => setQty(e.target.value)}
               className="h-9"
             />
+            {direction === "w2s" && st < 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                The store is short {-st}. Enter what was actually carried over; more than that is fine.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

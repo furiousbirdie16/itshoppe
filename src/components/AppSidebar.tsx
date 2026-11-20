@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useStoreShortages } from "@/hooks/use-store-shortages";
 import { Package, Users, Truck, FileText, Receipt, LayoutDashboard, ShoppingCart, Settings, LogOut, UserCog, Ship, Store, ClipboardList, CircleDollarSign, BarChart3, AlertTriangle, Tag, ArrowLeftRight, ChevronRight, Wallet, Landmark, PiggyBank, HandCoins, UserCircle, ShieldCheck, BadgePercent, Coins, BookOpen } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -178,12 +179,23 @@ export function AppSidebar() {
             activeClassName="bg-accent text-foreground hover:bg-accent hover:text-foreground"
           >
             <item.icon className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>{item.title}</span>}
+            {!collapsed && <span className="flex-1">{item.title}</span>}
+            {!collapsed && item.url === "/stock-transfers" && shortCount > 0 && (
+              <span
+                className="rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold tabular-nums text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                title={`${shortCount} product${shortCount === 1 ? "" : "s"} need a transfer from the warehouse`}
+              >
+                {shortCount}
+              </span>
+            )}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
     );
   };
+
+  const { data: shortages = [] } = useStoreShortages();
+  const shortCount = shortages.length;
 
   const visibleTopLevel = topLevelItems.filter((i) => !i.adminOnly || isAdmin);
 
@@ -217,6 +229,11 @@ export function AppSidebar() {
                       <CollapsibleTrigger className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent">
                         <group.icon className="h-4 w-4 shrink-0" />
                         <span className="flex-1 text-left">{group.label}</span>
+                        {!openGroups[group.label] && shortCount > 0 && group.items.some((i) => i.url === "/stock-transfers") && (
+                          <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold tabular-nums text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            {shortCount}
+                          </span>
+                        )}
                         <ChevronRight
                           className={`h-3.5 w-3.5 shrink-0 transition-transform ${
                             openGroups[group.label] ? "rotate-90" : ""

@@ -16,6 +16,8 @@ export interface Shortage {
   unit: string;
   /** For a cut item: the store count as whole rolls plus the open roll. */
   rolls?: { whole: number; open: number };
+  /** When the warehouse was counted too: how much of `available` is in each. */
+  split?: { store: number; warehouse: number };
 }
 
 /**
@@ -35,6 +37,12 @@ export interface Shortage {
 export const checkStoreStock = async (
   lines: StockCheckLine[],
   branchId?: string | null,
+  /**
+   * Count the warehouse too. A sale takes from the store, and when the store
+   * runs out the rest is carried over from the warehouse (see the shortage
+   * card), so what the branch can sell is both together.
+   */
+  opts: { includeWarehouse?: boolean } = {},
 ): Promise<Shortage[]> => {
   const valid = lines.filter((l) => l.item_id && Number(l.quantity) > 0);
   if (valid.length === 0) return [];
@@ -46,7 +54,7 @@ export const checkStoreStock = async (
 
   let stockQ = (supabase as any)
     .from("item_branch_stock")
-    .select("item_id, branch_id, store_quantity, units_per_stock, open_roll_remaining")
+    .select("item_id, branch_id, store_quantity, warehouse_quantity, units_per_stock, open_roll_remaining")
     .in("item_id", itemIds);
   if (branchId) stockQ = stockQ.eq("branch_id", branchId);
 
@@ -65,11 +73,12 @@ export const checkStoreStock = async (
   ]);
 
   // Aggregate branch stock per item (single branch, or all branches when none selected).
-  const stockMap = new Map<string, { store: number; ups: number; open: number }>();
+  const stockMap = new Map<string, { store: number; wh: number; ups: number; open: number }>();
   for (const row of ((branchStock as any[]) || [])) {
-    const prev = stockMap.get(row.item_id) || { store: 0, ups: 0, open: 0 };
+    const prev = stockMap.get(row.item_id) || { store: 0, wh: 0, ups: 0, open: 0 };
     stockMap.set(row.item_id, {
       store: prev.store + Number(row.store_quantity || 0),
+      wh: prev.wh + Number(row.warehouse_quantity || 0),
       ups: Number(row.units_per_stock || 0) || prev.ups,
       open: prev.open + Number(row.open_roll_remaining || 0),
     });
@@ -122,14 +131,15 @@ export const checkStoreStock = async (
 
     const bs = stockMap.get(itemId);
     const storeQty = Number(bs?.store || 0);
+    const whQty = opts.includeWarehouse ? Number(bs?.wh || 0) : 0;
     const ups = Number(bs?.ups || it.units_per_stock || 1);
     const openRem = Number(bs?.open || 0);
+    const perStock = cutMode.get(itemId) ? (ups > 0 ? ups : 1) : 1;
 
-
-    // For cut-mode items, convert store stock into base units (meters).
-    const available = cutMode.get(itemId)
-      ? storeQty * (ups > 0 ? ups : 1) + openRem
-      : storeQty;
+    // For cut-mode items, convert stock into base units (meters).
+    const storeBase = storeQty * perStock + (cutMode.get(itemId) ? openRem : 0);
+    const whBase = whQty * perStock;
+    const available = storeBase + whBase;
 
     if (available < needed) {
       shortages.push({
@@ -142,6 +152,7 @@ export const checkStoreStock = async (
         // roll itself ("roll"), which made "-1194 roll" read as rolls.
         unit: cutMode.get(itemId) ? "m" : (it.base_unit || "pcs"),
         ...(cutMode.get(itemId) ? { rolls: { whole: storeQty, open: openRem } } : {}),
+        ...(opts.includeWarehouse ? { split: { store: storeBase, warehouse: whBase } } : {}),
       });
     }
   }

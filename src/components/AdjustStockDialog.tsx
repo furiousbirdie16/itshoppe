@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardEdit } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, ClipboardEdit, PackageSearch } from "lucide-react";
 import { toast } from "sonner";
 import type { Item } from "@/types/database";
 import { useBranch } from "@/contexts/BranchContext";
+import { TransferStockDialog } from "@/components/TransferStockDialog";
 
 type Location = "warehouse" | "store";
 
@@ -19,40 +20,55 @@ interface Props {
   item: Item | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Whose stock, when opened for one branch's row (the shortage card). */
+  branchId?: string;
+  /**
+   * "found": stock turned up in the store that was never counted, so the
+   * question is how many were found, not what the count now is.
+   */
+  mode?: "count" | "found";
 }
 
-export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
+export function AdjustStockDialog({ item, open, onOpenChange, branchId: fixedBranchId, mode: initialMode = "count" }: Props) {
   const qc = useQueryClient();
-  const { activeBranchId, activeBranch, branches } = useBranch();
+  const { activeBranchId, branches } = useBranch();
   const [location, setLocation] = useState<Location>("store");
   const [actualQty, setActualQty] = useState("");
+  const [foundQty, setFoundQty] = useState("");
+  const [mode, setMode] = useState<"count" | "found">(initialMode);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [notes, setNotes] = useState("");
   // Asked for here when the toolbar says "All branches": the branch switcher is
   // behind this dialog and cannot be reached without closing it.
   const [pickedBranchId, setPickedBranchId] = useState("");
-  const branchId = activeBranchId || pickedBranchId;
+  const branchId = fixedBranchId || activeBranchId || pickedBranchId;
+  /** The branch whose own figures must be read, when `item` holds a total. */
+  const lookupBranchId = activeBranchId && (!fixedBranchId || fixedBranchId === activeBranchId) ? "" : (fixedBranchId || pickedBranchId);
 
   useEffect(() => {
     if (open) {
       setLocation("store");
       setActualQty("");
+      setFoundQty("");
+      setMode(initialMode);
       setNotes("");
       setPickedBranchId("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item?.id]);
 
   // On "All branches" the quantities on `item` are every branch added together,
   // which is not what is being adjusted. Once a branch is picked, read that
   // branch's own figures so the difference is measured against the right stock.
   const { data: branchStock } = useQuery({
-    queryKey: ["item_branch_stock", item?.id, pickedBranchId],
-    enabled: !!item && !!pickedBranchId && !activeBranchId,
+    queryKey: ["item_branch_stock", item?.id, lookupBranchId],
+    enabled: !!item && !!lookupBranchId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("item_branch_stock")
         .select("warehouse_quantity, store_quantity")
         .eq("item_id", item!.id)
-        .eq("branch_id", pickedBranchId)
+        .eq("branch_id", lookupBranchId)
         .maybeSingle();
       if (error) throw error;
       return data as { warehouse_quantity: number; store_quantity: number } | null;
@@ -61,24 +77,39 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
 
   const wh = Number((branchStock?.warehouse_quantity ?? item?.warehouse_quantity) ?? 0);
   const st = Number((branchStock?.store_quantity ?? item?.store_quantity) ?? 0);
-  const currentQty = location === "warehouse" ? wh : st;
-  const actualNum = actualQty === "" ? null : parseInt(actualQty);
+  const found = mode === "found";
+  const where: Location = found ? "store" : location;
+  const currentQty = where === "warehouse" ? wh : st;
+  const foundNum = foundQty === "" ? null : parseInt(foundQty);
+  // Found: the count becomes what the system had plus what turned up.
+  const actualNum = found
+    ? (foundNum === null || Number.isNaN(foundNum) ? null : currentQty + foundNum)
+    : (actualQty === "" ? null : parseInt(actualQty));
   const diff = actualNum === null || Number.isNaN(actualNum) ? 0 : actualNum - currentQty;
   const kind = diff < 0 ? "missing" : diff > 0 ? "surplus" : null;
+  /**
+   * Raising a short store while the warehouse has stock is nearly always a
+   * transfer nobody recorded: setting the store to 0 then invents stock. Ask
+   * which it was before allowing it.
+   */
+  const askWhich = !found && where === "store" && st < 0 && wh > 0 && diff > 0;
 
   const adjustMut = useMutation({
     mutationFn: async () => {
       if (!item) throw new Error("No item selected");
       if (!branchId) throw new Error("Pick which branch's stock you are adjusting");
-      if (actualNum === null || Number.isNaN(actualNum) || actualNum < 0) {
+      if (found) {
+        if (foundNum === null || Number.isNaN(foundNum) || foundNum <= 0) throw new Error("Enter how many were found");
+      } else if (actualNum === null || Number.isNaN(actualNum) || actualNum < 0) {
         throw new Error("Enter a valid actual quantity");
       }
+      if (askWhich) throw new Error("Choose whether it was a transfer or found in the store");
       if (diff === 0) throw new Error("Actual quantity matches current — no adjustment needed");
 
       const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("apply_branch_stock_change", {
         _item_id: item.id,
         _branch_id: branchId,
-        _location: location,
+        _location: where,
         _delta_stock: diff,
         _delta_open: 0,
         _units_per_stock: null,
@@ -93,10 +124,12 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
         type: diff < 0 ? "adjust_missing" : "adjust_surplus",
         quantity: Math.abs(diff),
         unit: item.base_unit || "pcs",
-        location,
-        notes: `${location === "warehouse" ? "Warehouse" : "Store"}: ${currentQty} → ${actualNum}${notes ? ` — ${notes}` : ""}`,
-        balanceBefore: location === "warehouse" ? row.wh_before : row.st_before,
-        balanceAfter: location === "warehouse" ? row.warehouse_quantity : row.store_quantity,
+        location: where,
+        notes: found
+          ? `Found in store: ${diff} (${currentQty} → ${actualNum})${notes ? ` — ${notes}` : ""}`
+          : `${where === "warehouse" ? "Warehouse" : "Store"}: ${currentQty} → ${actualNum}${notes ? ` — ${notes}` : ""}`,
+        balanceBefore: where === "warehouse" ? row.wh_before : row.st_before,
+        balanceAfter: where === "warehouse" ? row.warehouse_quantity : row.store_quantity,
       });
 
       // A count that disagrees with the system is the movement worth seeing as
@@ -108,7 +141,7 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
       qc.invalidateQueries({ queryKey: ["items"] });
       qc.invalidateQueries({ queryKey: ["item_branch_stock"] });
       qc.invalidateQueries({ queryKey: ["adjust-history", item?.id] });
-      toast.success("Stock adjusted");
+      toast.success(found ? "Found stock added to the store" : "Stock adjusted");
       onOpenChange(false);
     },
     onError: (e: any) => toast.error(e.message),
@@ -137,13 +170,13 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg flex items-center gap-2">
-            <ClipboardEdit className="h-4 w-4" /> Adjust Stock
+            {found ? <><PackageSearch className="h-4 w-4" /> Found in store</> : <><ClipboardEdit className="h-4 w-4" /> Adjust Stock</>}
           </DialogTitle>
           <DialogDescription className="text-xs">{item.name}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 pt-2">
-          {!activeBranchId && (
+          {!activeBranchId && !fixedBranchId && (
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Branch</Label>
               <Select value={pickedBranchId} onValueChange={setPickedBranchId}>
@@ -168,10 +201,28 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
             </div>
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase text-muted-foreground">Store</div>
-              <div className="text-2xl font-semibold">{st}</div>
+              <div className={`text-2xl font-semibold ${st < 0 ? "text-destructive" : ""}`}>{st}</div>
             </div>
           </div>
 
+          {found ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">How many were found in the store?</Label>
+              <Input
+                type="number"
+                min={1}
+                value={foundQty}
+                onChange={(e) => setFoundQty(e.target.value)}
+                placeholder="Pieces found"
+                className="h-9"
+                autoFocus
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Stock that was in the store but never counted. The warehouse is not touched.
+                {diff > 0 && <> The store goes from {currentQty} to {actualNum}.</>}
+              </p>
+            </div>
+          ) : (<>
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Location</Label>
             <Select value={location} onValueChange={(v) => setLocation(v as Location)}>
@@ -204,6 +255,32 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
               </div>
             )}
           </div>
+          </>)}
+
+          {askWhich && (
+            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
+              <p className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  The store is short {-st} and the warehouse has {wh}. If stock was carried over from the
+                  warehouse, record a transfer: raising the store here would add stock that does not exist.
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" className="h-8 text-xs" onClick={() => setTransferOpen(true)}>
+                  <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" /> Record a transfer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => { setMode("found"); setFoundQty(String(diff)); }}
+                >
+                  <PackageSearch className="mr-1.5 h-3.5 w-3.5" /> It was found in the store
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Reason / Notes (optional)</Label>
@@ -212,10 +289,10 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
 
           <Button
             onClick={() => adjustMut.mutate()}
-            disabled={adjustMut.isPending || !kind}
+            disabled={adjustMut.isPending || !kind || askWhich}
             className="rounded-lg h-9"
           >
-            Save Adjustment
+            {found ? "Add found stock" : "Save Adjustment"}
           </Button>
 
           <div className="space-y-1.5 pt-2 border-t">
@@ -245,6 +322,13 @@ export function AdjustStockDialog({ item, open, onOpenChange }: Props) {
           </div>
         </div>
       </DialogContent>
+      <TransferStockDialog
+        item={item}
+        open={transferOpen}
+        onOpenChange={(o) => { setTransferOpen(o); if (!o) onOpenChange(false); }}
+        branchId={branchId || undefined}
+        initialQty={Math.min(-st, wh)}
+      />
     </Dialog>
   );
 }

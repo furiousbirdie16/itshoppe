@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { InvoiceMobileCard } from "@/components/InvoiceMobileCard";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X, ShieldAlert, UserCog } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, CheckCircle, DollarSign, Receipt, FileDown, Undo2, Pencil, Filter, Search, Check, ChevronsUpDown, BookmarkPlus, Truck, XCircle, ArrowRightCircle, X, ShieldAlert, UserCog, AlertTriangle } from "lucide-react";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
 import { CustomerSearchWithCreate } from "@/components/CustomerSearchWithCreate";
@@ -31,7 +31,8 @@ import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
 import { format, addDays, parseISO } from "date-fns";
-import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
+import { checkStoreStock } from "@/lib/stockCheck";
+import { StockShortageDialog, type ShortageNotice } from "@/components/StockShortageDialog";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useRepriceLine, isAutoPriced } from "@/hooks/use-line-pricing";
 import type { ListPrices } from "@/lib/start-price";
@@ -396,6 +397,20 @@ export default function InvoicesPage() {
         if (!inv) { fail++; continue; }
         const s: string = inv.status;
         try {
+          // A draft takes its stock when it moves on: the same block as one at a time.
+          if (s === "draft" && (action === "reserve" || action === "pay" || action === "ship")) {
+            const lineItems = await getInvoiceItems(id);
+            const short = await checkStoreStock(
+              lineItems.map((li: any) => ({ item_id: li.item_id, variation_id: li.variation_id || null, quantity: li.quantity })),
+              inv.branch_id ?? activeBranchId ?? null,
+              { includeWarehouse: true },
+            );
+            if (short.length > 0) {
+              fail++;
+              errors.push(`${docNo(inv.invoice_number)}: not enough stock — ${short.map((x) => `${x.name} lacking ${Number(x.shortBy.toFixed(3))} ${x.unit}`).join(", ")}`);
+              continue;
+            }
+          }
           if (action === "reserve") {
             if (s === "cancelled" || s === "completed" || s === "reserved") { skip++; continue; }
             await reserveInvoice(id); ok++;
@@ -862,8 +877,13 @@ export default function InvoicesPage() {
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); setFilterStatus("all"); };
 
-  // Warn (but allow) if shipping/paying an invoice would oversell store stock.
-  const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay", branchId?: string | null): Promise<boolean> => {
+  const [shortageNotice, setShortageNotice] = useState<ShortageNotice | null>(null);
+  /**
+   * Stop an invoice going ahead (reserve, ship, pay) when the branch does not
+   * have enough of something. Store and warehouse count together: the sale
+   * takes from the store, and the warehouse covers the rest by a transfer.
+   */
+  const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay" | "reserve", branchId?: string | null): Promise<boolean> => {
     try {
       const lineItems = await getInvoiceItems(invoiceId);
       const shortages = await checkStoreStock(
@@ -873,14 +893,19 @@ export default function InvoicesPage() {
           quantity: li.quantity,
         })),
         branchId ?? activeBranchId ?? null,
+        { includeWarehouse: true },
       );
       if (shortages.length === 0) return true;
-      const verb = action === "ship" ? "ship" : "mark this invoice as paid";
-      return window.confirm(
-        `Store inventory is not enough to ${verb}:\n\n${formatShortageMessage(shortages)}\n\nProceeding will let store stock go negative. Continue?`,
-      );
-    } catch {
-      return true; // don't block on check failure
+      const verb = action === "ship" ? "shipped" : action === "reserve" ? "reserved" : "marked as paid";
+      setShortageNotice({
+        title: "Not enough stock",
+        description: `This invoice can't be ${verb}: ${shortages.length === 1 ? "1 product is" : `${shortages.length} products are`} lacking. Restock, or edit the invoice to the quantity available.`,
+        shortages,
+      });
+      return false;
+    } catch (e: any) {
+      toast.error(`Could not check stock: ${e?.message || "try again"}`);
+      return false;
     }
   };
 
@@ -909,7 +934,7 @@ export default function InvoicesPage() {
                     <Button variant="ghost" size="icon" onClick={() => setViewInv(inv.id)} className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Eye className="h-3.5 w-3.5" /></Button>
                     {inv.status === "draft" && (
                       <>
-                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><BookmarkPlus className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "reserve", inv.branch_id)) reserveMut.mutate(inv.id); }} title="Reserve order (allocate stock, not yet paid/shipped)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><BookmarkPlus className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "ship", inv.branch_id)) shipMut.mutate(inv.id); }} title="Mark Shipped & Deduct Stock" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Truck className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="icon" disabled={busy} onClick={async () => { if (await confirmStockOrAsk(inv.id, "pay", inv.branch_id)) openPayDialog(inv.id); }} title="Mark as Paid (without shipping)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><DollarSign className="h-3.5 w-3.5" /></Button>
                       </>
@@ -954,6 +979,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-6">
+      <StockShortageDialog notice={shortageNotice} onClose={() => setShortageNotice(null)} />
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Invoices</h1>
@@ -1350,6 +1376,21 @@ export default function InvoicesPage() {
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(() => {
+                        // Plain lines only: a variation counts in packs or metres, checked when it goes ahead.
+                        if (!selectedItem || line.variation_id) return null;
+                        const wanted = lines
+                          .filter((l) => l.item_id === line.item_id && !l.variation_id)
+                          .reduce((sum, l) => sum + (parseQty(l.quantity) || 0), 0);
+                        const have = Math.max(Number(selectedItem.quantity || 0), 0);
+                        if (wanted <= have) return null;
+                        return (
+                          <p className="mt-1 ml-1 flex items-center gap-1 text-[11px] font-medium text-destructive">
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            Lacking {Number((wanted - have).toFixed(3))}: only {have} in stock. Can't be reserved, shipped or paid until restocked.
+                          </p>
+                        );
+                      })()}
                       {selectedItem && Number(line.unit_price) > 0 && (() => {
                         const variation = line.variation_id ? (allVariations as any[]).find((v) => v.id === line.variation_id) : null;
                         const dp = dealerPriceOf(selectedItem, variation);

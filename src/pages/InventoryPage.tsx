@@ -21,6 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Search, Package, Upload, Layers, ArrowLeftRight, ClipboardEdit, History, DollarSign, Truck, Filter, X, Archive, ArchiveRestore, AlertTriangle , MoreHorizontal , Download, ChevronRight } from "lucide-react";
 import { ItemCostDetails } from "@/components/ItemCostDetails";
+import { StoreShortagesCard } from "@/components/StoreShortagesCard";
+import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import ItemHistoryDialog from "@/components/ItemHistoryDialog";
 import ItemSuppliersDialog from "@/components/ItemSuppliersDialog";
 import CostHistoryDialog from "@/components/CostHistoryDialog";
@@ -150,6 +152,12 @@ export default function InventoryPage() {
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
   const [costHistoryItem, setCostHistoryItem] = useState<Item | null>(null);
   const [suppliersItem, setSuppliersItem] = useState<Item | null>(null);
+  /**
+   * Batch warehouse → store. Two ways in, on trial: ticked rows then
+   * "Transfer to store" (opens on quantities), or the toolbar's Transfer
+   * button (opens on picking).
+   */
+  const [batchTransfer, setBatchTransfer] = useState<{ ids: string[] } | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState<{ ids: string[]; label: string } | null>(null);
   const [form, setForm] = useState({
     name: "", sku: "", description: "",
@@ -759,11 +767,20 @@ export default function InventoryPage() {
             </DropdownMenuContent>
           </DropdownMenu>
           <ColumnVisibilityMenu columns={orderedColumns} visible={colState.visible} onToggle={toggleCol} onMove={moveCol} onReset={resetCols} />
+          {!viewArchived && (
+            <Button onClick={() => setBatchTransfer({ ids: [] })} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">
+              <ArrowLeftRight className="mr-1.5 h-4 w-4" /> Transfer
+            </Button>
+          )}
           <Button onClick={openCreate} className="rounded-lg h-9 px-4 text-sm font-medium">
             <Plus className="h-4 w-4 mr-1.5" /> Add Item
           </Button>
         </div>
       </div>
+
+      {!viewArchived && (
+        <StoreShortagesCard limit={3} />
+      )}
 
       {/* Search + filter trigger */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -1219,6 +1236,11 @@ export default function InventoryPage() {
           })()}
 
           {selectedIds.size > 0 && !viewArchived && (
+            <Button onClick={() => setBatchTransfer({ ids: Array.from(selectedIds) })} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">
+              <ArrowLeftRight className="mr-1.5 h-4 w-4" /> Transfer to store
+            </Button>
+          )}
+          {selectedIds.size > 0 && !viewArchived && (
             <Button variant="outline" onClick={() => setArchiveConfirm({ ids: Array.from(selectedIds), label: `${selectedIds.size} selected item${selectedIds.size > 1 ? "s" : ""}` })} className="rounded-lg h-9 px-4 text-sm font-medium">
               <Archive className="h-4 w-4 mr-1.5" /> Archive {selectedIds.size}
             </Button>
@@ -1422,8 +1444,10 @@ export default function InventoryPage() {
                     }
                     case "warehouse_quantity":
                       return <TableCell key="c-wh" className="text-right text-sm tabular-nums">{(item as any).warehouse_quantity ?? 0}</TableCell>;
-                    case "store_quantity":
-                      return <TableCell key="c-st" className="text-right text-sm tabular-nums">{(item as any).store_quantity ?? 0}</TableCell>;
+                    case "store_quantity": {
+                      const sq = Number((item as any).store_quantity ?? 0);
+                      return <TableCell key="c-st" className={`text-right text-sm tabular-nums ${sq < 0 ? "font-semibold text-destructive" : ""}`}>{sq}</TableCell>;
+                    }
                     case "cost_price":
                       return (
                         <TableCell
@@ -1570,6 +1594,13 @@ export default function InventoryPage() {
       <AdjustStockDialog item={adjustItem} open={!!adjustItem} onOpenChange={(o) => { if (!o) setAdjustItem(null); }} />
       <ItemHistoryDialog item={historyItem} open={!!historyItem} onOpenChange={(o) => { if (!o) setHistoryItem(null); }} />
       {isAdmin && <CostHistoryDialog item={costHistoryItem} open={!!costHistoryItem} onOpenChange={(o) => { if (!o) setCostHistoryItem(null); }} />}
+      <BatchTransferDialog
+        open={!!batchTransfer}
+        onOpenChange={(o) => { if (!o) setBatchTransfer(null); }}
+        items={items}
+        initialIds={batchTransfer?.ids ?? []}
+        onDone={() => setSelectedIds(new Set())}
+      />
       <ItemSuppliersDialog item={suppliersItem} open={!!suppliersItem} onOpenChange={(o) => { if (!o) setSuppliersItem(null); }} />
     </div>
   );

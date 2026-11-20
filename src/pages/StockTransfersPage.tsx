@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { StoreShortagesCard } from "@/components/StoreShortagesCard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -185,6 +186,9 @@ export default function StockTransfersPage() {
           <Plus className="h-4 w-4 mr-1" /> New Transfer
         </Button>
       </div>
+
+      {/* Warehouse → store within a branch: every product the store is short of. */}
+      <StoreShortagesCard />
 
       <Card>
         <CardContent className="p-3 flex flex-wrap items-center gap-2">

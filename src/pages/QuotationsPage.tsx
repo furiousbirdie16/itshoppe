@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock, BookOpen } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock, BookOpen, AlertTriangle } from "lucide-react";
 import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
@@ -32,7 +32,8 @@ import type { DocumentData } from "@/lib/pdf";
 import { format, addDays, parseISO } from "date-fns";
 
 const todayISO = () => format(new Date(), "yyyy-MM-dd");
-import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
+import { checkStoreStock } from "@/lib/stockCheck";
+import { StockShortageDialog, type ShortageNotice } from "@/components/StockShortageDialog";
 import { CustomerPriceHint } from "@/components/CustomerPriceHint";
 import { useRepriceLine, isAutoPriced } from "@/hooks/use-line-pricing";
 import type { ListPrices } from "@/lib/start-price";
@@ -368,6 +369,35 @@ export default function QuotationsPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["quotations"] }); toast.success("Deleted"); },
   });
 
+  const [shortageNotice, setShortageNotice] = useState<ShortageNotice | null>(null);
+
+  /**
+   * A quotation may promise what is not in stock; an invoice may not. So
+   * converting checks the branch's store and warehouse, and stops if any
+   * product is lacking.
+   */
+  const convertIfStocked = async (q: any) => {
+    try {
+      const qi = await getQuotationItems(q.id);
+      const shortages = await checkStoreStock(
+        qi.map((l: any) => ({ item_id: l.item_id || null, variation_id: l.variation_id || null, quantity: Number(l.quantity || 0) })),
+        q.branch_id ?? activeBranchId ?? null,
+        { includeWarehouse: true },
+      );
+      if (shortages.length > 0) {
+        setShortageNotice({
+          title: "Not enough stock to invoice",
+          description: `${docNo(q.quotation_number) || "This quotation"} can't be turned into an invoice: ${shortages.length === 1 ? "1 product is" : `${shortages.length} products are`} lacking. Restock first, or edit the quotation to the quantity available.`,
+          shortages,
+        });
+        return;
+      }
+      convertMut.mutate(q.id);
+    } catch (e: any) {
+      toast.error(`Could not check stock: ${e?.message || "try again"}`);
+    }
+  };
+
   const convertMut = useMutation({
     mutationFn: convertQuotationToInvoice,
     onSuccess: () => {
@@ -428,6 +458,7 @@ export default function QuotationsPage() {
 
   return (
     <div className="space-y-6">
+      <StockShortageDialog notice={shortageNotice} onClose={() => setShortageNotice(null)} />
       <div className="page-toolbar">
         <div className="page-header mb-0">
           <h1 className="page-title">Quotations</h1>
@@ -701,6 +732,21 @@ export default function QuotationsPage() {
                         </p>
                       )}
                       {selectedItem && <p className="text-[11px] text-muted-foreground mt-0.5 ml-1">In stock: {selectedItem.quantity}{(selectedItem.units_per_stock ?? 1) > 1 && (selectedItem.open_roll_remaining ?? 0) > 0 ? ` + ${selectedItem.open_roll_remaining}${selectedItem.base_unit || 'm'} open` : ''}</p>}
+                      {(() => {
+                        // Plain lines only: a variation counts in packs or metres, checked when it goes ahead.
+                        if (!selectedItem || line.variation_id) return null;
+                        const wanted = lines
+                          .filter((l) => l.item_id === line.item_id && !l.variation_id)
+                          .reduce((sum, l) => sum + (parseQty(l.quantity) || 0), 0);
+                        const have = Math.max(Number(selectedItem.quantity || 0), 0);
+                        if (wanted <= have) return null;
+                        return (
+                          <p className="mt-1 ml-1 flex items-center gap-1 text-[11px] font-medium text-destructive">
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            Lacking {Number((wanted - have).toFixed(3))}: only {have} in stock. The quotation can be saved, but not turned into an invoice until restocked.
+                          </p>
+                        );
+                      })()}
                       {(line.item_id || line.item_name) && parsePrice(line.unit_price) <= 0 && (
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 ml-1">⚠ No price set for this item</p>
                       )}
@@ -729,22 +775,29 @@ export default function QuotationsPage() {
             )}
             <Button
               onClick={async () => {
-                // Advisory store-stock warning — quotation always allowed to push through.
+                // A quotation may go ahead short of stock; it is the invoice
+                // that is blocked. Said now, so it is no surprise later.
+                const save = () => (editId ? editMut.mutate() : createMut.mutate());
                 const shortages = await checkStoreStock(
                   lines.map((l: any) => ({
                     item_id: l.item_id || null,
                     variation_id: l.variation_id || null,
-                    quantity: Number(l.quantity || 0),
+                    quantity: parseQty(l.quantity) || 0,
                   })),
-                  activeBranchId ?? null,
-                );
+                  quotationBranchId ?? activeBranchId ?? null,
+                  { includeWarehouse: true },
+                ).catch(() => []);
                 if (shortages.length > 0) {
-                  const ok = window.confirm(
-                    `Store inventory is not enough for one or more items in this quotation:\n\n${formatShortageMessage(shortages)}\n\nThis is just a warning — the quotation will still be created. Continue?`,
-                  );
-                  if (!ok) return;
+                  setShortageNotice({
+                    title: "Some products are lacking",
+                    description: "You can still save this quotation, but it can't be turned into an invoice until these are restocked.",
+                    shortages,
+                    proceedLabel: editId ? "Update anyway" : "Create anyway",
+                    onProceed: save,
+                  });
+                  return;
                 }
-                editId ? editMut.mutate() : createMut.mutate();
+                save();
               }}
               disabled={createMut.isPending || editMut.isPending}
               className="rounded-lg h-9"
@@ -838,7 +891,7 @@ export default function QuotationsPage() {
                     )}
                     <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                     {q.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => convertMut.mutate(q.id)} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => convertIfStocked(q)} disabled={convertMut.isPending} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
                     )}
                     {locked && (
                       <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
