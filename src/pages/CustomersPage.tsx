@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerSalesActivity, SOLD_INVOICE_STATUSES, getCustomerOrders, mergeCustomers } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
@@ -93,12 +93,74 @@ function csvCell(v: unknown): string {
   return s;
 }
 
+const addressOf = (c: Customer): AddressValue => ({
+  country: c.country || "Philippines",
+  province_state: c.province_state || "",
+  city_municipality: c.city_municipality || "",
+  district_area: c.district_area || "",
+  barangay_village: c.barangay_village || "",
+  full_address: c.full_address || c.address || "",
+  postal_code: c.postal_code || "",
+});
+
+/**
+ * The add / edit customer form, holding what is typed in its own state.
+ *
+ * It used to live in the page, so every key pressed redrew the whole customer
+ * table behind the dialog, and typing lagged. Now a key redraws the form only.
+ */
+const CustomerFormDialog = memo(function CustomerFormDialog({
+  open, onOpenChange, editing, customers, onSave, saving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editing: Customer | null;
+  customers: Customer[];
+  onSave: (payload: Partial<Customer>) => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<CustomerFormValue>(emptyCustomerForm());
+  const [address, setAddress] = useState<AddressValue>(emptyAddress());
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(editing ? customerToForm(editing) : emptyCustomerForm());
+    setAddress(editing ? addressOf(editing) : emptyAddress());
+  }, [open, editing]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-lg">{editing ? "Edit Customer" : "New Customer"}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 pt-2">
+          <CustomerFormFields
+            form={form}
+            setForm={setForm}
+            address={address}
+            setAddress={setAddress}
+            customers={customers}
+            editingId={editing?.id}
+          />
+
+          <Button
+            onClick={() => onSave(buildCustomerPayload(form, address, editing?.reseller_id))}
+            disabled={saving}
+            className="mt-2 rounded-lg h-9"
+          >
+            {editing ? "Update" : "Create Customer"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+});
+
 export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [form, setForm] = useState<CustomerFormValue>(emptyCustomerForm());
-  const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<"all" | ActivityBucket>("all");
@@ -417,27 +479,14 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyCustomerForm());
-    setAddress(emptyAddress());
     setOpen(true);
   };
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm(customerToForm(c));
-    setAddress({
-      country: c.country || "Philippines",
-      province_state: c.province_state || "",
-      city_municipality: c.city_municipality || "",
-      district_area: c.district_area || "",
-      barangay_village: c.barangay_village || "",
-      full_address: c.full_address || c.address || "",
-      postal_code: c.postal_code || "",
-    });
     setOpen(true);
   };
 
-  const handleSubmit = () => {
-    const payload = buildCustomerPayload(form, address, editing?.reseller_id);
+  const handleSave = (payload: Partial<Customer>) => {
     if (editing) updateMut.mutate({ id: editing.id, data: payload });
     else createMut.mutate(payload);
   };
@@ -724,27 +773,14 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-lg">{editing ? "Edit Customer" : "New Customer"}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 pt-2">
-            <CustomerFormFields
-              form={form}
-              setForm={setForm}
-              address={address}
-              setAddress={setAddress}
-              customers={customers as Customer[]}
-              editingId={editing?.id}
-            />
-
-            <Button onClick={handleSubmit} className="mt-2 rounded-lg h-9">
-              {editing ? "Update" : "Create Customer"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CustomerFormDialog
+        open={open}
+        onOpenChange={setOpen}
+        editing={editing}
+        customers={customers as Customer[]}
+        onSave={handleSave}
+        saving={createMut.isPending || updateMut.isPending}
+      />
 
       {/* Desktop / tablet table */}
       <div className="data-table-wrapper hidden md:block">

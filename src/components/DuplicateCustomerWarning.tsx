@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import { AlertTriangle } from "lucide-react";
 import { findDuplicateCustomers } from "@/lib/duplicate-customers";
 import type { Customer } from "@/types/database";
@@ -21,9 +21,11 @@ interface Props {
  * person typing decides. Saving is still allowed.
  */
 export function DuplicateCustomerWarning({ name, customers, excludeId, onUse }: Props) {
+  // Behind the typing, not in its way: the search runs once keys pause.
+  const deferredName = useDeferredValue(name);
   const matches = useMemo(
-    () => findDuplicateCustomers(name, customers, excludeId).slice(0, 4),
-    [name, customers, excludeId]
+    () => findDuplicateCustomers(deferredName, customers, excludeId).slice(0, 4),
+    [deferredName, customers, excludeId]
   );
 
   if (matches.length === 0) return null;

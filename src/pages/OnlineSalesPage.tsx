@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOnlineSales, createOnlineSale, updateOnlineSale, deleteOnlineSale, returnOnlineSale, generateShopeeOrderNumber, generateLazadaOrderNumber, getExistingOnlineSaleKeys, getItems, getItemsWithStock, getItemVariations, getOnlineSaleSerialCounts } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,8 @@ import { ItemSearch } from "@/components/ItemSearch";
 import * as XLSX from "xlsx";
 import { useAuth } from "@/contexts/AuthContext";
 import { BulkEditDialog, type BulkField } from "@/components/BulkEditDialog";
-import { checkStoreStock, formatShortageMessage } from "@/lib/stockCheck";
+import { checkStoreStock, formatShortageMessage, type Shortage } from "@/lib/stockCheck";
+import { TransferStockDialog } from "@/components/TransferStockDialog";
 import { DateField } from "@/components/DateField";
 import { useSort } from "@/hooks/use-sort";
 import { SortableHeader } from "@/components/SortableHeader";
@@ -840,10 +841,21 @@ export default function OnlineSalesPage() {
   };
 
   const handleBulkUpload = async () => {
-    const valid = bulkRows.filter(r => r.valid);
+    const valid = bulkRows.filter(rowOk);
     if (valid.length === 0) return;
     const uploadBranchId = bulkBranchId || activeBranchId;
     if (!uploadBranchId) { toast.error("Pick which branch these sales are for."); return; }
+    // Once more against the store as it is now: stock may have sold since the preview.
+    const fresh = await checkStoreStock(
+      valid.filter((r) => r.item_id).map((r) => ({ item_id: r.item_id, variation_id: r.variation_id || null, quantity: Number(r.quantity || 0) })),
+      uploadBranchId,
+    ).catch(() => null);
+    if (fresh === null) { toast.error("Could not check store stock. Try again."); return; }
+    if (fresh.length > 0) {
+      toast.error(`Not enough qty in store for ${fresh.map((x) => x.name).join(", ")}. Please transfer stock.`);
+      qc.invalidateQueries({ queryKey: ["item_branch_stock", "online-upload-check"] });
+      return;
+    }
     setBulkUploading(true);
     let success = 0;
     let failed = 0;
@@ -1216,8 +1228,51 @@ export default function OnlineSalesPage() {
     XLSX.writeFile(wb, "online_sales_template.xlsx");
   };
 
-  const bulkValidCount = bulkRows.filter(r => r.valid).length;
-  const bulkInvalidCount = bulkRows.filter(r => !r.valid).length;
+  /**
+   * The store must hold what the file sells: an online order is packed from
+   * the store, so a row the store cannot cover waits until stock is
+   * transferred from the warehouse. Checked against the branch the upload is
+   * for, all rows of an item together, and checked again as stock moves.
+   */
+  const uploadBranchForCheck = bulkBranchId || activeBranchId || "";
+  const stockLines = useMemo(
+    () => bulkRows
+      .filter((r) => r.valid && r.item_id)
+      .map((r) => ({ item_id: r.item_id, variation_id: r.variation_id || null, quantity: Number(r.quantity || 0) })),
+    [bulkRows],
+  );
+  const { data: storeShort = [], isFetching: checkingStore } = useQuery({
+    queryKey: ["item_branch_stock", "online-upload-check", uploadBranchForCheck, JSON.stringify(stockLines)],
+    enabled: bulkOpen && !!uploadBranchForCheck && stockLines.length > 0,
+    queryFn: () => checkStoreStock(stockLines, uploadBranchForCheck),
+  });
+  const shortByItem = useMemo(() => new Map<string, Shortage>(storeShort.map((x) => [x.itemId, x])), [storeShort]);
+  const stockErrorFor = (r: { valid: boolean; item_id: string | null }) => {
+    const sh = r.valid && r.item_id ? shortByItem.get(r.item_id) : undefined;
+    if (!sh) return null;
+    return `Not enough qty in store (has ${Math.max(Number(sh.available.toFixed(3)), 0)}, file needs ${Number(sh.needed.toFixed(3))} ${sh.unit}). Please transfer stock.`;
+  };
+  const rowOk = (r: { valid: boolean; item_id: string | null }) => r.valid && !stockErrorFor(r);
+  const [uploadTransfer, setUploadTransfer] = useState<{ itemId: string; need: number } | null>(null);
+
+  const bulkValidCount = bulkRows.filter(rowOk).length;
+  const isAlreadyIn = (r: { valid: boolean; error?: string }) => !r.valid && r.error === "Already in the ERP";
+  /** Rows that cannot be uploaded and need fixing; "already in the ERP" is not one. */
+  const bulkInvalidCount = bulkRows.filter(r => !rowOk(r) && !isAlreadyIn(r)).length;
+  const bulkDupeCount = bulkRows.filter(isAlreadyIn).length;
+  /**
+   * The preview in three groups: what needs fixing first, then what will be
+   * uploaded, then what is already in the ERP. Each row keeps its number in
+   * the file.
+   */
+  const bulkGroups = (() => {
+    const numbered = bulkRows.map((row, i) => ({ row, n: i + 1 }));
+    return [
+      { key: "error", label: "Errors · cannot be uploaded", tone: "error" as const, rows: numbered.filter(({ row }) => !rowOk(row) && !isAlreadyIn(row)) },
+      { key: "upload", label: "To upload", tone: "ok" as const, rows: numbered.filter(({ row }) => rowOk(row)) },
+      { key: "dupe", label: "Already in the ERP · skipped", tone: "muted" as const, rows: numbered.filter(({ row }) => isAlreadyIn(row)) },
+    ].filter((g) => g.rows.length > 0);
+  })();
 
   const channelLabel = (c: string) => c === "shopee" ? "Shopee" : c === "lazada" ? "Lazada" : "Others";
   const channelColor = (c: string) => c === "shopee" ? "bg-orange-100 text-orange-700" : c === "lazada" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-700";
@@ -2116,7 +2171,8 @@ export default function OnlineSalesPage() {
                 </span>
                 <div className="flex gap-3">
                   {bulkValidCount > 0 && <span className="flex items-center gap-1 text-green-600"><Check className="h-3 w-3" />{bulkValidCount} valid</span>}
-                  {bulkInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkInvalidCount} invalid</span>}
+                  {bulkInvalidCount > 0 && <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" />{bulkInvalidCount} error{bulkInvalidCount === 1 ? "" : "s"}</span>}
+                  {bulkDupeCount > 0 && <span className="text-muted-foreground">{bulkDupeCount} already in the ERP</span>}
                 </div>
               </div>
               <div className="overflow-auto max-h-[40vh] border rounded-lg">
@@ -2134,9 +2190,23 @@ export default function OnlineSalesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {bulkRows.map((row, i) => (
-                      <TableRow key={i} className={row.valid ? "" : "bg-destructive/5"}>
-                        <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
+                    {bulkGroups.map((g) => (
+                      <Fragment key={g.key}>
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell
+                          colSpan={8}
+                          className={`py-1.5 text-[11px] font-semibold uppercase tracking-wide ${
+                            g.tone === "error" ? "bg-destructive/10 text-destructive"
+                            : g.tone === "ok" ? "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                            : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {g.label} ({g.rows.length})
+                        </TableCell>
+                      </TableRow>
+                      {g.rows.map(({ row, n }) => (
+                      <TableRow key={n} className={rowOk(row) ? "" : isAlreadyIn(row) ? "bg-muted/40 text-muted-foreground" : "bg-destructive/5"}>
+                        <TableCell className="text-xs text-muted-foreground">{n}</TableCell>
                         <TableCell className="tabular-nums text-xs">{row.order_id || "—"}</TableCell>
                         <TableCell className="text-xs">{row.order_date}</TableCell>
                         <TableCell className="text-sm">
@@ -2147,7 +2217,23 @@ export default function OnlineSalesPage() {
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${channelColor(row.sales_channel)}`}>{channelLabel(row.sales_channel)}</span></TableCell>
                         <TableCell className="text-sm text-right">{peso(row.posted_price)}</TableCell>
                         <TableCell className="text-xs">
-                          {row.valid ? <span className="text-green-600">✓</span> : <span className={row.error === "Already in the ERP" ? "text-muted-foreground" : "text-destructive"}>{row.error}</span>}
+                          {stockErrorFor(row) ? (
+                            <>
+                              <span className="text-destructive">{stockErrorFor(row)}</span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-1 block h-6 px-2 text-[11px]"
+                                onClick={() => {
+                                  const sh = shortByItem.get(row.item_id!);
+                                  setUploadTransfer({ itemId: row.item_id!, need: sh ? Math.ceil(sh.shortBy) : 1 });
+                                }}
+                              >
+                                Transfer from warehouse
+                              </Button>
+                            </>
+                          ) : row.valid ? <span className="text-green-600">✓</span> : <span className={row.error === "Already in the ERP" ? "text-muted-foreground" : "text-destructive"}>{row.error}</span>}
                           {row.note && row.valid && <span className="block text-[11px] text-amber-700 dark:text-amber-400">{row.note}</span>}
                           {row.unmatched_sku && (
                             <Button type="button" variant="outline" size="sm" className="mt-1 h-6 px-2 text-[11px]" onClick={() => setSetupSku(row.unmatched_sku!)}>
@@ -2156,19 +2242,28 @@ export default function OnlineSalesPage() {
                           )}
                         </TableCell>
                       </TableRow>
+                      ))}
+                      </Fragment>
                     ))}
                   </TableBody>
                 </Table>
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => { setBulkRows([]); setBulkFileName(""); setBulkNote(""); }}>Clear</Button>
-                <Button onClick={handleBulkUpload} disabled={bulkUploading || bulkValidCount === 0}>{bulkUploading ? "Uploading..." : `Upload ${bulkValidCount} Records`}</Button>
+                <Button onClick={handleBulkUpload} disabled={bulkUploading || checkingStore || bulkValidCount === 0}>{bulkUploading ? "Uploading..." : checkingStore ? "Checking store stock…" : `Upload ${bulkValidCount} Records`}</Button>
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
+      <TransferStockDialog
+        item={uploadTransfer ? ((items as any[]).find((i) => i.id === uploadTransfer.itemId) ?? null) : null}
+        open={!!uploadTransfer}
+        onOpenChange={(o) => { if (!o) setUploadTransfer(null); }}
+        branchId={uploadBranchForCheck || undefined}
+        initialQty={uploadTransfer?.need}
+      />
       <SkuBundleDialog
         open={!!setupSku}
         onOpenChange={(o) => { if (!o) setSetupSku(null); }}
