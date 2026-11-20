@@ -299,6 +299,7 @@ export default function OnlineSalesPage() {
   /** What a Shopee export import left out, for the summary above the preview. */
   const [bulkNote, setBulkNote] = useState("");
   const [bulkUploading, setBulkUploading] = useState(false);
+  const bulkUploadLock = useRef(false);
   const [bulkFileName, setBulkFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -329,6 +330,7 @@ export default function OnlineSalesPage() {
   /** What a Shopee balance report import is doing, shown above the preview. */
   const [bulkPayNote, setBulkPayNote] = useState("");
   const [bulkPayUploading, setBulkPayUploading] = useState(false);
+  const bulkPayUploadLock = useRef(false);
   const [bulkPayFileName, setBulkPayFileName] = useState("");
   // Asked for inside the bulk dialog, so a parsed file is not thrown away for
   // want of a branch.
@@ -841,10 +843,37 @@ export default function OnlineSalesPage() {
   };
 
   const handleBulkUpload = async () => {
-    const valid = bulkRows.filter(rowOk);
+    // Locked on the first click, before anything is awaited. The button's
+    // disabled state only takes effect after a re-render, and a burst of
+    // clicks before then once uploaded the same file ten times.
+    if (bulkUploadLock.current) return;
+    bulkUploadLock.current = true;
+    setBulkUploading(true);
+    try {
+      await runBulkUpload();
+    } finally {
+      bulkUploadLock.current = false;
+      setBulkUploading(false);
+    }
+  };
+
+  const runBulkUpload = async () => {
+    let valid = bulkRows.filter(rowOk);
     if (valid.length === 0) return;
     const uploadBranchId = bulkBranchId || activeBranchId;
     if (!uploadBranchId) { toast.error("Pick which branch these sales are for."); return; }
+    // Lines already recorded since the preview (another tab, another person)
+    // are skipped rather than taking stock a second time.
+    const existing = await getExistingOnlineSaleKeys(valid.map((r) => r.order_id).filter(Boolean)).catch(() => null);
+    if (existing === null) { toast.error("Could not check which orders are already in the ERP. Try again."); return; }
+    const before = valid.length;
+    valid = valid.filter((r) => !r.order_id || !existing.has(`${r.order_id}|${r.item_id ?? ""}|${r.variation_id ?? ""}`));
+    const alreadyIn = before - valid.length;
+    if (valid.length === 0) {
+      toast.info("These orders are already in the ERP. Nothing was uploaded.");
+      qc.invalidateQueries({ queryKey: ["online_sales"] });
+      return;
+    }
     // Once more against the store as it is now: stock may have sold since the preview.
     const fresh = await checkStoreStock(
       valid.filter((r) => r.item_id).map((r) => ({ item_id: r.item_id, variation_id: r.variation_id || null, quantity: Number(r.quantity || 0) })),
@@ -856,7 +885,6 @@ export default function OnlineSalesPage() {
       qc.invalidateQueries({ queryKey: ["item_branch_stock", "online-upload-check"] });
       return;
     }
-    setBulkUploading(true);
     let success = 0;
     let failed = 0;
     let lastError = "";
@@ -871,8 +899,7 @@ export default function OnlineSalesPage() {
         console.error("Bulk row failed:", row, e);
       }
     }
-    setBulkUploading(false);
-    if (success > 0) toast.success(`Uploaded ${success} sales records${failed ? ` (${failed} failed)` : ""}`);
+    if (success > 0) toast.success(`Uploaded ${success} sales records${failed ? ` (${failed} failed)` : ""}${alreadyIn ? `, ${alreadyIn} skipped (already in the ERP)` : ""}`);
     if (success === 0 && failed > 0) toast.error(`All ${failed} rows failed: ${lastError}`);
     if (success > 0) {
       setBulkRows([]);
@@ -1144,8 +1171,10 @@ export default function OnlineSalesPage() {
   };
 
   const handleBulkPayUpload = async () => {
+    if (bulkPayUploadLock.current) return;
     const valid = bulkPayRows.filter(r => r.valid);
     if (valid.length === 0) return;
+    bulkPayUploadLock.current = true;
     setBulkPayUploading(true);
     let success = 0; let failed = 0;
     for (const row of valid) {
@@ -1173,6 +1202,7 @@ export default function OnlineSalesPage() {
       } catch (e) { failed++; console.error(e); }
     }
     setBulkPayUploading(false);
+    bulkPayUploadLock.current = false;
     const skipped = bulkPayRows.filter(r => r.duplicate).length;
     const skippedSuffix = skipped > 0 ? `, ${skipped} skipped (already paid)` : "";
     if (success > 0) toast.success(`Marked ${success} orders as paid${failed ? ` (${failed} failed)` : ""}${skippedSuffix}`);
