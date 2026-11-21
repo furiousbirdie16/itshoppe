@@ -41,7 +41,7 @@ import { createPurchaseOrder, createPOItems, generatePONumber, createOverseasPur
 import { listItemSuppliersForItems, upsertItemSupplier, type ItemSupplierRow } from "@/lib/itemSuppliers";
 import type { Supplier, OverseasSupplier } from "@/types/database";
 import { toast } from "sonner";
-import { ShoppingCart, Search, ChevronRight, ChevronDown, History, DollarSign, BarChart3, CheckCircle2 } from "lucide-react";
+import { ShoppingCart, Search, ChevronRight, ChevronDown, History, DollarSign, BarChart3, CheckCircle2, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/types/database";
 import { docNo } from "@/lib/doc-number";
@@ -306,7 +306,7 @@ export default function LowStockAlertsPage() {
     qty: (r) => r.plan.suggested,
   }, { key: "when", dir: "asc" });
 
-  const colCount = group === "ordered" ? 7 : 8;
+  const colCount = 7;
   const groupCost = inGroup.reduce((s, r) => s + r.reorderCost, 0);
   const leadSources = useMemo(() => {
     const c = { set: 0, history: 0, default: 0 };
@@ -438,6 +438,7 @@ export default function LowStockAlertsPage() {
                     {r.supplier?.name || <span className="text-amber-600">no supplier</span>}
                     <span className={cn((r.lead.source === "default" || r.lead.mismatch) && "text-amber-600")}> · {leadLabel(r.lead)}</span>
                   </div>
+                  {group !== "ordered" && <IncomingTag row={r} today={today} />}
                 </button>
               </div>
               <div className="grid grid-cols-3 gap-2 border-t px-3 py-2.5 text-sm">
@@ -499,7 +500,7 @@ export default function LowStockAlertsPage() {
                 <SortableHeader sortKey="product" label="Item" sort={sort} onToggle={toggleSort} />
                 <SortableHeader sortKey="stock" label="Stock / Min" sort={sort} onToggle={toggleSort} align="right" />
                 <SortableHeader sortKey="daysLeft" label="Days left" sort={sort} onToggle={toggleSort} align="right" />
-                <SortableHeader sortKey="onOrder" label="On order" sort={sort} onToggle={toggleSort} align="right" />
+                {group === "ordered" && <SortableHeader sortKey="onOrder" label="On order" sort={sort} onToggle={toggleSort} align="right" />}
                 <SortableHeader sortKey="when" label={group === "ordered" ? "Arrives" : "Order by"} sort={sort} onToggle={toggleSort} />
                 {group !== "ordered" && <SortableHeader sortKey="qty" label="Order qty" sort={sort} onToggle={toggleSort} align="right" />}
                 <TableHead className="w-10" />
@@ -534,7 +535,8 @@ export default function LowStockAlertsPage() {
                               {r.item.sku || "—"} · {r.supplier?.name || <span className="text-amber-600">no supplier</span>}
                               <span className={cn(" ", (r.lead.source === "default" || r.lead.mismatch) && "text-amber-600")}> · {leadLabel(r.lead)}</span>
                             </div>
-                            {recentlyCreatedPoItems.has(r.item.id) && (
+                            {group !== "ordered" && <IncomingTag row={r} today={today} />}
+                            {recentlyCreatedPoItems.has(r.item.id) && r.onOrder <= 0 && (
                               <Badge variant="outline" className="mt-1 bg-primary/10 text-primary border-primary/30 text-[10px]">PO created</Badge>
                             )}
                           </div>
@@ -550,9 +552,11 @@ export default function LowStockAlertsPage() {
                       <TableCell className="text-right text-sm tabular-nums">
                         {r.item.quantity <= 0 ? <span className="text-destructive">Out</span> : Number.isFinite(daysLeft) ? `${Math.floor(daysLeft)}d` : <span className="text-muted-foreground">No sales</span>}
                       </TableCell>
+                      {group === "ordered" && (
                       <TableCell className="text-right text-sm tabular-nums">
-                        {r.onOrder > 0 ? fmtUnits(r.onOrder) : <span className="text-muted-foreground">—</span>}
+                        {fmtUnits(r.onOrder)}
                       </TableCell>
+                      )}
                       <TableCell className="text-sm whitespace-nowrap">
                         <WhenCell row={r} group={group} today={today} />
                       </TableCell>
@@ -705,6 +709,31 @@ function buildRow(
 }
 
 type Row = ReturnType<typeof buildRow>;
+
+/**
+ * A small "already ordered" line under the item name on the Order now / Watch
+ * tabs — shown only when something is coming, so rows without an order stay clean.
+ */
+function IncomingTag({ row: r, today }: { row: Row; today: Date }) {
+  if (r.onOrder <= 0) return null;
+  const next = r.openPos[0];
+  const late = !!next?.expected && parseISO(next.expected) < today;
+  const when = next?.expected ? fmtDate(next.expected) : "no date";
+  const title = r.openPos.map((po) => `${po.number} · ${fmtUnits(po.remaining)} · ${po.expected ? fmtDate(po.expected) : "no date"}`).join("\n");
+  return (
+    <div
+      title={title}
+      className={cn(
+        "mt-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-medium leading-4 tabular-nums",
+        late ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-primary/30 bg-primary/10 text-primary",
+      )}
+    >
+      <Truck className="h-3 w-3 shrink-0" />
+      {fmtUnits(r.onOrder)} incoming · {late ? `late (${when})` : when}
+      {r.openPos.length > 1 && <span className="opacity-70">· {r.openPos.length} POs</span>}
+    </div>
+  );
+}
 
 /** "Order by" for the Order now / Watch groups, "Arrives" for On order. */
 function WhenCell({ row: r, group, today }: { row: Row; group: Group; today: Date }) {

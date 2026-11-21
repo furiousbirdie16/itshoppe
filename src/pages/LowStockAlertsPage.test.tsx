@@ -25,7 +25,11 @@ const balunSales = Array.from({ length: 90 }, (_, i) => ({
 const tables: Record<string, any[]> = {
   online_sales: [...online, ...balunSales].map((r, i) => ({ id: `o${i}`, order_number: `ORD-${i}`, ...r })),
   overseas_purchase_orders: [{ id: "opo", po_number: "OPO-9", order_date: daysAgo(20), expected_delivery: daysAgo(-10), status: "shipped", supplier_id: null, total_amount: 0, exchange_rate: 1 }],
-  overseas_purchase_order_items: [{ id: "l", po_id: "opo", item_id: "balun", item_name: "Video Balun", quantity: 300, received_quantity: 0, unit_cost: 0.4, received_date: null }],
+  overseas_purchase_order_items: [
+    { id: "l", po_id: "opo", item_id: "balun", item_name: "Video Balun", quantity: 300, received_quantity: 0, unit_cost: 0.4, received_date: null },
+    // Too few to stop Patch Cord running short: it stays under Order now, tagged as incoming.
+    { id: "l2", po_id: "opo", item_id: "fast", item_name: "Patch Cord", quantity: 5, received_quantity: 0, unit_cost: 20, received_date: null },
+  ],
 };
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -104,6 +108,17 @@ describe("Reorder List", () => {
     expect(within(onOrder).getByText("Video Balun")).toBeInTheDocument();
     // 500 minimum − 3 in stock − 300 coming.
     expect(within(onOrder).getByText(/order 197 more by/)).toBeInTheDocument();
+  });
+
+  it("tags an Order now item that already has an order coming, and leaves the others untagged", async () => {
+    renderPage();
+    const table = await screen.findByRole("table");
+    await within(table).findByText("Patch Cord");
+    expect(within(table).getByText(/5 incoming/)).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /On order/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Watch/ }));
+    expect(within(screen.getByRole("table")).queryByText(/incoming/)).toBeNull();
   });
 
   it("flags the 30-day default lead time when no supplier lead time is known", async () => {
