@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer, freshDocumentRow, getItemVariations } from "@/lib/api";
 import { parseQty, parsePrice, needsWholeQty, wholeQtyError } from "@/lib/line-quantity";
 import { peso } from "@/lib/currency";
+import { getQuotationLineCosts, summariseQuotationCost, type CostLine } from "@/lib/quotation-cost";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -118,6 +119,16 @@ export default function QuotationsPage() {
     setLines, customerId: form.customer_id, customers, items, variations: allVariations, toField: priceAsString,
   });
   const { data: qItems = [] } = useQuery({ queryKey: ["quotation_items", viewQ], queryFn: () => getQuotationItems(viewQ!), enabled: !!viewQ });
+  // Admins see each line's cost at the quotation's branch, to judge profit and
+  // how much discount there is room for. Never fetched for staff.
+  const viewBranchId = (quotations.find((x: any) => x.id === viewQ) as any)?.branch_id ?? activeBranchId ?? null;
+  const costLines: CostLine[] = qItems.map((qi: any) => ({ id: qi.id, item_id: qi.item_id ?? null, variation_id: qi.variation_id ?? null, quantity: Number(qi.quantity) || 0, unit_price: Number(qi.unit_price) || 0 }));
+  const { data: lineCosts } = useQuery({
+    queryKey: ["quotation_items", viewQ, "costs", viewBranchId, costLines.map((l) => `${l.id}:${l.item_id}:${l.variation_id}`).join(",")],
+    queryFn: () => getQuotationLineCosts(costLines, viewBranchId),
+    enabled: isAdmin && !!viewQ && costLines.length > 0,
+  });
+  const costSummary = isAdmin && lineCosts ? summariseQuotationCost(costLines, lineCosts) : null;
   const { data: salesAgents = [] } = useQuery({ queryKey: ["sales_agents"], queryFn: getSalesAgents });
   const [newAgentName, setNewAgentName] = useState("");
   const [addingAgent, setAddingAgent] = useState(false);
@@ -810,7 +821,7 @@ export default function QuotationsPage() {
 
       {/* View Details Dialog */}
       <Dialog open={!!viewQ} onOpenChange={() => setViewQ(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={isAdmin ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-lg max-h-[90vh] overflow-y-auto"}>
           <DialogHeader><DialogTitle className="text-lg">Quotation Details</DialogTitle></DialogHeader>
           {(() => {
             const q: any = quotations.find((x: any) => x.id === viewQ);
@@ -830,20 +841,60 @@ export default function QuotationsPage() {
           })()}
           <div className="data-table-wrapper mt-2">
             <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="text-xs">SKU</TableHead><TableHead className="text-xs">Item</TableHead><TableHead className="text-xs">Qty</TableHead><TableHead className="text-xs text-right">Price</TableHead>{isAdmin && <TableHead className="text-xs text-right">Cost</TableHead>}<TableHead className="text-xs text-right">Total</TableHead>{isAdmin && <TableHead className="text-xs text-right">Profit</TableHead>}</TableRow></TableHeader>
               <TableBody>
-                {qItems.map(qi => (
+                {qItems.map(qi => {
+                  const unitCost = lineCosts?.[qi.id];
+                  const lineProfit = unitCost == null ? null : qi.quantity * (Number(qi.unit_price) - unitCost);
+                  return (
                   <TableRow key={qi.id}>
                      <TableCell className="tabular-nums text-xs text-primary font-medium">{(qi as any).item_variations?.sku || qi.items?.sku || "—"}</TableCell>
                      <TableCell className="text-sm font-medium">{(qi as any).item_variations?.name || (qi as any).item_name || qi.items?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{qi.quantity}</TableCell>
                     <TableCell className="text-sm text-right">{peso(Number(qi.unit_price))}</TableCell>
+                    {isAdmin && (
+                      <TableCell className="text-sm text-right tabular-nums text-muted-foreground">
+                        {lineCosts === undefined ? "…" : unitCost == null ? "—" : peso(unitCost)}
+                      </TableCell>
+                    )}
                     <TableCell className="text-sm text-right font-medium">{peso(qi.quantity * Number(qi.unit_price))}</TableCell>
+                    {isAdmin && (
+                      <TableCell className={`text-sm text-right tabular-nums font-medium ${lineProfit != null && lineProfit < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
+                        {lineProfit == null ? <span className="text-muted-foreground">—</span> : peso(lineProfit)}
+                      </TableCell>
+                    )}
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
+          {costSummary && (
+            <div className="mt-3 rounded-md border bg-muted/30 p-3">
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Admin only · not on the PDF</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-4">
+                <div><div className="text-[11px] text-muted-foreground">{costSummary.uncosted > 0 ? "Total (with cost)" : "Total"}</div><div className="font-semibold tabular-nums">{peso(costSummary.costedTotal)}</div></div>
+                <div><div className="text-[11px] text-muted-foreground">Cost</div><div className="font-semibold tabular-nums">{peso(costSummary.cost)}</div></div>
+                <div><div className="text-[11px] text-muted-foreground">Profit</div><div className={`font-semibold tabular-nums ${costSummary.profit < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>{peso(costSummary.profit)}</div></div>
+                <div><div className="text-[11px] text-muted-foreground">Margin</div><div className="font-semibold tabular-nums">{costSummary.margin == null ? "—" : `${costSummary.margin.toFixed(1)}%`}</div></div>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {costSummary.costedTotal === 0
+                  ? "No line has a cost, so profit can't be worked out."
+                  : costSummary.profit > 0
+                    ? <>Room to discount: up to <span className="font-medium text-foreground">{peso(costSummary.profit)}</span> before selling at cost{costSummary.uncosted > 0 ? " on these lines" : ""}.</>
+                    : "No room to discount: this quotation is at or below cost."}
+              </p>
+              {costSummary.uncosted > 0 && (
+                <p className="mt-1.5 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span>
+                    {costSummary.uncosted} line{costSummary.uncosted === 1 ? " has" : "s have"} no cost (typed in, or no cost on file) and {costSummary.uncosted === 1 ? "is" : "are"} left out of profit. Whole quotation: {peso(costSummary.total)}.
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
