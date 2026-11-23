@@ -403,7 +403,7 @@ export default function InvoicesPage() {
             const short = await checkStoreStock(
               lineItems.map((li: any) => ({ item_id: li.item_id, variation_id: li.variation_id || null, quantity: li.quantity })),
               inv.branch_id ?? activeBranchId ?? null,
-              { includeWarehouse: true },
+              { includeWarehouse: false },
             );
             if (short.length > 0) {
               fail++;
@@ -880,8 +880,8 @@ export default function InvoicesPage() {
   const [shortageNotice, setShortageNotice] = useState<ShortageNotice | null>(null);
   /**
    * Stop an invoice going ahead (reserve, ship, pay) when the branch does not
-   * have enough of something. Store and warehouse count together: the sale
-   * takes from the store, and the warehouse covers the rest by a transfer.
+   * have enough of something. Only the store counts: the sale takes from the
+   * store, so warehouse stock has to be transferred in first.
    */
   const confirmStockOrAsk = async (invoiceId: string, action: "ship" | "pay" | "reserve", branchId?: string | null): Promise<boolean> => {
     try {
@@ -893,13 +893,13 @@ export default function InvoicesPage() {
           quantity: li.quantity,
         })),
         branchId ?? activeBranchId ?? null,
-        { includeWarehouse: true },
+        { includeWarehouse: false },
       );
       if (shortages.length === 0) return true;
       const verb = action === "ship" ? "shipped" : action === "reserve" ? "reserved" : "marked as paid";
       setShortageNotice({
         title: "Not enough stock",
-        description: `This invoice can't be ${verb}: ${shortages.length === 1 ? "1 product is" : `${shortages.length} products are`} lacking. Restock, or edit the invoice to the quantity available.`,
+        description: `This invoice can't be ${verb}: ${shortages.length === 1 ? "1 product is" : `${shortages.length} products are`} lacking in the store. Transfer from the warehouse, restock, or edit the invoice to the quantity available.`,
         shortages,
       });
       return false;
