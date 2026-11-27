@@ -1,4 +1,5 @@
 import { Lock } from "lucide-react";
+import { CardDetailsToggle, useCardDetails } from "@/components/CardDetails";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { peso } from "@/lib/currency";
@@ -12,6 +13,8 @@ interface Props {
   onToggleSelect: () => void;
   /** The same actions the desktop table renders, passed in so they cannot drift. */
   actions: React.ReactNode;
+  /** What "Show items" opens; built only once opened. */
+  renderDetails?: () => React.ReactNode;
 }
 
 /**
@@ -19,7 +22,8 @@ interface Props {
  * invoice card: number and total on the first line, customer under it, then
  * status, date and agent, with the actions on a row of their own.
  */
-export function QuotationMobileCard({ quotation: q, locked, selected, onToggleSelect, actions }: Props) {
+export function QuotationMobileCard({ quotation: q, locked, selected, onToggleSelect, actions, renderDetails }: Props) {
+  const details = useCardDetails();
   return (
     <div className={cn("rounded-lg border bg-card p-3", selected && "bg-muted/40 ring-1 ring-primary/30")}>
       <div className="flex items-start gap-2.5">
@@ -45,8 +49,10 @@ export function QuotationMobileCard({ quotation: q, locked, selected, onToggleSe
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-end gap-1 border-t pt-2">
+        {renderDetails && <CardDetailsToggle open={details.open} onToggle={details.toggle} />}
         {actions}
       </div>
+      {renderDetails && details.open && <div className="mt-2 border-t pt-1">{renderDetails()}</div>}
     </div>
   );
 }

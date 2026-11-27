@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { Fragment, useState, useMemo, useEffect } from "react";
+import { ExpandToggle, toggleInSet } from "@/components/ExpandToggle";
+import { QuotationLinesExpanded } from "@/components/DocumentLinesExpanded";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer, freshDocumentRow, getItemVariations } from "@/lib/api";
 import { parseQty, parsePrice, needsWholeQty, wholeQtyError } from "@/lib/line-quantity";
@@ -94,6 +96,8 @@ export default function QuotationsPage() {
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const dragLines = useDragReorder((from, to) => setLines((l) => moveItem(l, from, to)));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Rows opened to show their items. */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
@@ -995,6 +999,7 @@ export default function QuotationsPage() {
               selected={selectedIds.has(q.id)}
               onToggleSelect={() => toggleOne(q.id)}
               actions={renderQuotationActions(q)}
+              renderDetails={() => <QuotationLinesExpanded quotationId={q.id} branchId={q.branch_id ?? activeBranchId ?? null} isAdmin={isAdmin} />}
             />
           ))
         )}
@@ -1004,6 +1009,7 @@ export default function QuotationsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8 px-1" />
               <TableHead className="w-10"><Checkbox checked={quickFiltered.length > 0 && selectedIds.size === quickFiltered.length} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="quotation_number" label="Quotation #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
@@ -1016,11 +1022,14 @@ export default function QuotationsPage() {
           </TableHeader>
           <TableBody>
             {sortedQuotations.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={9}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
             ) : sortedQuotations.map((q: any) => {
               const locked = isQuotationLocked(q.status);
+              const open = expandedIds.has(q.id);
               return (
-              <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+              <Fragment key={q.id}>
+              <TableRow className={cn(selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30", open && "border-b-0")}>
+                <TableCell className="w-8 px-1"><ExpandToggle open={open} onToggle={() => setExpandedIds((s) => toggleInSet(s, q.id))} label="items" /></TableCell>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
                 <TableCell className="tabular-nums text-xs font-semibold whitespace-nowrap">
                   <span className="inline-flex items-center gap-1">
@@ -1039,6 +1048,14 @@ export default function QuotationsPage() {
                   </div>
                 </TableCell>
               </TableRow>
+              {open && (
+                <TableRow className="bg-muted/20 hover:bg-muted/20">
+                  <TableCell colSpan={9} className="pt-0 pl-12">
+                    <QuotationLinesExpanded quotationId={q.id} branchId={q.branch_id ?? activeBranchId ?? null} isAdmin={isAdmin} />
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
               );
             })}
           </TableBody>
