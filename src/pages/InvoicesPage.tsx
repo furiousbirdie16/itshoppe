@@ -1,4 +1,6 @@
-import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { Fragment, useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { ExpandToggle, toggleInSet } from "@/components/ExpandToggle";
+import { InvoiceLinesExpanded } from "@/components/DocumentLinesExpanded";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getInvoices, createInvoice, deleteInvoice, getCustomers, getItems, createInvoiceItems, getInvoiceItems, confirmInvoice, revertInvoice, updateInvoice, markInvoicePaid, generateInvoiceNumber, deleteInvoiceItems, getSalesAgents, createSalesAgent, getLastSalesAgentForCustomer, reserveInvoice, shipInvoice, cancelInvoice, convertReservedToSale, getInvoiceItemFinancials, getInvoiceFinancial, getCashAccountOptions, getItemsWithStock, getItemVariations, getSerialShortfall, getInvoicesMissingSerials, type SerialShortfall, freshDocumentRow } from "@/lib/api";
 import { parseQty, parsePrice, needsWholeQty, wholeQtyError } from "@/lib/line-quantity";
@@ -106,6 +108,8 @@ export default function InvoicesPage() {
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const dragLines = useDragReorder((from, to) => setLines((l) => moveItem(l, from, to)));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Rows opened to show their items. */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -1587,6 +1591,7 @@ export default function InvoicesPage() {
               actions={renderInvoiceActions(inv)}
               missingSerials={missingSerials[inv.id] || 0}
               resellerName={inv.reseller_id ? customerNameById.get(inv.reseller_id) ?? "reseller" : null}
+              renderDetails={() => <InvoiceLinesExpanded invoiceId={inv.id} branchId={inv.branch_id ?? activeBranchId ?? null} isAdmin={isAdmin} />}
             />
           ))
         )}
@@ -1668,6 +1673,7 @@ export default function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8 px-1" />
               <TableHead className="w-10"><Checkbox checked={quickFiltered.length > 0 && selectedIds.size === quickFiltered.length} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="invoice_number" label="Invoice #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
@@ -1680,11 +1686,14 @@ export default function InvoicesPage() {
           </TableHeader>
           <TableBody>
             {sortedInvoices.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={9}><div className="empty-state"><Receipt className="empty-state-icon" /><p className="text-sm">No invoices</p></div></TableCell></TableRow>
             ) : sortedInvoices.map((inv: any) => {
               const locked = isInvoiceLocked(inv.status);
+              const open = expandedIds.has(inv.id);
               return (
-              <TableRow key={inv.id} className={selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+              <Fragment key={inv.id}>
+              <TableRow className={cn(selectedIds.has(inv.id) ? "bg-muted/40" : "hover:bg-muted/30", open && "border-b-0")}>
+                <TableCell className="w-8 px-1"><ExpandToggle open={open} onToggle={() => setExpandedIds((s) => toggleInSet(s, inv.id))} label="items" /></TableCell>
                 <TableCell><Checkbox checked={selectedIds.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} /></TableCell>
                 <TableCell className="tabular-nums text-xs font-semibold whitespace-nowrap">
                   <span className="inline-flex items-center gap-1">
@@ -1731,6 +1740,14 @@ export default function InvoicesPage() {
                   </div>
                 </TableCell>
               </TableRow>
+              {open && (
+                <TableRow className="bg-muted/20 hover:bg-muted/20">
+                  <TableCell colSpan={9} className="pt-0 pl-12">
+                    <InvoiceLinesExpanded invoiceId={inv.id} branchId={inv.branch_id ?? activeBranchId ?? null} isAdmin={isAdmin} />
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
               );
             })}
           </TableBody>

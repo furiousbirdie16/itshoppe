@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { Fragment, useState, useMemo, useEffect } from "react";
+import { ExpandToggle, toggleInSet } from "@/components/ExpandToggle";
+import { QuotationLinesExpanded } from "@/components/DocumentLinesExpanded";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getCustomers, getItems, getItemsWithStock, createQuotationItems, deleteQuotationItems, getQuotationItems, convertQuotationToInvoice, generateQuotationNumber, getSalesAgents, createSalesAgent, revertQuotation, getLastSalesAgentForCustomer, freshDocumentRow, getItemVariations } from "@/lib/api";
 import { parseQty, parsePrice, needsWholeQty, wholeQtyError } from "@/lib/line-quantity";
@@ -15,7 +17,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock, BookOpen, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Eye, ArrowRight, FileText, FileDown, Pencil, Filter, Undo2, Lock, BookOpen, AlertTriangle, Search } from "lucide-react";
+import { searchMatches } from "@/lib/search";
+import { QuotationMobileCard } from "@/components/QuotationMobileCard";
 import { isQuotationLocked, QUOTATION_LOCK_MESSAGE } from "@/lib/permissions";
 import ExportButton from "@/components/ExportButton";
 import { ItemSearch } from "@/components/ItemSearch";
@@ -92,6 +96,8 @@ export default function QuotationsPage() {
   const [lines, setLines] = useState<LineItem[]>([{ item_id: "", item_name: "", quantity: "", unit_price: "", variation_id: null }]);
   const dragLines = useDragReorder((from, to) => setLines((l) => moveItem(l, from, to)));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Rows opened to show their items. */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
@@ -100,6 +106,8 @@ export default function QuotationsPage() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("all");
   const [filterAgent, setFilterAgent] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [quickFilter, setQuickFilter] = useState<"all" | "draft" | "sent" | "accepted" | "rejected">("all");
   const [showFilters, setShowFilters] = useState(false);
 
   const { data: quotations = [] } = useQuery({ queryKey: ["quotations", activeBranchId], queryFn: () => getQuotations(activeBranchId) });
@@ -159,12 +167,17 @@ export default function QuotationsPage() {
     return null; // no terms = due immediately
   };
 
-  // Date-filter base, used to derive available customer/agent options
-  const dateFiltered = useMemo(() => quotations.filter((q: any) => {
-    if (filterDateFrom && q.quotation_date < filterDateFrom) return false;
-    if (filterDateTo && q.quotation_date > filterDateTo) return false;
-    return true;
-  }), [quotations, filterDateFrom, filterDateTo]);
+  // Date + search base, used to derive available customer/agent options.
+  // Searches the same fields the invoice list does.
+  const dateFiltered = useMemo(() => {
+    const q = searchQuery.trim();
+    return quotations.filter((row: any) => {
+      if (filterDateFrom && row.quotation_date < filterDateFrom) return false;
+      if (filterDateTo && row.quotation_date > filterDateTo) return false;
+      if (q && !searchMatches(q, row.quotation_number, docNo(row.quotation_number), row.customers?.name, row.sales_agent, row.notes)) return false;
+      return true;
+    });
+  }, [quotations, filterDateFrom, filterDateTo, searchQuery]);
 
   // Available customers: those that exist in records matching every other active filter
   const availableCustomers = useMemo(() => {
@@ -195,7 +208,18 @@ export default function QuotationsPage() {
     });
   }, [dateFiltered, filterCustomer, filterAgent]);
 
-  const { sort, toggle, sorted: sortedAll } = useSort<any>(filtered, {
+  // Status tabs, as on Invoices. Counts follow every other filter.
+  const quickFiltered = useMemo(
+    () => (quickFilter === "all" ? filtered : filtered.filter((q: any) => q.status === quickFilter)),
+    [filtered, quickFilter],
+  );
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = { draft: 0, sent: 0, accepted: 0, rejected: 0 };
+    for (const q of filtered as any[]) if (q.status in c) c[q.status]++;
+    return c;
+  }, [filtered]);
+
+  const { sort, toggle, sorted: sortedAll } = useSort<any>(quickFiltered, {
     quotation_number: (r) => r.quotation_number,
     customer: (r) => r.customers?.name || "",
     sales_agent: (r) => r.sales_agent || "",
@@ -210,14 +234,14 @@ export default function QuotationsPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [filterDateFrom, filterDateTo, filterCustomer, filterAgent, activeBranchId]);
+  }, [searchQuery, quickFilter, filterDateFrom, filterDateTo, filterCustomer, filterAgent, activeBranchId]);
   const sortedQuotations = useMemo(() => sortedAll.slice(0, visibleCount), [sortedAll, visibleCount]);
   const hiddenCount = sortedAll.length - sortedQuotations.length;
 
 
   const toggleAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((q: any) => q.id)));
+    if (selectedIds.size === quickFiltered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(quickFiltered.map((q: any) => q.id)));
   };
   const toggleOne = (id: string) => {
     const next = new Set(selectedIds);
@@ -467,6 +491,35 @@ export default function QuotationsPage() {
   const clearFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("all"); setFilterAgent("all"); };
 
 
+  /**
+   * Row actions for one quotation. Defined once so the desktop table and the
+   * mobile card cannot drift apart.
+   */
+  const renderQuotationActions = (q: any) => {
+    const locked = isQuotationLocked(q.status);
+    // The padlock still shows the true state; what an admin may do with it is
+    // a separate question.
+    const blocked = locked && !isAdmin;
+    return (
+      <>
+        <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><FileDown className="h-3.5 w-3.5" /></Button>
+        {!blocked && (
+          <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title={locked ? "Accepted — edit anyway" : "Edit"} className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Pencil className={`h-3.5 w-3.5 ${locked ? "text-amber-500" : ""}`} /></Button>
+        )}
+        <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} title="View" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Eye className="h-3.5 w-3.5" /></Button>
+        {q.status === "draft" && (
+          <Button variant="ghost" size="icon" onClick={() => convertIfStocked(q)} disabled={convertMut.isPending} title="Convert to Invoice" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
+        )}
+        {locked && (
+          <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
+        )}
+        {!blocked && (
+          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} title="Delete" className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></Button>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <StockShortageDialog notice={shortageNotice} onClose={() => setShortageNotice(null)} />
@@ -509,6 +562,15 @@ export default function QuotationsPage() {
               )}
             </>
           )}
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search quotation #, customer, agent..."
+              className="h-9 pl-8 text-sm w-[260px]"
+            />
+          </div>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-lg h-9 px-3 text-sm">
             <Filter className="h-4 w-4 mr-1.5" /> Filters
           </Button>
@@ -546,6 +608,30 @@ export default function QuotationsPage() {
             <Plus className="h-4 w-4 mr-1.5" /> New Quotation
           </Button>
         </div>
+      </div>
+
+      {/* One row that scrolls sideways on a phone, instead of wrapping. */}
+      <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-0.5 sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {([
+          { key: "all", label: `All (${filtered.length})` },
+          { key: "draft", label: `Draft (${statusCounts.draft})` },
+          { key: "sent", label: `Sent (${statusCounts.sent})` },
+          { key: "accepted", label: `Accepted (${statusCounts.accepted})` },
+          { key: "rejected", label: `Rejected (${statusCounts.rejected})` },
+        ] as const).map((b) => (
+          <button
+            key={b.key}
+            type="button"
+            onClick={() => setQuickFilter(b.key)}
+            className={`shrink-0 whitespace-nowrap px-3 h-8 text-xs font-medium rounded-md transition-colors ${
+              quickFilter === b.key
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {b.label}
+          </button>
+        ))}
       </div>
 
       {showFilters && (
@@ -898,11 +984,33 @@ export default function QuotationsPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="data-table-wrapper">
+      {/* Phones get stacked cards, as on Invoices. */}
+      <div className="md:hidden space-y-2">
+        {sortedQuotations.length === 0 ? (
+          <div className="rounded-lg border bg-card">
+            <div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div>
+          </div>
+        ) : (
+          sortedQuotations.map((q: any) => (
+            <QuotationMobileCard
+              key={q.id}
+              quotation={q}
+              locked={isQuotationLocked(q.status)}
+              selected={selectedIds.has(q.id)}
+              onToggleSelect={() => toggleOne(q.id)}
+              actions={renderQuotationActions(q)}
+              renderDetails={() => <QuotationLinesExpanded quotationId={q.id} branchId={q.branch_id ?? activeBranchId ?? null} isAdmin={isAdmin} />}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="data-table-wrapper hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleAll} /></TableHead>
+              <TableHead className="w-8 px-1" />
+              <TableHead className="w-10"><Checkbox checked={quickFiltered.length > 0 && selectedIds.size === quickFiltered.length} onCheckedChange={toggleAll} /></TableHead>
               <SortableHeader sortKey="quotation_number" label="Quotation #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="customer" label="Customer" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="sales_agent" label="Sales Agent" sort={sort} onToggle={toggle} />
@@ -914,16 +1022,16 @@ export default function QuotationsPage() {
           </TableHeader>
           <TableBody>
             {sortedQuotations.length === 0 ? (
-              <TableRow><TableCell colSpan={8}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={9}><div className="empty-state"><FileText className="empty-state-icon" /><p className="text-sm">No quotations</p></div></TableCell></TableRow>
             ) : sortedQuotations.map((q: any) => {
               const locked = isQuotationLocked(q.status);
-              // The padlock still shows the true state; what an admin may do
-              // with it is a separate question.
-              const blocked = locked && !isAdmin;
+              const open = expandedIds.has(q.id);
               return (
-              <TableRow key={q.id} className={selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+              <Fragment key={q.id}>
+              <TableRow className={cn(selectedIds.has(q.id) ? "bg-muted/40" : "hover:bg-muted/30", open && "border-b-0")}>
+                <TableCell className="w-8 px-1"><ExpandToggle open={open} onToggle={() => setExpandedIds((s) => toggleInSet(s, q.id))} label="items" /></TableCell>
                 <TableCell><Checkbox checked={selectedIds.has(q.id)} onCheckedChange={() => toggleOne(q.id)} /></TableCell>
-                <TableCell className="tabular-nums text-xs font-semibold">
+                <TableCell className="tabular-nums text-xs font-semibold whitespace-nowrap">
                   <span className="inline-flex items-center gap-1">
                     {docNo(q.quotation_number)}
                     {locked && <Lock className="h-3 w-3 text-amber-500" aria-label="Locked" />}
@@ -931,28 +1039,23 @@ export default function QuotationsPage() {
                 </TableCell>
                 <TableCell className="text-sm">{q.customers?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{q.sales_agent || "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{q.quotation_date}</TableCell>
+                <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">{q.quotation_date}</TableCell>
                 <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right text-sm font-medium">{peso(Number(q.total_amount))}</TableCell>
+                <TableCell className="text-right text-sm font-medium tabular-nums">{peso(Number(q.total_amount))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-0.5">
-                    <Button variant="ghost" size="icon" onClick={() => openPreview(q)} title="Preview & Download PDF" className="h-7 w-7 rounded-md"><FileDown className="h-3.5 w-3.5 text-primary" /></Button>
-                    {!blocked && (
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(q)} title={locked ? "Accepted — edit anyway" : "Edit"} className="h-7 w-7 rounded-md"><Pencil className={`h-3.5 w-3.5 ${locked ? "text-amber-500" : "text-muted-foreground"}`} /></Button>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={() => setViewQ(q.id)} className="h-7 w-7 rounded-md"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    {q.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => convertIfStocked(q)} disabled={convertMut.isPending} title="Convert to Invoice" className="h-7 w-7 rounded-md"><ArrowRight className="h-3.5 w-3.5 text-primary" /></Button>
-                    )}
-                    {locked && (
-                      <Button variant="ghost" size="icon" onClick={() => revertQuotationMut.mutate(q.id)} title="Revert Quotation (unlock)" className="h-7 w-7 rounded-md"><Undo2 className="h-3.5 w-3.5 text-amber-500" /></Button>
-                    )}
-                    {!blocked && (
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(q.id)} className="h-7 w-7 rounded-md"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                    )}
+                    {renderQuotationActions(q)}
                   </div>
                 </TableCell>
               </TableRow>
+              {open && (
+                <TableRow className="bg-muted/20 hover:bg-muted/20">
+                  <TableCell colSpan={9} className="pt-0 pl-12">
+                    <QuotationLinesExpanded quotationId={q.id} branchId={q.branch_id ?? activeBranchId ?? null} isAdmin={isAdmin} />
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
               );
             })}
           </TableBody>

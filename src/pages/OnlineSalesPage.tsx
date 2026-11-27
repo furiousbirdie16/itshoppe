@@ -20,6 +20,7 @@ import { DragHandle } from "@/components/DragHandle";
 import ExportButton from "@/components/ExportButton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { OnlineSaleDetails } from "@/components/OnlineSaleDetails";
 import { peso } from "@/lib/currency";
 import { isShopeeExport, matchShopeeSku, missingShopeeColumns, parseShopeeExport } from "@/lib/shopee-export";
 import { isShopeeBalanceReport, parseShopeeBalanceReport } from "@/lib/shopee-balance";
@@ -1654,13 +1655,19 @@ export default function OnlineSalesPage() {
                     const paid = Number(s.amount_paid || 0);
                     const isPaid = s.payment_status === 'paid';
                     const fees = isPaid ? expected - paid : 0;
+                    const isOpen = expandedOrders.has(groupKey);
                     return [(
-                      <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                      <TableRow key={s.id} className={cn(selected.has(s.id) ? "bg-muted/50" : "", isOpen && "border-b-0")}>
                         <TableCell>
                           <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
                         </TableCell>
                         <TableCell className="text-sm">{s.order_date}</TableCell>
-                        <TableCell className="tabular-nums text-xs">{s.order_number}</TableCell>
+                        <TableCell className="tabular-nums text-xs">
+                          <button type="button" className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleExpand(groupKey)} aria-expanded={isOpen} title={isOpen ? "Hide details" : "Show details"}>
+                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            {s.order_number}
+                          </button>
+                        </TableCell>
                         <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
@@ -1704,7 +1711,13 @@ export default function OnlineSalesPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    )];
+                    ), ...(isOpen ? [(
+                      <TableRow key={`d-${s.id}`} className="bg-muted/20 hover:bg-muted/20">
+                        <TableCell colSpan={isAdmin ? 13 : 11} className="pt-0 pl-12">
+                          <OnlineSaleDetails sale={s} expected={expected} />
+                        </TableCell>
+                      </TableRow>
+                    )] : [])];
                   }
                   // Multi-item group
                   const isOpen = expandedOrders.has(groupKey);
@@ -1900,13 +1913,19 @@ export default function OnlineSalesPage() {
                   const groupKey = group.orderNumber || `__no_id_${group.items[0].id}`;
                   if (group.items.length === 1) {
                     const s = group.items[0];
+                    const isOpen = expandedOrders.has(groupKey);
                     return [(
-                      <TableRow key={s.id} className={selected.has(s.id) ? "bg-muted/50" : ""}>
+                      <TableRow key={s.id} className={cn(selected.has(s.id) ? "bg-muted/50" : "", isOpen && "border-b-0")}>
                         <TableCell>
                           <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelect(s.id)} aria-label={`Select ${s.order_number}`} />
                         </TableCell>
                         <TableCell className="text-sm">{s.order_date}</TableCell>
-                        <TableCell className="tabular-nums text-xs">{s.order_number}</TableCell>
+                        <TableCell className="tabular-nums text-xs">
+                          <button type="button" className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleExpand(groupKey)} aria-expanded={isOpen} title={isOpen ? "Hide details" : "Show details"}>
+                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            {s.order_number}
+                          </button>
+                        </TableCell>
                         <TableCell className="text-sm font-medium">{s.product_name}</TableCell>
                         <TableCell className="text-sm text-center">{s.quantity || 1}</TableCell>
                         <TableCell><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${channelColor(s.sales_channel)}`}>{channelLabel(s.sales_channel)}</span></TableCell>
@@ -1916,7 +1935,13 @@ export default function OnlineSalesPage() {
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(s.id)} title="Delete"><Trash2 className="h-3 w-3" /></Button>
                         </TableCell>
                       </TableRow>
-                    )];
+                    ), ...(isOpen ? [(
+                      <TableRow key={`d-${s.id}`} className="bg-muted/20 hover:bg-muted/20">
+                        <TableCell colSpan={9} className="pt-0 pl-12">
+                          <OnlineSaleDetails sale={s} />
+                        </TableCell>
+                      </TableRow>
+                    )] : [])];
                   }
                   const isOpen = expandedOrders.has(groupKey);
                   const totalQty = group.items.reduce((sum, x) => sum + (Number(x.quantity) || 1), 0);

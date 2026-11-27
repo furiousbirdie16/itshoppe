@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { ExpandToggle, toggleInSet } from "@/components/ExpandToggle";
+import { OverseasPOLinesPanel } from "@/components/OverseasPOLinesPanel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getOverseasPurchaseOrders, createOverseasPurchaseOrder, updateOverseasPurchaseOrder, deleteOverseasPurchaseOrder,
@@ -156,6 +158,8 @@ export default function OverseasPurchaseOrdersPage() {
   const [paidFromAccountId, setPaidFromAccountId] = useState("");
   const [currency, setCurrency] = useState<"USD" | "RMB">("USD");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** POs opened to show their items. */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "not_shipped" | "incoming" | "received">("all");
@@ -2210,6 +2214,7 @@ export default function OverseasPurchaseOrdersPage() {
                   cargoTag={cargoTag(po.id)}
                   onOpen={() => setViewPO(po)}
                   balanceLeft={paidSoFar(po.id) > 0 && !isPaidStatus(po.status) ? phpBalance(po) : null}
+                  renderDetails={() => <OverseasPOLinesPanel items={poItems} currency={po.currency} isAdmin={isAdmin} />}
                   itemsSummary={
                     totalItems === 0 ? "—" : (
                       <>
@@ -2228,6 +2233,7 @@ export default function OverseasPurchaseOrdersPage() {
         <Table className="hidden md:table">
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8 px-1" />
               {isAdmin && <TableHead className="w-10"><Checkbox checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id))} onCheckedChange={toggleAll} /></TableHead>}
               <SortableHeader sortKey="po_number" label="PO #" sort={sort} onToggle={toggle} />
               <SortableHeader sortKey="supplier" label="Supplier" sort={sort} onToggle={toggle} />
@@ -2243,9 +2249,9 @@ export default function OverseasPurchaseOrdersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={11} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12} className="h-32 text-center"><div className="flex justify-center"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></TableCell></TableRow>
             ) : sortedOrders.length === 0 ? (
-              <TableRow><TableCell colSpan={11}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12}><div className="empty-state"><ShoppingCart className="empty-state-icon" /><p className="text-sm">No overseas purchase orders yet</p></div></TableCell></TableRow>
             ) : sortedOrders.map(po => {
               const arrival = arrivalFor(po.id, po.expected_delivery);
               const poItems = itemsByPo.get(po.id) || [];
@@ -2254,8 +2260,11 @@ export default function OverseasPurchaseOrdersPage() {
               const partialItems = poItems.filter((i) => (i.received_quantity || 0) > 0 && (i.received_quantity || 0) < i.quantity).length;
               const totalOrderedQty = poItems.reduce((s, i) => s + (i.quantity || 0), 0);
               const totalReceivedQty = poItems.reduce((s, i) => s + (i.received_quantity || 0), 0);
+              const open = expandedIds.has(po.id);
               return (
-              <TableRow key={po.id} className={selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30"}>
+              <Fragment key={po.id}>
+              <TableRow className={cn(selectedIds.has(po.id) ? "bg-muted/40" : "hover:bg-muted/30", open && "border-b-0")}>
+                <TableCell className="w-8 px-1"><ExpandToggle open={open} onToggle={() => setExpandedIds((s) => toggleInSet(s, po.id))} label="items" /></TableCell>
                 {isAdmin && <TableCell><Checkbox checked={selectedIds.has(po.id)} onCheckedChange={() => toggleOne(po.id)} /></TableCell>}
                 <TableCell className="font-medium text-sm tabular-nums">
                   <button type="button" onClick={() => setViewPO(po)} className="text-primary hover:underline">{docNo(po.po_number)}</button>
@@ -2324,6 +2333,14 @@ export default function OverseasPurchaseOrdersPage() {
                   </div>
                 </TableCell>
               </TableRow>
+              {open && (
+                <TableRow className="bg-muted/20 hover:bg-muted/20">
+                  <TableCell colSpan={isAdmin ? 12 : 8} className="pt-0 pl-12">
+                    <OverseasPOLinesPanel items={poItems} currency={po.currency} isAdmin={isAdmin} />
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
               );
             })}
           </TableBody>
