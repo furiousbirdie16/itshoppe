@@ -98,16 +98,20 @@ describe("CommissionPage", () => {
     expect(screen.getByText("not counted")).toBeTruthy();
   });
 
-  it("shows an agent their own month, read-only, with no agent picker", async () => {
+  it("shows an agent their own sales only: no commission, no picker", async () => {
     role = "user";
-    renderPage();
+    const { container } = renderPage();
     expect(await screen.findByText(/^Geraldine · /)).toBeTruthy();
+    expect(screen.getByText("My Sales")).toBeTruthy();
+    expect(await screen.findByText("Total sales")).toBeTruthy();
     expect(screen.queryByText("Close month")).toBeNull();
     expect(screen.queryByText("Deductions and additions")).toBeNull();
     expect(screen.queryByText("Needs a look")).toBeNull();
     expect(screen.queryByText("Agent")).toBeNull();
-    // Their deductions still show in the total.
-    expect(await screen.findByText("Jason ticket 2x")).toBeTruthy();
+    // Nothing about commission: not the word, the deductions or the rate.
+    expect(screen.queryByText("Jason ticket 2x")).toBeNull();
+    expect(container.textContent || "").not.toMatch(/commission/i);
+    expect(container.textContent || "").not.toMatch(/\d%/);
   });
 
   it("tells an agent whose login is not tied to anyone", async () => {

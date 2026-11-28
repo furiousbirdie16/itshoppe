@@ -22,6 +22,8 @@ type NavItem = {
   url?: string;
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
+  /** What staff see it called, when that differs. */
+  staffTitle?: string;
   soon?: boolean;
 };
 
@@ -66,8 +68,9 @@ const navGroups: NavGroup[] = [
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Online Sales", url: "/online-sales", icon: Store },
       { title: "Warranty Lookup", url: "/warranty", icon: ShieldCheck },
-      // Staff see only their own, once their login is tied to an agent.
-      { title: "Commission", url: "/commission", icon: BadgePercent },
+      // Staff see only their own sales (never the commission), once their
+      // login is tied to an agent.
+      { title: "Commission", staffTitle: "My Sales", url: "/commission", icon: BadgePercent },
     ],
   },
   {
@@ -118,7 +121,12 @@ export function AppSidebar() {
     () =>
       navGroups
         .filter((g) => !g.adminOnly || isAdmin)
-        .map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly || isAdmin) }))
+        .map((g) => ({
+          ...g,
+          items: g.items
+            .filter((i) => !i.adminOnly || isAdmin)
+            .map((i) => (!isAdmin && i.staffTitle ? { ...i, title: i.staffTitle } : i)),
+        }))
         .filter((g) => g.items.length > 0),
     [isAdmin]
   );
